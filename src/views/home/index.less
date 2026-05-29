@@ -1,0 +1,56 @@
+@import '@/assets/variables.less';
+
+.home{
+  >.top_bg{
+    width: 948px;
+    height: 241px;
+    position: absolute;
+    top: -220px;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 1;
+    background: linear-gradient(270deg, #ffacd7 0%, #bba2ff 100%);
+    filter: blur(120px);
+  }
+  >h1{
+    font-size: 28px;
+    font-weight: bold;
+    text-align: center;
+    color: #1F1F1F;
+    margin: 80px 0 0 0;
+  }
+  >.chatContent{
+    max-width: 960px;
+    height: 200px;
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    border-radius: 24px;
+    opacity: 1;
+    background: #FFFFFF;
+    box-sizing: border-box;
+    border: 1px solid #F0F0F0;
+    margin: 40px auto 0;
+    >.mainContent{
+      height: 100px;
+      display: flex;
+      >.uploadCont{
+        width: 72px;
+        height: 80px;
+        flex-shrink: 0;
+      }
+      >.textareaCont{
+        height: 100%;
+        overflow: auto;
+        outline: none;
+        flex: 1;
+        white-space: wrap;
+        word-break: break-all;
+        .scrollbar(@width: 5px, @thumbColor: #dcdcdc);
+      }
+    }
+    >.bottomContent{
+      margin-top: auto;
+    }
+  }
+}
