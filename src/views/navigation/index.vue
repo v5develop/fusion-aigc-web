@@ -39,6 +39,7 @@ const menuList = [
     background: #eed0ff;
   }
   > .menuContent {
+    margin-top: 49px;
     display: flex;
     flex-direction: column;
     align-items: center;
