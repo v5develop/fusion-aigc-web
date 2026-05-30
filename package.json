@@ -13,6 +13,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@lhlyu/vue-virtual-waterfall": "^1.0.9",
     "ali-oss": "^6.23.0",
     "axios": "^1.16.1",
     "naive-ui": "^2.44.1",

@@ -25,6 +25,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     TheWelcome: typeof import('./src/components/TheWelcome.vue')['default']
     Upload: typeof import('./src/components/Upload/index.vue')['default']
+    WaterfallVirtualScroller: typeof import('./src/components/WaterfallVirtualScroller/index.vue')['default']
     WelcomeItem: typeof import('./src/components/WelcomeItem.vue')['default']
   }
 }
@@ -44,5 +45,6 @@ declare global {
   const RouterView: typeof import('vue-router')['RouterView']
   const TheWelcome: typeof import('./src/components/TheWelcome.vue')['default']
   const Upload: typeof import('./src/components/Upload/index.vue')['default']
+  const WaterfallVirtualScroller: typeof import('./src/components/WaterfallVirtualScroller/index.vue')['default']
   const WelcomeItem: typeof import('./src/components/WelcomeItem.vue')['default']
 }
