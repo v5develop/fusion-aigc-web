@@ -41,13 +41,9 @@ function useTabContent() {
     value2: 0,
   })
 
-  useDebounce(
-    tabFilter,
-    () => {
-      console.log(111)
-    },
-    0,
-  )
+  useDebounce(tabFilter, () => {
+    console.log(111)
+  }, 0,)
 
   return { tabFilter }
 }
@@ -93,53 +89,55 @@ const showBackToTop = ref(false)
       onScroll: (scrollTop: number) => showBackToTop = scrollTop > 400,
     }"
   >
-    <div class="top_bg"></div>
+    <div class="container">
+      <div class="top_bg"></div>
 
-    <h1>和我聊聊， 你想要什么设计～</h1>
+      <h1>和我聊聊， 你想要什么设计～</h1>
 
-    <div class="chatContent">
-      <div class="mainContent">
-        <div class="uploadCont">
-          <Upload />
+      <div class="chatContent">
+        <div class="mainContent">
+          <div class="uploadCont">
+            <Upload />
+          </div>
+
+          <div class="textareaCont" contenteditable data-placeholder="和我聊聊，你想要什么设计。"></div>
         </div>
 
-        <div class="textareaCont" contenteditable data-placeholder="和我聊聊，你想要什么设计。"></div>
-      </div>
+        <div class="bottomContent">
+          <div class="selectCont">
+            <n-select v-model:value="value" :options="options1" size="small" :consistent-menu-width="false" />
+            <n-select v-model:value="value" :options="options2" size="small" :consistent-menu-width="false" />
+            <n-select v-model:value="value" :options="options3" size="small" :consistent-menu-width="false" />
+          </div>
 
-      <div class="bottomContent">
-        <div class="selectCont">
-          <n-select v-model:value="value" :options="options1" size="small" :consistent-menu-width="false" />
-          <n-select v-model:value="value" :options="options2" size="small" :consistent-menu-width="false" />
-          <n-select v-model:value="value" :options="options3" size="small" :consistent-menu-width="false" />
-        </div>
-
-        <div class="sendCont">
-          <i class="icon-ic_hone_bean"></i>
-          <span>限免</span>
-          <div class="btn">
+          <div class="sendCont">
             <i class="icon-ic_hone_bean"></i>
+            <span>限免</span>
+            <div class="btn">
+              <i class="icon-ic_hone_bean"></i>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="preinstall">
-      <div class="item" v-for="item in preData" :key="item.name">
-        <img src="https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp" alt="" />
-        <span>{{ item.name }}</span>
+      <div class="preinstall">
+        <div class="item" v-for="item in preData" :key="item.name">
+          <img src="https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp" alt="" />
+          <span>{{ item.name }}</span>
+          <i class="icon-ic_home_jump1"></i>
+        </div>
+      </div>
+
+      <div class="tabContent">
+        <Tab v-model="tabFilter.value1" :data="filterData1" />
+        <Tab class="tab2" v-model="tabFilter.value2" :data="filterData2" />
+      </div>
+
+      <WaterfallVirtualScroller :waterfallData="waterfallData" />
+
+      <div class="scrollToTop" v-show="showBackToTop" @click="backTop">
         <i class="icon-ic_home_jump1"></i>
       </div>
-    </div>
-
-    <div class="tabContent">
-      <Tab v-model="tabFilter.value1" :data="filterData1" />
-      <Tab class="tab2" v-model="tabFilter.value2" :data="filterData2" />
-    </div>
-
-    <WaterfallVirtualScroller :waterfallData="waterfallData" />
-
-    <div class="scrollToTop" v-show="showBackToTop" @click="backTop">
-      <i class="icon-ic_home_jump1"></i>
     </div>
   </div>
 </template>

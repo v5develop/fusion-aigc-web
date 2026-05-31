@@ -44,7 +44,7 @@ const useWaterfall = () => {
     padding: 0,
     itemMinWidth: 220,
     minColumnCount: 2,
-    maxColumnCount: 5,
+    maxColumnCount: 6,
   })
 
 

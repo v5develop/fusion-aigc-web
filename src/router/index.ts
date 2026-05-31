@@ -1,7 +1,7 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory,createWebHashHistory } from 'vue-router'
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHashHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
@@ -26,6 +26,13 @@ const router = createRouter({
           path: '/e-commerce',
           name: 'e-commerce',
           component: () => import('@/views/e-commerce/index.vue'),
+          // children: [
+          //   {
+          //     path: '/e-commerce',
+          //     name: 'e-commerce',
+          //     component: () => import('@/views/e-commerce/index.vue'),
+          //   }
+          // ]
         },
         {
           path: '/asset',
