@@ -1,5 +1,14 @@
 <script setup lang="ts">
-const { data, title } = defineProps<{ data: any; title: string }>();
+import { useRouter } from 'vue-router'
+
+const { data, title } = defineProps<{ data: any; title: string }>()
+
+const router = useRouter()
+
+function goChildPages(item: any) {
+  // router.push({ path: item.path || '/e-commerce/product-detail' })
+  router.push({ name: item.pathName })
+}
 </script>
 
 <template>
@@ -8,7 +17,7 @@ const { data, title } = defineProps<{ data: any; title: string }>();
       <div class="title">{{ title }}</div>
 
       <div class="cardList">
-        <div class="card" v-for="(item, index) in data" :key="index">
+        <div class="card" v-for="(item, index) in data" :key="index" @click="goChildPages(item)">
           <div class="imageArea" :style="{ background: item.bgColor }">
             <div class="imgBox"></div>
             <i class="arrow-icon">→</i>
@@ -26,21 +35,21 @@ const { data, title } = defineProps<{ data: any; title: string }>();
 
 <style scoped lang="less">
 .row {
-  >.container{
+  > .container {
     max-width: 2028px;
     margin: 0 auto;
-    >.title {
+    > .title {
       font-size: 18px;
       font-weight: bold;
       color: #333;
       margin-bottom: 20px;
     }
 
-    >.cardList {
+    > .cardList {
       display: flex;
       gap: 20px;
       flex-wrap: wrap;
-      >.card {
+      > .card {
         width: 194px;
         height: 184px;
         border-radius: 12px;
@@ -50,8 +59,8 @@ const { data, title } = defineProps<{ data: any; title: string }>();
         background: #fff;
         cursor: pointer;
         transition: all 0.3s;
-        &:hover{
-          box-shadow:  0 5px 10px 0 rgba(0,0,0,0.1);
+        &:hover {
+          box-shadow: 0 5px 10px 0 rgba(0, 0, 0, 0.1);
         }
         .imageArea {
           flex: 1;
@@ -83,13 +92,12 @@ const { data, title } = defineProps<{ data: any; title: string }>();
           }
           .cardDesc {
             font-size: 12px;
-            color: #8F8F8F;
+            color: #8f8f8f;
             line-height: 16px;
           }
         }
       }
     }
-
   }
 }
 </style>

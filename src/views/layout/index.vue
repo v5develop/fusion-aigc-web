@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import Navigation from './navigation/index.vue'
+import Navigation from '@/views/layout/Navigation/index.vue'
 </script>
 
 <template>
   <div class="layout">
-    <div class="navigationContent">
+    <div class="navigation-content">
       <Navigation />
     </div>
 
@@ -18,10 +18,8 @@ import Navigation from './navigation/index.vue'
 <style scoped lang="less">
 .layout {
   display: flex;
-  > .navigationContent {
+  > .navigation-content {
     flex-shrink: 0;
-    position: relative;
-    z-index: 1;
   }
   > .container {
     flex: 1;

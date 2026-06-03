@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
 import Row from './Row/index.vue'
 
 const shangpingtu_data = ref([
@@ -8,16 +7,19 @@ const shangpingtu_data = ref([
     title: 'AI商品套图',
     desc: '无需提示词，一键生成全套电商图。',
     bgColor: '#E7DBD2',
+    pathName: 'product-kit',
   },
   {
     title: 'AI详情页',
     desc: '无需提示词，一键生成全套电商图。',
     bgColor: '#D2E7DA',
+    pathName: 'product-detail',
   },
   {
     title: '爆款图复刻',
     desc: '无需提示词，一键生成全套电商图。',
     bgColor: '#D2D4E7',
+    pathName: 'product-clone',
   },
   {
     title: '手持商品',
@@ -83,9 +85,9 @@ const chuandaitu_data = ref([
 
 <template>
   <div class="commerce">
-    <Row :data="shangpingtu_data" title="商品图"/>
-    <Row style="margin-top: 32px" :data="shangpingshiping_data" title="商品视频"/>
-    <Row style="margin-top: 32px" :data="chuandaitu_data" title="穿戴图"/>
+    <Row :data="shangpingtu_data" title="商品图" />
+    <Row style="margin-top: 32px" :data="shangpingshiping_data" title="商品视频" />
+    <Row style="margin-top: 32px" :data="chuandaitu_data" title="穿戴图" />
   </div>
 </template>
 

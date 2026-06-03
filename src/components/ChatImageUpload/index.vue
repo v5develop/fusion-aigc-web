@@ -20,27 +20,27 @@ function fileChange() {
 </script>
 
 <template>
-  <div class="uploadComponent">
-    <input class="fileComponent" type="file" ref="fileRef" @change="fileChange" />
+  <div class="upload-component">
+    <input type="file" ref="fileRef" @change="fileChange" style="display: none" />
 
     <div class="content">
-      <div class="previewCont" @mouseleave="expand = false">
+      <div class="preview-cont" @mouseleave="expand = false">
         <div
           class="item"
           :style="{ '--transformX': expand ? 60 * i + 'px' : 0 }"
           v-for="(item, i) in fileList"
           :key="item"
         >
-          <img :src="item" alt="" @mouseenter="expand = true" />
+          <img class="img-item" :src="item" alt="" @mouseenter="expand = true" />
         </div>
 
         <div
           :style="{ '--transformX': expand ? 60 * fileList.length + 'px' : 0 }"
-          class="item uploadBtn"
-          :class="fileList.length && !expand ? 'uploadBtnSmall' : ''"
+          class="item upload-btn"
+          :class="fileList.length && !expand ? 'upload-btn-small' : ''"
           @click="uploadFile"
         >
-          <i class="icon-ic_home_upload"></i>
+          <i class="icon-ic_home_upload1"></i>
         </div>
       </div>
     </div>
@@ -48,21 +48,18 @@ function fileChange() {
 </template>
 
 <style scoped lang="less">
-.uploadComponent {
+.upload-component {
   width: 100%;
   height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  > .fileComponent {
-    display: none;
-  }
   > .content {
     width: 100%;
     height: 100%;
     display: flex;
     position: relative;
-    > .previewCont {
+    > .preview-cont {
       width: 100%;
       height: 100%;
       display: flex;
@@ -77,20 +74,20 @@ function fileChange() {
         left: var(--transformX);
         top: 0;
         transition: all 0.3s;
-        > img {
+        > .img-item {
           width: 100%;
           height: 100%;
           cursor: pointer;
-          .transformToRight();
+          .transform-to-right();
         }
       }
       > .item:nth-child(even) {
-        > img {
-          .transformToLeft();
+        > .img-item {
+          .transform-to-left();
         }
       }
 
-      > .uploadBtn {
+      > .upload-btn {
         border: 1px solid #ffffff;
         box-shadow: 0 1px 6px 0 rgba(0, 0, 0, 0.03);
         background: linear-gradient(319deg, #fff6fb 2%, #ede6ff 97%);
@@ -104,11 +101,11 @@ function fileChange() {
         &:hover {
           transform: translateY(-5px);
         }
-        > i {
+        > .icon-ic_home_upload1 {
           color: #8f8f8f;
         }
       }
-      > .uploadBtnSmall {
+      > .upload-btn-small {
         width: 30px;
         height: 30px;
         border-radius: 50%;
@@ -122,14 +119,14 @@ function fileChange() {
 }
 
 @rotate: 5deg;
-.transformToLeft() {
+.transform-to-left() {
   transform: rotate(@rotate);
   transition: transform 0.2s;
   &:hover {
     transform: rotate(@rotate) translateY(-5px) scale(1.1);
   }
 }
-.transformToRight() {
+.transform-to-right() {
   transform: rotate(-@rotate);
   transition: transform 0.2s;
   &:hover {

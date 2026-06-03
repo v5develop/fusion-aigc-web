@@ -1,15 +1,50 @@
 import OSS from 'ali-oss'
+import { getSts, uploadConfirm } from '@/api/methods.ts'
 
-export function upload(files: File[], config: any) {
-  const client = new OSS({
-    region: 'oss-cn-hangzhou', // 你的 bucket 地域
-    accessKeyId: '临时AK或STS AK',
-    accessKeySecret: '临时SK或STS SK',
-    bucket: '你的bucket名',
-    // stsToken: 'STS临时token' // 用STS时加上
-  })
+export async function upload(files: File[], config?: any) {
+  const urls = []
+  const promises = []
+  for (const file of files) {
+    const promise = new Promise(async (resolve, reject) => {
+      const { data } = await getSts({
+        fileName: file.name,
+        contentType: file.type,
+        fileSize: file.size,
+        ...config,
+      })
 
-  files.forEach(file => {
-    client.put(config.fileName ?? file.name, file)
-  })
+      const client = new OSS({
+        region: data.region,
+        accessKeyId: data.accessKeyId,
+        accessKeySecret: data.secretAccessKey,
+        bucket: data.bucket,
+        stsToken: data.sessionToken,
+        endpoint: data.endpoint,
+        refreshSTSToken: async () => {
+          const { data } = await getSts({
+            fileName: file.name,
+            contentType: file.type,
+            fileSize: file.size,
+            ...config,
+          })
+          return {
+            accessKeyId: data.accessKeyId,
+            accessKeySecret: data.secretAccessKey,
+            stsToken: data.sessionToken,
+          }
+        },
+        refreshSTSTokenInterval: 300000,
+      })
+
+      await client.put(data.objectKey, file)
+      await uploadConfirm({ objectKey: data.objectKey })
+      // urls.push(data.url)
+      resolve(data.url)
+    })
+    promises.push(promise)
+  }
+
+  return await Promise.all(promises)
+
+  // return urls
 }

@@ -26,13 +26,21 @@ const router = createRouter({
           path: '/e-commerce',
           name: 'e-commerce',
           component: () => import('@/views/e-commerce/index.vue'),
-          // children: [
-          //   {
-          //     path: '/e-commerce',
-          //     name: 'e-commerce',
-          //     component: () => import('@/views/e-commerce/index.vue'),
-          //   }
-          // ]
+        },
+        {
+          path: '/e-commerce/product-detail',
+          name: 'product-detail',
+          component: () => import('@/views/e-commerce/childPages/productDetail/index.vue'),
+        },
+        {
+          path: '/e-commerce/product-kit',
+          name: 'product-kit',
+          component: () => import('@/views/e-commerce/childPages/productKit/index.vue'),
+        },
+        {
+          path: '/e-commerce/product-clone',
+          name: 'product-clone',
+          component: () => import('@/views/e-commerce/childPages/productClone/index.vue'),
         },
         {
           path: '/asset',

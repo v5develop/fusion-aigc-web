@@ -16,7 +16,9 @@ const themeOverrides: GlobalThemeOverrides = {
 
 <template>
   <n-config-provider :theme-overrides="themeOverrides">
-    <RouterView />
+    <n-message-provider>
+      <RouterView />
+    </n-message-provider>
   </n-config-provider>
 </template>
 

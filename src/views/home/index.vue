@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useDebounce } from '@/utils/composables.ts'
-import Upload from '@/components/Upload/index.vue'
+import Upload from '@/components/ChatImageUpload/index.vue'
 import Tab from './Tab/index.vue'
 import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
 import { filterData1, filterData2 } from './constants.ts'
@@ -41,9 +41,13 @@ function useTabContent() {
     value2: 0,
   })
 
-  useDebounce(tabFilter, () => {
-    console.log(111)
-  }, 0,)
+  useDebounce(
+    tabFilter,
+    () => {
+      console.log(111)
+    },
+    0,
+  )
 
   return { tabFilter }
 }
@@ -86,7 +90,7 @@ const showBackToTop = ref(false)
     class="home"
     v-observer-scroll-to-bottom="{
       callback: loadData,
-      onScroll: (scrollTop: number) => showBackToTop = scrollTop > 400,
+      onScroll: (scrollTop: number) => (showBackToTop = scrollTop > 400),
     }"
   >
     <div class="container">
@@ -94,23 +98,23 @@ const showBackToTop = ref(false)
 
       <h1>和我聊聊， 你想要什么设计～</h1>
 
-      <div class="chatContent">
-        <div class="mainContent">
-          <div class="uploadCont">
+      <div class="chat-content">
+        <div class="main-content">
+          <div class="upload-cont">
             <Upload />
           </div>
 
-          <div class="textareaCont" contenteditable data-placeholder="和我聊聊，你想要什么设计。"></div>
+          <div class="textarea-box" contenteditable data-placeholder="和我聊聊，你想要什么设计。"></div>
         </div>
 
-        <div class="bottomContent">
-          <div class="selectCont">
+        <div class="bottom-content">
+          <div class="select-cont">
             <n-select v-model:value="value" :options="options1" size="small" :consistent-menu-width="false" />
             <n-select v-model:value="value" :options="options2" size="small" :consistent-menu-width="false" />
             <n-select v-model:value="value" :options="options3" size="small" :consistent-menu-width="false" />
           </div>
 
-          <div class="sendCont">
+          <div class="send-cont">
             <i class="icon-ic_hone_bean"></i>
             <span>限免</span>
             <div class="btn">
@@ -122,20 +126,23 @@ const showBackToTop = ref(false)
 
       <div class="preinstall">
         <div class="item" v-for="item in preData" :key="item.name">
-          <img src="https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp" alt="" />
+          <img
+            src="https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp"
+            alt=""
+          />
           <span>{{ item.name }}</span>
           <i class="icon-ic_home_jump1"></i>
         </div>
       </div>
 
-      <div class="tabContent">
+      <div class="tab-content">
         <Tab v-model="tabFilter.value1" :data="filterData1" />
         <Tab class="tab2" v-model="tabFilter.value2" :data="filterData2" />
       </div>
 
       <WaterfallVirtualScroller :waterfallData="waterfallData" />
 
-      <div class="scrollToTop" v-show="showBackToTop" @click="backTop">
+      <div class="scroll-to-top" v-show="showBackToTop" @click="backTop">
         <i class="icon-ic_home_jump1"></i>
       </div>
     </div>
