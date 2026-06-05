@@ -13,3 +13,7 @@ export function getSts(data: types.IGetSts) {
 export function uploadConfirm(data: { objectKey: string }) {
   return post('/api/v1/storage/direct/confirm', data)
 }
+
+export function login(data: { username: string; password: string; }) {
+  return post('/api/v1/auth/login', data)
+}

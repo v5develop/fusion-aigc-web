@@ -1,21 +1,25 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
-const prompt = defineModel<string>('prompt', { required: true })
+const { placeholder } = defineProps<{ placeholder?: string }>()
+const value = defineModel<string>('value', { required: true })
 
 const show = ref(false)
 
+// 将 \n 转为换行符，让 placeholder 支持多行
+const placeholderText = computed(() => placeholder?.replace(/\\n/g, '\n'))
+
 const getPrompt = () => {
-  if (show.value) return;
-  show.value = true;
-  setTimeout(() => show.value = false, 1000)
+  if (show.value) return
+  show.value = true
+  setTimeout(() => (show.value = false), 1000)
 }
 </script>
 
 <template>
   <div class="prompt-assist">
     <n-spin :show="show">
-      <textarea class="textarea-box" v-model="prompt" maxlength="2000" placeholder="请输入商品信息包括:商品名称、商品描述、商品尺寸、目标受众、商品卖点。您也可以在上传多视角商品图后点击【A帮写】一键分析"></textarea>
+      <textarea class="textarea-box" v-model="value" maxlength="2000" :placeholder="placeholderText"></textarea>
     </n-spin>
 
     <div class="bottom-cont">
@@ -24,8 +28,8 @@ const getPrompt = () => {
       </div>
 
       <div class="right-cont">
-        <span class="text-number">{{ prompt.length }}/2000</span>
-        <i class="icon-ic_ds_Delete1" @click="prompt=''"></i>
+        <span class="text-number">{{ value.length }}/2000</span>
+        <i class="icon-ic_ds_Delete1" @click="value = ''"></i>
       </div>
     </div>
   </div>
@@ -71,8 +75,8 @@ const getPrompt = () => {
       }
       > .icon-ic_ds_Delete1 {
         cursor: pointer;
-        &:hover{
-          opacity: .7;
+        &:hover {
+          opacity: 0.7;
         }
       }
     }

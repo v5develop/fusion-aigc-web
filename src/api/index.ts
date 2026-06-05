@@ -1,7 +1,12 @@
 import axios from 'axios'
+import type { AxiosResponse, AxiosError } from 'axios'
+import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
 
 const { message } = createDiscreteApi(['message'])
+let isRefreshing = false // 刷新锁：防止并发刷新
+let requestQueue: any[] = []    // 请求队列：缓存过期的请求
+const refreshTokenApi = '/api/v1/auth/refresh'
 
 const service = axios.create({
   baseURL: '',
@@ -10,36 +15,90 @@ const service = axios.create({
 
 // 请求拦截：自动加 token
 service.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token') ?? '9abbddafe6ff4347beaa871394dd14e9'
+  const token = localStorage.getItem('fusion_accessToken')
   if (token) config.headers.Authorization = 'Bearer ' + token
   return config
 })
 
 // 响应拦截
 service.interceptors.response.use(
-  (res) => {
-    const data = res.data;
+  (res: AxiosResponse<ApiResponse>) => {
+    const data = res.data
 
-    if ([2001, 2002, 2003, 2004, 401].includes(data.code)) {
-      // 这里可以添加 token 失效等特殊处理逻辑
-      // 比如跳转到登录页
-      return Promise.reject()
-    }
+    // 这里可以添加 token 失效等特殊处理逻辑
+    // if ([2001, 2002, 2003, 2004].includes(response.code)) {
+    //   clearToken()
+    //   router.push('/login')
+    //   return
+    // }
 
     if (data.code !== 0) {
       message.error(data.msg)
       return Promise.reject()
     }
-    return data
+    return data as unknown as AxiosResponse<ApiResponse<unknown>>
   },
-  (err) => {
-    // console.log(err.response)
-    message.error('请求错误：' + err.message)
-    return Promise.reject(err)
+  async (error: AxiosError<ApiResponse>) => {
+    const { response, config } = error || {}
+      if (!response || response.status !== 401 || config?.url === refreshTokenApi) {
+        if (config?.url === '/api/refresh-token') {
+          logoutToLogin()
+        }
+        return Promise.reject(error)
+      }
+    // 401 = AccessToken 过期 → 开始无感刷新
+    try {
+      if (isRefreshing) {
+        // 🔥 正在刷新：把当前请求加入队列，等待刷新完成后重试
+        return new Promise((resolve) => {
+          requestQueue.push((newToken: string) => {
+            config!.headers.Authorization = `Bearer ${newToken}`
+            resolve(service(config!))
+          })
+        })
+      }
+
+      // 🔥 加锁，开始刷新 Token
+      isRefreshing = true
+
+      // 调用后端刷新接口
+      const { data } = await axios.post(refreshTokenApi, {
+        refreshToken: localStorage.getItem('fusion_refreshToken'),
+      })
+      const newAccessToken = data.data.accessToken
+      const newRefreshToken = data.data.refreshToken
+
+      // 保存新 Token
+      localStorage.setItem('fusion_accessToken', newAccessToken)
+      localStorage.setItem('fusion_refreshToken', newRefreshToken)
+
+      // 🔥 刷新成功：执行队列里所有请求
+      requestQueue.forEach((cb) => cb(newAccessToken))
+      // 清空队列 + 解锁
+      requestQueue = []
+      isRefreshing = false
+
+      // 重试当前失败的请求
+      config!.headers.Authorization = `Bearer ${newAccessToken}`
+      return service(config!)
+    } catch (err) {
+      // 【3】刷新 Token 彻底失败 = 登录过期
+      logoutToLogin()
+      requestQueue = []
+      isRefreshing = false
+      return Promise.reject(err)
+    }
   },
 )
 
-export function post(url: string, data: any) {
+function logoutToLogin() {
+  localStorage.removeItem('fusion_accessToken')
+  localStorage.removeItem('fusion_refreshToken')
+  // 跳转到登录（根据你的项目改）
+  // window.location.href = '/login'
+}
+
+export function post(url: string, data: any): Promise<ApiResponse> {
   return service({
     method: 'post',
     url,
@@ -47,7 +106,7 @@ export function post(url: string, data: any) {
   })
 }
 
-export function get(url: string, params?: any) {
+export function get(url: string, params?: any): Promise<ApiResponse> {
   return service({
     method: 'get',
     url,

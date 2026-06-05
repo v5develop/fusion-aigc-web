@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import Container from '../components/Container/index.vue'
+import Container from '@/views/e-commerce/childPages/components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import SelectContent from '../components/SelectContent/index.vue'
-import PromptAssist from '../components/PromptAssist/index.vue'
-import Checkbox from '../components/Checkbox/index.vue'
+import SelectContent from '@/views/e-commerce/childPages/components/SelectContent/index.vue'
+import Checkbox from '@/views/e-commerce/childPages/components/Checkbox/index.vue'
 import ImageRequirement from './ImageRequirement/index.vue'
 
 const formData = reactive({
@@ -45,7 +43,7 @@ const formData = reactive({
         />
 
         <div class="module-title">参考内容</div>
-        <ImageUpload v-model:imgList="formData.imgList2" :limitNumber="5" multiple>
+        <ImageUpload v-model:imgList="formData.imgList2" :limitNumber="5" multiple btnName="上传参考图">
           <div style="margin-top: 16px">
             <ImageRequirement :imgList="formData.imgList2" />
           </div>
@@ -70,11 +68,6 @@ const formData = reactive({
         </div>
 
         <div class="module-title">复刻要求（选填）</div>
-        <!--        <n-input-->
-        <!--          v-model:value="formData.prompt"-->
-        <!--          type="textarea"-->
-        <!--          placeholder="例如：文案统一用英文、模特保持不变、参考图不变只是替换商品。"-->
-        <!--        />-->
         <textarea
           class="textarea"
           v-model="formData.prompt"
@@ -89,7 +82,7 @@ const formData = reactive({
 </template>
 
 <style scoped lang="less">
-@import '../common.less';
+@import '../../common.less';
 
 .commerce {
   height: 100vh;
@@ -107,8 +100,8 @@ const formData = reactive({
       resize: none;
       padding: 16px;
       border-radius: 5px;
-      transition: all .2s;
-      &:focus{
+      transition: all 0.3s;
+      &:focus {
         border-color: var(--main-color);
       }
     }

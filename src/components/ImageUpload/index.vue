@@ -6,10 +6,12 @@ import { ref } from 'vue'
 interface IProps {
   limitNumber?: number // 限制上传张数
   exampleImages?: string[] // 示例图
+  btnName?: string // 按钮名称
   multiple?: boolean
   bottomTips?: boolean
+  tryImages?: any[] // 试一试图片
 }
-const { limitNumber, multiple = false, bottomTips } = defineProps<IProps>()
+const { limitNumber, multiple = false, bottomTips, btnName = '上传产品图' } = defineProps<IProps>()
 const imgList = defineModel<any[]>('imgList', { required: true })
 const loading = ref(false)
 
@@ -33,10 +35,14 @@ const handleUpload = async (e: Event) => {
     }
   }
   loading.value = true
-  const urls = await upload(fileArray)
-  imgList.value.push(...urls.slice(0, (limitNumber ?? 1) - imgList.value.length))
-  loading.value = false
-  uploadRef.value!.value = ''
+  upload(fileArray)
+    .then((urls) => {
+      imgList.value.push(...urls.slice(0, (limitNumber ?? 1) - imgList.value.length))
+    })
+    .finally(() => {
+      loading.value = false
+      uploadRef.value!.value = ''
+    })
 }
 
 const beforeUpload = () => {
@@ -63,7 +69,7 @@ const beforeUpload = () => {
       />
       <div class="upload-btn" @click="beforeUpload">
         <i class="icon-ic_ds_CloudUpload1"></i>
-        <span>上传产品图</span>
+        <span>{{ btnName }}</span>
       </div>
 
       <div v-if="exampleImages" class="example-cont">
@@ -92,6 +98,13 @@ const beforeUpload = () => {
       <slot></slot>
 
       <div v-if="bottomTips" class="bottom-tips">请上传清晰且能够尽量展示商品全貌的图片</div>
+    </div>
+
+    <div v-if="tryImages" class="try-try">
+      <span class="title">试一试</span>
+      <div class="content">
+        <img class="img" :src="item" alt="" v-for="item in tryImages" :key="item" />
+      </div>
     </div>
   </div>
 </template>
@@ -125,7 +138,7 @@ const beforeUpload = () => {
     }
 
     > .upload-btn {
-      width: 130px;
+      min-width: 130px;
       height: 40px;
       margin-top: 32px;
       border-radius: 8px;
@@ -199,6 +212,35 @@ const beforeUpload = () => {
       padding: 0 12px;
       position: relative;
       bottom: -16px;
+    }
+  }
+
+  > .try-try {
+    margin-top: 12px;
+    height: 44px;
+    border-radius: 8px;
+    background: #edeff5;
+    display: flex;
+    align-items: center;
+    > .title {
+      font-size: 11px;
+      color: #9e9e9e;
+      padding: 0 12px;
+    }
+    > .content {
+      flex: 1;
+      height: 90%;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      overflow: auto;
+      > .img {
+        height: 100%;
+        aspect-ratio: 1/1;
+        border-radius: 8px;
+        object-fit: cover;
+        cursor: pointer;
+      }
     }
   }
 }

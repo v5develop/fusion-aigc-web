@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import Container from '../components/Container/index.vue'
+import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import SelectContent from '../components/SelectContent/index.vue'
-import PromptAssist from '../components/PromptAssist/index.vue'
-import Checkbox from '../components/Checkbox/index.vue'
+import SelectContent from '../../components/SelectContent/index.vue'
+import PromptAssist from '../../components/PromptAssist/index.vue'
+import Checkbox from '../../components/Checkbox/index.vue'
 
 const formData = reactive({
   imgList: ref([]),
@@ -51,7 +51,10 @@ const formData = reactive({
         />
 
         <div class="module-title">商品卖点&要求</div>
-        <PromptAssist v-model:prompt="formData.prompt" />
+        <PromptAssist
+          v-model:value="formData.prompt"
+          placeholder="1、商品名称：LYCOCELLE绽家303丝绸桑蚕丝专用丝毛洗涤剂\n2、核心卖点：\n专用丝净配方，呵护丝织物纤维柔顺\n温和清洁成分，去污同时护衣不发硬\n典雅香调留香，洗净衣物自带淡香氛"
+        />
 
         <div class="module-title">包含模块（多选）</div>
         <div class="checkbox-cont">
@@ -69,7 +72,7 @@ const formData = reactive({
 </template>
 
 <style scoped lang="less">
-@import '../common.less';
+@import '../../common.less';
 
 .commerce {
   height: 100vh;

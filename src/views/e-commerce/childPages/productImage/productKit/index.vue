@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import Container from '../components/Container/index.vue'
+import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import SelectContent from '../components/SelectContent/index.vue'
-import PromptAssist from '../components/PromptAssist/index.vue'
-import Checkbox from '../components/Checkbox/index.vue'
+import SelectContent from '../../components/SelectContent/index.vue'
+import PromptAssist from '../../components/PromptAssist/index.vue'
+import Checkbox from '../../components/Checkbox/index.vue'
 
 const formData = reactive({
   imgList: ref([]),
@@ -49,7 +49,10 @@ const formData = reactive({
         />
 
         <div class="module-title">商品卖点&要求</div>
-        <PromptAssist v-model:prompt="formData.prompt" />
+        <PromptAssist
+          v-model:value="formData.prompt"
+          placeholder="请输入商品信息包括:商品名称、商品描述、商品尺寸、目标受众、商品卖点。您也可以在上传多视角商品图后点击【A帮写】一键分析"
+        />
 
         <div class="module-title">套图结构配置</div>
         <div class="checkbox-cont">
@@ -75,7 +78,7 @@ const formData = reactive({
 </template>
 
 <style scoped lang="less">
-@import '../common.less';
+@import '../../common.less';
 
 .commerce {
   height: 100vh;

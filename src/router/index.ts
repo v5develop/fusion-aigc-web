@@ -1,4 +1,6 @@
-import { createRouter, createWebHistory,createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
+import { login } from '@/api/methods.ts'
+import eCommerceRouter from './e-commerce'
 
 const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -22,26 +24,7 @@ const router = createRouter({
           name: 'video',
           component: () => import('@/views/video/index.vue'),
         },
-        {
-          path: '/e-commerce',
-          name: 'e-commerce',
-          component: () => import('@/views/e-commerce/index.vue'),
-        },
-        {
-          path: '/e-commerce/product-detail',
-          name: 'product-detail',
-          component: () => import('@/views/e-commerce/childPages/productDetail/index.vue'),
-        },
-        {
-          path: '/e-commerce/product-kit',
-          name: 'product-kit',
-          component: () => import('@/views/e-commerce/childPages/productKit/index.vue'),
-        },
-        {
-          path: '/e-commerce/product-clone',
-          name: 'product-clone',
-          component: () => import('@/views/e-commerce/childPages/productClone/index.vue'),
-        },
+        ...eCommerceRouter,
         {
           path: '/asset',
           name: 'asset',
@@ -50,6 +33,25 @@ const router = createRouter({
       ],
     },
   ],
+})
+
+// 路由守卫：登录验证
+router.beforeEach(async (to, from) => {
+  // 检查 localStorage 中是否有 token
+  /*const token = localStorage.getItem('fusion_accessToken')
+
+  // 如果没有 token，进行模拟登录
+  if (!token) {
+    await login({
+      username: 'cuijing',
+      password: 'cj200205',
+    }).then((res) => {
+      if (res.code === 0) {
+        localStorage.setItem('fusion_accessToken', res.data.accessToken)
+        localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
+      }
+    })
+  }*/
 })
 
 export default router
