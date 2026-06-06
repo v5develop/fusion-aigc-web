@@ -105,6 +105,6 @@ const chuandaitu_data = ref([
 
 <style scoped lang="less">
 .commerce {
-  padding: 40px  48px;
+  padding: 40px 48px;
 }
 </style>

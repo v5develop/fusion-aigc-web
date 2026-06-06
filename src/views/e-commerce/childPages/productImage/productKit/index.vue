@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import SelectContent from '../../components/SelectContent/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import Checkbox from '../../components/Checkbox/index.vue'
+import Sample from '../../components/Sample/index.vue'
+import RecordList from '@/views/asset/components/RecordList/index.vue'
 
 const formData = reactive({
   imgList: ref([]),
@@ -18,15 +20,33 @@ const formData = reactive({
   checked3: ref(false),
   checked4: ref(false),
 })
+
+const records = ref([
+  {
+    title: '粉色弹盖式时尚保温杯',
+    date: '2026-05-24 13:26',
+    images: [
+      'https://i.pixiv.re/c/540x540_70/img-master/img/2022/10/13/23/12/07/101909818_p0_master1200.jpg',
+      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
+      'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/6.png',
+      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
+      'https://i.pixiv.re/c/540x540_70/img-master/img/2022/10/13/23/12/07/101909818_p0_master1200.jpg',
+      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
+      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
+      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
+    ],
+  },
+  {
+    title: '粉色弹盖式时尚保温杯',
+    date: '2026-05-24 13:26',
+    images: ['https://i.pixiv.re/c/540x540_70/img-master/img/2023/05/09/00/30/02/107956384_p0_master1200.jpg'],
+  },
+])
+provide('recordsData', records)
 </script>
 
 <template>
-  <Container
-    class="commerce"
-    title="商品套图"
-    rightTitle="AI商品套图"
-    :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的高转化率商品套图。`"
-  >
+  <Container class="commerce" title="商品套图">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -71,8 +91,18 @@ const formData = reactive({
         </div>
       </div>
     </template>
-    <template #sample>
-      <div class="sample-cont"></div>
+
+    <template #rightContent>
+      <Sample
+        v-if="!records.length"
+        title="AI商品套图"
+        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的高转化率商品套图。`"
+      />
+
+      <div v-else>
+        <div class="right-content-title">生成结果</div>
+        <RecordList :showSelect="false" />
+      </div>
     </template>
   </Container>
 </template>
@@ -88,9 +118,6 @@ const formData = reactive({
       flex-direction: column;
       gap: 12px;
     }
-  }
-
-  .sample-cont {
   }
 }
 </style>

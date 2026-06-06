@@ -1,8 +1,8 @@
 <script setup lang="ts">
 const { title, rightTitle, rightDesc } = defineProps<{
   title: string
-  rightTitle: string
-  rightDesc: string
+  rightTitle?: string
+  rightDesc?: string
 }>()
 </script>
 
@@ -23,12 +23,11 @@ const { title, rightTitle, rightDesc } = defineProps<{
     </div>
 
     <div class="right-container">
-      <div class="text-cont">
+<!--      <div class="text-cont">
         <div class="title">{{ rightTitle }}</div>
         <div class="desc" v-html="rightDesc"></div>
-      </div>
-
-      <slot name="sample"></slot>
+      </div>-->
+      <slot name="rightContent"></slot>
     </div>
   </div>
 </template>
@@ -77,25 +76,8 @@ const { title, rightTitle, rightDesc } = defineProps<{
 
   > .right-container {
     flex: 1;
-    padding: 0 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    > .text-cont {
-      text-align: center;
-      margin-bottom: 48px;
-      > .title {
-        font-size: 36px;
-        font-weight: bold;
-        color: #1f1f1f;
-        margin-bottom: 8px;
-      }
-      > .desc {
-        font-size: 16px;
-        color: #8f8f8f;
-      }
-    }
+    padding: 40px 48px;
+    overflow: auto;
   }
 }
 </style>
