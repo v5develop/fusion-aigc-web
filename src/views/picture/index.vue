@@ -1,7 +1,13 @@
 <script setup lang="ts"></script>
 
 <template>
-  <div>picture</div>
+  <div class="picture">
+
+  </div>
 </template>
 
-<style scoped></style>
+<style scoped lang="less">
+.picture{
+
+}
+</style>

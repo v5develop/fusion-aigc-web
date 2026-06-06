@@ -32,7 +32,7 @@ const records = ref([
       'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
       'https://i.pixiv.re/c/540x540_70/img-master/img/2022/10/13/23/12/07/101909818_p0_master1200.jpg',
       'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
+      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/ 111787785_p0_master1200.jpg',
       'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
     ],
   },

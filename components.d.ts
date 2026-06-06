@@ -13,6 +13,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ChatImageUpload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
+    ChatInputSelect: typeof import('./src/components/ChatInputSelect/index.vue')['default']
     ChatUpload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
     CheckboxGroup: typeof import('./src/components/CheckboxGroup/index.vue')['default']
     HelloWorld: typeof import('./src/components/HelloWorld.vue')['default']
@@ -51,6 +52,7 @@ declare module 'vue' {
 // For TSX support
 declare global {
   const ChatImageUpload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
+  const ChatInputSelect: typeof import('./src/components/ChatInputSelect/index.vue')['default']
   const ChatUpload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
   const CheckboxGroup: typeof import('./src/components/CheckboxGroup/index.vue')['default']
   const HelloWorld: typeof import('./src/components/HelloWorld.vue')['default']

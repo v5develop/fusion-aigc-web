@@ -1,26 +1,42 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { useDebounce } from '@/utils/composables.ts'
 import Upload from '@/components/ChatImageUpload/index.vue'
-import Tab from './Tab/index.vue'
+import ImageTab from '@/views/home/ImageTab/index.vue'
 import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
 import { filterData1, filterData2 } from './constants.ts'
 import { usePaginationData } from '@/utils/composables.ts'
+import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
+import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 
-const value = ref(0)
 const homeRef = ref<HTMLDivElement | null>(null)
-const options1 = [
-  { label: '图生图', value: 0 },
-  { label: '图生图', value: 1 },
-]
-const options2 = [
-  { label: '灵动图像2.0', value: 0 },
-  { label: '灵动图像3.0', value: 1 },
-]
-const options3 = [
-  { label: '智能比例', value: 0 },
-  { label: '智能比例2', value: 1 },
-]
+const { activeChatTab, selectValues, options1, options2, options3 } = useChat()
+
+function useChat() {
+  const activeChatTab = ref<TTabValue>('ecommerce')
+  const selectValues = reactive({
+    value1: 0,
+    value2: 0,
+  })
+  const options1 = [
+    { label: '图生图', value: 0 },
+    { label: '文生图', value: 1 },
+  ]
+  const options2 = [
+    { label: '灵动图像2.0', value: 0 },
+    { label: '灵动图像3.0', value: 1 },
+  ]
+  const options3 = [
+    { label: '智能比例', value: 0 },
+    { label: '智能比例2', value: 1 },
+  ]
+
+  watch(selectValues, (value) => {
+    console.log(value, 9999)
+  })
+
+  return { activeChatTab, selectValues, options1, options2, options3 }
+}
 
 const { preData } = usePreinstall()
 function usePreinstall() {
@@ -34,22 +50,22 @@ function usePreinstall() {
   return { preData }
 }
 
-const { tabFilter } = useTabContent()
-function useTabContent() {
-  const tabFilter = reactive({
+const { imageTab } = useImageTab()
+function useImageTab() {
+  const imageTab = reactive({
     value1: 0,
     value2: 0,
   })
 
   useDebounce(
-    tabFilter,
+    imageTab,
     () => {
       console.log(111)
     },
     0,
   )
 
-  return { tabFilter }
+  return { imageTab }
 }
 
 const { paginationData } = usePaginationData()
@@ -62,7 +78,9 @@ function useWaterfall() {
       return
     }
     paginationData.pageIndex++
-    const response = await fetch(`https://mock.yuan.sh/images?page=${paginationData.pageIndex}&size=${paginationData.pageSize}&mode=simple`)
+    const response = await fetch(
+      `https://mock.yuan.sh/images?page=${paginationData.pageIndex}&size=${paginationData.pageSize}&mode=simple`,
+    )
     const result = await response.json()
     paginationData.total = result.total
     waterfallData.value = [...waterfallData.value, ...result.list]
@@ -98,6 +116,8 @@ const showBackToTop = ref(false)
 
       <h1>和我聊聊， 你想要什么设计～</h1>
 
+      <ChatTab v-model="activeChatTab" style="justify-content: center" />
+
       <div class="chat-content">
         <div class="main-content">
           <div class="upload-cont">
@@ -109,9 +129,8 @@ const showBackToTop = ref(false)
 
         <div class="bottom-content">
           <div class="select-cont">
-            <n-select v-model:value="value" :options="options1" size="small" :consistent-menu-width="false" />
-            <n-select v-model:value="value" :options="options2" size="small" :consistent-menu-width="false" />
-            <n-select v-model:value="value" :options="options3" size="small" :consistent-menu-width="false" />
+            <ChatInputSelect v-model:value="selectValues.value1" :options="options1" />
+            <ChatInputSelect v-model:value="selectValues.value2" :options="options3" />
           </div>
 
           <div class="send-cont">
@@ -124,7 +143,7 @@ const showBackToTop = ref(false)
         </div>
       </div>
 
-      <div class="preinstall">
+      <div v-if="activeChatTab === 'ecommerce'" class="preinstall">
         <div class="item" v-for="item in preData" :key="item.name">
           <img
             src="https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp"
@@ -136,8 +155,8 @@ const showBackToTop = ref(false)
       </div>
 
       <div class="tab-content">
-        <Tab v-model="tabFilter.value1" :data="filterData1" />
-        <Tab class="tab2" v-model="tabFilter.value2" :data="filterData2" />
+        <ImageTab v-model="imageTab.value1" :data="filterData1" />
+        <ImageTab class="tab2" v-model="imageTab.value2" :data="filterData2" />
       </div>
 
       <WaterfallVirtualScroller :waterfallData="waterfallData" />

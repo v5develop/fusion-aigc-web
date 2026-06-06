@@ -17,8 +17,7 @@ function goChildPages(item: any) {
 
       <div class="cardList">
         <div class="card" v-for="(item, index) in data" :key="index" @click="goChildPages(item)">
-          <!--          <img class="imageArea" :src="item.url" alt="" />-->
-          <img class="imageArea" src="http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/6.png" alt="" />
+                    <img class="imageArea" :src="item.url" alt="" />
           <div class="content">
             <div class="cardTitle">{{ item.title }}</div>
             <div class="cardDesc">{{ item.desc }}</div>
