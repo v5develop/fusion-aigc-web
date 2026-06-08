@@ -38,6 +38,7 @@ function handleTabClick(value: TTabValue) {
   display: flex;
   flex-direction: row;
   gap: 12px;
+  margin-bottom: 24px;
 
   &__item {
     display: inline-flex;

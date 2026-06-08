@@ -18,12 +18,15 @@ import Navigation from '@/views/layout/Navigation/index.vue'
 <style scoped lang="less">
 .layout {
   display: flex;
+
   > .navigation-content {
     flex-shrink: 0;
   }
+
   > .container {
     flex: 1;
     background: #f5f6f8;
+    position: relative;
   }
 }
 </style>

@@ -38,20 +38,20 @@ const router = createRouter({
 // 路由守卫：登录验证
 router.beforeEach(async (to, from) => {
   // 检查 localStorage 中是否有 token
-  /*const token = localStorage.getItem('fusion_accessToken')
+  const token = localStorage.getItem('fusion_accessToken')
 
   // 如果没有 token，进行模拟登录
   if (!token) {
     await login({
-      username: 'cuijing',
-      password: 'cj200205',
+      username: 'adad',
+      password: 'admin123',
     }).then((res) => {
       if (res.code === 0) {
         localStorage.setItem('fusion_accessToken', res.data.accessToken)
         localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
       }
     })
-  }*/
+  }
 })
 
 export default router

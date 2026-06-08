@@ -8,12 +8,14 @@ import { filterData1, filterData2 } from './constants.ts'
 import { usePaginationData } from '@/utils/composables.ts'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import ChatTab, { type TTabValue } from './ChatTab/index.vue'
+import ChatInputBox from './ChatInputBox/index.vue'
 
 const homeRef = ref<HTMLDivElement | null>(null)
-const { activeChatTab, selectValues, options1, options2, options3 } = useChat()
+const { activeChatTab, imgList, selectValues, options1, options2, options3 } = useChat()
 
 function useChat() {
   const activeChatTab = ref<TTabValue>('ecommerce')
+  const imgList = ref<any[]>([])
   const selectValues = reactive({
     value1: 0,
     value2: 0,
@@ -31,11 +33,7 @@ function useChat() {
     { label: '智能比例2', value: 1 },
   ]
 
-  watch(selectValues, (value) => {
-    console.log(value, 9999)
-  })
-
-  return { activeChatTab, selectValues, options1, options2, options3 }
+  return { activeChatTab, imgList, selectValues, options1, options2, options3 }
 }
 
 const { preData } = usePreinstall()
@@ -114,34 +112,21 @@ const showBackToTop = ref(false)
     <div class="container">
       <div class="top_bg"></div>
 
-      <h1>和我聊聊， 你想要什么设计～</h1>
+      <h1 class="h1">和我聊聊， 你想要什么设计～</h1>
 
       <ChatTab v-model="activeChatTab" style="justify-content: center" />
 
-      <div class="chat-content">
-        <div class="main-content">
-          <div class="upload-cont">
-            <Upload />
-          </div>
-
-          <div class="textarea-box" contenteditable data-placeholder="和我聊聊，你想要什么设计。"></div>
-        </div>
-
-        <div class="bottom-content">
-          <div class="select-cont">
+      <ChatInputBox v-model:imgList="imgList">
+        <template #bottomSelect>
+          <div v-if="activeChatTab === 'image'" class="select-cont">
             <ChatInputSelect v-model:value="selectValues.value1" :options="options1" />
             <ChatInputSelect v-model:value="selectValues.value2" :options="options3" />
           </div>
-
-          <div class="send-cont">
-            <i class="icon-ic_hone_bean"></i>
-            <span>限免</span>
-            <div class="btn">
-              <i class="icon-ic_hone_bean"></i>
-            </div>
+          <div v-else-if="activeChatTab === 'video'" class="select-cont">
+            <ChatInputSelect v-model:value="selectValues.value1" :options="options1" />
           </div>
-        </div>
-      </div>
+        </template>
+      </ChatInputBox>
 
       <div v-if="activeChatTab === 'ecommerce'" class="preinstall">
         <div class="item" v-for="item in preData" :key="item.name">

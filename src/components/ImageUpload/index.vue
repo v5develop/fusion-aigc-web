@@ -11,7 +11,7 @@ interface IProps {
   bottomTips?: boolean
   tryImages?: any[] // 试一试图片
 }
-const { limitNumber, multiple = false, bottomTips, btnName = '上传产品图' } = defineProps<IProps>()
+const { limitNumber, exampleImages, multiple = false, bottomTips, btnName = '上传产品图' } = defineProps<IProps>()
 const imgList = defineModel<any[]>('imgList', { required: true })
 const loading = ref(false)
 

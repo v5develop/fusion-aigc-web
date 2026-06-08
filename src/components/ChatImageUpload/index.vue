@@ -1,44 +1,94 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useMessage } from 'naive-ui'
+import { upload } from '@/api/ossUpload.ts'
 
-const fileList = ref<string[]>([
-  'https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp',
-  'https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp',
-])
-const fileRef = ref<HTMLInputElement | null>(null)
-const expand = ref(false)
-
-function uploadFile() {
-  fileRef.value?.click()
+interface IProps {
+  limitNumber?: number // 限制上传张数
+  multiple?: boolean
 }
-function fileChange() {
-  console.log(fileRef.value?.files)
-  // fileList.value.push(
-  //   'https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp',
-  // )
+const { limitNumber, multiple = false } = defineProps<IProps>()
+const imgList = defineModel<any[]>('imgList', { required: true })
+
+const message = useMessage()
+const uploadRef = ref<HTMLInputElement | null>(null)
+const expand = ref(false)
+const loading = ref(false)
+
+const beforeUpload = () => {
+  if (loading.value) return
+
+  if (limitNumber && imgList.value.length >= limitNumber) {
+    return message.warning(`最多上传${limitNumber}张图片`)
+  }
+  uploadRef.value!.click()
+}
+
+const handleUpload = async (e: Event) => {
+  const target = e.target as HTMLInputElement
+  const files = target.files
+  if (!files || files.length === 0) return
+
+  // 校验是否为图片类型
+  const fileArray = Array.from(files)
+  for (const file of fileArray) {
+    if (!file.type.startsWith('image/')) {
+      return message.warning(`${file.name} 不是有效的图片`)
+    }
+  }
+  loading.value = true
+  upload(fileArray)
+    .then((urls) => {
+      if (limitNumber) {
+        imgList.value.push(...urls.slice(0, limitNumber - imgList.value.length))
+      } else {
+        imgList.value.push(urls)
+      }
+    })
+    .finally(() => {
+      loading.value = false
+      uploadRef.value!.value = ''
+    })
+}
+
+const deleteImg = (index: number) => {
+  imgList.value.splice(index, 1)
 }
 </script>
 
 <template>
   <div class="upload-component">
-    <input type="file" ref="fileRef" @change="fileChange" style="display: none" />
+    <input
+      ref="uploadRef"
+      type="file"
+      accept="image/*"
+      :multiple="multiple"
+      id="file-upload"
+      @change="handleUpload"
+      style="display: none"
+    />
 
     <div class="content">
       <div class="preview-cont" @mouseleave="expand = false">
         <div
           class="item"
           :style="{ '--transformX': expand ? 60 * i + 'px' : 0 }"
-          v-for="(item, i) in fileList"
+          v-for="(item, i) in imgList"
           :key="item"
         >
           <img class="img-item" :src="item" alt="" @mouseenter="expand = true" />
+
+          <div class="delete-box" @click="deleteImg(i)">
+            <i class="icon-ic_ds_return-2"></i>
+          </div>
         </div>
 
         <div
-          :style="{ '--transformX': expand ? 60 * fileList.length + 'px' : 0 }"
+          :style="{ '--transformX': expand ? 60 * imgList.length + 'px' : 0 }"
           class="item upload-btn"
-          :class="fileList.length && !expand ? 'upload-btn-small' : ''"
-          @click="uploadFile"
+          :class="[imgList.length && !expand ? 'upload-btn-small' : '', { disabled: loading }]"
+          @click="beforeUpload"
+          v-loading="loading"
         >
           <i class="icon-ic_home_upload1"></i>
         </div>
@@ -74,17 +124,43 @@ function fileChange() {
         left: var(--transformX);
         top: 0;
         transition: all 0.3s;
+        .rotate-to-right();
+        &:hover {
+          .delete-box {
+            opacity: 1;
+          }
+        }
         > .img-item {
           width: 100%;
           height: 100%;
+          object-fit: cover;
           cursor: pointer;
-          .transform-to-right();
+          transition: all 0.2s;
+        }
+
+        > .delete-box {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: absolute;
+          top: -8px;
+          right: 0;
+          background-color: #444444;
+          color: white;
+          font-size: 12px;
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity 0.3s;
+          > .icon-ic_ds_return-2 {
+            font-size: 8px;
+          }
         }
       }
       > .item:nth-child(even) {
-        > .img-item {
-          .transform-to-left();
-        }
+        .rotate-to-left();
       }
 
       > .upload-btn {
@@ -97,10 +173,6 @@ function fileChange() {
         justify-content: center;
         align-items: center;
         transform: rotate(-@rotate);
-        transition: all 0.3s;
-        &:hover {
-          transform: translateY(-5px);
-        }
         > .icon-ic_home_upload1 {
           color: #8f8f8f;
         }
@@ -114,21 +186,22 @@ function fileChange() {
         left: 60%;
         top: 60%;
       }
+      > .disabled {
+        pointer-events: none;
+      }
     }
   }
 }
 
 @rotate: 5deg;
-.transform-to-left() {
+.rotate-to-left() {
   transform: rotate(@rotate);
-  transition: transform 0.2s;
   &:hover {
     transform: rotate(@rotate) translateY(-5px) scale(1.1);
   }
 }
-.transform-to-right() {
+.rotate-to-right() {
   transform: rotate(-@rotate);
-  transition: transform 0.2s;
   &:hover {
     transform: rotate(-@rotate) translateY(-5px) scale(1.1);
   }
