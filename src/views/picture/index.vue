@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, useTemplateRef } from 'vue'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 
+const dynamicScrollerRef = useTemplateRef('dynamicScrollerRef')
 // ==================== 输入框相关 ====================
 const { imgList, selectValues, options1, options3 } = useChat()
 
@@ -38,18 +39,10 @@ interface ChatMessage {
 
 // 图片资源（从设计稿提取）
 const yesterdayImages = [
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/e4c51f9d36c48b8e0f1347fb7de085dd.png',
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/0efd354dd9eef62fb678d879d01ca5c1.png',
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/4b27e10abd11e9308e47d3afcf9cb790.png',
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/0efd354dd9eef62fb678d879d01ca5c1.png',
+  'https://i.pixiv.re/c/540x540_70/img-master/img/2023/03/21/20/22/04/106427930_p0_master1200.jpg',
 ]
 
-const todayImages = [
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/c0527ba40fd9b69b9dd44fcd0e09ea80.png',
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/8857d3ae74f176d920aa07996529fcac.png',
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/f62513cd98210212e92f7c4a2fc67407.png',
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/cf72ecc2c50db6c902c1310d866774f9.png',
-]
+const todayImages = ['https://i.pixiv.re/c/540x540_70/img-master/img/2023/03/21/20/22/04/106427930_p0_master1200.jpg']
 
 const messages = ref<ChatMessage[]>([
   {
@@ -64,72 +57,12 @@ const messages = ref<ChatMessage[]>([
   },
   {
     id: '2',
-    date: '今天',
+    date: '等了好久终于等到今天',
     showDate: true,
     prompt:
-      '这是一张瑞幸咖啡"瓦尔登蓝系列"新品宣传海报。背景为蓝色水波纹，营造出清凉梦幻的氛围。左上角是"luckin coffee"品牌标识。上方醒目标语"可以喝的\'天空之镜\' 颜值MAX 瓦尔登蓝系列 全新上市"，吸引视线。画面展示两款新品：左侧"瓦尔登蓝钻瑞纳冰"，杯身呈梦幻浅蓝色',
-    meta: '本地模型 ｜9:16 ｜4K',
-    images: todayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
-  {
-    id: '3',
-    date: '今天',
-    showDate: true,
-    prompt:
-      '这是一张瑞幸咖啡"瓦尔登蓝系列"新品宣传海报。背景为蓝色水波纹，营造出清凉梦幻的氛围。左上角是"luckin coffee"品牌标识。上方醒目标语"可以喝的\'天空之镜\' 颜值MAX 瓦尔登蓝系列 全新上市"，吸引视线。画面展示两款新品：左侧"瓦尔登蓝钻瑞纳冰"，杯身呈梦幻浅蓝色',
-    meta: '本地模型 ｜9:16 ｜4K',
-    images: todayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
-  {
-    id: '5',
-    date: '今天',
-    showDate: true,
-    prompt:
-      '这是一张瑞幸咖啡"瓦尔登蓝系列"新品宣传海报。背景为蓝色水波纹，营造出清凉梦幻的氛围。左上角是"luckin coffee"品牌标识。上方醒目标语"可以喝的\'天空之镜\' 颜值MAX 瓦尔登蓝系列 全新上市"，吸引视线。画面展示两款新品：左侧"瓦尔登蓝钻瑞纳冰"，杯身呈梦幻浅蓝色',
-    meta: '本地模型 ｜9:16 ｜4K',
-    images: todayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
-  {
-    id: '6',
-    date: '今天',
-    showDate: true,
-    prompt:
-      '这是一张瑞幸咖啡"瓦尔登蓝系列"新品宣传海报。背景为蓝色水波纹，营造出清凉梦幻的氛围。左上角是"luckin coffee"品牌标识。上方醒目标语"可以喝的\'天空之镜\' 颜值MAX 瓦尔登蓝系列 全新上市"，吸引视线。画面展示两款新品：左侧"瓦尔登蓝钻瑞纳冰"，杯身呈梦幻浅蓝色',
-    meta: '本地模型 ｜9:16 ｜4K',
-    images: todayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
-  {
-    id: '7',
-    date: '今天',
-    showDate: true,
-    prompt:
-      '这是一张瑞幸咖啡"瓦尔登蓝系列"新品宣传海报。背景为蓝色水波纹，营造出清凉梦幻的氛围。左上角是"luckin coffee"品牌标识。上方醒目标语"可以喝的\'天空之镜\' 颜值MAX 瓦尔登蓝系列 全新上市"，吸引视线。画面展示两款新品：左侧"瓦尔登蓝钻瑞纳冰"，杯身呈梦幻浅蓝色',
-    meta: '本地模型 ｜9:16 ｜4K',
-    images: todayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
-  {
-    id: '8',
-    date: '今天',
-    showDate: true,
-    prompt:
-      '这是一张瑞幸咖啡"瓦尔登蓝系列"新品宣传海报。背景为蓝色水波纹，营造出清凉梦幻的氛围。左上角是"luckin coffee"品牌标识。上方醒目标语"可以喝的\'天空之镜\' 颜值MAX 瓦尔登蓝系列 全新上市"，吸引视线。画面展示两款新品：左侧"瓦尔登蓝钻瑞纳冰"，杯身呈梦幻浅蓝色',
-    meta: '本地模型 ｜9:16 ｜4K',
-    images: todayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
-  {
-    id: '9',
-    date: '今天',
-    showDate: true,
-    prompt:
-      '这是一张瑞幸咖啡"瓦尔登蓝系列"新品宣传海报。背景为蓝色水波纹，营造出清凉梦幻的氛围。左上角是"luckin coffee"品牌标识。上方醒目标语"可以喝的\'天空之镜\' 颜值MAX 瓦尔登蓝系列 全新上市"，吸引视线。画面展示两款新品：左侧"瓦尔登蓝钻瑞纳冰"，杯身呈梦幻浅蓝色',
-    meta: '本地模型 ｜9:16 ｜4K',
-    images: todayImages,
+      '（电影级面光：1.6），（光线追踪：1.5），（冷白皮漫感质感的光滑皮肤：1.7），（人物有最好的骨相：1.2），（网感脸：1.6），身材完美，莫兰迪配色，高颜值网红，INS风，幼态脸，19岁女生尖下巴，三庭五眼比例均衡，身材娇小，细腻陶瓷水嫩肌肤，偏冷白皮，随机的妆容，随机的饰品，随机的动作，侧光，',
+    meta: '本地模型 ｜1:1 ｜4K',
+    images: yesterdayImages,
     disclaimer: '以上内容由AI生成 | 本次消耗0积分',
   },
 ])
@@ -142,15 +75,18 @@ let resizeObserver: ResizeObserver | null = null
 onMounted(() => {
   if (virtualListContainer.value) {
     resizeObserver = new ResizeObserver((entries) => {
-      console.log(entries, 99)
       scrollerHeight.value = entries[0]?.contentRect.height ?? 0
     })
     resizeObserver.observe(virtualListContainer.value)
   }
+  setTimeout(() => {
+    console.log(dynamicScrollerRef.value?.scrollToItem(100))
+  })
 })
 onUnmounted(() => {
   resizeObserver?.disconnect()
 })
+const id = ref(9)
 </script>
 
 <template>
@@ -159,12 +95,27 @@ onUnmounted(() => {
 
     <div ref="virtualListContainer" class="virtual-list">
       <DynamicScroller
+        ref="dynamicScrollerRef"
         v-if="scrollerHeight > 0"
         :items="messages"
         :min-item-size="300"
         key-field="id"
         :style="{ height: scrollerHeight + 'px' }"
         class="scroller"
+        v-observer-scroll="{
+          callbackTop() {
+            messages.unshift({
+              id: id++ + '',
+              date: '今天' + id,
+              showDate: true,
+              prompt: '这是一张瑞幸咖啡，杯身呈梦幻浅蓝色',
+              meta: '本地模型 ｜9:16 ｜4K',
+              images: todayImages,
+              disclaimer: '以上内容由AI生成 | 本次消耗0积分',
+            })
+          },
+          distanceTop: 100,
+        }"
       >
         <template #default="{ item, index, active }">
           <DynamicScrollerItem :item="item" :active="active" :size-dependencies="[item.images]" :data-index="index">
@@ -185,7 +136,7 @@ onUnmounted(() => {
               <!-- 图片网格 -->
               <div class="message-group__images">
                 <div v-for="(img, i) in item.images" :key="i" class="message-group__image-wrap">
-                  <img :src="img" alt="" class="message-group__image" />
+                  <n-image :src="img" alt="" width="100%" height="100%" object-fit="cover" />
                 </div>
               </div>
 
@@ -241,7 +192,9 @@ onUnmounted(() => {
       </DynamicScroller>
     </div>
 
-    <div class="input-box">
+    <div class="input-box" :class="!messages.length ? 'input-box-center' : ''">
+      <h1 v-if="!messages.length" class="h1">和我聊聊， 你想要什么设计～</h1>
+
       <ChatInputBox v-model:imgList="imgList">
         <template #bottomSelect>
           <ChatInputSelect v-model:value="selectValues.value1" :options="options1" />
@@ -253,184 +206,5 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="less">
-.picture {
-  width: 100%;
-  height: 100%;
-  padding: 45px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  position: absolute;
-  left: 0;
-  top: 0;
-
-  > .top_bg {
-    width: 100%;
-    position: relative;
-
-    &::before {
-      content: '';
-      width: 100%;
-      max-width: 948px;
-      height: 241px;
-      position: absolute;
-      top: -220px;
-      left: 50%;
-      transform: translateX(-50%);
-      opacity: 1;
-      background: linear-gradient(270deg, #ffacd7 0%, #bba2ff 100%);
-      filter: blur(120px);
-    }
-  }
-
-  > .virtual-list {
-    flex: 1;
-    width: 100%;
-    max-width: 1024px;
-    min-height: 0;
-    padding: 12px;
-    box-sizing: border-box;
-  }
-
-  > .h1 {
-    font-size: 28px;
-    font-weight: bold;
-    text-align: center;
-    color: #1f1f1f;
-    margin: 0 0 40px;
-  }
-  > .input-box {
-    width: 100%;
-    padding-top: 5px;
-    > div {
-      box-shadow: 0 0 5px #dcdcdc;
-    }
-  }
-}
-
-// ==================== 虚拟列表容器样式覆盖 ====================
-:deep(.scroller) {
-  // 隐藏默认滚动条样式，保持设计稿简洁感
-  &::-webkit-scrollbar {
-    width: 5px;
-  }
-  &::-webkit-scrollbar-track {
-    background-color: transparent;
-  }
-  &::-webkit-scrollbar-thumb {
-    background-color: #dcdcdc;
-    border-radius: 10px;
-  }
-}
-
-// ==================== 消息组 ====================
-.message-group {
-  padding-bottom: 24px;
-
-  // 日期标题
-  &__date {
-    /* token: 中性色/标题文字 */
-    font-family: 'PingFang SC', sans-serif;
-    font-size: 24px;
-    font-weight: 600;
-    color: #1f1f1f;
-    margin: 0 0 21px;
-    line-height: 1;
-  }
-
-  // 提示词
-  &__prompt {
-    /* token: 中性色/正文文字 */
-    font-family: 'PingFang SC', sans-serif;
-    font-size: 14px;
-    font-weight: 400;
-    color: #3a3a3a;
-    line-height: 26px;
-    margin: 0 0 6px;
-    word-break: break-all;
-  }
-
-  // 元信息
-  &__meta {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 16px;
-
-    span {
-      /* token: 中性色/辅助文字 */
-      font-family: 'Source Han Sans SC', 'PingFang SC', sans-serif;
-      font-size: 14px;
-      color: #9e9e9e;
-      line-height: 20px;
-    }
-  }
-
-  // 图片网格 - 4 列
-  &__images {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 4px;
-    margin-bottom: 16px;
-  }
-
-  &__image-wrap {
-    width: 100%;
-    aspect-ratio: 253 / 348;
-    border-radius: 4px;
-    overflow: hidden;
-    background: #f0f0f0;
-  }
-
-  &__image {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
-  // AI 声明
-  &__disclaimer {
-    /* token: 中性色/辅助文字 */
-    font-family: 'PingFang SC', sans-serif;
-    font-size: 14px;
-    font-weight: 400;
-    color: #9e9e9e;
-    line-height: 20px;
-    margin: 0 0 8px;
-  }
-
-  // 操作按钮区
-  &__actions {
-    display: flex;
-    gap: 8px;
-  }
-}
-
-// ==================== 操作按钮 ====================
-.action-btn {
-  /* token: 中性色/背景色 */
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 16px;
-  background: #edeef0;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-family: 'PingFang SC', sans-serif;
-  font-size: 14px;
-  color: #3a3a3a;
-  transition: background 0.15s ease;
-
-  &:hover {
-    background: #e0e1e3;
-  }
-
-  &__icon {
-    flex-shrink: 0;
-    color: #3a3a3a;
-  }
-}
+@import './index';
 </style>

@@ -35,10 +35,13 @@ function handleRouterActive(path: string) {
 
     <div class="bottom-content">
       <div class="beans-cont">
-        <i class="icon-ic_nav_pic"></i>
+        <i class="icon-ic_hone_bean"></i>
         <span>{{ beansNum }}</span>
       </div>
-      <img src="https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp" alt="" />
+      <img
+        src="https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp"
+        alt=""
+      />
     </div>
   </div>
 </template>
@@ -93,7 +96,10 @@ function handleRouterActive(path: string) {
     > .beans-cont {
       display: flex;
       align-items: center;
-      gap: 7px;
+      gap: 6px;
+      >.icon-ic_hone_bean{
+        color: var(--main-color);
+      }
     }
     > img {
       width: 40px;

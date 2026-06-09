@@ -9,6 +9,7 @@ import { usePaginationData } from '@/utils/composables.ts'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 import ChatInputBox from './ChatInputBox/index.vue'
+import CustomModelNotice from '@/components/CustomModelNotice/index.vue'
 
 const homeRef = ref<HTMLDivElement | null>(null)
 const { activeChatTab, imgList, selectValues, options1, options2, options3 } = useChat()
@@ -98,13 +99,15 @@ const backTop = () => {
 }
 
 const showBackToTop = ref(false)
+const showNotice = ref(false)
 </script>
 
 <template>
+  <CustomModelNotice v-model="showNotice"/>
   <div
     ref="homeRef"
     class="home"
-    v-observer-scroll-to-bottom="{
+    v-observer-scroll="{
       callback: loadData,
       onScroll: (scrollTop: number) => (showBackToTop = scrollTop > 400),
     }"
@@ -112,7 +115,7 @@ const showBackToTop = ref(false)
     <div class="container">
       <div class="top_bg"></div>
 
-      <h1 class="h1">和我聊聊， 你想要什么设计～</h1>
+      <h1 class="h1" @click="showNotice=true">和我聊聊， 你想要什么设计～</h1>
 
       <ChatTab v-model="activeChatTab" style="justify-content: center" />
 
