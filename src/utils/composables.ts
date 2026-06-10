@@ -12,7 +12,7 @@ export function useDebounce(data: any, fn: () => void, delay: number = 300) {
 }
 
 //分页器参数
-export function usePaginationData(){
+export function usePaginationData() {
   const paginationData: Record<string, any> = reactive({
     total: 0,
     pageIndex: 1,

@@ -14,6 +14,14 @@ export function uploadConfirm(data: { objectKey: string }) {
   return post('/api/v1/storage/direct/confirm', data)
 }
 
-export function login(data: { username: string; password: string; }) {
+export function login(data: { username: string; password: string }) {
   return post('/api/v1/auth/login', data)
+}
+
+export function ecommerceSubmit(data: any) {
+  return post('/api/v1/creation/ecommerce/submit', data)
+}
+
+export function pollingTask(taskId: string) {
+  return get(`/api/v1/creation/query/${taskId}`)
 }

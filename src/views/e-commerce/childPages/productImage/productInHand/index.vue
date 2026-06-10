@@ -90,28 +90,30 @@ const { tab2, tabList2 } = useTab2()
           ]"
         />
 
-        <div class="module-title">选择模特</div>
-        <ManySelect
-          v-model:data="formData"
-          :list="[
-            { field: 'platform', options: platformOptions },
-            { field: 'country', options: countryOptions },
-            { field: 'language', options: languageOptions },
-          ]"
-          :col="3"
-          gap="4px"
-        />
-        <GridImage
-          style="margin-top: 8px"
-          :imgList="[
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-          ]"
-        />
+        <template v-if="tab1 === 'model'">
+          <div class="module-title">选择模特</div>
+          <ManySelect
+            v-model:data="formData"
+            :list="[
+              { field: 'platform', options: platformOptions },
+              { field: 'country', options: countryOptions },
+              { field: 'language', options: languageOptions },
+            ]"
+            :col="3"
+            gap="4px"
+          />
+          <GridImage
+            style="margin-top: 8px"
+            :imgList="[
+              'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
+              'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
+              'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
+              'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
+              'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
+              'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
+            ]"
+          />
+        </template>
 
         <div class="module-title">选择背景</div>
         <Tab v-model:value="tab2" :tabs="tabList2" />

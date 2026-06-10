@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
 import { useDebounce } from '@/utils/composables.ts'
-import Upload from '@/components/ChatImageUpload/index.vue'
 import ImageTab from '@/views/home/ImageTab/index.vue'
 import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
 import { filterData1, filterData2 } from './constants.ts'
@@ -9,7 +8,6 @@ import { usePaginationData } from '@/utils/composables.ts'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 import ChatInputBox from './ChatInputBox/index.vue'
-import CustomModelNotice from '@/components/CustomModelNotice/index.vue'
 
 const homeRef = ref<HTMLDivElement | null>(null)
 const { activeChatTab, imgList, selectValues, options1, options2, options3 } = useChat()
@@ -99,11 +97,9 @@ const backTop = () => {
 }
 
 const showBackToTop = ref(false)
-const showNotice = ref(false)
 </script>
 
 <template>
-  <CustomModelNotice v-model="showNotice"/>
   <div
     ref="homeRef"
     class="home"
@@ -115,7 +111,7 @@ const showNotice = ref(false)
     <div class="container">
       <div class="top_bg"></div>
 
-      <h1 class="h1" @click="showNotice=true">和我聊聊， 你想要什么设计～</h1>
+      <h1 class="h1">和我聊聊， 你想要什么设计～</h1>
 
       <ChatTab v-model="activeChatTab" style="justify-content: center" />
 

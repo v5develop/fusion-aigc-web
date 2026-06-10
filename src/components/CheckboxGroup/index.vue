@@ -11,12 +11,17 @@ interface IProps {
   col?: number
   gap?: string
   vertical?: boolean // 是否垂直排列，默认否
+  customHandle?: (value: any) => void // 自定义点击处理
 }
 
-const { list, col = 2, gap = '8px', vertical = false } = defineProps<IProps>()
+const { list, col = 2, gap = '8px', vertical = false, customHandle } = defineProps<IProps>()
 const modelValue = defineModel<(string | number)[]>('modelValue', { required: true })
 
-function toggle(value: string | number) {
+function toggle(value: CheckboxItem['value']) {
+  if (customHandle) {
+    customHandle(value)
+    return
+  }
   const index = modelValue.value.indexOf(value)
   if (index > -1) {
     modelValue.value.splice(index, 1)
@@ -39,11 +44,13 @@ function toggle(value: string | number) {
         </div>
       </div>
     </template>
+
     <template v-else>
       <div v-for="item in list" :key="item.value" class="checkbox-item horizontal" @click="toggle(item.value)">
         <div class="content">
           <div class="label">{{ item.label }}</div>
           <div v-if="item.desc" class="desc">{{ item.desc }}</div>
+          <slot v-if="item.slotName" :name="item.slotName"></slot>
         </div>
         <div class="checkbox-wrap">
           <i :class="modelValue.includes(item.value) ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"></i>
@@ -72,7 +79,7 @@ function toggle(value: string | number) {
   transition: all 0.3s ease;
   &.horizontal {
     flex-direction: row;
-    align-items: center;
+    //align-items: center;
   }
   &:hover {
     background: #fafafa;

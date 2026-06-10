@@ -1,8 +1,8 @@
 <script setup lang="ts">
-const { title, rightTitle, rightDesc } = defineProps<{
+const { title, submit, loading } = defineProps<{
   title: string
-  rightTitle?: string
-  rightDesc?: string
+  submit: () => void
+  loading?: boolean
 }>()
 </script>
 
@@ -15,18 +15,15 @@ const { title, rightTitle, rightDesc } = defineProps<{
         <slot></slot>
       </div>
 
-      <div class="generate-btn">
+      <div class="generate-btn" @click="submit">
         <span>立即生成</span>
         <span>100</span>
         <i class="icon-ic_hone_bean"></i>
+        <n-spin v-show="loading" class="spin" size="small" />
       </div>
     </div>
 
     <div class="right-container">
-<!--      <div class="text-cont">
-        <div class="title">{{ rightTitle }}</div>
-        <div class="desc" v-html="rightDesc"></div>
-      </div>-->
       <slot name="rightContent"></slot>
     </div>
   </div>
@@ -58,6 +55,7 @@ const { title, rightTitle, rightDesc } = defineProps<{
     }
     > .generate-btn {
       height: 44px;
+      position: relative;
       margin: 15px 16px 0;
       border-radius: 274px;
       display: flex;
@@ -70,6 +68,12 @@ const { title, rightTitle, rightDesc } = defineProps<{
       cursor: pointer;
       &:hover {
         opacity: 0.9;
+      }
+      .spin {
+        position: absolute;
+        top: 50%;
+        left: 40%;
+        transform: translateY(-50%);
       }
     }
   }

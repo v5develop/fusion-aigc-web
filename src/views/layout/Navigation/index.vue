@@ -5,6 +5,7 @@ import { ref, watch } from 'vue'
 const router = useRouter() // 用来跳转
 const route = useRoute() // 用来获取当前地址
 
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 const menuList = [
   { name: '首页', path: '/', icon: 'icon-ic_nav_home', iconActive: 'icon-ic_nav_home_full' },
   { name: '图片', path: '/picture', icon: 'icon-ic_nav_pic', iconActive: 'icon-ic_nav_pic_full' },
@@ -24,7 +25,7 @@ function handleRouterActive(path: string) {
 
 <template>
   <div class="container">
-    <div class="logo">logo</div>
+    <img class="logo" :src="VITE_OSS_ASSET_URL + 'logo.png'" alt="" />
 
     <div class="menu-content">
       <div class="item" v-for="item in menuList" :key="item.name" @click="router.push(item.path)">
@@ -97,7 +98,7 @@ function handleRouterActive(path: string) {
       display: flex;
       align-items: center;
       gap: 6px;
-      >.icon-ic_hone_bean{
+      > .icon-ic_hone_bean {
         color: var(--main-color);
       }
     }

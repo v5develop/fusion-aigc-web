@@ -3,36 +3,35 @@
  * CustomModelNotice - 自定义模型须知弹窗
  *
  * 使用方式:
- * <CustomModelNotice v-model="visible" />
+ * <CustomModelNotice v-model:data="visibleObj" />
  *
  * 点击"同意"后会自动保存 customModelNoticeConfirmed 到 localStorage
  */
 
-
-defineProps<{
-  modelValue: boolean
-}>()
-
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-}>()
+const data = defineModel<{ show: boolean; customModelNoticeConfirmed: boolean }>('data', { required: true })
 
 /** 点击遮罩关闭 */
 function onMaskClick() {
-  emit('update:modelValue', false)
+  data.value = {
+    ...data.value,
+    show: false,
+  }
 }
 
 /** 点击同意 */
 function onAgree() {
   localStorage.setItem('customModelNoticeConfirmed', 'true')
-  emit('update:modelValue', false)
+  data.value = {
+    show: false,
+    customModelNoticeConfirmed: true,
+  }
 }
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="modelValue" class="modal-mask" @click.self="onMaskClick">
+      <div v-if="data.show" class="modal-mask" @click.self="onMaskClick">
         <div class="modal">
           <!-- Header -->
           <div class="modal-header">
@@ -124,7 +123,7 @@ function onAgree() {
 
 .modal-body {
   padding: 12px 24px;
-  max-height: 360px;
+  max-height: 460px;
   overflow-y: auto;
 
   .intro {
@@ -197,7 +196,9 @@ function onAgree() {
   transition: opacity 0.2s ease;
 
   .modal {
-    transition: transform 0.2s ease, opacity 0.2s ease;
+    transition:
+      transform 0.2s ease,
+      opacity 0.2s ease;
   }
 }
 
