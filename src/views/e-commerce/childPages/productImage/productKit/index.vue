@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { provide, reactive, ref, watch } from 'vue'
-import { ecommerceSubmit, pollingTask } from '@/api/methods.ts'
+import { provide, reactive, ref } from 'vue'
+import { ecommerceSubmit } from '@/api/methods.ts'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
@@ -8,35 +8,13 @@ import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import Sample from '../../components/Sample/index.vue'
 import RecordList from '@/views/asset/components/RecordList/index.vue'
-import { platformOps, regionOps, languageOps, aspectRatioOps, checkboxCustomImageList } from './constants.ts'
+import { checkboxCustomImageList } from './constants.ts'
+import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
 import type { ICheckboxCustomImageItem } from './constants.ts'
-import { usePolling } from '@/utils/usePolling.ts'
+import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 
-const { result, isPolling, start, stop } = usePolling(
-  async (data) => {
-    console.log(data, 111)
-    return {}
-  },
-  2000,
-  {
-    autoStop: (data) => console.log(data, 999),
-  },
-)
-
-// 开始轮询
-start()
-
-const loading = ref(false)
-const formData = reactive({
-  imgList: [],
-  platform: '淘宝/天猫',
-  region: '中国',
-  language: '中文',
-  aspectRatio: '1:1',
-  buyPoint: '',
-  checked: ['auto'], // auto: 智能匹配（默认）， custom：自定义配置
-})
-const records = ref([
+const { result: taskList = [], getSessionId, startPolling } = useInitCheckTaskStatus('product-kit')
+/*const records = ref([
   {
     title: '粉色弹盖式时尚保温杯',
     date: '2026-05-24 13:26',
@@ -56,19 +34,36 @@ const records = ref([
     date: '2026-05-24 13:26',
     images: ['https://i.pixiv.re/c/540x540_70/img-master/img/2023/05/09/00/30/02/107956384_p0_master1200.jpg'],
   },
-])
-provide('recordsData', records)
+])*/
+provide('recordsData', taskList)
+
+const loading = ref(false)
+const formData = reactive({
+  images: [],
+  platform: '淘宝/天猫',
+  region: '中国',
+  language: '中文',
+  aspectRatio: '1:1',
+  buyPoint: '',
+  checked: ['auto'], // auto: 智能匹配（默认）， custom：自定义配置
+})
+const defaultCustomData = {
+  white: 1,
+  scence: 1,
+  key_points: 1,
+  detai: 0,
+}
 const { customData, checkboxClickHandle, sub, add } = useCheckbox()
 
 const submit = () => {
   if (loading.value) return
 
-  const { white, scence, key_points, detai } = formData.checked.includes('auto')
-    ? { white: 1, scence: 1, key_points: 1, detai: 0 }
-    : customData
+  const { white, scence, key_points, detai } = formData.checked.includes('auto') ? defaultCustomData : customData
+  const sessionId = getSessionId()
   const params = {
+    sessionId,
     type: 'productSetImages',
-    images: formData.imgList,
+    images: formData.images,
     params: {
       platform: formData.platform,
       region: formData.region,
@@ -82,17 +77,14 @@ const submit = () => {
   ecommerceSubmit(params)
     .then((res) => {
       if (res.code === 0) {
+        // 开始轮询
+        startPolling(sessionId)
       }
     })
     .finally(() => (loading.value = false))
 }
 function useCheckbox() {
-  const customData = reactive({
-    white: 1,
-    scence: 1,
-    key_points: 1,
-    detai: 0,
-  })
+  const customData = reactive(defaultCustomData)
   const checkboxClickHandle = (value: string) => {
     if (!formData.checked.includes(value)) {
       formData.checked = [value]
@@ -126,7 +118,7 @@ function useCheckbox() {
       <div class="default-content">
         <div class="module-title">商品图</div>
         <ImageUpload
-          v-model:imgList="formData.imgList"
+          v-model:imgList="formData.images"
           :limitNumber="3"
           :exampleImages="[
             'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/04/13/00/01/111437433_p0_master1200.jpg',
@@ -183,7 +175,7 @@ function useCheckbox() {
 
     <template #rightContent>
       <Sample
-        v-if="!records.length"
+        v-if="taskList?.length"
         title="AI商品套图"
         :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的高转化率商品套图。`"
       />

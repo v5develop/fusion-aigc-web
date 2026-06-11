@@ -22,6 +22,6 @@ export function ecommerceSubmit(data: any) {
   return post('/api/v1/creation/ecommerce/submit', data)
 }
 
-export function pollingTask(taskId: string) {
-  return get(`/api/v1/creation/query/${taskId}`)
+export function pollingTask(sessionId: string) {
+  return get(`/api/v1/creation/session/${sessionId}`)
 }

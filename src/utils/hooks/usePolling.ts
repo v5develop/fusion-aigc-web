@@ -1,7 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 
-export function usePolling<T = any, P = unknown>(
-  fn: (params?: P) => Promise<T>, // 要轮询执行的异步函数，支持接收参数
+export function usePolling<T = any>(
+  fn: (params: string) => Promise<T>, // 要轮询执行的异步函数，支持接收参数
   interval: number = 3000, // 轮询间隔（默认 3000ms）
   options: {
     immediate?: boolean // 是否立即执行（默认 true）
@@ -15,7 +15,7 @@ export function usePolling<T = any, P = unknown>(
   const result = ref<T | null>(null)
   const error = ref<unknown>(null)
   let timer: ReturnType<typeof setTimeout> | null = null
-  let currentParams: P | undefined = undefined
+  let currentParams: string = ''
 
   async function execute() {
     if (!isPolling.value) return
@@ -34,7 +34,7 @@ export function usePolling<T = any, P = unknown>(
     } catch (e) {
       error.value = e
       onError?.(e)
-      scheduleNext()
+      stop()
     }
   }
 
@@ -43,7 +43,7 @@ export function usePolling<T = any, P = unknown>(
     timer = setTimeout(execute, interval)
   }
 
-  function start(params?: P) {
+  function start(params: string) {
     if (isPolling.value) return
     isPolling.value = true
     currentParams = params

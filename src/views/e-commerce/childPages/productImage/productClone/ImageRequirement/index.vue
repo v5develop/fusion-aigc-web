@@ -1,22 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-
-const { imgList } = defineProps<{
-  imgList: any[]
-}>()
-
-const value = ref('')
+const list = defineModel<any[]>('list', { required: true })
 </script>
 
 <template>
-  <div class="image-requirement" v-show="imgList.length">
+  <div class="image-requirement" v-show="list.length">
     <div class="title">单张参考要求</div>
     <div class="desc">每张参考图可单独备注参考要求，不填默认处理。</div>
 
     <div class="list">
-      <div class="item" v-for="(item, i) in [...imgList]" :key="item">
+      <div class="item" v-for="(item, i) in list" :key="item">
         <span class="name">参考图{{ i + 1 }}</span>
-        <n-input v-model:value="value" type="text" placeholder="请输入" />
+        <n-input v-model:value="item.input" type="text" placeholder="请输入" />
       </div>
     </div>
   </div>

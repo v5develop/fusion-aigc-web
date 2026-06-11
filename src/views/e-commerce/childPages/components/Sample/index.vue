@@ -12,7 +12,13 @@ const { title, rightDesc } = defineProps<{
       <div class="desc" v-html="rightDesc"></div>
     </div>
 
-    <div class="sample"></div>
+    <div class="sample">
+      <img
+        class="img"
+        src="http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/merge-image-inset.webp"
+        alt=""
+      />
+    </div>
   </div>
 </template>
 
@@ -38,10 +44,11 @@ const { title, rightDesc } = defineProps<{
     }
   }
   > .sample {
-    width: 770px;
-    height: 384px;
-    background-color: white;
-    border-radius: 24px;
+    max-width: 770px;
+    > .img {
+      width: 100%;
+      border-radius: 24px;
+    }
   }
 }
 </style>

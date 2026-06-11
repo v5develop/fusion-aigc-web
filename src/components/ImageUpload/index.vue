@@ -10,12 +10,22 @@ interface IProps {
   multiple?: boolean
   bottomTips?: boolean
   tryImages?: any[] // 试一试图片
+  field?: string // imgList为对象数组时，取图片地址的key，默认image
+  customResultHandle?: (value: string[]) => void // 自定义返回处理
 }
-const { limitNumber, exampleImages, multiple = false, bottomTips, btnName = '上传产品图' } = defineProps<IProps>()
+const {
+  limitNumber,
+  exampleImages,
+  multiple = false,
+  bottomTips,
+  btnName = '上传产品图',
+  field = 'image',
+  customResultHandle,
+} = defineProps<IProps>()
 const imgList = defineModel<any[]>('imgList', { required: true })
-const loading = ref(false)
 
 const message = useMessage()
+const loading = ref(false)
 const uploadRef = ref<HTMLInputElement | null>(null)
 
 const deleteImg = (index: number) => {
@@ -37,6 +47,10 @@ const handleUpload = async (e: Event) => {
   loading.value = true
   upload(fileArray)
     .then((urls) => {
+      if (customResultHandle) {
+        customResultHandle(urls)
+        return
+      }
       imgList.value.push(...urls.slice(0, (limitNumber ?? 1) - imgList.value.length))
     })
     .finally(() => {
@@ -87,7 +101,7 @@ const beforeUpload = () => {
 
       <div class="upload-img-list">
         <div class="item" v-for="(item, i) in imgList" :key="item">
-          <n-image width="58" height="58" :src="item" object-fit="cover" style="border-radius: 8px" />
+          <n-image width="58" height="58" :src="item[field] ?? item" object-fit="cover" style="border-radius: 8px" />
 
           <div class="delete" @click="deleteImg(i)">
             <i class="icon-ic_ds_return-2"></i>

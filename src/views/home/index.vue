@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
-import { useDebounce } from '@/utils/composables.ts'
+import { useDebounce } from '@/utils/hooks'
 import ImageTab from '@/views/home/ImageTab/index.vue'
 import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
 import { filterData1, filterData2 } from './constants.ts'
-import { usePaginationData } from '@/utils/composables.ts'
+import { usePaginationData } from '@/utils/hooks'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 import ChatInputBox from './ChatInputBox/index.vue'

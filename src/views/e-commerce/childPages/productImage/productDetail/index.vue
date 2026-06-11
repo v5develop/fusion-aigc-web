@@ -1,38 +1,66 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { provide, reactive, ref } from 'vue'
+import { ecommerceSubmit } from '@/api/methods.ts'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import SelectContent from '../../components/SelectContent/index.vue'
+import SelectGroup from '@/components/SelectGroup/index.vue'
+import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
-import Checkbox from '../../components/Checkbox/index.vue'
+import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
+import RecordList from '@/views/asset/components/RecordList/index.vue'
+import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
 
+const { result: taskList = [], getSessionId, startPolling } = useInitCheckTaskStatus('product-kit')
+provide('recordsData', taskList)
+
+const loading = ref(false)
 const formData = reactive({
-  imgList: ref([]),
-  platform: ref(0),
-  country: ref(0),
-  language: ref(0),
-  ratio: ref(0),
-  prompt: ref(''),
-  checked1: ref(false),
-  checked2: ref(false),
-  checked3: ref(false),
-  checked4: ref(false),
+  images: [],
+  platform: '淘宝/天猫',
+  region: '中国',
+  language: '中文',
+  aspectRatio: '1:1',
+  buyPoint: '',
+  image_types: ref([]),
 })
+
+const submit = () => {
+  if (loading.value) return
+
+  const sessionId = getSessionId()
+  const params = {
+    sessionId,
+    type: 'aplusDetailPage',
+    images: formData.images,
+    params: {
+      image_types: formData.image_types,
+      platform: formData.platform,
+      region: formData.region,
+      language: formData.language,
+      aspectRatio: formData.aspectRatio,
+      buyPoint: formData.buyPoint,
+    },
+  }
+  loading.value = true
+  ecommerceSubmit(params)
+    .then((res) => {
+      if (res.code === 0) {
+        // 开始轮询
+        startPolling(sessionId)
+      }
+    })
+    .finally(() => (loading.value = false))
+}
 </script>
 
 <template>
-  <Container
-    class="commerce"
-    title="商品详情图"
-    rightTitle="AI商品详情"
-    :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
-  >
+  <Container class="commerce" title="商品详情图" :submit="submit" :loading="loading">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
         <ImageUpload
-          v-model:imgList="formData.imgList"
+          v-model:imgList="formData.images"
           :limitNumber="3"
           :exampleImages="[
             'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
@@ -43,30 +71,47 @@ const formData = reactive({
         />
 
         <div class="module-title">生成设置</div>
-        <SelectContent
-          v-model:platform="formData.platform"
-          v-model:country="formData.country"
-          v-model:language="formData.language"
-          v-model:ratio="formData.ratio"
+        <SelectGroup
+          v-model:data="formData"
+          :list="[
+            { field: 'platform', options: platformOps },
+            { field: 'region', options: regionOps },
+            { field: 'language', options: languageOps },
+            { field: 'aspectRatio', options: aspectRatioOps },
+          ]"
         />
 
         <div class="module-title">商品卖点&要求</div>
         <PromptAssist
-          v-model:value="formData.prompt"
+          v-model:value="formData.buyPoint"
           placeholder="1、商品名称：LYCOCELLE绽家303丝绸桑蚕丝专用丝毛洗涤剂\n2、核心卖点：\n专用丝净配方，呵护丝织物纤维柔顺\n温和清洁成分，去污同时护衣不发硬\n典雅香调留香，洗净衣物自带淡香氛"
         />
 
         <div class="module-title">包含模块（多选）</div>
-        <div class="checkbox-cont">
-          <Checkbox class="item" v-model:checked="formData.checked1" title="主屏主视觉" desc="传递核心价值" />
-          <Checkbox class="item" v-model:checked="formData.checked2" title="核心卖点图" desc="突出差点优势" />
-          <Checkbox class="item" v-model:checked="formData.checked3" title="使用场景图" desc="呈现真实使用场景" />
-          <Checkbox class="item" v-model:checked="formData.checked4" title="多角度图" desc="多角度呈现外观" />
-        </div>
+        <CheckboxGroup
+          v-model="formData.image_types"
+          :list="[
+            { label: '主屏主视觉', value: 'hero', desc: '传递核心价值' },
+            { label: '核心卖点图', value: 'key_selling', desc: '突出差点优势' },
+            { label: '使用场景图', value: 'lifestyle', desc: '呈现真实使用场景' },
+            { label: '多角度图', value: 'multi_angle', desc: '多角度呈现外观' },
+            { label: '场景氛围图', value: 'ambience', desc: '展示使用场景' },
+            { label: '商品细节图', value: 'detail', desc: '放大材质与工艺' },
+          ]"
+        />
       </div>
     </template>
-    <template #sample>
-      <div class="sample-cont"></div>
+    <template #rightContent>
+      <Sample
+        v-if="taskList?.length"
+        title="AI商品详情"
+        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+      />
+
+      <div v-else>
+        <div class="right-content-title">生成结果</div>
+        <RecordList :showSelect="false" />
+      </div>
     </template>
   </Container>
 </template>
@@ -77,15 +122,6 @@ const formData = reactive({
 .commerce {
   height: 100vh;
   .default-content {
-    > .checkbox-cont {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      > .item {
-        flex: 1;
-        min-width: 40%;
-      }
-    }
   }
 
   .sample-cont {
