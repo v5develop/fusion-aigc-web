@@ -16,7 +16,7 @@ provide('recordsData', taskList)
 
 const loading = ref(false)
 const formData = reactive({
-  images: [],
+  imageUrls: [],
   modelGesturesUrl: [], // 模特手持图
   gesturesUrl: [], // 纯手持图
   personUrl: [], // 模特图
@@ -28,21 +28,10 @@ const formData = reactive({
 })
 const gestureActive = ref('model')
 const modelFilter = reactive({
-  sex: '',
-  age: '',
-  skinColor: '',
+  sex: null,
+  age: null,
+  skinColor: null,
 })
-
-const useTab2 = () => {
-  const tab2 = ref('model')
-  const tabList2 = [
-    { label: '背景库', value: 'model' },
-    { label: '上传背景图', value: 'hand' },
-  ]
-
-  return { tab2, tabList2 }
-}
-const { tab2, tabList2 } = useTab2()
 
 const submit = () => {
   if (loading.value) return
@@ -51,7 +40,7 @@ const submit = () => {
   const params = {
     sessionId,
     type: 'aiGestures',
-    images: formData.images,
+    imageUrls: formData.imageUrls,
     params: {
       modelGesturesUrl: formData.modelGesturesUrl[0],
       gesturesUrl: formData.gesturesUrl[0],
@@ -81,7 +70,7 @@ const submit = () => {
       <div class="default-content">
         <div class="module-title">商品图</div>
         <ImageUpload
-          v-model:imgList="formData.images"
+          v-model:imgList="formData.imageUrls"
           :limitNumber="3"
           :exampleImages="[
             'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
@@ -133,6 +122,7 @@ const submit = () => {
                   { label: '男', value: '男' },
                   { label: '女', value: '女' },
                 ],
+                placeholder: '性别',
               },
               {
                 field: 'age',
@@ -141,6 +131,7 @@ const submit = () => {
                   { label: '青年', value: 'young' },
                   { label: '老年', value: 'old' },
                 ],
+                placeholder: '年龄',
               },
               {
                 field: 'skinColor',
@@ -149,10 +140,12 @@ const submit = () => {
                   { label: '欧洲人', value: 'europe' },
                   { label: '其他', value: 'other' },
                 ],
+                placeholder: '肤色',
               },
             ]"
             :col="3"
             gap="4px"
+            clearable
           />
           <GridImage
             style="margin-top: 8px"
@@ -168,7 +161,6 @@ const submit = () => {
         </template>
 
         <div class="module-title">选择背景</div>
-        <Tab v-model:value="tab2" :tabs="tabList2" />
         <GridImage
           style="margin-top: 8px"
           :imgList="[
@@ -184,15 +176,16 @@ const submit = () => {
     </template>
 
     <template #rightContent>
-      <Sample
-        v-if="taskList?.length"
-        title="手持商品"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的手持商品。`"
-      />
-      <div v-else>
+      <div v-if="taskList?.length">
         <div class="right-content-title">生成结果</div>
         <RecordList :showSelect="false" />
       </div>
+      <Sample
+        v-else
+        title="手持商品"
+        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的手持商品。`"
+        image="e-commerce/product-in-hand-sample.webp"
+      />
     </template>
   </Container>
 </template>
@@ -203,9 +196,6 @@ const submit = () => {
 .commerce {
   height: 100vh;
   .default-content {
-  }
-
-  .sample-cont {
   }
 }
 </style>

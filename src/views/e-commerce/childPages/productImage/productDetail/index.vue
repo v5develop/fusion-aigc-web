@@ -16,7 +16,7 @@ provide('recordsData', taskList)
 
 const loading = ref(false)
 const formData = reactive({
-  images: [],
+  imageUrls: [],
   platform: '淘宝/天猫',
   region: '中国',
   language: '中文',
@@ -32,7 +32,7 @@ const submit = () => {
   const params = {
     sessionId,
     type: 'aplusDetailPage',
-    images: formData.images,
+    imageUrls: formData.imageUrls,
     params: {
       image_types: formData.image_types,
       platform: formData.platform,
@@ -60,7 +60,7 @@ const submit = () => {
       <div class="default-content">
         <div class="module-title">商品图</div>
         <ImageUpload
-          v-model:imgList="formData.images"
+          v-model:imgList="formData.imageUrls"
           :limitNumber="3"
           :exampleImages="[
             'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
@@ -102,16 +102,16 @@ const submit = () => {
       </div>
     </template>
     <template #rightContent>
-      <Sample
-        v-if="taskList?.length"
-        title="AI商品详情"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
-      />
-
-      <div v-else>
+      <div v-if="taskList?.length">
         <div class="right-content-title">生成结果</div>
         <RecordList :showSelect="false" />
       </div>
+      <Sample
+        v-else
+        title="AI商品详情"
+        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        image="e-commerce/product-detail-sample.webp"
+      />
     </template>
   </Container>
 </template>

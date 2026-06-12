@@ -4,6 +4,7 @@ import { useMessage } from 'naive-ui'
 import { ref } from 'vue'
 
 interface IProps {
+  type?: 'card' // 上传控件样式
   limitNumber?: number // 限制上传张数
   exampleImages?: string[] // 示例图
   btnName?: string // 按钮名称
@@ -14,6 +15,7 @@ interface IProps {
   customResultHandle?: (value: string[]) => void // 自定义返回处理
 }
 const {
+  type = 'default',
   limitNumber,
   exampleImages,
   multiple = false,
@@ -68,19 +70,20 @@ const beforeUpload = () => {
 </script>
 
 <template>
-  <div class="image-upload" v-loading="loading">
+  <input
+    ref="uploadRef"
+    type="file"
+    accept="image/*"
+    :multiple="multiple"
+    id="file-upload"
+    @change="handleUpload"
+    style="display: none"
+  />
+
+  <div v-if="type === 'default'" class="default-style" v-loading="loading">
     <div class="main">
       <div v-if="limitNumber" class="limit-tips">支持多图(最多{{ limitNumber }}张)</div>
 
-      <input
-        ref="uploadRef"
-        type="file"
-        accept="image/*"
-        :multiple="multiple"
-        id="file-upload"
-        @change="handleUpload"
-        style="display: none"
-      />
       <div class="upload-btn" @click="beforeUpload">
         <i class="icon-ic_ds_CloudUpload1"></i>
         <span>{{ btnName }}</span>
@@ -121,10 +124,16 @@ const beforeUpload = () => {
       </div>
     </div>
   </div>
+
+  <div v-else-if="type === 'card'" class="card-style" v-loading="loading">
+    <div class="upload-trigger" @click="beforeUpload">
+      <i class="icon-ic_ds_CloudUpload1"></i>
+    </div>
+  </div>
 </template>
 
 <style scoped lang="less">
-.image-upload {
+.default-style {
   position: relative;
   > .main {
     //min-height: 242px;
@@ -255,6 +264,39 @@ const beforeUpload = () => {
         object-fit: cover;
         cursor: pointer;
       }
+    }
+  }
+}
+
+.card-style {
+  width: 100%;
+  height: 100%;
+  max-width: 86px;
+  max-height: 86px;
+
+  .upload-trigger {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 1px dashed #d9d9d9;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+
+    &:hover {
+      border-color: var(--main-color);
+      background-color: #fafafa;
+    }
+
+    &:active {
+      transform: scale(0.98);
+    }
+
+    i {
+      font-size: 24px;
+      color: #999;
     }
   }
 }

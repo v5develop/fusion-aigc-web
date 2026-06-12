@@ -1,8 +1,11 @@
 <script setup lang="ts">
-const { title, rightDesc } = defineProps<{
+const { title, rightDesc, image } = defineProps<{
   title: string
   rightDesc: string
+  image?: string
 }>()
+
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 </script>
 
 <template>
@@ -13,11 +16,7 @@ const { title, rightDesc } = defineProps<{
     </div>
 
     <div class="sample">
-      <img
-        class="img"
-        src="http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/merge-image-inset.webp"
-        alt=""
-      />
+      <img v-if="image" class="img" :src="VITE_OSS_ASSET_URL + image" alt="" />
     </div>
   </div>
 </template>

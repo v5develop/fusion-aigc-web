@@ -22,3 +22,8 @@ export const aspectRatioOps = [
   { label: '4:3', value: '4:3' },
   { label: '16:9', value: '16:9' },
 ]
+
+export const aspectRatioVideoOps = [
+  { label: '9:16', value: '9:16' },
+  { label: '16:', value: '16:9' },
+]

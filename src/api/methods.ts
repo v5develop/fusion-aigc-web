@@ -25,3 +25,11 @@ export function ecommerceSubmit(data: any) {
 export function pollingTask(sessionId: string) {
   return get(`/api/v1/creation/session/${sessionId}`)
 }
+
+export function pollingSingleTask(taskId: string) {
+  return get(`/api/v1/creation/query/${taskId}`)
+}
+
+export function assetAll(params: { type: 'customizedmodel' | 'realpersonmodel' }) {
+  return get('/api/v1/asset/all', params)
+}

@@ -16,7 +16,7 @@ provide('recordsData', taskList)
 
 const loading = ref(false)
 const formData = reactive({
-  images: [],
+  imageUrls: [],
   refImageUrl: [] as any[],
   userInput: [],
   platform: '淘宝/天猫',
@@ -36,7 +36,7 @@ const submit = () => {
   const params = {
     sessionId,
     type: 'hitReplication',
-    images: formData.images,
+    imageUrls: formData.imageUrls,
     params: {
       refImageUrl: formData.refImageUrl.map((item) => item.image),
       userInput: formData.refImageUrl.map((item) => item.input),
@@ -71,7 +71,7 @@ const customResultHandle = (urls: string[]) => {
       <div class="default-content">
         <div class="module-title">商品图</div>
         <ImageUpload
-          v-model:imgList="formData.images"
+          v-model:imgList="formData.imageUrls"
           :limitNumber="3"
           :exampleImages="[
             'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
@@ -126,15 +126,16 @@ const customResultHandle = (urls: string[]) => {
     </template>
 
     <template #rightContent>
-      <Sample
-        v-if="taskList?.length"
-        title="爆款图复刻"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
-      />
-      <div v-else>
+      <div v-if="taskList?.length">
         <div class="right-content-title">生成结果</div>
         <RecordList :showSelect="false" />
       </div>
+      <Sample
+        v-else
+        title="爆款图复刻"
+        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        image="e-commerce/product-clone-sample.webp"
+      />
     </template>
   </Container>
 </template>

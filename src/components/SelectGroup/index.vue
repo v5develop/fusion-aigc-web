@@ -8,15 +8,22 @@ interface IProps {
   }[]
   col?: number // 列数
   gap?: string // 间距
+  clearable?: boolean
 }
-const { list, col = 2, gap = '8px' } = defineProps<IProps>()
+const { list, col = 2, gap = '8px', clearable=false } = defineProps<IProps>()
 const data = defineModel<Record<string, any>>('data', { required: true })
 </script>
 
 <template>
   <div class="container" :style="{ '--col': col, '--gap': gap }">
     <template v-for="(item, i) in list" :key="i">
-      <n-select :style="item.style" v-model:value="data[item.field]" :options="item.options" />
+      <n-select
+        :style="item.style"
+        v-model:value="data[item.field]"
+        :options="item.options"
+        :placeholder="item.placeholder"
+        :clearable="item.clearable === undefined ? clearable : item.clearable"
+      />
     </template>
   </div>
 </template>

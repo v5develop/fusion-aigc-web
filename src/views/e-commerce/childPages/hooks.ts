@@ -14,7 +14,7 @@ export function useInitCheckTaskStatus(type: string) {
     })
   }
 
-  const { result, start, stop } = usePolling(pollingTaskRequest, 2000, {
+  const { result, start, stop } = usePolling((sessionId) => pollingTaskRequest(sessionId!), 3000, {
     // autoStop: (data) => console.log('autoStop: ', data),
   })
 

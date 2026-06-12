@@ -1,40 +1,159 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { provide, reactive, ref, computed, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
-import { countryOptions, languageOptions, platformOptions } from '@/views/e-commerce/childPages/constants.ts'
+import { regionOps, languageOps, aspectRatioVideoOps } from '@/views/e-commerce/childPages/constants.ts'
+import { durationOps, genderOps, ageOps, appearanceOps, bodyOps, modelOps } from '../constants.ts'
 import Tab from '@/components/Tab/index.vue'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import Textarea from '@/components/Textarea/index.vue'
-import ManySelect from '@/components/SelectGroup/index.vue'
+import { ecommerceSubmit, pollingSingleTask, assetAll } from '@/api/methods.ts'
+import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
+import RecordList from '@/views/asset/components/RecordList/index.vue'
+import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+import { usePolling } from '@/utils/hooks/usePolling.ts'
 
+const { result: taskList = [], getSessionId, startPolling } = useInitCheckTaskStatus('video-hot')
+provide('recordsData', taskList)
+
+const loading = ref(false)
 const formData = reactive({
-  imgList: ref([]),
-  platform: ref(0),
-  country: ref(0),
-  language: ref(0),
-  ratio: ref(0),
-  prompt: ref(''),
-  checked: ref([]),
+  imageUrls: [],
+  region: '中国',
+  language: '中文',
+  aspectRatio: '9:16',
+  duration: 16,
+  buyPoint: '',
+  modelName: 'local',
+  checked: [] as string[],
 })
-const tabValue = ref(0)
-const switchValue = ref(true)
+const modelPollingType = computed(() => {
+  if (['seedance2.0', 'seedance2.0-fast'].includes(formData.modelName)) return 'realpersonmodel'
+  // 本地模型
+  return 'customizedmodel'
+})
+const { switchValue, diyModelData, modelTabValue, generateModel, modelPolling, getModelData, diyLoading, pagingData } =
+  useModel()
+const { start: startModelPolling, stop: stopModelPolling } = usePolling((taskId) => modelPolling(taskId!), 2000, {
+  onError: () => localStorage.removeItem('modelTaskId'),
+})
+
+const localModelTaskId = localStorage.getItem('modelTaskId')
+if (localModelTaskId) {
+  diyLoading.value = true
+  startModelPolling(localModelTaskId)
+}
+
+const submit = () => {
+  if (loading.value) return
+
+  const sessionId = getSessionId()
+  const params = {
+    sessionId,
+    type: 'hitVideo',
+    imageUrls: formData.imageUrls,
+    modelName: formData.modelName,
+    params: {
+      region: formData.region,
+      language: formData.language,
+      aspectRatio: formData.aspectRatio,
+      buyPoint: formData.buyPoint,
+      templateName: formData.checked[0],
+    },
+  }
+  loading.value = true
+  ecommerceSubmit(params)
+    .then((res) => {
+      if (res.code === 0) {
+        // 开始轮询
+        startPolling(sessionId)
+      }
+    })
+    .finally(() => (loading.value = false))
+}
+function useModel() {
+  const switchValue = ref(true)
+  const diyModelData = reactive({
+    images: [] as any[],
+    sex: null,
+    age: null,
+    appearance: null,
+    body: null,
+    userInput: '',
+  })
+  const modelTabValue = ref<'diy' | 'myModel'>('myModel')
+  const diyLoading = ref(false)
+  const pagingData = reactive({
+    page: 1,
+    size: 15,
+    loadMore: true,
+    loading: false,
+  })
+
+  const generateModel = () => {
+    if (diyLoading.value) return
+
+    const params = {
+      type: 'aiExpert',
+      params: diyModelData,
+    }
+    diyLoading.value = true
+    ecommerceSubmit(params)
+      .then((res) => {
+        if (res.code === 0) {
+          // 开始轮询
+          const modelTaskId = res.data.taskId
+          localStorage.setItem('modelTaskId', modelTaskId)
+          startModelPolling(modelTaskId)
+        }
+      })
+      .finally(() => (diyLoading.value = false))
+  }
+
+  // 轮询达人生成
+  const modelPolling = (taskId: string) => {
+    return pollingSingleTask(taskId).then((res) => {
+      if (res.code === 0) {
+        if (res.data.status === 2) {
+          stopModelPolling()
+          localStorage.removeItem('modelTaskId')
+          getModelData()
+        }
+      }
+    })
+  }
+
+  // 获取达人列表
+  const getModelData = () => {
+    if (pagingData.loading) return
+    pagingData.loading = true
+    assetAll({ type: modelPollingType.value, ...pagingData })
+      .then((res) => {
+        if (res.code === 0) {
+          const data = res.data
+          diyModelData.images = data.records
+          if (data.records.length < pagingData.size) {
+            pagingData.loadMore = false
+          }
+        }
+      })
+      .finally(() => (loading.value = false))
+  }
+  watch([modelPollingType, () => pagingData.page], getModelData)
+
+  return { diyModelData, switchValue, modelTabValue, generateModel, modelPolling, getModelData, diyLoading, pagingData }
+}
 </script>
 
 <template>
-  <Container
-    class="commerce"
-    title="爆款视频"
-    rightTitle="爆款视频"
-    :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
-  >
+  <Container class="commerce" title="爆款视频" :submit="submit" :loading="loading">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
         <ImageUpload
-          v-model:imgList="formData.imgList"
+          v-model:imgList="formData.imageUrls"
           :limitNumber="3"
           :exampleImages="[
             'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
@@ -48,35 +167,28 @@ const switchValue = ref(true)
         <SelectGroup
           v-model:data="formData"
           :list="[
-            { field: 'platform', options: platformOptions },
-            { field: 'country', options: countryOptions },
-            { field: 'language', options: languageOptions, style: { 'grid-column-start': 'span 2' } },
+            { field: 'region', options: regionOps },
+            { field: 'language', options: languageOps },
+            { field: 'aspectRatio', options: aspectRatioVideoOps },
+            { field: 'duration', options: durationOps },
           ]"
         />
 
         <div class="module-title">商品卖点&要求</div>
-        <PromptAssist v-model:value="formData.prompt" />
+        <PromptAssist v-model:value="formData.buyPoint" placeholder="输入商品核心点、适用人群、使用场景等信息" />
 
         <div class="module-title">视频类型</div>
-        <Tab
-          v-model:value="tabValue"
-          :tabs="[
-            { label: '视频类型', value: 0 },
-            { label: '自定义脚本', value: 1 },
-          ]"
-          style="margin-bottom: 12px"
-        />
         <CheckboxGroup
           v-model="formData.checked"
           :list="[
             {
               label: 'UGG 种草',
-              value: 'ugg',
-              desc: '用户视角真实分享体验 /TikTok-Reels高转化',
+              value: 'ugc_product_seeding_video',
+              desc: '用户视角真实分享体验/TikTok-Reels高转化',
             },
             {
               label: '带货短剧',
-              value: 'short_video_1',
+              value: 'ecommerce_drama_short',
               desc: '卖点框输入：古装、现代、家庭、搞笑',
             },
             {
@@ -86,7 +198,7 @@ const switchValue = ref(true)
             },
             {
               label: '产品口播',
-              value: 'product_talk',
+              value: 'product_voiceover',
               desc: '面对镜头讲解产品产品卖点/社媒投放首选',
             },
             {
@@ -95,21 +207,22 @@ const switchValue = ref(true)
               desc: '品牌广告片质感/高级产品展示',
             },
             {
-              label: '带货短剧',
-              value: 'short_video_2',
-              desc: '痛点场景-产品解决/功能型产品',
-            },
-            {
               label: '开箱种草',
-              value: 'unboxing',
+              value: 'unboxing_product_seeding_video',
               desc: '第一视角拆包惊喜体验/新品礼盒类',
             },
             {
               label: '痛点解决',
-              value: 'pain_solve',
-              desc: '痛点场景 产品解决',
+              value: 'pain_point_solution',
+              desc: '痛点场景→产品解决/功能型产品',
+            },
+            {
+              label: '反应展示',
+              value: 'reaction_showcase',
+              desc: '首次使用惊喜反应/美妆食品科技',
             },
           ]"
+          :customHandle="(value) => (formData.checked = [value])"
           :col="2"
           gap="8px"
           vertical
@@ -117,7 +230,7 @@ const switchValue = ref(true)
 
         <!--        外面的模型只能选自己上传的达人，本地模型不做限制-->
         <div class="module-title">选择模型</div>
-        <ManySelect v-model:data="formData" :list="[{ field: 'platform', options: platformOptions }]" :col="1" />
+        <SelectGroup v-model:data="formData" :list="[{ field: 'modelName', options: modelOps }]" :col="1" />
 
         <div class="module-title">
           定制专属模特
@@ -125,39 +238,216 @@ const switchValue = ref(true)
         </div>
         <div class="model-diy-cont" v-show="switchValue">
           <Tab
-            v-model:value="tabValue"
+            v-model:value="modelTabValue"
             :tabs="[
-              { label: '定制达人', value: 0 },
-              { label: '上传我的达人', value: 1 },
+              { label: '定制达人', value: 'diy' },
+              { label: '上传我的达人', value: 'myModel' },
             ]"
             style="margin-bottom: 12px"
           />
-          <div class="model-diy">
+          <div v-if="modelTabValue === 'diy'" class="model-diy">
             <SelectGroup
-              v-model:data="formData"
+              v-model:data="diyModelData"
               :list="[
-                { field: 'platform', options: platformOptions },
-                { field: 'country', options: countryOptions },
-                { field: 'language', options: languageOptions },
-                { field: 'language', options: languageOptions },
+                {
+                  field: 'sex',
+                  options: genderOps,
+                  placeholder: '性别',
+                },
+                {
+                  field: 'age',
+                  options: ageOps,
+                  placeholder: '年龄段',
+                },
+                {
+                  field: 'appearance',
+                  options: appearanceOps,
+                  placeholder: '外观特征',
+                },
+                {
+                  field: 'body',
+                  options: bodyOps,
+                  placeholder: '体型',
+                },
               ]"
+              gap="4px"
             />
             <div class="textarea-area">
               <div class="title">外貌细节补充</div>
-              <Textarea v-model:value="formData.prompt" placeholder="例如：白皙肤色、长头发、微笑唇等" />
+              <Textarea v-model:value="diyModelData.userInput" placeholder="例如：白皙肤色、长头发、微笑唇等" />
             </div>
-            <div class="generate-btn">
+            <div v-loading="diyLoading" class="generate-btn" @click="generateModel">
               <i class="icon-ic_ds_ljsc"></i>
               <span>生成我的达人</span>
             </div>
           </div>
 
-          <div></div>
+          <div
+            v-else
+            class="my-model"
+            v-observer-scroll="{
+              callback() {
+                if (pagingData.loadMore) pagingData.page += 1
+              },
+            }"
+          >
+            <ImageUpload class="item" v-model:imgList="formData.imageUrls" type="card" />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+            <n-image
+              class="item"
+              v-for="item in diyModelData.images"
+              :key="item.id"
+              :src="item.items[0].imageUrl"
+              width="100%"
+              height="86px"
+              object-fit="cover"
+              style="border-radius: 8px"
+            />
+          </div>
         </div>
       </div>
     </template>
-    <template #sample>
-      <div class="sample-cont"></div>
+
+    <template #rightContent>
+      <div v-if="taskList?.length">
+        <div class="right-content-title">生成结果</div>
+        <RecordList :showSelect="false" />
+      </div>
+      <Sample
+        v-else
+        title="爆款视频"
+        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的爆款视频。`"
+        image="e-commerce/product-kit-sample.webp"
+      />
     </template>
   </Container>
 </template>
@@ -204,10 +494,19 @@ const switchValue = ref(true)
           gap: 8px;
           background: #f5f6f8;
           cursor: pointer;
+          position: relative;
           &:hover {
             background: #ebecef;
           }
         }
+      }
+
+      > .my-model {
+        max-height: 500px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+        overflow: auto;
       }
     }
   }
