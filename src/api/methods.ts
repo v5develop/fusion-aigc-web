@@ -30,6 +30,14 @@ export function pollingSingleTask(taskId: string) {
   return get(`/api/v1/creation/query/${taskId}`)
 }
 
-export function assetAll(params: { type: 'customizedmodel' | 'realpersonmodel' }) {
+export function assetAll(params: types.IAssetAll) {
   return get('/api/v1/asset/all', params)
+}
+
+export function faceRecognition(data: types.IFaceRecognition) {
+  return post('/api/v1/creation/face-recognition/submit', data)
+}
+
+export function faceRecognitionStatusQuery(taskId: string) {
+  return get(`/api/v1/creation/faceRecognition/${taskId}`)
 }

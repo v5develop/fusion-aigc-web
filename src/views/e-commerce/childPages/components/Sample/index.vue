@@ -17,20 +17,28 @@ const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
     <div class="sample">
       <img v-if="image" class="img" :src="VITE_OSS_ASSET_URL + image" alt="" />
+      <slot></slot>
     </div>
   </div>
 </template>
 
 <style scoped lang="less">
 .sample-cont {
+  width: 100%;
   height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 40px 48px;
+  overflow: auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
+  gap: 40px;
   > .text-cont {
+    width: 770px;
+    margin: 0 auto;
     text-align: center;
-    margin-bottom: 48px;
     > .title {
       font-size: 36px;
       font-weight: bold;
@@ -43,7 +51,8 @@ const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
     }
   }
   > .sample {
-    max-width: 770px;
+    width: 770px;
+    margin: 0 auto;
     > .img {
       width: 100%;
       border-radius: 24px;

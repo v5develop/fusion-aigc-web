@@ -80,8 +80,8 @@ const { title, submit, loading } = defineProps<{
 
   > .right-container {
     flex: 1;
-    padding: 40px 48px;
-    overflow: auto;
+    height: 100%;
+    position: relative;
   }
 }
 </style>

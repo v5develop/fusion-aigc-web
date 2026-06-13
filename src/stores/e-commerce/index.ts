@@ -27,7 +27,7 @@ export const useSessionIdStore = defineStore('counter', () => {
     }
 
     const clearSessionId = () => {
-      sessionIdMap.value[type] = null
+      sessionIdMap.value[type] = ''
       localStorage.setItem('sessionIdMap', JSON.stringify(sessionIdMap.value))
     }
 

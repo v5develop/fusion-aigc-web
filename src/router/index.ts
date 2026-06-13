@@ -43,7 +43,7 @@ router.beforeEach(async (to, from) => {
   // 如果没有 token，进行模拟登录
   if (!token) {
     await login({
-      username: 'adad',
+      username: 'maizi',
       password: 'admin123',
     }).then((res) => {
       if (res.code === 0) {

@@ -271,8 +271,8 @@ const beforeUpload = () => {
 .card-style {
   width: 100%;
   height: 100%;
-  max-width: 86px;
-  max-height: 86px;
+  //max-width: 86px;
+  //max-height: 86px;
 
   .upload-trigger {
     width: 100%;
@@ -282,7 +282,7 @@ const beforeUpload = () => {
     justify-content: center;
     cursor: pointer;
     border: 1px dashed #d9d9d9;
-    border-radius: 8px;
+    border-radius: 5px;
     transition: all 0.3s ease;
 
     &:hover {

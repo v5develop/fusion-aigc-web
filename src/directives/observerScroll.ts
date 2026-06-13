@@ -22,7 +22,7 @@ interface ObserverHTMLElement extends HTMLElement {
 /** 创建不可见的 1px 哨兵元素 */
 function createSentinel(): HTMLDivElement {
   const el = document.createElement('div')
-  el.style.cssText = 'height:1px;visibility:hidden;margin:0'
+  el.style.cssText = 'display:block;width:100%;height:1px;visibility:hidden;margin:0;flex:0 0 100%;grid-column:1/-1'
   return el
 }
 
@@ -40,10 +40,11 @@ const observerScrollDirective: Directive<ObserverHTMLElement, IBindingValue> = {
     if (callback) {
       const sentinel = createSentinel()
       el.appendChild(sentinel)
-
       el._observer = new IntersectionObserver(
         (entries: IntersectionObserverEntry[]) => {
-          if (entries[0]?.isIntersecting) callback()
+          // 内容不足以溢出容器时（无需滚动），不触发触底回调
+          // 避免初始化时列表为空导致的误触发
+          if (entries[0]?.isIntersecting && el.scrollHeight > el.clientHeight) callback()
         },
         {
           root: el,

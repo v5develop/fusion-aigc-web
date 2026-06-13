@@ -7,15 +7,24 @@ export function useInitCheckTaskStatus(type: string) {
   const { useSessionId } = useSessionIdStore()
   const { getSessionId, clearSessionId } = useSessionId(type)
 
-  function pollingTaskRequest(sessionId: string) {
-    return pollingTask(sessionId).then((res) => {
-      if (res.code === 0) {
-      }
-    })
-  }
+  const { result, start, stop } = usePolling((sessionId) => pollingTask(sessionId!), 3000, {
+    autoStop: (res) => {
+      const { data } = res
 
-  const { result, start, stop } = usePolling((sessionId) => pollingTaskRequest(sessionId!), 3000, {
-    // autoStop: (data) => console.log('autoStop: ', data),
+      if (!data.tasks.length) {
+        clearSessionId()
+        return true;
+      }
+
+      for (const item of data.tasks) {
+        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
+        if (item.status !== 2 && !item.statusView.terminal) {
+          return false
+        }
+      }
+
+      return true
+    },
   })
 
   const sessionId = getSessionId(true)
@@ -23,5 +32,5 @@ export function useInitCheckTaskStatus(type: string) {
     start(sessionId)
   }
 
-  return { getSessionId, clearSessionId, result, startPolling: start, stopPolling: stop }
+  return { getSessionId, clearSessionId, taskList: result.value?.data, startPolling: start, stopPolling: stop }
 }

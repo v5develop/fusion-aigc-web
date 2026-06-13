@@ -1,3 +1,5 @@
+import { assetAll, faceRecognition } from '@/api/methods.ts'
+
 export interface ApiResponse<T = any> {
   code: number
   msg: string
@@ -10,4 +12,13 @@ export interface IGetSts {
   contentType: string // 文件MIME
   fileSize: number // 文件大小
   visibility?: 'public' | 'visible' // 可见性（可选值：public=公开桶（默认） private=私有桶）
+}
+
+export interface IAssetAll {
+  type: 'customizedmodel' | 'realpersonmodel' // customizedmodel:本地local上传, realpersonmodel:豆包验证库
+}
+
+export interface IFaceRecognition {
+  modelName: string
+  imageUrls: string[]
 }
