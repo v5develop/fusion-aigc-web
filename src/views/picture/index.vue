@@ -75,31 +75,29 @@ const submit = async () => {
   creationSubmit(params).then((res) => {
     if (res.code === 0) {
       start(res.data.taskId)
+      messages.value.push({
+        taskTime: '',
+        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
+        assets: [{ aiPrompt: formData.prompt, status: 1 }],
+      })
     }
   })
 }
 
-const pollingSingleTaskApi = (taskId: string) => {
-  return pollingSingleTask(taskId).then(async (res) => {
-    if (res.code === 0) {
-      pagingData.page = 1
-      pagingData.hasMore = true
-      await getData(true)
-      loading.value = false
-    }
-  })
-}
-const { start, stop } = usePolling((taskId) => pollingSingleTaskApi(taskId!), 3000, {
-  autoStop(res: any) {
+const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
+  autoStop: (res: any) => {
     if (res.code === 0) {
       const data = res.data
       // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
       if (data.status !== 2 && !data.statusView.terminal) {
         return false
       }
-
-      return true
     }
+
+    pagingData.page = 1
+    pagingData.hasMore = true
+    getData(true)?.finally(() => (loading.value = false))
+    return true
   },
 })
 
@@ -193,6 +191,7 @@ getData(true)
               <div class="message-group__images">
                 <div v-for="(jtem, j) in item.assets" :key="j" class="message-group__image-wrap">
                   <n-image :src="jtem.resultUrl" alt="" width="100%" height="100%" object-fit="cover" />
+                  <div v-if="jtem.status === 1" class="pending">生成中...</div>
                 </div>
               </div>
 
@@ -251,7 +250,12 @@ getData(true)
     <div class="input-box" :class="!messages.length ? 'input-box-center' : ''">
       <h1 v-if="!messages.length" class="h1">和我聊聊， 你想要什么设计～</h1>
 
-      <ChatInputBox v-model:imgList="formData.images" v-model:prompt="formData.prompt" :submit="submit">
+      <ChatInputBox
+        v-model:imgList="formData.images"
+        v-model:prompt="formData.prompt"
+        :submit="submit"
+        :btnLoading="loading"
+      >
         <template #bottomSelect>
           <ChatInputSelect v-model:value="formData.entryCode" :options="taskOps" />
           <ChatInputSelect v-model:value="formData.ratio" :options="ratioOps" style="margin-left: 10px" />

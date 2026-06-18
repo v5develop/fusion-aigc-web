@@ -6,8 +6,9 @@ interface IProps {
   showUpload?: boolean
   submit: () => void
   activeChatTab?: string
+  btnLoading?: boolean
 }
-const { showUpload = true, submit, activeChatTab } = defineProps<IProps>()
+const { showUpload = true, submit, activeChatTab, btnLoading } = defineProps<IProps>()
 const imgList = defineModel<any[]>('imgList')
 const prompt = defineModel<string>('prompt')
 
@@ -57,7 +58,7 @@ watch(
       <div class="send-cont">
         <i class="icon-ic_hone_bean"></i>
         <span>限免</span>
-        <div class="btn" @click="submit">
+        <div class="btn" @click="submit" v-loading="btnLoading">
           <i class="icon-ic_hone_bean"></i>
         </div>
       </div>
@@ -129,6 +130,7 @@ watch(
         align-items: center;
         justify-content: center;
         cursor: pointer;
+        position: relative;
         > i {
           font-size: 24px;
           color: white;
