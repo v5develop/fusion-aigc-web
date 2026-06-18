@@ -1,11 +1,10 @@
 /* color palette from <https://github.com/vuejs/theme> */
 :root {
-  --main-color: #8E66F9;
+  --main-color: #8e66f9;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-
   }
 }
 
@@ -23,4 +22,9 @@ body {
 
 #app {
   font-size: 14px;
+}
+
+/* 修改整个控件面板的背景 */
+video::-webkit-media-controls-panel {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.3), transparent 20%);
 }

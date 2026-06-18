@@ -15,13 +15,13 @@ import ImageUpload from '@/components/ImageUpload/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import ImagePopover from '@/components/ImagePopover/index.vue'
 
-const { modelName } = defineProps<{
-  modelName: string
+const { modelCode } = defineProps<{
+  modelCode: string
 }>()
 const personUrl = defineModel<string>('personUrl', { required: true })
 
 const modelPollingType = computed(() => {
-  if (['seedance2.0', 'seedance2.0-fast'].includes(modelName)) return 'realpersonmodel'
+  if (['seedance2.0', 'seedance2.0-fast'].includes(modelCode)) return 'realpersonmodel'
   // 本地模型
   return 'customizedmodel'
 })
@@ -35,7 +35,7 @@ const modelData = reactive({
   body: null,
   userInput: '',
 })
-const modelTabValue = ref<'customModel' | 'myModel'>('myModel')
+const modelTabValue = ref<'customModel' | 'myModel'>('customModel')
 const btnLoading = ref(false)
 const pagingData = reactive({
   page: 1,
@@ -100,62 +100,6 @@ const getModelData = () => {
         const data = res.data
         pagingData.page += 1
         modelData.images.push(...data.records)
-        /*modelData.images.push({
-          items: [
-            {
-              imageUrl:
-                'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/product-in-hand.png',
-            },
-          ],
-        })
-        modelData.images.push({
-          items: [
-            {
-              imageUrl:
-                'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/product-in-hand.png',
-            },
-          ],
-        })
-        modelData.images.push({
-          items: [
-            {
-              imageUrl:
-                'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/product-in-hand.png',
-            },
-          ],
-        })
-        modelData.images.push({
-          items: [
-            {
-              imageUrl:
-                'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/product-in-hand.png',
-            },
-          ],
-        })
-        modelData.images.push({
-          items: [
-            {
-              imageUrl:
-                'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/product-in-hand.png',
-            },
-          ],
-        })
-        modelData.images.push({
-          items: [
-            {
-              imageUrl:
-                'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/product-in-hand.png',
-            },
-          ],
-        })
-        modelData.images.push({
-          items: [
-            {
-              imageUrl:
-                'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/product-in-hand.png',
-            },
-          ],
-        })*/
         if (data.records.length < pagingData.size) {
           pagingData.loadMore = false
         }
@@ -187,9 +131,9 @@ const { start: startFaceValidate } = usePolling((taskId) => faceRecognitionStatu
 })
 const customResultHandle = (urls: string[]) => {
   uploadImage.value = urls
-  faceRecognition({ modelName, imageUrls: urls }).then((res) => {
+  faceRecognition({ modelCode, imageUrls: urls }).then((res) => {
     if (res.code === 0) {
-      if (modelName === 'local') {
+      if (modelCode === 'local') {
         resetData()
       } else {
         startFaceValidate(res.data.taskId)
@@ -264,11 +208,7 @@ const customResultHandle = (urls: string[]) => {
         <ImageUpload v-model:imgList="uploadImage" type="card" :customResultHandle="customResultHandle" />
       </div>
 
-      <ImagePopover
-        v-model="personUrl"
-        :imgList="modelData.images.map((item) => item.items[0].imageUrl)"
-        style="height: 86px"
-      />
+      <ImagePopover v-model="personUrl" :imgList="modelData.images.map((item) => item.coverUrl)" style="height: 86px" />
     </div>
   </div>
 </template>

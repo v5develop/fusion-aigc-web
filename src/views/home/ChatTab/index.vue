@@ -1,15 +1,15 @@
 <script lang="ts">
-export type TTabValue = 'image' | 'video' | 'ecommerce'
+export type TTabValue = 'picture' | 'video' | 'ecommerce'
 </script>
 
 <script setup lang="ts">
 /** 双向绑定的选中值 */
 const modelValue = defineModel<TTabValue>({ required: true })
 
-const options = [
-  { label: 'AI 图片创作', value: 'image' as const },
-  { label: 'AI 视频创作', value: 'video' as const },
-  { label: '电商商品', value: 'ecommerce' as const },
+const options: { label: string; value: TTabValue }[] = [
+  { label: 'AI 图片创作', value: 'picture' },
+  { label: 'AI 视频创作', value: 'video' },
+  { label: '电商商品', value: 'ecommerce' },
 ]
 
 function handleTabClick(value: TTabValue) {

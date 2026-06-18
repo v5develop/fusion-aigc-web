@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
-import { login } from '@/api/methods.ts'
+import { login, unionTokenLogin, getUserInfo } from '@/api/methods.ts'
 import eCommerceRouter from './e-commerce'
 
 const router = createRouter({
@@ -42,16 +42,46 @@ router.beforeEach(async (to, from) => {
 
   // 如果没有 token，进行模拟登录
   if (!token) {
-    await login({
-      username: 'maizi',
-      password: 'admin123',
-    }).then((res) => {
-      if (res.code === 0) {
-        localStorage.setItem('fusion_accessToken', res.data.accessToken)
-        localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
-      }
-    })
+    const unionToken = getUrlQuery('unionToken')
+    if (!!'') {
+      await unionTokenLogin({ token: unionToken! }).then(async (res) => {
+        if (res.code === 0) {
+          localStorage.setItem('fusion_accessToken', res.data.accessToken)
+          localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
+
+          const { code, data } = await getUserInfo()
+          if (code === 0) {
+            localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
+          }
+        }
+      })
+    } else {
+      await login({
+        username: 'maizi',
+        password: 'admin123',
+      }).then((res) => {
+        if (res.code === 0) {
+          localStorage.setItem('fusion_accessToken', res.data.accessToken)
+          localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
+        }
+      })
+    }
+
   }
 })
 
+function getUrlQuery(key: string): string | null {
+  // history模式：参数在location.search
+  if (window.location.search) {
+    return new URLSearchParams(window.location.search).get(key)
+  }
+  // hash模式：参数在#内
+  const hash = window.location.hash
+  if (!hash.includes('?')) return null
+  const searchStr = hash.slice(hash.indexOf('?'))
+  return new URLSearchParams(searchStr).get(key)
+}
+
+
 export default router
+

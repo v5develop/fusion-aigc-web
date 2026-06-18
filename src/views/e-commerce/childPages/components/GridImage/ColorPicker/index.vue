@@ -56,7 +56,7 @@ const color = defineModel<string>('color', { required: true })
     .icon-ic_home_upload1 {
       position: absolute;
       left: 50%;
-      top: 20%;
+      top: 30%;
       transform: translateX(-50%);
       color: white;
       font-size: 20px;

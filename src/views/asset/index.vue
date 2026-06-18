@@ -1,116 +1,134 @@
 <script setup lang="ts">
-import { ref, provide } from 'vue'
-import RecordList from '@/views/asset/components/RecordList/index.vue'
+import { ref, provide, watch, reactive } from 'vue'
+import { assetAll } from '@/api/methods.ts'
+import { tabOps1, tabOps2 } from './constants.ts'
+import RecordList from './components/RecordList/index.vue'
 
-const tab1Value = ref('电商')
-const tab2Value = ref('AI商品套图')
-const records = ref([
-  {
-    title: '粉色弹盖式时尚保温杯',
-    date: '2026-05-24 13:26',
-    images: [
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2022/10/13/23/12/07/101909818_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-      'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/6.png',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2022/10/13/23/12/07/101909818_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-    ],
-  },
-  {
-    title: '粉色弹盖式时尚保温杯',
-    date: '2026-05-24 13:26',
-    images: ['https://i.pixiv.re/c/540x540_70/img-master/img/2023/05/09/00/30/02/107956384_p0_master1200.jpg'],
-  },
-])
-const recordsData = ref(
-  records.value.map((item) => {
-    return {
-      ...item,
-      selectList: item.images.map((jtem) => {
-        return {
-          url: jtem,
-          selected: false,
+const assetRef = ref<HTMLDivElement | null>(null)
+const loading = ref(false)
+const formData = reactive({
+  category: 'ecommerce',
+  type: 'productSetImages', // 默认AI商品套图
+})
+const pagingData = reactive({
+  page: 1,
+  pageSize: 9,
+  hasMore: true,
+})
+const records = ref<any[]>([])
+provide('recordsData', records)
+// provide('selectImgUrls', ref(new Set([])))
+
+const getData = (isReplace?: boolean) => {
+  if (!pagingData.hasMore) return
+
+  if (loading.value) return
+  loading.value = true
+
+  const params = {
+    category: formData.category,
+    type: formData.category === 'ecommerce' ? formData.type : '',
+    ...pagingData,
+  }
+  assetAll(params)
+    .then((res) => {
+      if (res.code === 0) {
+        pagingData.page++
+
+        if (isReplace) records.value = res.data.records
+        else records.value.push(...res.data.records)
+
+        if (res.data.records.length < pagingData.pageSize) {
+          pagingData.hasMore = false
         }
-      }),
-    }
-  }),
-)
-provide('recordsData', recordsData)
+      }
+    })
+    .finally(() => (loading.value = false))
+}
+getData()
 
-const commerceTabs = [
-  { label: 'AI商品套图' },
-  { label: 'AI详情' },
-  { label: '爆款图复刻' },
-  { label: '手持商品' },
-  { label: '视频复刻' },
-  { label: '爆款视频' },
-  { label: '模特替换' },
-  { label: '商品替换' },
-  { label: '人像换背景' },
-  { label: 'AI穿搭套图' },
-  { label: 'AI试衣' },
-  { label: '服装去皱' },
-  { label: '搭配图' },
-  { label: 'AI试鞋' },
-]
+watch(formData, () => {
+  pagingData.page = 1
+  pagingData.hasMore = true
+  assetRef.value!.scrollTop = 0
+  getData(true)
+})
 </script>
 
 <template>
-  <div class="asset">
-    <div class="tab-lv1">
-      <span
-        class="item"
-        :class="tab1Value === item.label ? 'active' : ''"
-        v-for="item in [{ label: '图片' }, { label: '视频' }, { label: '电商' }]"
-        :key="item.label"
-        @click="tab1Value = item.label"
-        >{{ item.label }}</span
-      >
+  <div
+    ref="assetRef"
+    class="asset"
+    v-loading="loading"
+    v-observer-scroll="{
+      callback: getData,
+    }"
+  >
+    <div class="top-tab-cont">
+      <div class="tab-lv1">
+        <span
+          class="item"
+          :class="formData.category === item.value ? 'active' : ''"
+          v-for="item in tabOps1"
+          :key="item.label"
+          @click="formData.category = item.value"
+        >
+          {{ item.label }}
+        </span>
+      </div>
+
+      <div v-if="formData.category === 'ecommerce'" class="tab-lv1 tab-lv2">
+        <span
+          class="item"
+          :class="formData.type === item.value ? 'active' : ''"
+          v-for="item in tabOps2"
+          :key="item.label"
+          @click="formData.type = item.value"
+        >
+          {{ item.label }}
+        </span>
+      </div>
     </div>
 
-    <div v-if="tab1Value === '电商'" class="tab-lv1 tab-lv2">
-      <span
-        class="item"
-        :class="tab2Value === item.label ? 'active' : ''"
-        v-for="item in commerceTabs"
-        :key="item.label"
-        @click="tab2Value = item.label"
-        >{{ item.label }}</span
-      >
-    </div>
-
-    <RecordList v-model:recordsData="recordsData" />
+    <RecordList />
   </div>
 </template>
 
 <style scoped lang="less">
 .asset {
-  padding: 40px 48px;
-  > .tab-lv1 {
-    display: flex;
-    gap: 8px 16px;
-    color: #1f1f1f;
-    text-align: center;
-    margin-bottom: 16px;
-    > .item {
-      padding: 10px 16px;
-      cursor: pointer;
-      border-radius: 8px;
-      &:hover {
-        background-color: white;
-      }
-      &.active {
-        background-color: white;
+  height: 100vh;
+  padding: 0 48px 40px;
+  overflow: auto;
+  > .top-tab-cont {
+    padding-top: 40px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: #f5f6f8;
+    > .tab-lv1 {
+      display: flex;
+      gap: 8px 16px;
+      color: #1f1f1f;
+      text-align: center;
+      padding-bottom: 16px;
+      background-color: #f5f6f8;
+      > .item {
+        padding: 10px 16px;
+        cursor: pointer;
+        border-radius: 8px;
+        &:hover {
+          background-color: white;
+        }
+        &.active {
+          background-color: white;
+        }
       }
     }
-  }
-  > .tab-lv2 {
-    width: 65%;
-    flex-wrap: wrap;
-    margin-bottom: 28px;
+    > .tab-lv2 {
+      width: 65%;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
   }
 }
 </style>

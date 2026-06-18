@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { type CSSProperties, ref } from 'vue'
+import { type CSSProperties } from 'vue'
 
-const { imgList } = defineProps<{
+const { imgList, style, disabled } = defineProps<{
   imgList: string[]
   style: CSSProperties
+  disabled?: boolean
 }>()
 const selectImage = defineModel<string>()
 
@@ -15,7 +16,7 @@ const handleClick = (item: string) => {
 
 <template>
   <div v-for="item in imgList" :key="item">
-    <n-popover trigger="hover">
+    <n-popover trigger="hover" :disabled="disabled">
       <template #trigger>
         <img
           :style="style"
@@ -46,7 +47,7 @@ const handleClick = (item: string) => {
   }
 }
 .preview {
-  max-width: 70vw;
-  max-height: 70vh;
+  max-width: 50vw;
+  max-height: 50vh;
 }
 </style>

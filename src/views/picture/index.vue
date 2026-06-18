@@ -1,32 +1,41 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, useTemplateRef } from 'vue'
+import { ref, reactive, watch, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
+import { creationSubmit, assetAll } from '@/api/methods.ts'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
+import type { ICreationSubmit } from '@/api/types.ts'
+import { taskOps, ratioOps } from './constants.ts'
+import { useHomeStore } from '@/stores/home'
+import { storeToRefs } from 'pinia'
 
-const dynamicScrollerRef = useTemplateRef('dynamicScrollerRef')
-// ==================== 输入框相关 ====================
-const { imgList, selectValues, options1, options3 } = useChat()
-
-function useChat() {
-  const imgList = ref<any[]>([])
-  const selectValues = reactive({
-    value1: 0,
-    value2: 0,
-  })
-  const options1 = [
-    { label: '图生图', value: 0 },
-    { label: '文生图', value: 1 },
-  ]
-  const options3 = [
-    { label: '智能比例', value: 0 },
-    { label: '智能比例2', value: 1 },
-  ]
-  return { imgList, selectValues, options1, options3 }
+const store = useHomeStore()
+const { global_formData } = storeToRefs(store)
+let _formData: any
+if (global_formData.value.home) {
+  const { entryCode = 'imageToImage', prompt = '', ratio = '1024,1024', images = [] } = global_formData.value.picture
+  _formData = { entryCode, prompt, ratio, images }
+  store.reset()
 }
 
-// ==================== 消息数据 ====================
+const loading = ref(false)
+const formData = reactive(
+  _formData ?? {
+    entryCode: 'imageToImage',
+    prompt: '',
+    ratio: '1024,1024',
+    images: [],
+  },
+)
+const pagingData = reactive({
+  page: 1,
+  pageSize: 8,
+  loading: false,
+  hasMore: true,
+})
+const dynamicScrollerRef = useTemplateRef('dynamicScrollerRef')
+
 interface ChatMessage {
   id: string
   date: string
@@ -37,37 +46,19 @@ interface ChatMessage {
   disclaimer: string
 }
 
-// 图片资源（从设计稿提取）
-const yesterdayImages = [
-  'https://i.pixiv.re/c/540x540_70/img-master/img/2023/03/21/20/22/04/106427930_p0_master1200.jpg',
-]
-
-const todayImages = ['https://i.pixiv.re/c/540x540_70/img-master/img/2023/03/21/20/22/04/106427930_p0_master1200.jpg']
-
-const messages = ref<ChatMessage[]>([
-  {
-    id: '1',
-    date: '昨天',
-    showDate: true,
-    prompt:
-      '（电影级面光：1.6），（光线追踪：1.5），（冷白皮漫感质感的光滑皮肤：1.7），（人物有最好的骨相：1.2），（网感脸：1.6），身材完美，莫兰迪配色，高颜值网红，INS风，幼态脸，19岁女生尖下巴，三庭五眼比例均衡，身材娇小，细腻陶瓷水嫩肌肤，偏冷白皮，随机的妆容，随机的饰品，随机的动作，侧光，',
-    meta: '本地模型 ｜1:1 ｜4K',
-    images: yesterdayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
-  {
-    id: '2',
-    date: '等了好久终于等到今天',
-    showDate: true,
-    prompt:
-      '（电影级面光：1.6），（光线追踪：1.5），（冷白皮漫感质感的光滑皮肤：1.7），（人物有最好的骨相：1.2），（网感脸：1.6），身材完美，莫兰迪配色，高颜值网红，INS风，幼态脸，19岁女生尖下巴，三庭五眼比例均衡，身材娇小，细腻陶瓷水嫩肌肤，偏冷白皮，随机的妆容，随机的饰品，随机的动作，侧光，',
-    meta: '本地模型 ｜1:1 ｜4K',
-    images: yesterdayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
+const messages = ref<any[]>([
+  // {
+  //   id: '1',
+  //   date: '昨天',
+  //   showDate: true,
+  //   prompt:
+  //     '（电影级面光：1.6），（光线追踪：1.5），（冷白皮漫感质感的光滑皮肤：1.7），（人物有最好的骨相：1.2），（网感脸：1.6），身材完美，莫兰迪配色，高颜值网红，INS风，幼态脸，19岁女生尖下巴，三庭五眼比例均衡，身材娇小，细腻陶瓷水嫩肌肤，偏冷白皮，随机的妆容，随机的饰品，随机的动作，侧光，',
+  //   meta: '本地模型 ｜1:1 ｜4K',
+  //   images: yesterdayImages,
+  //   disclaimer: '以上内容由AI生成 | 本次消耗0积分',
+  // },
 ])
 
-// ==================== 虚拟列表高度 ====================
 const virtualListContainer = ref<HTMLElement>()
 const scrollerHeight = ref(0)
 let resizeObserver: ResizeObserver | null = null
@@ -79,14 +70,86 @@ onMounted(() => {
     })
     resizeObserver.observe(virtualListContainer.value)
   }
-  setTimeout(() => {
-    console.log(dynamicScrollerRef.value?.scrollToItem(100))
-  })
 })
 onUnmounted(() => {
   resizeObserver?.disconnect()
 })
-const id = ref(9)
+
+const submit = () => {
+  if (loading.value) return
+  loading.value = true
+
+  const wh = formData.ratio.split(',')
+  const params: ICreationSubmit = {
+    type: 'IMAGE',
+    entryCode: formData.entryCode as ICreationSubmit['entryCode'],
+    modelCode: 'local-image',
+    params: {
+      prompt: formData.prompt,
+      width: +wh[0]!,
+      height: +wh[1]!,
+    },
+    images: formData.images,
+  }
+  creationSubmit(params).then((res) => {
+    if (res.code === 0) {
+    }
+  })
+}
+
+const getData = (isReplace?: boolean) => {
+  if (!pagingData.hasMore) return
+
+  if (pagingData.loading) return
+  pagingData.loading = true
+
+  const params = {
+    ...pagingData,
+    type: 'image',
+  }
+  assetAll(params)
+    .then((res) => {
+      if (res.code === 0) {
+        pagingData.page++
+
+        const records = res.data.records
+        const isEmpty = messages.value.length === 0
+        records.reverse()
+        if (isReplace) messages.value = records
+        else messages.value.unshift(...records)
+
+        if (records.length < pagingData.pageSize) pagingData.hasMore = false
+
+        // 类微信聊天：仅首次加载数据后自动滚动到底部
+        if (isEmpty) {
+          // scrollToBottom() 源码内部已处理时序问题：
+          // 通过 _undefinedSizes 计数器 + requestAnimationFrame 循环，
+          // 直到所有 item 尺寸被 ResizeObserver 测量完成后才停止
+          /*const doScroll = () => {
+            if (dynamicScrollerRef.value) {
+              dynamicScrollerRef.value.scrollToBottom()
+              console.log(1111)
+            } else {
+              console.log(2222)
+              // DynamicScroller 受 v-if="scrollerHeight > 0" 控制，
+              // 若 API 返回较快、组件尚未挂载，则监听 scrollerHeight 就绪后再滚动
+              const stop = watch(scrollerHeight, (h) => {
+                if (h > 0) {
+                  stop()
+                  nextTick(() => dynamicScrollerRef.value?.scrollToBottom())
+                }
+              })
+            }
+          }*/
+          nextTick(() => {
+            dynamicScrollerRef.value?.scrollToBottom()
+          })
+        }
+      }
+    })
+    .finally(() => (pagingData.loading = false))
+}
+getData()
 </script>
 
 <template>
@@ -99,44 +162,32 @@ const id = ref(9)
         v-if="scrollerHeight > 0"
         :items="messages"
         :min-item-size="300"
-        key-field="id"
+        key-field="taskTime"
         :style="{ height: scrollerHeight + 'px' }"
         class="scroller"
         v-observer-scroll="{
-          callbackTop() {
-            messages.unshift({
-              id: id++ + '',
-              date: '今天' + id,
-              showDate: true,
-              prompt: '这是一张瑞幸咖啡，杯身呈梦幻浅蓝色',
-              meta: '本地模型 ｜9:16 ｜4K',
-              images: todayImages,
-              disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-            })
-          },
+          callbackTop: getData,
           distanceTop: 100,
         }"
       >
         <template #default="{ item, index, active }">
-          <DynamicScrollerItem :item="item" :active="active" :size-dependencies="[item.images]" :data-index="index">
+          <DynamicScrollerItem :item="item" :active="active" :data-index="index">
             <div class="message-group">
               <!-- 日期标题 -->
-              <h2 v-if="item.showDate" class="message-group__date">
-                {{ item.date }}
-              </h2>
+              <h2 class="message-group__date">{{ item.taskTime }} -- {{ index }}</h2>
 
               <!-- 提示词 -->
-              <p class="message-group__prompt">{{ item.prompt }}</p>
+              <p class="message-group__prompt">{{ item.assets[0].aiPrompt }}</p>
 
               <!-- 元信息 -->
-              <div class="message-group__meta">
-                <span>{{ item.meta }}</span>
-              </div>
+              <!--              <div class="message-group__meta">-->
+              <!--                <span>{{ item.meta }}</span>-->
+              <!--              </div>-->
 
               <!-- 图片网格 -->
               <div class="message-group__images">
-                <div v-for="(img, i) in item.images" :key="i" class="message-group__image-wrap">
-                  <n-image :src="img" alt="" width="100%" height="100%" object-fit="cover" />
+                <div v-for="(jtem, j) in item.assets" :key="j" class="message-group__image-wrap">
+                  <n-image :src="jtem.resultUrl" alt="" width="100%" height="100%" object-fit="cover" />
                 </div>
               </div>
 
@@ -195,10 +246,10 @@ const id = ref(9)
     <div class="input-box" :class="!messages.length ? 'input-box-center' : ''">
       <h1 v-if="!messages.length" class="h1">和我聊聊， 你想要什么设计～</h1>
 
-      <ChatInputBox v-model:imgList="imgList">
+      <ChatInputBox v-model:imgList="formData.images" v-model:prompt="formData.prompt" :submit="submit">
         <template #bottomSelect>
-          <ChatInputSelect v-model:value="selectValues.value1" :options="options1" />
-          <ChatInputSelect v-model:value="selectValues.value2" :options="options3" />
+          <ChatInputSelect v-model:value="formData.entryCode" :options="taskOps" />
+          <ChatInputSelect v-model:value="formData.ratio" :options="ratioOps" style="margin-left: 10px" />
         </template>
       </ChatInputBox>
     </div>

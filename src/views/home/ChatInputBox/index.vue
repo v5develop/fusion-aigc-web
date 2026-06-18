@@ -1,11 +1,38 @@
 <script setup lang="ts">
+import { ref, onMounted, watch } from 'vue'
 import Upload from '@/components/ChatImageUpload/index.vue'
 
 interface IProps {
   showUpload?: boolean
+  submit: () => void
+  activeChatTab?: string
 }
-const { showUpload=true } = defineProps<IProps>()
+const { showUpload = true, submit, activeChatTab } = defineProps<IProps>()
 const imgList = defineModel<any[]>('imgList')
+const prompt = defineModel<string>('prompt')
+
+// contenteditable 双向绑定
+const textareaRef = ref<HTMLDivElement | null>(null)
+
+const onInput = (e: Event) => {
+  prompt.value = (e.target as HTMLDivElement).innerText || ''
+}
+
+onMounted(() => {
+  const el = textareaRef.value
+  if (el && el.innerText !== prompt.value) {
+    el.innerText = prompt.value ?? ''
+  }
+})
+watch(
+  () => activeChatTab,
+  () => {
+    const el = textareaRef.value
+    if (el && el.innerText !== prompt.value) {
+      el.innerText = prompt.value ?? ''
+    }
+  },
+)
 </script>
 
 <template>
@@ -15,7 +42,13 @@ const imgList = defineModel<any[]>('imgList')
         <Upload v-model:imgList="imgList!" :limitNumber="5" multiple />
       </div>
 
-      <div class="textarea-box" contenteditable data-placeholder="和我聊聊，你想要什么设计。"></div>
+      <div
+        ref="textareaRef"
+        class="textarea-box"
+        contenteditable
+        data-placeholder="和我聊聊，你想要什么设计。"
+        @input="onInput"
+      ></div>
     </div>
 
     <div class="bottom-content">
@@ -24,7 +57,7 @@ const imgList = defineModel<any[]>('imgList')
       <div class="send-cont">
         <i class="icon-ic_hone_bean"></i>
         <span>限免</span>
-        <div class="btn">
+        <div class="btn" @click="submit">
           <i class="icon-ic_hone_bean"></i>
         </div>
       </div>
@@ -78,11 +111,6 @@ const imgList = defineModel<any[]>('imgList')
     display: flex;
     align-items: center;
     justify-content: space-between;
-    > .select-cont {
-      width: 250px;
-      display: flex;
-      gap: 12px;
-    }
     > .send-cont {
       margin-left: auto;
       display: flex;

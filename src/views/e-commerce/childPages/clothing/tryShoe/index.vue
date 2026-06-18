@@ -1,39 +1,119 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import Tab from '@/components/Tab/index.vue'
-import { countryOptions, languageOptions, platformOptions } from '@/views/e-commerce/childPages/constants.ts'
+import { poseOps, shoeStyleOps, genderOps } from '@/views/e-commerce/childPages/constants.ts'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
-import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
-import Textarea from '@/components/Textarea/index.vue'
+import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
+import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
+import { useMessage } from 'naive-ui'
+import { publicTemplate } from '@/api/methods.ts'
+import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 
+const { taskList, showList, execute } = useInitCheckTaskStatus('try-shoe')
+provide('recordsData', taskList)
+
+const message = useMessage()
+const loading = ref(false)
 const formData = reactive({
-  imgList: ref([]),
-  platform: ref(0),
-  country: ref(0),
-  language: ref(0),
-  ratio: ref(0),
-  prompt: ref(''),
-  checked: ref([]),
+  imageUrls: [],
+  personUrl: '', // 鞋库
+  uploadPersonUrl: [], // 上传的鞋
 })
-const tabValue = ref(0)
+const { shoeFilterData, pagingData, tabValue, shoeList, scrollCallBack } = useShoeList()
+
+const submit = () => {
+  if (loading.value) return
+
+  if (!formData.imageUrls.length) {
+    return message.warning('请上传产品图')
+  }
+  if (tabValue.value === 'shoeLib' && !formData.personUrl) {
+    return message.warning('请选择鞋子')
+  }
+  if (tabValue.value === 'uploadShoe' && !formData.uploadPersonUrl.length) {
+    return message.warning('请上传鞋子')
+  }
+
+  const params = {
+    type: 'shoeSwapping',
+    imageUrls: formData.imageUrls,
+    params: {
+      personUrl: tabValue.value === 'shoeLib' ? formData.personUrl : formData.uploadPersonUrl[0],
+    },
+  }
+  execute(params, loading)
+}
+
+function useShoeList() {
+  const shoeFilterData = reactive({
+    gender: null,
+    age: null,
+    skin: null,
+  })
+  const pagingData = reactive({
+    page: 1,
+    pageSize: 20,
+    loading: false,
+    hasMore: true,
+  })
+  // shoeLib:鞋库  uploadShoe:上传的鞋
+  const tabValue = ref<'shoeLib' | 'uploadShoe'>('shoeLib')
+  const shoeList = ref<any[]>([])
+
+  // 鞋库tab列表
+  const publicTemplateApi = () => {
+    if (pagingData.loading) return
+    const params = {
+      moduleCode: 'shoeSwapping',
+      slotCode: 'shoeTemplate',
+      filters: {
+        gender: [shoeFilterData.gender],
+        age: [shoeFilterData.age],
+        skin: [shoeFilterData.skin],
+      },
+      ...pagingData,
+    } as const
+    pagingData.loading = true
+    publicTemplate(params)
+      .then((res) => {
+        if (res.code === 0) {
+          pagingData.page++
+          shoeList.value.push(...res.data.list)
+          if (res.data.list.length < pagingData.pageSize) {
+            pagingData.hasMore = false
+          }
+        }
+      })
+      .finally(() => (pagingData.loading = false))
+  }
+  publicTemplateApi()
+
+  const scrollCallBack = () => {
+    if (pagingData.hasMore) publicTemplateApi()
+  }
+
+  watch(shoeFilterData, () => {
+    pagingData.page = 1
+    pagingData.hasMore = true
+    shoeList.value = []
+    publicTemplateApi()
+  })
+
+  return { shoeFilterData, pagingData, tabValue, shoeList, scrollCallBack }
+}
 </script>
 
 <template>
-  <Container
-    class="commerce"
-    title="AI试鞋"
-    rightTitle="AI试鞋"
-    :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
-  >
+  <Container class="commerce" title="AI试鞋" :submit="submit" :loading="loading">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
         <ImageUpload
-          v-model:imgList="formData.imgList"
-          btnName="上传参产品图"
+          v-model:imgList="formData.imageUrls"
+          btnName="上传产品图"
           :tryImages="[
             'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
           ]"
@@ -42,38 +122,59 @@ const tabValue = ref(0)
         </ImageUpload>
 
         <div class="module-title">选择试鞋模版</div>
-        <Tab
-          v-model:value="tabValue"
-          :tabs="[
-            { label: '试鞋模版', value: 0 },
-            { label: '上传模版', value: 1 },
-          ]"
-        />
-        <SelectGroup
-          v-model:data="formData"
-          :list="[
-            { field: 'platform', options: platformOptions },
-            { field: 'platform', options: platformOptions },
-            { field: 'platform', options: platformOptions },
-          ]"
-          :col="3"
-          style="margin-top: 12px"
-        />
-        <GridImage
-          style="margin-top: 8px"
-          :imgList="[
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-          ]"
-        />
-       </div>
+        <div v-loading="pagingData.loading" style="position: relative">
+          <Tab
+            v-model:value="tabValue"
+            :tabs="[
+              { label: '模特库', value: 'shoeLib' },
+              { label: '上传模特', value: 'uploadShoe' },
+            ]"
+          />
+          <div v-show="tabValue === 'shoeLib'">
+            <SelectGroup
+              v-model:data="shoeFilterData"
+              :list="[
+                { field: 'gender', options: genderOps, placeholder: '性别' },
+                { field: 'pose', options: poseOps, placeholder: '姿势' },
+                { field: 'shoeStyle', options: shoeStyleOps, placeholder: '款式' },
+              ]"
+              :col="3"
+              style="margin-top: 12px"
+              clearable
+              multiple
+            />
+            <GridImage
+              style="margin-top: 8px"
+              v-model:imageUrl="formData.personUrl"
+              :imgList="shoeList.map((item) => item.url)"
+              :scrollCallBack="scrollCallBack"
+            />
+          </div>
+
+          <div v-show="tabValue === 'uploadShoe'" style="margin-top: 8px">
+            <ImageUpload
+              v-model:imgList="formData.uploadPersonUrl"
+              btnName="上传模特图"
+              :limitNumber="1"
+              :topRightTips="false"
+            />
+          </div>
+        </div>
+      </div>
     </template>
-    <template #sample>
-      <div class="sample-cont"></div>
+
+    <template #rightContent>
+      <div v-if="showList" class="result-cont">
+        <div class="right-content-title">生成结果</div>
+        <RecordList />
+      </div>
+      <Sample
+        v-else
+        title="AI试鞋"
+        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        image="e-commerce/try-shoe.webp"
+      >
+      </Sample>
     </template>
   </Container>
 </template>

@@ -1,120 +1,188 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
+import VideoUpload, { type IVideoItem } from '@/components/VideoUpload/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import PromptAssist from '../../components/PromptAssist/index.vue'
-import ManySelect from '@/components/SelectGroup/index.vue'
-import { countryOptions, languageOptions, platformOptions } from '@/views/e-commerce/childPages/constants.ts'
+import SelectGroup from '@/components/SelectGroup/index.vue'
+import { genderOps, ageOps, skinOps } from '../../constants.ts'
 import Tab from '@/components/Tab/index.vue'
-import Textarea from '@/components/Textarea/index.vue'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
+import { publicTemplate } from '@/api/methods.ts'
+import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
+import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
+import { useMessage } from 'naive-ui'
 
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
+
+const { taskList, showList, execute } = useInitCheckTaskStatus('model-replace')
+provide('recordsData', taskList)
+
+const message = useMessage()
+const loading = ref(false)
 const formData = reactive({
-  imgList: ref([]),
-  platform: ref(0),
-  country: ref(0),
-  language: ref(0),
-  ratio: ref(0),
-  prompt: ref(''),
-  checked: ref([]),
+  personUrl: '', // 模特库
+  uploadPersonUrl: [], // 上传的模特
+  videoUrl: [] as IVideoItem[],
+  target: 'face', // face:换脸  head:换头  person:换全身
 })
-const tabValue = ref(0)
+const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()
+
+const submit = () => {
+  if (loading.value) return
+
+  if (!formData.videoUrl.length) {
+    return message.warning('请上传参考视频')
+  }
+  if (tabValue.value === 'modelLib' && !formData.personUrl) {
+    return message.warning('请选择模特')
+  }
+  if (tabValue.value === 'uploadModel' && !formData.uploadPersonUrl.length) {
+    return message.warning('请上传模特')
+  }
+
+  const params = {
+    type: 'personReplacement',
+    videoUrl: formData.videoUrl[0]!.url,
+    params: {
+      personUrl: tabValue.value === 'modelLib' ? formData.personUrl : formData.uploadPersonUrl[0],
+      target: formData.target,
+    },
+  }
+  execute(params, loading)
+}
+function useModelList() {
+  const modelFilterData = reactive({
+    gender: null,
+    age: null,
+    skin: null,
+  })
+  const pagingData = reactive({
+    page: 1,
+    pageSize: 20,
+    loading: false,
+    hasMore: true,
+  })
+  // modelLib:模特库  uploadModel:上传模特
+  const tabValue = ref<'modelLib' | 'uploadModel'>('modelLib')
+  const modelList = ref<any[]>([])
+
+  // 模特库tab列表
+  const publicTemplateApi = () => {
+    if (pagingData.loading) return
+    const params = {
+      moduleCode: 'personReplacement',
+      slotCode: 'model',
+      filters: {
+        gender: [modelFilterData.gender],
+        age: [modelFilterData.age],
+        skin: [modelFilterData.skin],
+      },
+      ...pagingData,
+    } as const
+    pagingData.loading = true
+    publicTemplate(params)
+      .then((res) => {
+        if (res.code === 0) {
+          pagingData.page++
+          modelList.value.push(...res.data.list)
+          if (res.data.list.length < pagingData.pageSize) {
+            pagingData.hasMore = false
+          }
+        }
+      })
+      .finally(() => (pagingData.loading = false))
+  }
+  publicTemplateApi()
+
+  const scrollCallBack = () => {
+    if (pagingData.hasMore) publicTemplateApi()
+  }
+
+  watch(modelFilterData, () => {
+    pagingData.page = 1
+    pagingData.hasMore = true
+    modelList.value = []
+    publicTemplateApi()
+  })
+
+  return { modelFilterData, pagingData, tabValue, modelList, scrollCallBack }
+}
 </script>
 
 <template>
-  <Container
-    class="commerce"
-    title="模特替换"
-    rightTitle="模特替换"
-    :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
-  >
+  <Container class="commerce" title="模特替换" :submit="submit" :loading="loading">
     <template #default>
       <div class="default-content">
-        <Tab
-          v-model:value="tabValue"
-          :tabs="[
-            { label: '只换模特', value: 0 },
-            { label: '换模特/服装', value: 1 },
-          ]"
-          style="margin-top: 26px"
-        />
+        <div class="module-title">参考视频</div>
+        <VideoUpload v-model:videoList="formData.videoUrl" btnName="上传参考视频">
+          <span style="color: #9e9e9e; margin-top: 15px">视频过长时，将自动压缩至15秒，确保最佳效果。</span>
+        </VideoUpload>
 
-        <div class="tab-content">
-          <template v-if="!tabValue">
-            <div class="module-title">参考视频</div>
-            <ImageUpload v-model:imgList="formData.imgList" btnName="上传参考视频">
-              <span style="color: #9e9e9e; margin-top: 15px">视频过长时，将自动压缩至15秒，确保最佳效果。</span>
-            </ImageUpload>
-
-            <div class="module-title">选择模特</div>
-            <Tab
-              v-model:value="tabValue"
-              :tabs="[
-                { label: '模特库', value: 0 },
-                { label: '上传模特', value: 1 },
-              ]"
-            />
-            <ManySelect
-              v-model:data="formData"
+        <div v-loading="pagingData.loading" style="position: relative">
+          <div class="module-title">选择模特</div>
+          <Tab
+            v-model:value="tabValue"
+            :tabs="[
+              { label: '模特库', value: 'modelLib' },
+              { label: '上传模特', value: 'uploadModel' },
+            ]"
+          />
+          <div v-show="tabValue === 'modelLib'">
+            <SelectGroup
+              v-model:data="modelFilterData"
               :list="[
-                { field: 'platform', options: platformOptions },
-                { field: 'country', options: countryOptions },
-                { field: 'language', options: languageOptions },
+                { field: 'gender', options: genderOps, placeholder: '性别' },
+                { field: 'age', options: ageOps, placeholder: '年龄' },
+                { field: 'skin', options: skinOps, placeholder: '肤色' },
               ]"
               :col="3"
               style="margin-top: 12px"
+              clearable
+              multiple
             />
             <GridImage
               style="margin-top: 8px"
-              :imgList="[
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-              ]"
+              v-model:imageUrl="formData.personUrl"
+              :imgList="modelList.map((item) => item.url)"
+              :scrollCallBack="scrollCallBack"
             />
+          </div>
 
-            <div class="module-title">替换区域</div>
-            <Tab
-              v-model:value="tabValue"
-              :tabs="[
-                { label: '换脸', value: 0 },
-                { label: '换头', value: 1 },
-                { label: '换全身', value: 2 },
-              ]"
-            />
-          </template>
-
-          <template v-else>
-            <div class="module-title">参考视频</div>
-            <ImageUpload v-model:imgList="formData.imgList" btnName="上传参考视频">
-              <span style="color: #9e9e9e; margin-top: 15px">视频过长时，将自动压缩至15秒，确保最佳效果。</span>
-            </ImageUpload>
-
-            <div class="module-title">模特图</div>
+          <div v-show="tabValue === 'uploadModel'" style="margin-top: 8px">
             <ImageUpload
-              v-model:imgList="formData.imgList"
+              v-model:imgList="formData.uploadPersonUrl"
               btnName="上传模特图"
-              :tryImages="[
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-                'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-              ]"
-            >
-              <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
-            </ImageUpload>
-          </template>
+              :limitNumber="1"
+              :topRightTips="false"
+            />
+          </div>
         </div>
+
+        <div class="module-title">替换区域</div>
+        <Tab
+          v-model:value="formData.target"
+          :tabs="[
+            { label: '换脸', value: 'face' },
+            { label: '换头', value: 'head' },
+            { label: '换模特/服装', value: 'person' },
+          ]"
+        />
       </div>
     </template>
-    <template #sample>
-      <div class="sample-cont"></div>
+
+    <template #rightContent>
+      <div v-if="showList" class="result-cont">
+        <div class="right-content-title">生成结果</div>
+        <RecordList />
+      </div>
+      <Sample
+        v-else
+        title="模特替换"
+        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+      >
+        <video class="video" controls :src="VITE_OSS_ASSET_URL + 'e-commerce/video/model-replace.mp4'"></video>
+      </Sample>
     </template>
   </Container>
 </template>
@@ -169,7 +237,11 @@ const tabValue = ref(0)
     }
   }
 
-  .sample-cont {
+  .video {
+    width: 100%;
+    display: block;
+    margin: 0 auto;
+    border-radius: 5px;
   }
 }
 </style>

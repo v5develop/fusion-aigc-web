@@ -9,6 +9,7 @@ interface IProps {
   exampleImages?: string[] // 示例图
   btnName?: string // 按钮名称
   multiple?: boolean
+  topRightTips?: boolean // 把topRightTips=false和limitNumber=1，就能提示只能上传一张
   bottomTips?: boolean
   tryImages?: any[] // 试一试图片
   field?: string // imgList为对象数组时，取图片地址的key，默认image
@@ -19,12 +20,15 @@ const {
   limitNumber,
   exampleImages,
   multiple = false,
+  topRightTips = true,
   bottomTips,
   btnName = '上传产品图',
   field = 'image',
   customResultHandle,
 } = defineProps<IProps>()
-const imgList = defineModel<any[]>('imgList', { required: true })
+const imgList = defineModel<any[]>('imgList', {
+  default: () => [],
+})
 
 const message = useMessage()
 const loading = ref(false)
@@ -82,7 +86,7 @@ const beforeUpload = () => {
 
   <div v-if="type === 'default'" class="default-style" v-loading="loading">
     <div class="main">
-      <div v-if="limitNumber" class="limit-tips">支持多图(最多{{ limitNumber }}张)</div>
+      <div v-if="limitNumber && topRightTips" class="limit-tips">支持多图(最多{{ limitNumber }}张)</div>
 
       <div class="upload-btn" @click="beforeUpload">
         <i class="icon-ic_ds_CloudUpload1"></i>

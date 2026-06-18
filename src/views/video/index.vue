@@ -4,27 +4,42 @@ import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
+import { durationOps, modelOps, ratioOps, taskOps } from './constants.ts'
+import { useHomeStore } from '@/stores/home'
+import { storeToRefs } from 'pinia'
+import type { ICreationSubmit } from '@/api/types.ts'
+import { assetAll, creationSubmit } from '@/api/methods.ts'
 
-const dynamicScrollerRef = useTemplateRef('dynamicScrollerRef')
-// ==================== 输入框相关 ====================
-const { imgList, selectValues, options1, options3 } = useChat()
-
-function useChat() {
-  const imgList = ref<any[]>([])
-  const selectValues = reactive({
-    value1: 0,
-    value2: 0,
-  })
-  const options1 = [
-    { label: '图生图', value: 0 },
-    { label: '文生图', value: 1 },
-  ]
-  const options3 = [
-    { label: '智能比例', value: 0 },
-    { label: '智能比例2', value: 1 },
-  ]
-  return { imgList, selectValues, options1, options3 }
+const store = useHomeStore()
+const { global_formData } = storeToRefs(store)
+let _formData: any
+if (global_formData.value.home) {
+  const {
+    entryCode = 'textToVideo',
+    modelCode = 'local-video',
+    prompt = '',
+    ratio = '720,1280',
+    resolution = '720p',
+    duration = 4,
+    images = [],
+  } = global_formData.value.video
+  _formData = { entryCode, modelCode, prompt, ratio, resolution, duration, images }
+  store.reset()
 }
+
+const loading = ref(false)
+const formData = reactive(
+  _formData ?? {
+    entryCode: 'textToVideo',
+    modelCode: 'local-video',
+    prompt: '',
+    ratio: '720,1280',
+    resolution: '720p',
+    duration: 4,
+    images: [],
+  },
+)
+const dynamicScrollerRef = useTemplateRef('dynamicScrollerRef')
 
 // ==================== 消息数据 ====================
 interface ChatMessage {
@@ -89,6 +104,36 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
 })
 const id = ref(9)
+
+const submit = () => {
+  if (loading.value) return
+  loading.value = true
+
+  const wh = formData.ratio.split(',')
+  const params: ICreationSubmit = {
+    type: 'IMAGE',
+    entryCode: formData.entryCode as ICreationSubmit['entryCode'],
+    modelCode: 'local-image',
+    params: {
+      prompt: formData.prompt,
+      width: +wh[0]!,
+      height: +wh[1]!,
+    },
+    images: formData.images,
+  }
+  creationSubmit(params).then((res) => {
+    if (res.code === 0) {
+    }
+  })
+}
+
+const getData = () => {
+  assetAll({ type: 'video' }).then((res) => {
+    if (res.code === 0) {
+    }
+  })
+}
+getData()
 </script>
 
 <template>
@@ -120,7 +165,7 @@ const id = ref(9)
         }"
       >
         <template #default="{ item, index, active }">
-          <DynamicScrollerItem :item="item" :active="active" :size-dependencies="[item.images]" :data-index="index">
+          <DynamicScrollerItem :item="item" :active="active" :data-index="index">
             <div class="message-group">
               <!-- 日期标题 -->
               <h2 v-if="item.showDate" class="message-group__date">
@@ -197,10 +242,21 @@ const id = ref(9)
     <div class="input-box" :class="!messages.length ? 'input-box-center' : ''">
       <h1 v-if="!messages.length" class="h1">和我聊聊， 你想要什么设计～</h1>
 
-      <ChatInputBox v-model:imgList="imgList">
+      <ChatInputBox v-model:imgList="formData.images" v-model:prompt="formData.prompt" :submit="submit">
         <template #bottomSelect>
-          <ChatInputSelect v-model:value="selectValues.value1" :options="options1" />
-          <ChatInputSelect v-model:value="selectValues.value2" :options="options3" />
+          <div class="select-cont">
+            <ChatInputSelect v-model:value="formData.entryCode" :options="taskOps" />
+            <ChatInputSelect
+              v-model:value="formData.modelCode"
+              :options="taskOps.find((item) => item.value === formData.entryCode)?.modelOps!"
+            />
+            <ChatInputSelect v-model:value="formData.ratio" :options="ratioOps" />
+            <ChatInputSelect
+              v-model:value="formData.resolution"
+              :options="modelOps.find((item) => item.value === formData.modelCode)?.resolutionOps!"
+            />
+            <ChatInputSelect v-model:value="formData.duration" :options="durationOps" />
+          </div>
         </template>
       </ChatInputBox>
     </div>
@@ -209,4 +265,9 @@ const id = ref(9)
 
 <style scoped lang="less">
 @import '../picture/index.less';
+.select-cont {
+  width: 250px;
+  display: flex;
+  gap: 12px;
+}
 </style>

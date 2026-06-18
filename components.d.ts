@@ -28,6 +28,7 @@ declare module 'vue' {
     Indx: typeof import('./src/components/Tab/indx.vue')['default']
     ManySelect: typeof import('./src/components/ManySelect/index.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
+    NCarousel: typeof import('naive-ui')['NCarousel']
     NColorPicker: typeof import('naive-ui')['NColorPicker']
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']
     NDropdown: typeof import('naive-ui')['NDropdown']
@@ -48,7 +49,7 @@ declare module 'vue' {
     Textarea: typeof import('./src/components/Textarea/index.vue')['default']
     TheWelcome: typeof import('./src/components/TheWelcome.vue')['default']
     Upload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
-    VideoUpload: typeof import('./src/components/videoUpload/index.vue')['default']
+    VideoUpload: typeof import('./src/components/VideoUpload/index.vue')['default']
     WaterfallVirtualScroller: typeof import('./src/components/WaterfallVirtualScroller/index.vue')['default']
     WelcomeItem: typeof import('./src/components/WelcomeItem.vue')['default']
   }
@@ -72,6 +73,7 @@ declare global {
   const Indx: typeof import('./src/components/Tab/indx.vue')['default']
   const ManySelect: typeof import('./src/components/ManySelect/index.vue')['default']
   const NButton: typeof import('naive-ui')['NButton']
+  const NCarousel: typeof import('naive-ui')['NCarousel']
   const NColorPicker: typeof import('naive-ui')['NColorPicker']
   const NDialogProvider: typeof import('naive-ui')['NDialogProvider']
   const NDropdown: typeof import('naive-ui')['NDropdown']
@@ -92,7 +94,7 @@ declare global {
   const Textarea: typeof import('./src/components/Textarea/index.vue')['default']
   const TheWelcome: typeof import('./src/components/TheWelcome.vue')['default']
   const Upload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
-  const VideoUpload: typeof import('./src/components/videoUpload/index.vue')['default']
+  const VideoUpload: typeof import('./src/components/VideoUpload/index.vue')['default']
   const WaterfallVirtualScroller: typeof import('./src/components/WaterfallVirtualScroller/index.vue')['default']
   const WelcomeItem: typeof import('./src/components/WelcomeItem.vue')['default']
 }

@@ -1,42 +1,22 @@
 <script setup lang="ts">
 import { provide, reactive, ref } from 'vue'
-import { ecommerceSubmit } from '@/api/methods.ts'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import Sample from '../../components/Sample/index.vue'
-import RecordList from '@/views/asset/components/RecordList/index.vue'
+import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { checkboxCustomImageList } from './constants.ts'
 import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
 import type { ICheckboxCustomImageItem } from './constants.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+import { useMessage } from 'naive-ui'
 
-const { result: taskList = [], getSessionId, startPolling } = useInitCheckTaskStatus('product-kit')
-/*const records = ref([
-  {
-    title: '粉色弹盖式时尚保温杯',
-    date: '2026-05-24 13:26',
-    images: [
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2022/10/13/23/12/07/101909818_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-      'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/6.png',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2022/10/13/23/12/07/101909818_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/ 111787785_p0_master1200.jpg',
-      'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/17/10/00/06/111787785_p0_master1200.jpg',
-    ],
-  },
-  {
-    title: '粉色弹盖式时尚保温杯',
-    date: '2026-05-24 13:26',
-    images: ['https://i.pixiv.re/c/540x540_70/img-master/img/2023/05/09/00/30/02/107956384_p0_master1200.jpg'],
-  },
-])*/
+const { taskList, showList, execute } = useInitCheckTaskStatus('product-kit')
 provide('recordsData', taskList)
 
+const message = useMessage()
 const loading = ref(false)
 const formData = reactive({
   imageUrls: [],
@@ -58,10 +38,12 @@ const { customData, checkboxClickHandle, sub, add } = useCheckbox()
 const submit = () => {
   if (loading.value) return
 
+  if (!formData.imageUrls.length) {
+    return message.warning('请上传产品图')
+  }
+
   const { white, scence, key_points, detai } = formData.checked.includes('auto') ? defaultCustomData : customData
-  const sessionId = getSessionId()
   const params = {
-    sessionId,
     type: 'productSetImages',
     imageUrls: formData.imageUrls,
     params: {
@@ -73,15 +55,7 @@ const submit = () => {
       ...{ white, scence, key_points, detai },
     },
   }
-  loading.value = true
-  ecommerceSubmit(params)
-    .then((res) => {
-      if (res.code === 0) {
-        // 开始轮询
-        startPolling(sessionId)
-      }
-    })
-    .finally(() => (loading.value = false))
+  execute(params, loading)
 }
 function useCheckbox() {
   const customData = reactive(defaultCustomData)
@@ -174,9 +148,9 @@ function useCheckbox() {
     </template>
 
     <template #rightContent>
-      <div v-if="taskList?.length">
+      <div v-if="showList" class="result-cont">
         <div class="right-content-title">生成结果</div>
-        <RecordList :showSelect="false" />
+        <RecordList />
       </div>
       <Sample
         v-else

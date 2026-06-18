@@ -60,6 +60,11 @@ export default [
     component: () => import('@/views/e-commerce/childPages/clothing/clothingTry/index.vue'),
   },
   {
+    path: '/e-commerce/clothing-remove-wrinkle',
+    name: 'clothing-remove-wrinkle',
+    component: () => import('@/views/e-commerce/childPages/clothing/clothingRemoveWrinkle/index.vue'),
+  },
+  {
     path: '/e-commerce/merge-image',
     name: 'merge-image',
     component: () => import('@/views/e-commerce/childPages/clothing/mergeImage/index.vue'),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 
 interface IOption {
   label: string
@@ -24,6 +24,37 @@ const select = (option: IOption) => {
   value.value = option.value
   visible.value = false
 }
+
+// ============ 弹出方向自适应 ============
+const dropdownListRef = ref<HTMLElement | null>(null)
+const placement = ref<'bottom' | 'top'>('bottom')
+
+const refreshPlacement = () => {
+  const host = dropdownRef.value
+  if (!host) return
+  const hostRect = host.getBoundingClientRect()
+  // 用实际 DOM 高度或按选项数量估算
+  const list = dropdownListRef.value
+  const estimatedHeight = list ? list.scrollHeight : options.length * 36 + 8
+  const spaceBelow = window.innerHeight - hostRect.bottom
+  const spaceAbove = hostRect.top
+
+  placement.value = spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove ? 'bottom' : 'top'
+}
+
+watch(visible, (val) => {
+  if (val) nextTick(() => refreshPlacement())
+})
+
+// options 动态变化时，若当前 value 不在新列表中，默认选中第一项
+watch(
+  () => options,
+  (newOptions) => {
+    if (newOptions.length > 0 && !newOptions.some((o) => o.value === value.value)) {
+      value.value = newOptions[0]!.value
+    }
+  },
+)
 
 // ============ 全局单例点击管理器 ============
 type CloseFn = () => void
@@ -86,8 +117,8 @@ onUnmounted(() => {
       <svg
         class="arrow"
         :class="{ open: visible }"
-        width="18"
-        height="18"
+        width="16"
+        height="16"
         viewBox="0 0 12 12"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
@@ -103,7 +134,7 @@ onUnmounted(() => {
     </div>
 
     <Transition name="slide-fade">
-      <ul v-show="visible" class="dropdown">
+      <ul v-show="visible" ref="dropdownListRef" class="dropdown" :class="{ 'placement-top': placement === 'top' }">
         <li
           v-for="option in options"
           :key="option.value"
@@ -120,6 +151,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="less">
+@import '@/assets/variables.less';
+
 .chat-select {
   position: relative;
   display: inline-flex;
@@ -133,12 +166,12 @@ onUnmounted(() => {
     user-select: none;
 
     .trigger-icon {
-      font-size: 18px;
+      font-size: 14px;
       color: #3a3a3a;
     }
 
     .label {
-      font-size: 14px;
+      font-size: 12px;
       color: #3a3a3a;
       line-height: 20px;
       white-space: nowrap;
@@ -155,6 +188,8 @@ onUnmounted(() => {
   }
 
   .dropdown {
+    max-height: 250px;
+    overflow: auto;
     position: absolute;
     top: calc(100% + 2px);
     left: -8px;
@@ -168,10 +203,16 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     z-index: 1000;
+    .scrollbar(@width: 5px, @thumbColor: #dcdcdc);
+
+    &.placement-top {
+      top: auto;
+      bottom: calc(100% + 2px);
+    }
 
     .option {
       padding: 8px 16px;
-      font-size: 14px;
+      font-size: 12px;
       color: #3a3a3a;
       border-radius: 2px;
       cursor: pointer;
@@ -207,5 +248,13 @@ onUnmounted(() => {
 .slide-fade-leave-to {
   opacity: 0;
   transform: translateY(-4px);
+}
+
+// 向上弹出时，动画方向反转
+.placement-top.slide-fade-enter-from {
+  transform: translateY(4px);
+}
+.placement-top.slide-fade-leave-to {
+  transform: translateY(4px);
 }
 </style>

@@ -1,123 +1,219 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import Tab from '@/components/Tab/index.vue'
-import { countryOptions, languageOptions, platformOptions } from '@/views/e-commerce/childPages/constants.ts'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import Textarea from '@/components/Textarea/index.vue'
+import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
+import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
+import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+import { publicTemplate } from '@/api/methods.ts'
+import { ageOps, genderOps, skinOps } from '@/views/e-commerce/childPages/constants.ts'
+import { useMessage } from 'naive-ui'
 
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
+
+const { taskList, showList, execute } = useInitCheckTaskStatus('clothing-kit')
+provide('recordsData', taskList)
+
+const message = useMessage()
+const loading = ref(false)
 const formData = reactive({
-  imgList: ref([]),
-  platform: ref(0),
-  country: ref(0),
-  language: ref(0),
-  ratio: ref(0),
-  prompt: ref(''),
-  checked: ref([]),
+  imageUrls: [],
+  personUrl: '', // 模特库
+  uploadPersonUrl: [], // 上传的模特
+  aspectRatio: '3:4',
+  prompt: '',
+  scenePhoto: [] as string[],
 })
-const tabValue = ref(0)
 const switchValue = ref(true)
+const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()
+
+const submit = () => {
+  if (loading.value) return
+
+  if (!formData.imageUrls.length) {
+    return message.warning('请上传服装图')
+  }
+  if (tabValue.value === 'modelLib' && !formData.personUrl) {
+    return message.warning('请选择模特')
+  }
+  if (tabValue.value === 'uploadModel' && !formData.uploadPersonUrl.length) {
+    return message.warning('请上传模特')
+  }
+
+  if (formData.prompt) formData.scenePhoto.push(formData.prompt)
+  const params = {
+    type: 'wearingProductSetImages',
+    imageUrls: formData.imageUrls,
+    params: {
+      personUrl: tabValue.value === 'modelLib' ? formData.personUrl : formData.uploadPersonUrl[0],
+      aspectRatio: formData.aspectRatio,
+      scenePhoto: formData.scenePhoto,
+    },
+  }
+  execute(params, loading)
+}
+
+function useModelList() {
+  const modelFilterData = reactive({
+    gender: null,
+    age: null,
+    skin: null,
+  })
+  const pagingData = reactive({
+    page: 1,
+    pageSize: 20,
+    loading: false,
+    hasMore: true,
+  })
+  // modelLib:模特库  uploadModel:上传模特
+  const tabValue = ref<'modelLib' | 'uploadModel'>('modelLib')
+  const modelList = ref<any[]>([])
+
+  // 模特库tab列表
+  const publicTemplateApi = () => {
+    if (pagingData.loading) return
+    const params = {
+      moduleCode: 'wearingProductSetImages',
+      slotCode: 'model',
+      filters: {
+        gender: [modelFilterData.gender],
+        age: [modelFilterData.age],
+        skin: [modelFilterData.skin],
+      },
+      ...pagingData,
+    } as const
+    pagingData.loading = true
+    publicTemplate(params)
+      .then((res) => {
+        if (res.code === 0) {
+          pagingData.page++
+          modelList.value.push(...res.data.list)
+          if (res.data.list.length < pagingData.pageSize) {
+            pagingData.hasMore = false
+          }
+        }
+      })
+      .finally(() => (pagingData.loading = false))
+  }
+  publicTemplateApi()
+
+  const scrollCallBack = () => {
+    if (pagingData.hasMore) publicTemplateApi()
+  }
+
+  watch(modelFilterData, () => {
+    pagingData.page = 1
+    pagingData.hasMore = true
+    modelList.value = []
+    publicTemplateApi()
+  })
+
+  return { modelFilterData, pagingData, tabValue, modelList, scrollCallBack }
+}
 </script>
 
 <template>
-  <Container
-    class="commerce"
-    title="穿戴套图"
-    rightTitle="穿戴套图"
-    :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
-  >
+  <Container class="commerce" title="穿戴套图" :submit="submit" :loading="loading">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
-        <ImageUpload v-model:imgList="formData.imgList" btnName="上传参产品图" :limitNumber="5" multiple>
+        <ImageUpload v-model:imgList="formData.imageUrls" btnName="服装图片" :limitNumber="5" multiple>
           <span style="color: #9e9e9e; margin-top: 15px">整套搭配或同一件服装不同角度图</span>
         </ImageUpload>
 
         <div class="module-title">选择模特</div>
-        <Tab
-          v-model:value="tabValue"
-          :tabs="[
-            { label: '模特库', value: 0 },
-            { label: '上传新模特', value: 1 },
-          ]"
-        />
-        <SelectGroup
-          v-model:data="formData"
-          :list="[
-            { field: 'platform', options: platformOptions },
-            { field: 'platform', options: platformOptions },
-            { field: 'platform', options: platformOptions },
-          ]"
-          :col="3"
-          style="margin-top: 12px"
-        />
-        <GridImage
-          style="margin-top: 8px"
-          :imgList="[
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-          ]"
-        />
+        <div v-loading="pagingData.loading" style="position: relative">
+          <Tab
+            v-model:value="tabValue"
+            :tabs="[
+              { label: '模特库', value: 'modelLib' },
+              { label: '上传模特', value: 'uploadModel' },
+            ]"
+          />
+          <div v-show="tabValue === 'modelLib'">
+            <SelectGroup
+              v-model:data="modelFilterData"
+              :list="[
+                { field: 'gender', options: genderOps, placeholder: '性别' },
+                { field: 'age', options: ageOps, placeholder: '年龄' },
+                { field: 'skin', options: skinOps, placeholder: '肤色' },
+              ]"
+              :col="3"
+              style="margin-top: 12px"
+              clearable
+              multiple
+            />
+            <GridImage
+              style="margin-top: 8px"
+              v-model:imageUrl="formData.personUrl"
+              :imgList="modelList.map((item) => item.url)"
+              :scrollCallBack="scrollCallBack"
+            />
+          </div>
+
+          <div v-show="tabValue === 'uploadModel'" style="margin-top: 8px">
+            <ImageUpload
+              v-model:imgList="formData.uploadPersonUrl"
+              btnName="上传模特图"
+              :limitNumber="1"
+              :topRightTips="false"
+            />
+          </div>
+        </div>
 
         <div class="module-title">图片比例</div>
         <Tab
-          v-model:value="tabValue"
+          v-model:value="formData.aspectRatio"
           :tabs="[
-            { label: '3:4', value: 0 },
-            { label: '1:1', value: 1 },
-            { label: '9:16', value: 2 },
+            { label: '3:4', value: '3:4' },
+            { label: '1:1', value: '1:1' },
+            { label: '9:16', value: '9:16' },
           ]"
         />
 
         <div class="module-title">拍摄场景（多选）</div>
-        <div class="switch-cont">
-          <span>AI推荐</span>
-          <n-switch v-model:value="switchValue" />
-        </div>
+        <!--        <div class="switch-cont">-->
+        <!--          <span>AI推荐</span>-->
+        <!--          <n-switch v-model:value="switchValue" />-->
+        <!--        </div>-->
         <template v-if="switchValue">
           <CheckboxGroup
-            v-model="formData.checked"
+            v-model="formData.scenePhoto"
             :list="[
-            {
-              label: 'UGG 种草',
-              value: 'ugg',
-            },
-            {
-              label: '带货短剧',
-              value: 'short_video_1',
-            },
-            {
-              label: '产品演示',
-              value: 'product_demo',
-            },
-            {
-              label: '产品口播',
-              value: 'product_talk',
-            },
-            {
-              label: 'TVC广告',
-              value: 'tvc_ad',
-            },
-            {
-              label: '带货短剧',
-              value: 'short_video_2',
-            },
-            {
-              label: '开箱种草',
-              value: 'unboxing',
-            },
-            {
-              label: '痛点解决',
-              value: 'pain_solve',
-            },
-          ]"
+              {
+                label: '纯色棚拍',
+                value: '纯色棚拍',
+              },
+              {
+                label: '都市街头',
+                value: '都市街头',
+              },
+              {
+                label: '街头咖啡',
+                value: '街头咖啡',
+              },
+              {
+                label: '自然草坪',
+                value: '自然草坪',
+              },
+              {
+                label: '度假海滩',
+                value: '度假海滩',
+              },
+              {
+                label: '温馨家居',
+                value: '温馨家居',
+              },
+              {
+                label: '艺术展馆',
+                value: '艺术展馆',
+              },
+            ]"
             :col="2"
             gap="8px"
           />
@@ -131,8 +227,24 @@ const switchValue = ref(true)
         </template>
       </div>
     </template>
-    <template #sample>
-      <div class="sample-cont"></div>
+
+    <template #rightContent>
+      <div v-if="showList" class="result-cont">
+        <div class="right-content-title">生成结果</div>
+        <RecordList />
+      </div>
+      <Sample
+        v-else
+        title="穿戴套图"
+        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+      >
+        <n-carousel style="height: 384px; width: 100%" dot-type="line" autoplay :interval="3000">
+          <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit1.webp'" alt="" />
+          <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit2.webp'" alt="" />
+          <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit3.webp'" alt="" />
+          <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit4.webp'" alt="" />
+        </n-carousel>
+      </Sample>
     </template>
   </Container>
 </template>
@@ -162,8 +274,19 @@ const switchValue = ref(true)
       }
     }
   }
-
-  .sample-cont {
+  :deep(.n-carousel) {
+    border-radius: 24px;
+    .n-carousel__dot {
+      background-color: #c4c4c4;
+    }
+    .n-carousel__dot--active {
+      background-color: var(--main-color) !important;
+    }
+  }
+  .carousel-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 }
 </style>

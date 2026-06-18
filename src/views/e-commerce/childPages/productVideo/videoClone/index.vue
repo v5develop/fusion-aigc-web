@@ -2,13 +2,12 @@
 import { reactive, ref, provide } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import VideoUpload from '@/components/VideoUpload/index.vue'
+import VideoUpload, { type IVideoItem } from '@/components/VideoUpload/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import { regionOps, languageOps } from '@/views/e-commerce/childPages/constants.ts'
 import { modelOps } from '../constants.ts'
-import { ecommerceSubmit } from '@/api/methods.ts'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
-import RecordList from '@/views/asset/components/RecordList/index.vue'
+import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import CustomModel from '@/views/e-commerce/childPages/productVideo/videoHot/CustomModel/index.vue'
@@ -16,17 +15,17 @@ import { videoList } from './constants.ts'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
-const { taskList, getSessionId, startPolling } = useInitCheckTaskStatus('video-clone')
+const { taskList, showList, execute } = useInitCheckTaskStatus('video-clone')
 provide('recordsData', taskList)
 
 const loading = ref(false)
 const formData = reactive({
   imageUrls: [],
-  videoUrl: [],
+  videoUrl: [] as IVideoItem[],
   region: '中国',
   language: '中文',
   buyPoint: '',
-  modelName: 'local',
+  modelCode: 'local',
   checked: [] as string[],
   personUrl: '',
 })
@@ -34,13 +33,11 @@ const formData = reactive({
 const submit = () => {
   if (loading.value) return
 
-  const sessionId = getSessionId()
   const params = {
-    sessionId,
     type: 'hitVideoReplication',
     imageUrls: formData.imageUrls,
-    videoUrl: formData.videoUrl[0],
-    modelName: formData.modelName,
+    videoUrl: formData.videoUrl[0]?.url,
+    modelCode: formData.modelCode,
     params: {
       region: formData.region,
       language: formData.language,
@@ -48,15 +45,7 @@ const submit = () => {
       personUrl: formData.personUrl,
     },
   }
-  loading.value = true
-  ecommerceSubmit(params)
-    .then((res) => {
-      if (res.code === 0) {
-        // 开始轮询
-        startPolling(sessionId)
-      }
-    })
-    .finally(() => (loading.value = false))
+  execute(params, loading)
 }
 </script>
 
@@ -95,16 +84,16 @@ const submit = () => {
 
         <!--        外面的模型只能选自己上传的达人，本地模型不做限制-->
         <div class="module-title">选择模型</div>
-        <SelectGroup v-model:data="formData" :list="[{ field: 'modelName', options: modelOps }]" :col="1" />
+        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
 
-        <CustomModel v-model:personUrl="formData.personUrl" :modelName="formData.modelName" />
+        <CustomModel v-model:personUrl="formData.personUrl" :modelCode="formData.modelCode" />
       </div>
     </template>
 
     <template #rightContent>
-      <div v-if="taskList?.length">
+      <div v-if="showList" class="result-cont">
         <div class="right-content-title">生成结果</div>
-        <RecordList :showSelect="false" />
+        <RecordList />
       </div>
       <Sample
         v-else
@@ -126,13 +115,13 @@ const submit = () => {
 
           <div class="item">
             <div class="origin-video">
-              <video class="video" controls :src="videoList[0]!.url"></video>
-              <div class="title">{{ videoList[0]!.title }}</div>
+              <video class="video" controls :src="videoList[2]!.url"></video>
+              <div class="title">{{ videoList[2]!.title }}</div>
             </div>
             <img class="arrow" :src="VITE_OSS_ASSET_URL + 'e-commerce/video-clone-arrow.png'" alt="" />
             <div class="origin-video generate-video">
-              <video class="video" controls :src="videoList[1]!.url"></video>
-              <div class="title">{{ videoList[1]!.title }}</div>
+              <video class="video" controls :src="videoList[3]!.url"></video>
+              <div class="title">{{ videoList[3]!.title }}</div>
             </div>
           </div>
         </div>

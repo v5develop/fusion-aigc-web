@@ -2,42 +2,31 @@
 import { provide, reactive, ref } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import VideoUpload from '@/components/VideoUpload/index.vue'
-import { ecommerceSubmit } from '@/api/methods.ts'
+import VideoUpload, { type IVideoItem } from '@/components/VideoUpload/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
-import RecordList from '@/views/asset/components/RecordList/index.vue'
+import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
-const { taskList, getSessionId, startPolling } = useInitCheckTaskStatus('video-clone')
+const { taskList, showList, execute } = useInitCheckTaskStatus('product-replace')
 provide('recordsData', taskList)
 
 const loading = ref(false)
 const formData = reactive({
   imageUrls: [],
-  videoUrl: [],
+  videoUrl: [] as IVideoItem[],
 })
 
 const submit = () => {
   if (loading.value) return
 
-  const sessionId = getSessionId()
   const params = {
-    sessionId,
     type: 'productReplacement',
     imageUrls: formData.imageUrls,
-    videoUrl: formData.videoUrl[0],
+    videoUrl: formData.videoUrl[0]?.url,
   }
-  loading.value = true
-  ecommerceSubmit(params)
-    .then((res) => {
-      if (res.code === 0) {
-        // 开始轮询
-        startPolling(sessionId)
-      }
-    })
-    .finally(() => (loading.value = false))
+  execute(params, loading)
 }
 </script>
 
@@ -70,16 +59,16 @@ const submit = () => {
     </template>
 
     <template #rightContent>
-      <div v-if="taskList?.length">
+      <div v-if="showList" class="result-cont">
         <div class="right-content-title">生成结果</div>
-        <RecordList :showSelect="false" />
+        <RecordList />
       </div>
       <Sample
         v-else
         title="商品替换"
         :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
       >
-        <video class="video" controls :src="VITE_OSS_ASSET_URL + 'e-commerce/video/video-hot2.mp4'"></video>
+        <video class="video" controls :src="VITE_OSS_ASSET_URL + 'e-commerce/video/product-replace.mp4'"></video>
       </Sample>
     </template>
   </Container>
@@ -93,9 +82,10 @@ const submit = () => {
   .default-content {
   }
   .video {
-    height: 50vh;
+    width: 100%;
     display: block;
     margin: 0 auto;
+    border-radius: 10px;
   }
 }
 </style>

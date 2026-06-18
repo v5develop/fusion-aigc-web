@@ -7,14 +7,13 @@ import SelectGroup from '@/components/SelectGroup/index.vue'
 import { regionOps, languageOps, aspectRatioVideoOps } from '@/views/e-commerce/childPages/constants.ts'
 import { durationOps, modelOps } from '../constants.ts'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
-import { ecommerceSubmit } from '@/api/methods.ts'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
-import RecordList from '@/views/asset/components/RecordList/index.vue'
+import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import CustomModel from './CustomModel/index.vue'
 import { checkboxOps, videoList } from './constants.ts'
 
-const { taskList, getSessionId, startPolling } = useInitCheckTaskStatus('video-hot')
+const { taskList, showList, execute } = useInitCheckTaskStatus('video-hot')
 provide('recordsData', taskList)
 
 const loading = ref(false)
@@ -25,7 +24,7 @@ const formData = reactive({
   aspectRatio: '9:16',
   duration: 16,
   buyPoint: '',
-  modelName: 'local',
+  modelCode: 'local',
   checked: [] as string[],
   personUrl: '',
 })
@@ -33,12 +32,10 @@ const formData = reactive({
 const submit = () => {
   if (loading.value) return
 
-  const sessionId = getSessionId()
   const params = {
-    sessionId,
     type: 'hitVideo',
     imageUrls: formData.imageUrls,
-    modelName: formData.modelName,
+    modelCode: formData.modelCode,
     params: {
       region: formData.region,
       language: formData.language,
@@ -48,15 +45,7 @@ const submit = () => {
       personUrl: formData.personUrl,
     },
   }
-  loading.value = true
-  ecommerceSubmit(params)
-    .then((res) => {
-      if (res.code === 0) {
-        // 开始轮询
-        startPolling(sessionId)
-      }
-    })
-    .finally(() => (loading.value = false))
+  execute(params, loading)
 }
 </script>
 
@@ -102,16 +91,16 @@ const submit = () => {
 
         <!--        外面的模型只能选自己上传的达人，本地模型不做限制-->
         <div class="module-title">选择模型</div>
-        <SelectGroup v-model:data="formData" :list="[{ field: 'modelName', options: modelOps }]" :col="1" />
+        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
 
-        <CustomModel v-model:personUrl="formData.personUrl" :modelName="formData.modelName" />
+        <CustomModel v-model:personUrl="formData.personUrl" :modelCode="formData.modelCode" />
       </div>
     </template>
 
     <template #rightContent>
-      <div v-if="taskList?.length">
+      <div v-if="showList" class="result-cont">
         <div class="right-content-title">生成结果</div>
-        <RecordList :showSelect="false" />
+        <RecordList />
       </div>
       <Sample
         v-else

@@ -40,8 +40,8 @@ const useWaterfall = () => {
     virtual: true,
     enableCache: true,
     gap: 4,
-    // padding: '24px 0',
-    padding: 0,
+    // padding: 0,
+    padding: '1px 0', // 必须加点边距，不然初始化图少没有滚动条时，图片出不来
     itemMinWidth: 220,
     minColumnCount: 2,
     maxColumnCount: 6,

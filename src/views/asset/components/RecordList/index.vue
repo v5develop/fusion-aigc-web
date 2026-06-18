@@ -1,46 +1,53 @@
 <script setup lang="ts">
-import { inject } from 'vue'
+import { inject, type Ref } from 'vue'
 import Card from '../Card/index.vue'
 
-const { showSelect = true } = defineProps<{ showSelect?: boolean }>()
 const recordsData = inject<any[]>('recordsData')
+const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', undefined)
 
-const checkSelected = (item: any) => {
-  return !item.selectList.find((jtem: any) => !jtem.selected)
+// 切换单个分组全部选中
+const toggleGroupAll = (group: any) => {
+  const { allChecked, allImgUrls } = getGroupSelectState(group)
+
+  if (allChecked) {
+    // 本组已全选 → 清空本组所有图片
+    allImgUrls.forEach((url: string) => selectImgUrls?.value.delete(url))
+  } else {
+    // 未全选 → 勾选本组全部图片
+    allImgUrls.forEach((url: string) => selectImgUrls?.value.add(url))
+  }
 }
 
-const selectAll = (item: any) => {
-  if (checkSelected(item)) {
-    item.selectList.forEach((jtem: any) => (jtem.selected = false))
-  } else {
-    item.selectList.forEach((jtem: any) => (jtem.selected = true))
-  }
+const getGroupSelectState = (group: any) => {
+  // 本组所有图片
+  const allImgUrls = group.assets.map((item: any) => item.resultUrl)
+  // 本组已选中数量
+  const checkedCount = allImgUrls.filter((url: string) => selectImgUrls?.value.has(url)).length
+
+  const total = allImgUrls.length
+  const allChecked = total > 0 && checkedCount === total
+  const indeterminate = checkedCount > 0 && !allChecked
+
+  return { allChecked, indeterminate, allImgUrls }
 }
 </script>
 
 <template>
   <div class="record-list">
-    <div class="record-item" v-for="item in recordsData" :key="item.id">
+    <div class="record-item" v-for="item in recordsData" :key="item.taskId">
       <div class="title-cont">
         <div class="left-cont">
           <i
-            v-if="showSelect"
-            :class="checkSelected(item) ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"
-            @click="selectAll(item)"
+            v-if="selectImgUrls"
+            :class="getGroupSelectState(item).allChecked ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"
+            @click="toggleGroupAll(item)"
           />
-          <span>{{ item.date }}</span>
-          <span>{{ item.title }}</span>
+          <span>{{ item.taskTime }}</span>
         </div>
       </div>
 
       <div class="card-cont">
-        <Card
-          class="card-item"
-          v-for="(jtem, j) in item.images"
-          :key="jtem"
-          :data="showSelect ? item.selectList[j] : { url: jtem }"
-          :showSelect="showSelect"
-        />
+        <Card class="card-item" v-for="(jtem, j) in item.assets" :key="j" :data="jtem" />
       </div>
     </div>
   </div>
@@ -61,7 +68,7 @@ const selectAll = (item: any) => {
         gap: 4px;
         > .icon-ic_ds_check_sel,
         > .icon-ic_ds_check_nor {
-          font-size: 20px;
+          font-size: 24px;
           cursor: pointer;
         }
       }

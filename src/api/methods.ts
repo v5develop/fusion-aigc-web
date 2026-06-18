@@ -18,8 +18,16 @@ export function login(data: { username: string; password: string }) {
   return post('/api/v1/auth/login', data)
 }
 
-export function ecommerceSubmit(data: any) {
-  return post('/api/v1/creation/ecommerce/submit', data)
+export function unionTokenLogin(data: { token: string }) {
+  return post('/api/v1/auth/union-token-login', data)
+}
+
+export function getUserInfo() {
+  return post('/api/v1/auth/user-info', {})
+}
+
+export function ecommerceSubmit(data: any, headers: any = { 'Idempotency-Key': crypto.randomUUID() }) {
+  return post('/api/v1/creation/ecommerce/submit', data, headers)
 }
 
 export function pollingTask(sessionId: string) {
@@ -30,8 +38,8 @@ export function pollingSingleTask(taskId: string) {
   return get(`/api/v1/creation/query/${taskId}`)
 }
 
-export function assetAll(params: types.IAssetAll) {
-  return get('/api/v1/asset/all', params)
+export function assetAll(params: types.IAssetAll, headers?: any) {
+  return get('/api/v1/asset/all', params, headers)
 }
 
 export function faceRecognition(data: types.IFaceRecognition) {
@@ -40,4 +48,22 @@ export function faceRecognition(data: types.IFaceRecognition) {
 
 export function faceRecognitionStatusQuery(taskId: string) {
   return get(`/api/v1/creation/faceRecognition/${taskId}`)
+}
+
+export function publicTemplate(params: types.IPublicTemplate) {
+  return get('/api/v1/asset/public/template', {
+    bizType: 'ecommerce',
+    type: 'image',
+    page: 1,
+    pageSize: 15,
+    ...params,
+  })
+}
+
+export function creationSubmit(data: types.ICreationSubmit, headers: any = { 'Idempotency-Key': crypto.randomUUID() }) {
+  return post('/api/v1/creation/submit', data, headers)
+}
+
+export function publicDisplay(params: any) {
+  return get('/api/v1/asset/public/display', params)
 }

@@ -10,7 +10,7 @@ interface IProps {
   gap?: string // 间距
   clearable?: boolean
 }
-const { list, col = 2, gap = '8px', clearable=false } = defineProps<IProps>()
+const { list, col = 2, gap = '8px', clearable = false } = defineProps<IProps>()
 const data = defineModel<Record<string, any>>('data', { required: true })
 </script>
 

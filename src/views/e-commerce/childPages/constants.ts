@@ -27,3 +27,69 @@ export const aspectRatioVideoOps = [
   { label: '9:16', value: '9:16' },
   { label: '16:', value: '16:9' },
 ]
+
+export const genderOps = [
+  { label: '男', value: 'male' },
+  { label: '女', value: 'female' },
+]
+
+export const ageOps = [
+  { label: '儿童', value: 'child' },
+  { label: '青年', value: 'young' },
+  { label: '中年', value: 'middle' },
+  { label: '老年', value: 'old' },
+]
+
+export const skinOps = [
+  { label: '亚洲人', value: 'asia' },
+  { label: '欧洲人', value: 'europe' },
+  { label: '其他', value: 'other' },
+]
+
+export const angleOps = [
+  { label: '正面', value: 'front' },
+  { label: '侧面', value: 'side' },
+  { label: '背面', value: 'back' },
+]
+
+export const shotTypeOps = [
+  { label: '全身', value: 'full' },
+  { label: '半身', value: 'half' },
+  { label: '特写', value: 'close' },
+]
+
+export const styleOps = [
+  { label: '休闲', value: 'casual' },
+  { label: '运动', value: 'sporty' },
+  { label: '商务', value: 'business' },
+]
+
+export const clothStyleOps = [
+  { label: '连衣裙', value: 'dress' },
+  { label: '外套', value: 'jacket' },
+  { label: '连体裤', value: 'jumpsuit' },
+  { label: '内衣', value: 'lingerie' },
+  { label: '长袖', value: 'long_sleeve' },
+  { label: '大衣', value: 'overcoat' },
+  { label: '泳装', value: 'swimwear_bikini' },
+  { label: '背心', value: 'vest' },
+]
+
+export const poseOps = [
+  { label: '全身', value: 'full' },
+  { label: '半身', value: 'half' },
+  { label: '坐姿', value: 'sitting' },
+]
+
+export const shoeStyleOps = [
+  { label: '运动鞋', value: 'sneakers' },
+  { label: '休闲鞋', value: 'casual_shoes' },
+  { label: '皮鞋', value: 'leather_shoes' },
+  { label: '高跟鞋', value: 'heels' },
+  { label: '凉鞋', value: 'sandals' },
+  { label: '拖鞋', value: 'slippers' },
+  { label: '短靴', value: 'ankle_boots' },
+  { label: '长靴', value: 'knee_high_boots' },
+  { label: '洞洞鞋', value: 'crocs' },
+]
+

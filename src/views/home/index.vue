@@ -1,39 +1,46 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import { publicDisplay } from '@/api/methods.ts'
 import { useDebounce } from '@/utils/hooks'
-import ImageTab from '@/views/home/ImageTab/index.vue'
+import ImageTab from './ImageTab/index.vue'
 import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
 import { filterData1, filterData2 } from './constants.ts'
-import { usePaginationData } from '@/utils/hooks'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 import ChatInputBox from './ChatInputBox/index.vue'
+import { taskOps, ratioOps } from '@/views/picture/constants.ts'
+import { taskOps as videoTaskOps, ratioOps as videoRatioOps, durationOps, modelOps } from '@/views/video/constants.ts'
+import { useHomeStore } from '@/stores/home'
+import { storeToRefs } from 'pinia'
 
+const router = useRouter()
+const store = useHomeStore()
+const { global_formData } = storeToRefs(store)
+
+const activeChatTab = ref<TTabValue>('ecommerce')
+const formData = reactive({
+  picture: {
+    entryCode: 'textToImage',
+    prompt: '',
+    ratio: '1024,1024',
+    images: [],
+  },
+  video: {
+    entryCode: 'textToVideo',
+    modelCode: 'local-video',
+    prompt: '',
+    ratio: '720,1280',
+    resolution: '720p',
+    duration: 4,
+    images: [],
+  },
+  ecommerce: {
+    images: [],
+    prompt: '',
+  },
+})
 const homeRef = ref<HTMLDivElement | null>(null)
-const { activeChatTab, imgList, selectValues, options1, options2, options3 } = useChat()
-
-function useChat() {
-  const activeChatTab = ref<TTabValue>('ecommerce')
-  const imgList = ref<any[]>([])
-  const selectValues = reactive({
-    value1: 0,
-    value2: 0,
-  })
-  const options1 = [
-    { label: '图生图', value: 0 },
-    { label: '文生图', value: 1 },
-  ]
-  const options2 = [
-    { label: '灵动图像2.0', value: 0 },
-    { label: '灵动图像3.0', value: 1 },
-  ]
-  const options3 = [
-    { label: '智能比例', value: 0 },
-    { label: '智能比例2', value: 1 },
-  ]
-
-  return { activeChatTab, imgList, selectValues, options1, options2, options3 }
-}
 
 const { preData } = usePreinstall()
 function usePreinstall() {
@@ -47,46 +54,61 @@ function usePreinstall() {
   return { preData }
 }
 
-const { imageTab } = useImageTab()
-function useImageTab() {
-  const imageTab = reactive({
-    value1: 0,
-    value2: 0,
+const { imageTab, waterfallData, getList } = useWaterfall()
+function useWaterfall() {
+  const pagingData = reactive({
+    page: 1,
+    pageSize: 20,
+    loading: false,
+    hasMore: true,
   })
+  const imageTab = reactive({
+    value1: '',
+    value2: 'hot',
+  })
+  const waterfallData = ref<any>([])
+
+  const getList = (isReplace?: boolean) => {
+    if (!pagingData.hasMore) return
+
+    if (pagingData.loading) return
+    pagingData.loading = true
+
+    const params = {
+      page: pagingData.page,
+      pageSize: pagingData.pageSize,
+      type: imageTab.value1,
+      category: imageTab.value2 === 'hot' ? '' : imageTab.value2,
+      hot: imageTab.value2 === 'hot',
+    }
+    publicDisplay(params)
+      .then((res) => {
+        if (res.code === 0) {
+          pagingData.page++
+
+          if (isReplace) waterfallData.value = res.data.list
+          else waterfallData.value.push(...res.data.list)
+
+          if (res.data.list.length < pagingData.pageSize) {
+            pagingData.hasMore = false
+          }
+        }
+      })
+      .finally(() => (pagingData.loading = false))
+  }
+  getList()
 
   useDebounce(
     imageTab,
     () => {
-      console.log(111)
+      pagingData.page = 1
+      pagingData.hasMore = true
+      getList(true)
     },
     0,
   )
 
-  return { imageTab }
-}
-
-const { paginationData } = usePaginationData()
-const { waterfallData, loadData } = useWaterfall()
-function useWaterfall() {
-  const waterfallData = ref<any>([])
-
-  async function loadData() {
-    if (!paginationData.hasMore) {
-      return
-    }
-    paginationData.pageIndex++
-    const response = await fetch(
-      `https://mock.yuan.sh/images?page=${paginationData.pageIndex}&size=${paginationData.pageSize}&mode=simple`,
-    )
-    const result = await response.json()
-    paginationData.total = result.total
-    waterfallData.value = [...waterfallData.value, ...result.list]
-    if (result.list.length < paginationData.pageSize) {
-      paginationData.hasMore = false
-    }
-  }
-
-  return { waterfallData, loadData }
+  return { imageTab, waterfallData, getList }
 }
 
 const backTop = () => {
@@ -97,6 +119,15 @@ const backTop = () => {
 }
 
 const showBackToTop = ref(false)
+
+const submit = () => {
+  if (activeChatTab.value === 'ecommerce') return
+  global_formData.value = {
+    home: true,
+    ...formData,
+  }
+  router.push({ name: activeChatTab.value })
+}
 </script>
 
 <template>
@@ -104,7 +135,7 @@ const showBackToTop = ref(false)
     ref="homeRef"
     class="home"
     v-observer-scroll="{
-      callback: loadData,
+      callback: getList,
       onScroll: (scrollTop: number) => (showBackToTop = scrollTop > 400),
     }"
   >
@@ -115,14 +146,29 @@ const showBackToTop = ref(false)
 
       <ChatTab v-model="activeChatTab" style="justify-content: center" />
 
-      <ChatInputBox v-model:imgList="imgList">
+      <ChatInputBox
+        :activeChatTab="activeChatTab"
+        v-model:imgList="formData[activeChatTab as keyof typeof formData].images"
+        v-model:prompt="formData[activeChatTab as keyof typeof formData].prompt"
+        :submit="submit"
+      >
         <template #bottomSelect>
-          <div v-if="activeChatTab === 'image'" class="select-cont">
-            <ChatInputSelect v-model:value="selectValues.value1" :options="options1" />
-            <ChatInputSelect v-model:value="selectValues.value2" :options="options3" />
+          <div v-if="activeChatTab === 'picture'" class="select-cont">
+            <ChatInputSelect v-model:value="formData.picture.entryCode" :options="taskOps" />
+            <ChatInputSelect v-model:value="formData.picture.ratio" :options="ratioOps" style="margin-left: 10px" />
           </div>
           <div v-else-if="activeChatTab === 'video'" class="select-cont">
-            <ChatInputSelect v-model:value="selectValues.value1" :options="options1" />
+            <ChatInputSelect v-model:value="formData.video.entryCode" :options="videoTaskOps" />
+            <ChatInputSelect
+              v-model:value="formData.video.modelCode"
+              :options="videoTaskOps.find((item) => item.value === formData.video.entryCode)?.modelOps!"
+            />
+            <ChatInputSelect v-model:value="formData.video.ratio" :options="videoRatioOps" />
+            <ChatInputSelect
+              v-model:value="formData.video.resolution"
+              :options="modelOps.find((item) => item.value === formData.video.modelCode)?.resolutionOps!"
+            />
+            <ChatInputSelect v-model:value="formData.video.duration" :options="durationOps" />
           </div>
         </template>
       </ChatInputBox>
@@ -154,4 +200,9 @@ const showBackToTop = ref(false)
 
 <style scoped lang="less">
 @import './index.less';
+.select-cont {
+  width: 250px;
+  display: flex;
+  gap: 12px;
+}
 </style>

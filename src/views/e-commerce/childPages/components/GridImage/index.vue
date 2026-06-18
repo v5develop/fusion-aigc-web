@@ -1,20 +1,45 @@
+<script lang="ts">
+export interface IProps {
+  imgList: string[]
+  showColorPicker?: boolean
+  scrollCallBack?: () => void
+}
+</script>
+
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import ColorPicker from './ColorPicker/index.vue'
 
-const { imgList, showColorPicker = false } = defineProps<{
-  imgList: any[]
-  showColorPicker?: boolean
-}>()
+const { imgList, showColorPicker = false, scrollCallBack } = defineProps<IProps>()
+const imageUrl = defineModel<string>('imageUrl')
 
-const index = ref()
+const type = ref<'color' | 'image'>()
 const color = ref('')
+
+const selectImg = (item: string) => {
+  imageUrl.value = item
+}
+const selectColor = () => {
+  imageUrl.value = ''
+}
 </script>
 
 <template>
-  <div class="grid-container">
-    <ColorPicker v-if="showColorPicker" v-model:color="color" @click="index = -1" :selected="index === -1" />
-    <div class="item" :class="index === i ? 'active' : ''" v-for="(item, i) in imgList" :key="item" @click="index = i">
+  <div
+    class="grid-container"
+    v-observer-scroll="{
+      callback: scrollCallBack,
+    }"
+  >
+    <ColorPicker v-if="showColorPicker" v-model:color="color" @click="selectColor" :selected="type === 'color'" />
+
+    <div
+      class="item"
+      :class="imageUrl === item ? 'active' : ''"
+      v-for="item in imgList"
+      :key="item"
+      @click="selectImg(item)"
+    >
       <img class="img" :src="item" alt="" />
     </div>
   </div>
@@ -22,8 +47,10 @@ const color = ref('')
 
 <style scoped lang="less">
 .grid-container {
+  max-height: 400px;
+  overflow: auto;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   > .item {
     aspect-ratio: 1/1;

@@ -2,16 +2,44 @@ import axios from 'axios'
 import type { AxiosResponse, AxiosError } from 'axios'
 import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
+import { getUserInfo, unionTokenLogin } from '@/api/methods.ts'
 
 const { message } = createDiscreteApi(['message'])
 let isRefreshing = false // 刷新锁：防止并发刷新
-let requestQueue: any[] = []    // 请求队列：缓存过期的请求
+let requestQueue: any[] = [] // 请求队列：缓存过期的请求
 const refreshTokenApi = '/api/v1/auth/refresh'
 
+const baseURL = import.meta.env.PROD ? 'https://aigc.pengqiwl.com' : ''
+console.log(import.meta.env.PROD, 55)
 const service = axios.create({
-  baseURL: '',
+  baseURL,
   timeout: 10000,
 })
+
+// 单航班：失效瞬间多个请求同时失败时，只调用一次桥
+let refreshing: any = null
+async function refreshUnionToken() {
+  const bridge = (window as any).ThirdServiceBridge
+  if (!bridge?.refreshUnionToken) {
+    localStorage.removeItem('fusion_accessToken')
+    localStorage.removeItem('fusion_refreshToken')
+    message.error('请关掉页面重新打开')
+    return Promise.reject()
+  }
+  if (!refreshing) {
+    refreshing = bridge.refreshUnionToken().finally(() => {
+      refreshing = null
+    })
+    const token = await refreshing()
+    const res = await unionTokenLogin({ token })
+    localStorage.setItem('fusion_accessToken', res.data.accessToken)
+    localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
+    const { code, data } = await getUserInfo()
+    if (code === 0) {
+      localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
+    }
+  }
+}
 
 // 请求拦截：自动加 token
 service.interceptors.request.use((config) => {
@@ -40,12 +68,12 @@ service.interceptors.response.use(
   },
   async (error: AxiosError<ApiResponse>) => {
     const { response, config } = error || {}
-      if (!response || response.status !== 401 || config?.url === refreshTokenApi) {
-        if (config?.url === '/api/refresh-token') {
-          logoutToLogin()
-        }
-        return Promise.reject(error)
+    if (!response || response.status !== 401 || config?.url === refreshTokenApi) {
+      if (config?.url === '/api/refresh-token') {
+        logoutToLogin()
       }
+      return Promise.reject(error)
+    }
     // 401 = AccessToken 过期 → 开始无感刷新
     try {
       if (isRefreshing) {
@@ -81,12 +109,19 @@ service.interceptors.response.use(
       // 重试当前失败的请求
       config!.headers.Authorization = `Bearer ${newAccessToken}`
       return service(config!)
-    } catch (err) {
-      // 【3】刷新 Token 彻底失败 = 登录过期
-      logoutToLogin()
-      requestQueue = []
-      isRefreshing = false
-      return Promise.reject(err)
+    } catch {
+      // 【3】刷新 Token失败，走桌面端注入的获取token方法
+      try {
+        logoutToLogin()
+        await refreshUnionToken()
+
+        config!.headers.Authorization = `Bearer ${localStorage.getItem('fusion_accessToken')}`
+        return service(config!)
+      }catch {
+        requestQueue = []
+        isRefreshing = false
+        return Promise.reject()
+      }
     }
   },
 )
@@ -98,18 +133,20 @@ function logoutToLogin() {
   // window.location.href = '/login'
 }
 
-export function post(url: string, data: any): Promise<ApiResponse> {
+export function post(url: string, data: any, headers?: any): Promise<ApiResponse> {
   return service({
     method: 'post',
     url,
     data,
+    headers,
   })
 }
 
-export function get(url: string, params?: any): Promise<ApiResponse> {
+export function get(url: string, params?: any, headers?: any): Promise<ApiResponse> {
   return service({
     method: 'get',
     url,
     params,
+    headers,
   })
 }

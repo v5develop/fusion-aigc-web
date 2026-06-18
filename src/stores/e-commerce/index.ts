@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
-export const useSessionIdStore = defineStore('counter', () => {
+export const useSessionIdStore = defineStore('useSessionIdStore', () => {
   const sessionIdMap = ref<Record<string, any>>({})
 
   function useSessionId(type: string) {

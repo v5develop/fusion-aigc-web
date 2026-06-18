@@ -1,13 +1,15 @@
+<script lang="ts">
+export interface IVideoItem {
+  url: string
+  thumbnail?: string
+  name?: string
+}
+</script>
+
 <script setup lang="ts">
 import { upload } from '@/api/ossUpload.ts'
 import { useMessage } from 'naive-ui'
 import { ref, watch, onMounted } from 'vue'
-
-interface IVideoItem {
-  url: string
-  thumbnail?: string
-  name: string
-}
 
 interface IProps {
   limitNumber?: number // 限制上传个数

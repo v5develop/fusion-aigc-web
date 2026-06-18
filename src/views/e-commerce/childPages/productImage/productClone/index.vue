@@ -3,17 +3,18 @@ import { provide, reactive, ref } from 'vue'
 import Container from '@/views/e-commerce/childPages/components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import ImageRequirement from './ImageRequirement/index.vue'
-import { ecommerceSubmit } from '@/api/methods.ts'
 import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
-import RecordList from '@/views/asset/components/RecordList/index.vue'
+import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
+import { useMessage } from 'naive-ui'
 
-const { result: taskList = [], getSessionId, startPolling } = useInitCheckTaskStatus('product-kit')
+const { taskList, showList, execute } = useInitCheckTaskStatus('product-clone')
 provide('recordsData', taskList)
 
+const message = useMessage()
 const loading = ref(false)
 const formData = reactive({
   imageUrls: [],
@@ -32,9 +33,14 @@ const refImageLimit = 5
 const submit = () => {
   if (loading.value) return
 
-  const sessionId = getSessionId()
+  if (!formData.imageUrls.length) {
+    return message.warning('请上传产品图')
+  }
+  if (!formData.refImageUrl.length) {
+    return message.warning('请上传参考图')
+  }
+
   const params = {
-    sessionId,
     type: 'hitReplication',
     imageUrls: formData.imageUrls,
     params: {
@@ -48,15 +54,7 @@ const submit = () => {
       allStyle: formData.allStyle,
     },
   }
-  loading.value = true
-  ecommerceSubmit(params)
-    .then((res) => {
-      if (res.code === 0) {
-        // 开始轮询
-        startPolling(sessionId)
-      }
-    })
-    .finally(() => (loading.value = false))
+  execute(params, loading)
 }
 const customResultHandle = (urls: string[]) => {
   formData.refImageUrl.push(
@@ -126,9 +124,9 @@ const customResultHandle = (urls: string[]) => {
     </template>
 
     <template #rightContent>
-      <div v-if="taskList?.length">
+      <div v-if="showList" class="result-cont">
         <div class="right-content-title">生成结果</div>
-        <RecordList :showSelect="false" />
+        <RecordList />
       </div>
       <Sample
         v-else
