@@ -23,7 +23,7 @@ export function unionTokenLogin(data: { token: string }) {
 }
 
 export function getUserInfo() {
-  return post('/api/v1/auth/user-info', {})
+  return get('/api/v1/auth/user-info', {})
 }
 
 export function ecommerceSubmit(data: any, headers: any = { 'Idempotency-Key': crypto.randomUUID() }) {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
-import { creationSubmit, assetAll } from '@/api/methods.ts'
+import { ref, reactive, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
+import { creationSubmit, assetAll, pollingSingleTask } from '@/api/methods.ts'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
@@ -9,6 +9,7 @@ import type { ICreationSubmit } from '@/api/types.ts'
 import { taskOps, ratioOps } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
+import { usePolling } from '@/utils/hooks/usePolling.ts'
 
 const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
@@ -19,6 +20,7 @@ if (global_formData.value.home) {
   store.reset()
 }
 
+// 提交任务loading，跑图完成后再设为false
 const loading = ref(false)
 const formData = reactive(
   _formData ?? {
@@ -34,30 +36,8 @@ const pagingData = reactive({
   loading: false,
   hasMore: true,
 })
+const messages = ref<any[]>([])
 const dynamicScrollerRef = useTemplateRef('dynamicScrollerRef')
-
-interface ChatMessage {
-  id: string
-  date: string
-  showDate: boolean
-  prompt: string
-  meta: string
-  images: string[]
-  disclaimer: string
-}
-
-const messages = ref<any[]>([
-  // {
-  //   id: '1',
-  //   date: '昨天',
-  //   showDate: true,
-  //   prompt:
-  //     '（电影级面光：1.6），（光线追踪：1.5），（冷白皮漫感质感的光滑皮肤：1.7），（人物有最好的骨相：1.2），（网感脸：1.6），身材完美，莫兰迪配色，高颜值网红，INS风，幼态脸，19岁女生尖下巴，三庭五眼比例均衡，身材娇小，细腻陶瓷水嫩肌肤，偏冷白皮，随机的妆容，随机的饰品，随机的动作，侧光，',
-  //   meta: '本地模型 ｜1:1 ｜4K',
-  //   images: yesterdayImages,
-  //   disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  // },
-])
 
 const virtualListContainer = ref<HTMLElement>()
 const scrollerHeight = ref(0)
@@ -75,7 +55,7 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
 })
 
-const submit = () => {
+const submit = async () => {
   if (loading.value) return
   loading.value = true
 
@@ -88,14 +68,40 @@ const submit = () => {
       prompt: formData.prompt,
       width: +wh[0]!,
       height: +wh[1]!,
+      num: formData.entryCode === 'textToImage' ? 4 : 1,
     },
     images: formData.images,
   }
   creationSubmit(params).then((res) => {
     if (res.code === 0) {
+      start(res.data.taskId)
     }
   })
 }
+
+const pollingSingleTaskApi = (taskId: string) => {
+  return pollingSingleTask(taskId).then(async (res) => {
+    if (res.code === 0) {
+      pagingData.page = 1
+      pagingData.hasMore = true
+      await getData(true)
+      loading.value = false
+    }
+  })
+}
+const { start, stop } = usePolling((taskId) => pollingSingleTaskApi(taskId!), 3000, {
+  autoStop(res: any) {
+    if (res.code === 0) {
+      const data = res.data
+      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
+      if (data.status !== 2 && !data.statusView.terminal) {
+        return false
+      }
+
+      return true
+    }
+  },
+})
 
 const getData = (isReplace?: boolean) => {
   if (!pagingData.hasMore) return
@@ -107,13 +113,12 @@ const getData = (isReplace?: boolean) => {
     ...pagingData,
     type: 'image',
   }
-  assetAll(params)
+  return assetAll(params)
     .then((res) => {
       if (res.code === 0) {
         pagingData.page++
 
         const records = res.data.records
-        const isEmpty = messages.value.length === 0
         records.reverse()
         if (isReplace) messages.value = records
         else messages.value.unshift(...records)
@@ -121,7 +126,7 @@ const getData = (isReplace?: boolean) => {
         if (records.length < pagingData.pageSize) pagingData.hasMore = false
 
         // 类微信聊天：仅首次加载数据后自动滚动到底部
-        if (isEmpty) {
+        if (isReplace) {
           // scrollToBottom() 源码内部已处理时序问题：
           // 通过 _undefinedSizes 计数器 + requestAnimationFrame 循环，
           // 直到所有 item 尺寸被 ResizeObserver 测量完成后才停止
@@ -149,7 +154,7 @@ const getData = (isReplace?: boolean) => {
     })
     .finally(() => (pagingData.loading = false))
 }
-getData()
+getData(true)
 </script>
 
 <template>
@@ -174,7 +179,7 @@ getData()
           <DynamicScrollerItem :item="item" :active="active" :data-index="index">
             <div class="message-group">
               <!-- 日期标题 -->
-              <h2 class="message-group__date">{{ item.taskTime }} -- {{ index }}</h2>
+              <h2 class="message-group__date">{{ item.taskTime }}</h2>
 
               <!-- 提示词 -->
               <p class="message-group__prompt">{{ item.assets[0].aiPrompt }}</p>

@@ -41,6 +41,7 @@ export interface ICreationSubmit {
     prompt?: string
     width: number
     height: number
+    num?: number
   }
   images?: string[]
 }
