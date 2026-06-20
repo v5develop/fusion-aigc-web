@@ -34,7 +34,7 @@ export interface IPublicTemplate {
 }
 
 export interface ICreationSubmit {
-  type: 'IMAGE' // IMAGE：图片  VIDEO：视频
+  type: 'IMAGE' | 'VIDEO' // IMAGE：图片  VIDEO：视频
   entryCode: 'imageToImage' | 'textToImage'
   modelCode: string
   params: {
@@ -42,6 +42,10 @@ export interface ICreationSubmit {
     width: number
     height: number
     num?: number
+    ratio?: string
+    resolution?: string
+    duration?: number
+    [key: string]: any
   }
   images?: string[]
 }

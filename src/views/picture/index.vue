@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
-import { creationSubmit, assetAll, pollingSingleTask } from '@/api/methods.ts'
+import { creationSubmit, assetAll } from '@/api/methods.ts'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
@@ -37,8 +37,8 @@ const pagingData = reactive({
   hasMore: true,
 })
 const messages = ref<any[]>([])
-const dynamicScrollerRef = useTemplateRef('dynamicScrollerRef')
 
+const dynamicScrollerRef = useTemplateRef('dynamicScrollerRef')
 const virtualListContainer = ref<HTMLElement>()
 const scrollerHeight = ref(0)
 let resizeObserver: ResizeObserver | null = null
@@ -55,7 +55,7 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
 })
 
-const submit = async () => {
+const submit2 = () => {
   if (loading.value) return
   loading.value = true
 
@@ -80,12 +80,31 @@ const submit = async () => {
         // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
         assets: [{ aiPrompt: formData.prompt, status: 1 }],
       })
+      nextTick(() => {
+        dynamicScrollerRef.value?.scrollToBottom()
+      })
     }
   })
 }
+const submit = () => {
+  if (loading.value) return
+  loading.value = true
 
-const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
-  autoStop: (res: any) => {
+  setTimeout(() => {
+    start()
+    messages.value.push({
+      taskTime: '',
+      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
+      assets: [{ aiPrompt: formData.prompt, status: 1 }],
+    })
+    nextTick(() => {
+      dynamicScrollerRef.value?.scrollToBottom()
+    })
+  }, 1000)
+}
+
+/*const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
+  autoStop(res: any) {
     if (res.code === 0) {
       const data = res.data
       // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
@@ -99,9 +118,41 @@ const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
     getData(true)?.finally(() => (loading.value = false))
     return true
   },
+})*/
+let count = 0
+const { start } = usePolling(() => {
+  count ++
+  return new Promise(resolve => {
+    console.log(count)
+    resolve({
+      code: 0,
+      data:{
+        status: count < 3 ? 1 : 2,
+        statusView: {
+          terminal: false
+        }
+      }
+    })
+  })
+}, 1000, {
+  autoStop(res: any) {
+    if (res.code === 0) {
+      const data = res.data
+      console.log(data)
+      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
+      if (data.status !== 2 && !data.statusView.terminal) {
+        return false
+      }
+    }
+
+    pagingData.page = 1
+    pagingData.hasMore = true
+    getData(true)?.finally(() => (loading.value = false))
+    return true
+  },
 })
 
-const getData = (isReplace?: boolean) => {
+const getData2 = (isReplace?: boolean) => {
   if (!pagingData.hasMore) return
 
   if (pagingData.loading) return
@@ -152,7 +203,143 @@ const getData = (isReplace?: boolean) => {
     })
     .finally(() => (pagingData.loading = false))
 }
+const getData = (isReplace?: boolean) => {
+  if (!pagingData.hasMore) return
+
+  if (pagingData.loading) return
+  pagingData.loading = true
+
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      pagingData.page++
+
+      const records = [
+        {
+          taskTime: '2029',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
+            },
+            {
+              aiPrompt: 'qqqqqqqqq',
+              resultUrl: 'https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp'
+            },
+          ]
+        },
+        {
+          taskTime: '2028',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
+            }
+          ]
+        },
+        {
+          taskTime: '2027',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
+            }
+          ]
+        },
+        {
+          taskTime: '2026',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
+            }
+          ]
+        },
+        {
+          taskTime: '2025',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
+            }
+          ]
+        },
+        {
+          taskTime: '2024',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
+            },
+          ]
+        },
+      ]
+      records.reverse()
+      if (isReplace) messages.value = records
+      else messages.value.unshift(...records)
+
+      if (records.length < pagingData.pageSize) pagingData.hasMore = false
+
+      if (isReplace) {
+        nextTick(() => {
+          dynamicScrollerRef.value?.scrollToBottom()
+        })
+      }
+      pagingData.loading = false
+      resolve('')
+    }, 500)
+  })
+}
 getData(true)
+
+const generateAgain2 = (item: any) => {
+  if (loading.value) return
+  loading.value = true
+
+  creationSubmit(item.params).then((res) => {
+    if (res.code === 0) {
+      start(res.data.taskId)
+      messages.value.push({
+        taskTime: '',
+        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
+        assets: [{ aiPrompt: formData.prompt, status: 1 }],
+      })
+      nextTick(() => {
+        dynamicScrollerRef.value?.scrollToBottom()
+      })
+    }
+  })
+}
+const generateAgain = (item: any) => {
+  if (loading.value) return
+  console.log('generateAgain')
+  loading.value = true
+
+  setTimeout(() => {
+    start()
+    messages.value.push({
+      taskTime: '',
+      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
+      assets: [{ aiPrompt: formData.prompt, status: 1 }],
+    })
+    nextTick(() => {
+      dynamicScrollerRef.value?.scrollToBottom()
+    })
+  }, 1000)
+}
+
+const download = (item: any) => {
+  const urls = item.assets.map((item: any) => item.resultUrl)
+
+  urls.forEach((url: string, index: number) => {
+    setTimeout(() => {
+      const a = document.createElement('a')
+      a.href = url
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }, index * 150) // 每张间隔150ms，足够浏览器响应
+  })
+}
 </script>
 
 <template>
@@ -200,7 +387,7 @@ getData(true)
 
               <!-- 操作按钮 -->
               <div class="message-group__actions">
-                <button class="action-btn">
+                <button class="action-btn" @click="generateAgain(item)">
                   <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <!-- 重新生成图标 -->
                     <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.333" />
@@ -226,7 +413,7 @@ getData(true)
                   </svg>
                   <span>再次生成</span>
                 </button>
-                <button class="action-btn">
+                <button class="action-btn" @click="download(item)">
                   <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <!-- 下载图标 -->
                     <path

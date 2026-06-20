@@ -41,7 +41,7 @@ router.beforeEach(async (to, from) => {
   const token = localStorage.getItem('fusion_accessToken')
 
   // 如果没有 token，进行模拟登录
-  if (!token) {
+  /*if (!token) {
     const unionToken = getUrlQuery('unionToken')
     if (!!'') {
       await unionTokenLogin({ token: unionToken! }).then(async (res) => {
@@ -67,7 +67,7 @@ router.beforeEach(async (to, from) => {
       })
     }
 
-  }
+  }*/
 })
 
 function getUrlQuery(key: string): string | null {

@@ -10,7 +10,6 @@ let requestQueue: any[] = [] // 请求队列：缓存过期的请求
 const refreshTokenApi = '/api/v1/auth/refresh'
 
 const baseURL = import.meta.env.PROD ? 'https://aigc.pengqiwl.com' : ''
-console.log(import.meta.env.PROD, 55)
 const service = axios.create({
   baseURL,
   timeout: 10000,

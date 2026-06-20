@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, useTemplateRef } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
@@ -9,6 +9,7 @@ import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import type { ICreationSubmit } from '@/api/types.ts'
 import { assetAll, creationSubmit } from '@/api/methods.ts'
+import { usePolling } from '@/utils/hooks/usePolling.ts'
 
 const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
@@ -27,6 +28,7 @@ if (global_formData.value.home) {
   store.reset()
 }
 
+// 提交任务loading，跑图完成后再设为false
 const loading = ref(false)
 const formData = reactive(
   _formData ?? {
@@ -39,52 +41,15 @@ const formData = reactive(
     images: [],
   },
 )
+const pagingData = reactive({
+  page: 1,
+  pageSize: 8,
+  loading: false,
+  hasMore: true,
+})
+const messages = ref<any[]>([])
+
 const dynamicScrollerRef = useTemplateRef('dynamicScrollerRef')
-
-// ==================== 消息数据 ====================
-interface ChatMessage {
-  id: string
-  date: string
-  showDate: boolean
-  prompt: string
-  meta: string
-  images: string[]
-  disclaimer: string
-}
-
-// 图片资源（从设计稿提取）
-const yesterdayImages = [
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/e4c51f9d36c48b8e0f1347fb7de085dd.png',
-]
-
-const todayImages = [
-  'https://image-resource.mastergo.com/189358671263899/189358671263901/c0527ba40fd9b69b9dd44fcd0e09ea80.png',
-]
-
-const messages = ref<ChatMessage[]>([
-  {
-    id: '1',
-    date: '昨天',
-    showDate: true,
-    prompt:
-      '（电影级面光：1.6），（光线追踪：1.5），（冷白皮漫感质感的光滑皮肤：1.7），（人物有最好的骨相：1.2），（网感脸：1.6），身材完美，莫兰迪配色，高颜值网红，INS风，幼态脸，19岁女生尖下巴，三庭五眼比例均衡，身材娇小，细腻陶瓷水嫩肌肤，偏冷白皮，随机的妆容，随机的饰品，随机的动作，侧光，',
-    meta: '本地模型 ｜1:1 ｜4K',
-    images: yesterdayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
-  {
-    id: '2',
-    date: '等了好久终于等到今天',
-    showDate: true,
-    prompt:
-      '（电影级面光：1.6），（光线追踪：1.5），（冷白皮漫感质感的光滑皮肤：1.7），（人物有最好的骨相：1.2），（网感脸：1.6），身材完美，莫兰迪配色，高颜值网红，INS风，幼态脸，19岁女生尖下巴，三庭五眼比例均衡，身材娇小，细腻陶瓷水嫩肌肤，偏冷白皮，随机的妆容，随机的饰品，随机的动作，侧光，',
-    meta: '本地模型 ｜1:1 ｜4K',
-    images: yesterdayImages,
-    disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-  },
-])
-
-// ==================== 虚拟列表高度 ====================
 const virtualListContainer = ref<HTMLElement>()
 const scrollerHeight = ref(0)
 let resizeObserver: ResizeObserver | null = null
@@ -96,44 +61,299 @@ onMounted(() => {
     })
     resizeObserver.observe(virtualListContainer.value)
   }
-  setTimeout(() => {
-    console.log(dynamicScrollerRef.value?.scrollToItem(100))
-  })
 })
 onUnmounted(() => {
   resizeObserver?.disconnect()
 })
-const id = ref(9)
 
-const submit = () => {
+const submit2 = () => {
   if (loading.value) return
   loading.value = true
 
   const wh = formData.ratio.split(',')
   const params: ICreationSubmit = {
-    type: 'IMAGE',
+    type: 'VIDEO',
     entryCode: formData.entryCode as ICreationSubmit['entryCode'],
-    modelCode: 'local-image',
+    modelCode: formData.modelCode,
     params: {
       prompt: formData.prompt,
       width: +wh[0]!,
       height: +wh[1]!,
+      resolution: formData.resolution,
+      ratio: formData.ratio,
+      duration: formData.duration,
     },
     images: formData.images,
   }
   creationSubmit(params).then((res) => {
     if (res.code === 0) {
+      start(res.data.taskId)
+      messages.value.push({
+        taskTime: '',
+        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
+        assets: [{ aiPrompt: formData.prompt, status: 1 }],
+      })
+      nextTick(() => {
+        dynamicScrollerRef.value?.scrollToBottom()
+      })
     }
   })
+}
+const submit = () => {
+  if (loading.value) return
+  loading.value = true
+
+  setTimeout(() => {
+    start()
+    messages.value.push({
+      taskTime: '',
+      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
+      assets: [{ aiPrompt: formData.prompt, status: 1 }],
+    })
+    nextTick(() => {
+      dynamicScrollerRef.value?.scrollToBottom()
+    })
+  }, 1000)
 }
 
-const getData = () => {
-  assetAll({ type: 'video' }).then((res) => {
+/*const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
+  autoStop(res: any) {
     if (res.code === 0) {
+      const data = res.data
+      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
+      if (data.status !== 2 && !data.statusView.terminal) {
+        return false
+      }
+    }
+
+    pagingData.page = 1
+    pagingData.hasMore = true
+    getData(true)?.finally(() => (loading.value = false))
+    return true
+  },
+})*/
+let count = 0
+const { start } = usePolling(() => {
+  count ++
+  return new Promise(resolve => {
+    console.log(count)
+    resolve({
+      code: 0,
+      data:{
+        status: count < 3 ? 1 : 2,
+        statusView: {
+          terminal: false
+        }
+      }
+    })
+  })
+}, 1000, {
+  autoStop(res: any) {
+    if (res.code === 0) {
+      const data = res.data
+      console.log(data)
+      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
+      if (data.status !== 2 && !data.statusView.terminal) {
+        return false
+      }
+    }
+
+    pagingData.page = 1
+    pagingData.hasMore = true
+    getData(true)?.finally(() => (loading.value = false))
+    return true
+  },
+})
+
+
+const getData2 = (isReplace?: boolean) => {
+  if (!pagingData.hasMore) return
+
+  if (pagingData.loading) return
+  pagingData.loading = true
+
+  const params = {
+    ...pagingData,
+    type: 'video',
+  }
+  return assetAll(params)
+    .then((res) => {
+      if (res.code === 0) {
+        pagingData.page++
+
+        const records = res.data.records
+        records.reverse()
+        if (isReplace) messages.value = records
+        else messages.value.unshift(...records)
+
+        if (records.length < pagingData.pageSize) pagingData.hasMore = false
+
+        // 类微信聊天：仅首次加载数据后自动滚动到底部
+        if (isReplace) {
+          // scrollToBottom() 源码内部已处理时序问题：
+          // 通过 _undefinedSizes 计数器 + requestAnimationFrame 循环，
+          // 直到所有 item 尺寸被 ResizeObserver 测量完成后才停止
+          /*const doScroll = () => {
+            if (dynamicScrollerRef.value) {
+              dynamicScrollerRef.value.scrollToBottom()
+              console.log(1111)
+            } else {
+              console.log(2222)
+              // DynamicScroller 受 v-if="scrollerHeight > 0" 控制，
+              // 若 API 返回较快、组件尚未挂载，则监听 scrollerHeight 就绪后再滚动
+              const stop = watch(scrollerHeight, (h) => {
+                if (h > 0) {
+                  stop()
+                  nextTick(() => dynamicScrollerRef.value?.scrollToBottom())
+                }
+              })
+            }
+          }*/
+          nextTick(() => {
+            dynamicScrollerRef.value?.scrollToBottom()
+          })
+        }
+      }
+    })
+    .finally(() => (pagingData.loading = false))
+}
+const getData = (isReplace?: boolean) => {
+  if (!pagingData.hasMore) return
+
+  if (pagingData.loading) return
+  pagingData.loading = true
+
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      pagingData.page++
+
+      const records = [
+        {
+          taskTime: '2029',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
+            },
+            {
+              aiPrompt: 'qqqqqqqqq',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot2.mp4'
+            },
+          ]
+        },
+        {
+          taskTime: '2028',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
+            }
+          ]
+        },
+        {
+          taskTime: '2027',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
+            }
+          ]
+        },
+        {
+          taskTime: '2026',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
+            }
+          ]
+        },
+        {
+          taskTime: '2025',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
+            }
+          ]
+        },
+        {
+          taskTime: '2024',
+          assets: [
+            {
+              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
+              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
+            },
+          ]
+        },
+      ]
+      records.reverse()
+      if (isReplace) messages.value = records
+      else messages.value.unshift(...records)
+
+      if (records.length < pagingData.pageSize) pagingData.hasMore = false
+
+      if (isReplace) {
+        nextTick(() => {
+          dynamicScrollerRef.value?.scrollToBottom()
+        })
+      }
+      pagingData.loading = false
+      resolve('')
+    }, 500)
+  })
+}
+getData(true)
+
+const generateAgain2 = (item: any) => {
+  if (loading.value) return
+  loading.value = true
+
+  creationSubmit(item.params).then((res) => {
+    if (res.code === 0) {
+      start(res.data.taskId)
+      messages.value.push({
+        taskTime: '',
+        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
+        assets: [{ aiPrompt: formData.prompt, status: 1 }],
+      })
+      nextTick(() => {
+        dynamicScrollerRef.value?.scrollToBottom()
+      })
     }
   })
 }
-getData()
+const generateAgain = (item: any) => {
+  if (loading.value) return
+  console.log('generateAgain')
+  loading.value = true
+
+  setTimeout(() => {
+    start()
+    messages.value.push({
+      taskTime: '',
+      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
+      assets: [{ aiPrompt: formData.prompt, status: 1 }],
+    })
+    nextTick(() => {
+      dynamicScrollerRef.value?.scrollToBottom()
+    })
+  }, 1000)
+}
+
+const download = (item: any) => {
+  const urls = item.assets.map((item: any) => item.resultUrl)
+
+  urls.forEach((url: string, index: number) => {
+    setTimeout(() => {
+      const a = document.createElement('a')
+      a.href = url
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }, index * 150) // 每张间隔150ms，足够浏览器响应
+  })
+}
 </script>
 
 <template>
@@ -146,21 +366,11 @@ getData()
         v-if="scrollerHeight > 0"
         :items="messages"
         :min-item-size="300"
-        key-field="id"
+        key-field="taskTime"
         :style="{ height: scrollerHeight + 'px' }"
         class="scroller"
         v-observer-scroll="{
-          callbackTop() {
-            messages.unshift({
-              id: id++ + '',
-              date: '今天' + id,
-              showDate: true,
-              prompt: '这是一张瑞幸咖啡，杯身呈梦幻浅蓝色',
-              meta: '本地模型 ｜9:16 ｜4K',
-              images: todayImages,
-              disclaimer: '以上内容由AI生成 | 本次消耗0积分',
-            })
-          },
+          callbackTop: getData,
           distanceTop: 100,
         }"
       >
@@ -168,22 +378,21 @@ getData()
           <DynamicScrollerItem :item="item" :active="active" :data-index="index">
             <div class="message-group">
               <!-- 日期标题 -->
-              <h2 v-if="item.showDate" class="message-group__date">
-                {{ item.date }}
-              </h2>
+              <h2 class="message-group__date">{{ item.taskTime }}</h2>
 
               <!-- 提示词 -->
-              <p class="message-group__prompt">{{ item.prompt }}</p>
+              <p class="message-group__prompt">{{ item.assets[0].aiPrompt }}</p>
 
               <!-- 元信息 -->
-              <div class="message-group__meta">
-                <span>{{ item.meta }}</span>
-              </div>
+<!--              <div class="message-group__meta">-->
+<!--                <span>{{ item.meta }}</span>-->
+<!--              </div>-->
 
               <!-- 图片网格 -->
               <div class="message-group__images">
-                <div v-for="(img, i) in item.images" :key="i" class="message-group__image-wrap">
-                  <img :src="img" alt="" class="message-group__image" />
+                <div v-for="(jtem, j) in item.assets" :key="j" class="message-group__image-wrap">
+                  <video class="video" :src="jtem.resultUrl" controls/>
+                  <div v-if="jtem.status === 1" class="pending">生成中...</div>
                 </div>
               </div>
 
@@ -192,7 +401,7 @@ getData()
 
               <!-- 操作按钮 -->
               <div class="message-group__actions">
-                <button class="action-btn">
+                <button class="action-btn" @click="generateAgain(item)">
                   <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <!-- 重新生成图标 -->
                     <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.333" />
@@ -218,7 +427,7 @@ getData()
                   </svg>
                   <span>再次生成</span>
                 </button>
-                <button class="action-btn">
+                <button class="action-btn" @click="download(item)">
                   <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <!-- 下载图标 -->
                     <path
@@ -242,7 +451,12 @@ getData()
     <div class="input-box" :class="!messages.length ? 'input-box-center' : ''">
       <h1 v-if="!messages.length" class="h1">和我聊聊， 你想要什么设计～</h1>
 
-      <ChatInputBox v-model:imgList="formData.images" v-model:prompt="formData.prompt" :submit="submit">
+      <ChatInputBox
+        v-model:imgList="formData.images"
+        v-model:prompt="formData.prompt"
+        :submit="submit"
+        :btnLoading="loading"
+      >
         <template #bottomSelect>
           <div class="select-cont">
             <ChatInputSelect v-model:value="formData.entryCode" :options="taskOps" />
