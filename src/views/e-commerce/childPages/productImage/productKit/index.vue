@@ -94,9 +94,6 @@ function useCheckbox() {
         <ImageUpload
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"
-          :exampleImages="[
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/09/04/13/00/01/111437433_p0_master1200.jpg',
-          ]"
           multiple
           bottomTips
         />
@@ -115,6 +112,19 @@ function useCheckbox() {
         <div class="module-title">商品卖点&要求</div>
         <PromptAssist
           v-model:value="formData.buyPoint"
+          :params="{
+            prompt: 'ai_writing',
+            imageUrls: formData.imageUrls,
+          }"
+          :validate="
+            () => {
+              if (!formData.imageUrls.length) {
+                message.warning('请先上传产品图')
+                return false
+              }
+              return true
+            }
+          "
           placeholder="请输入商品信息包括:商品名称、商品描述、商品尺寸、目标受众、商品卖点。您也可以在上传多视角商品图后点击【A帮写】一键分析"
         />
 

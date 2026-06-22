@@ -18,7 +18,7 @@ const router = useRouter()
 const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
 
-const activeChatTab = ref<TTabValue>('ecommerce')
+const activeChatTab = ref<TTabValue>('picture')
 const formData = reactive({
   picture: {
     entryCode: 'textToImage',

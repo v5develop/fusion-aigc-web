@@ -1,12 +1,12 @@
 import axios from 'axios'
-import type { AxiosResponse, AxiosError } from 'axios'
+import type { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
 import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
 import { getUserInfo, unionTokenLogin } from '@/api/methods.ts'
 
 const { message } = createDiscreteApi(['message'])
-let isRefreshing = false // 刷新锁：防止并发刷新
-let requestQueue: any[] = [] // 请求队列：缓存过期的请求
+let isRefreshing = false
+let requestQueue: { resolve: (value: any) => void; reject: (reason?: any) => void; config: InternalAxiosRequestConfig }[] = []
 const refreshTokenApi = '/api/v1/auth/refresh'
 
 const baseURL = import.meta.env.PROD ? 'https://aigc.pengqiwl.com' : ''
@@ -16,7 +16,7 @@ const service = axios.create({
 })
 
 // 单航班：失效瞬间多个请求同时失败时，只调用一次桥
-let refreshing: any = null
+let refreshing: Promise<string> | null = null
 async function refreshUnionToken() {
   const bridge = (window as any).ThirdServiceBridge
   if (!bridge?.refreshUnionToken) {
@@ -29,14 +29,14 @@ async function refreshUnionToken() {
     refreshing = bridge.refreshUnionToken().finally(() => {
       refreshing = null
     })
-    const token = await refreshing()
-    const res = await unionTokenLogin({ token })
-    localStorage.setItem('fusion_accessToken', res.data.accessToken)
-    localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
-    const { code, data } = await getUserInfo()
-    if (code === 0) {
-      localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
-    }
+  }
+  const token = await refreshing!
+  const res = await unionTokenLogin({ token })
+  localStorage.setItem('fusion_accessToken', res.data.accessToken)
+  localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
+  const { code, data } = await getUserInfo()
+  if (code === 0) {
+    localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
   }
 }
 
@@ -47,17 +47,69 @@ service.interceptors.request.use((config) => {
   return config
 })
 
+const TOKEN_EXPIRED_CODES = [2001, 2002, 2003]
+
+// 无感刷新核心逻辑，成功回调和错误回调共用
+async function silentRefresh(config: InternalAxiosRequestConfig) {
+  if (isRefreshing) {
+    return new Promise((resolve, reject) => {
+      requestQueue.push({ resolve, reject, config })
+    })
+  }
+
+  isRefreshing = true
+
+  try {
+    const { data } = await service.post(refreshTokenApi, {
+      refreshToken: localStorage.getItem('fusion_refreshToken'),
+    })
+    const newAccessToken = data.data.accessToken
+    const newRefreshToken = data.data.refreshToken
+
+    localStorage.setItem('fusion_accessToken', newAccessToken)
+    localStorage.setItem('fusion_refreshToken', newRefreshToken)
+
+    requestQueue.forEach(({ resolve, config: queuedConfig }) => {
+      queuedConfig.headers.Authorization = `Bearer ${newAccessToken}`
+      resolve(service(queuedConfig))
+    })
+    requestQueue = []
+    isRefreshing = false
+
+    config.headers.Authorization = `Bearer ${newAccessToken}`
+    return service(config)
+  } catch {
+    try {
+      await refreshUnionToken()
+
+      const freshToken = localStorage.getItem('fusion_accessToken')
+      requestQueue.forEach(({ resolve, config: queuedConfig }) => {
+        queuedConfig.headers.Authorization = `Bearer ${freshToken}`
+        resolve(service(queuedConfig))
+      })
+      requestQueue = []
+      isRefreshing = false
+
+      config.headers.Authorization = `Bearer ${freshToken}`
+      return service(config)
+    } catch {
+      requestQueue.forEach(({ reject }) => reject(new Error('token refresh failed')))
+      requestQueue = []
+      isRefreshing = false
+      logoutToLogin()
+      return Promise.reject(new Error('token refresh failed'))
+    }
+  }
+}
+
 // 响应拦截
 service.interceptors.response.use(
-  (res: AxiosResponse<ApiResponse>) => {
+  async (res: AxiosResponse<ApiResponse>) => {
     const data = res.data
 
-    // 这里可以添加 token 失效等特殊处理逻辑
-    // if ([2001, 2002, 2003, 2004].includes(response.code)) {
-    //   clearToken()
-    //   router.push('/login')
-    //   return
-    // }
+    if (TOKEN_EXPIRED_CODES.includes(data.code)) {
+      return await silentRefresh(res.config) as any
+    }
 
     if (data.code !== 0) {
       message.error(data.msg)
@@ -68,60 +120,9 @@ service.interceptors.response.use(
   async (error: AxiosError<ApiResponse>) => {
     const { response, config } = error || {}
     if (!response || response.status !== 401 || config?.url === refreshTokenApi) {
-      if (config?.url === '/api/refresh-token') {
-        logoutToLogin()
-      }
       return Promise.reject(error)
     }
-    // 401 = AccessToken 过期 → 开始无感刷新
-    try {
-      if (isRefreshing) {
-        // 🔥 正在刷新：把当前请求加入队列，等待刷新完成后重试
-        return new Promise((resolve) => {
-          requestQueue.push((newToken: string) => {
-            config!.headers.Authorization = `Bearer ${newToken}`
-            resolve(service(config!))
-          })
-        })
-      }
-
-      // 🔥 加锁，开始刷新 Token
-      isRefreshing = true
-
-      // 调用后端刷新接口
-      const { data } = await axios.post(refreshTokenApi, {
-        refreshToken: localStorage.getItem('fusion_refreshToken'),
-      })
-      const newAccessToken = data.data.accessToken
-      const newRefreshToken = data.data.refreshToken
-
-      // 保存新 Token
-      localStorage.setItem('fusion_accessToken', newAccessToken)
-      localStorage.setItem('fusion_refreshToken', newRefreshToken)
-
-      // 🔥 刷新成功：执行队列里所有请求
-      requestQueue.forEach((cb) => cb(newAccessToken))
-      // 清空队列 + 解锁
-      requestQueue = []
-      isRefreshing = false
-
-      // 重试当前失败的请求
-      config!.headers.Authorization = `Bearer ${newAccessToken}`
-      return service(config!)
-    } catch {
-      // 【3】刷新 Token失败，走桌面端注入的获取token方法
-      try {
-        logoutToLogin()
-        await refreshUnionToken()
-
-        config!.headers.Authorization = `Bearer ${localStorage.getItem('fusion_accessToken')}`
-        return service(config!)
-      }catch {
-        requestQueue = []
-        isRefreshing = false
-        return Promise.reject()
-      }
-    }
+    return silentRefresh(config!)
   },
 )
 

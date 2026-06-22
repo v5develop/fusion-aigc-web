@@ -1,5 +1,6 @@
 import { post, get } from './index.ts'
 import * as types from './types'
+import type { IOptimizePrompt } from './types'
 
 export function getSts(data: types.IGetSts) {
   const { subDir = 'uploads', visibility = 'public', ...rest } = data
@@ -66,4 +67,12 @@ export function creationSubmit(data: types.ICreationSubmit, headers: any = { 'Id
 
 export function publicDisplay(params: any) {
   return get('/api/v1/asset/public/display', params)
+}
+
+export function optimizePrompt(params: types.IOptimizePrompt) {
+  return post('/api/v1/creation/optimize-prompt', params)
+}
+
+export function creationHistory(params: types.ICreationHistory) {
+  return get('/api/v1/creation/history', params)
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, provide, watch } from 'vue'
+import { reactive, ref, provide, watch, computed } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import Tab from '@/components/Tab/index.vue'
@@ -26,6 +26,14 @@ const formData = reactive({
   userInput: '',
 })
 const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()
+const promptImages = computed(() => {
+  const images: string[] = []
+  if (tabValue.value === 'modelLib') images.push(formData.personUrl)
+  else images.push(formData.uploadPersonUrl[0] ?? '')
+
+  images.push(...formData.imageUrls)
+  return images
+})
 
 const submit = () => {
   if (loading.value) return
@@ -168,9 +176,32 @@ function useModelList() {
 
         <div class="module-title">生成要求</div>
         <PromptAssist
-          v-model:value="formData.userInput"
-          placeholder="请输入生成穿搭描述，您也可以在上传多张素材图后点击【A帮写】一键分析"
           style="margin-bottom: 15px"
+          v-model:value="formData.userInput"
+          :params="{
+            prompt: 'aiMergeClothes',
+            imageUrls: promptImages,
+          }"
+          :validate="
+            () => {
+              if (tabValue === 'modelLib' && !formData.personUrl) {
+                message.warning('请选择模特图')
+                return false
+              }
+              if (tabValue === 'uploadModel' && !formData.uploadPersonUrl.length) {
+                message.warning('请上传模特图')
+                return false
+              }
+
+              if (!formData.imageUrls.length) {
+                message.warning('请上传产品图')
+                return false
+              }
+
+              return true
+            }
+          "
+          placeholder="请输入生成穿搭描述，您也可以在上传多张素材图后点击【A帮写】一键分析"
         />
       </div>
     </template>

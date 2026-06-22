@@ -1,3 +1,5 @@
+import { optimizePrompt } from '@/api/methods.ts'
+
 export interface ApiResponse<T = any> {
   code: number
   msg: string
@@ -48,4 +50,17 @@ export interface ICreationSubmit {
     [key: string]: any
   }
   images?: string[]
+}
+
+export interface IOptimizePrompt {
+  // ai_writing:商品套图、a+商品详情、爆款视频、复刻视频  ai_writing_background:人像换背景  aiMergeClothes:搭配融图
+  prompt: 'ai_writing' | 'ai_writing_background' | 'aiMergeClothes'
+  userInput: string
+  imageUrls?: string[]
+}
+
+export interface ICreationHistory {
+  page: number
+  pageSize: number
+  type: 'image' | 'video'
 }

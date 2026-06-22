@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
-import { creationSubmit, assetAll } from '@/api/methods.ts'
+import { creationHistory } from '@/api/methods.ts'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
@@ -9,8 +9,10 @@ import type { ICreationSubmit } from '@/api/types.ts'
 import { taskOps, ratioOps } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
-import { usePolling } from '@/utils/hooks/usePolling.ts'
+import { useInitCheckTaskStatus } from './hooks.ts'
+import { useMessage } from 'naive-ui'
 
+const message = useMessage()
 const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
 let _formData: any
@@ -55,9 +57,18 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
 })
 
-const submit2 = () => {
+const submit = () => {
   if (loading.value) return
-  loading.value = true
+
+  if (!formData.prompt) {
+    message.warning('请输入提示词')
+    return
+  }
+
+  if (formData.entryCode === 'imageToImage' && !formData.images.length) {
+    message.warning('请上传图片')
+    return
+  }
 
   const wh = formData.ratio.split(',')
   const params: ICreationSubmit = {
@@ -72,7 +83,8 @@ const submit2 = () => {
     },
     images: formData.images,
   }
-  creationSubmit(params).then((res) => {
+  execute(params)
+  /*creationSubmit(params).then((res) => {
     if (res.code === 0) {
       start(res.data.taskId)
       messages.value.push({
@@ -84,9 +96,9 @@ const submit2 = () => {
         dynamicScrollerRef.value?.scrollToBottom()
       })
     }
-  })
+  })*/
 }
-const submit = () => {
+/*const submit2 = () => {
   if (loading.value) return
   loading.value = true
 
@@ -101,7 +113,7 @@ const submit = () => {
       dynamicScrollerRef.value?.scrollToBottom()
     })
   }, 1000)
-}
+}*/
 
 /*const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
   autoStop(res: any) {
@@ -119,55 +131,24 @@ const submit = () => {
     return true
   },
 })*/
-let count = 0
-const { start } = usePolling(() => {
-  count ++
-  return new Promise(resolve => {
-    console.log(count)
-    resolve({
-      code: 0,
-      data:{
-        status: count < 3 ? 1 : 2,
-        statusView: {
-          terminal: false
-        }
-      }
-    })
-  })
-}, 1000, {
-  autoStop(res: any) {
-    if (res.code === 0) {
-      const data = res.data
-      console.log(data)
-      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
-      if (data.status !== 2 && !data.statusView.terminal) {
-        return false
-      }
-    }
 
-    pagingData.page = 1
-    pagingData.hasMore = true
-    getData(true)?.finally(() => (loading.value = false))
-    return true
-  },
-})
-
-const getData2 = (isReplace?: boolean) => {
+const getData = (isReplace?: boolean) => {
   if (!pagingData.hasMore) return
 
   if (pagingData.loading) return
   pagingData.loading = true
 
   const params = {
-    ...pagingData,
-    type: 'image',
+    type: 'image' as const,
+    page: pagingData.page,
+    pageSize: pagingData.pageSize,
   }
-  return assetAll(params)
+  return creationHistory(params)
     .then((res) => {
       if (res.code === 0) {
         pagingData.page++
 
-        const records = res.data.records
+        const records = res.data.list
         records.reverse()
         if (isReplace) messages.value = records
         else messages.value.unshift(...records)
@@ -203,132 +184,18 @@ const getData2 = (isReplace?: boolean) => {
     })
     .finally(() => (pagingData.loading = false))
 }
-const getData = (isReplace?: boolean) => {
-  if (!pagingData.hasMore) return
-
-  if (pagingData.loading) return
-  pagingData.loading = true
-
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      pagingData.page++
-
-      const records = [
-        {
-          taskTime: '2029',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
-            },
-            {
-              aiPrompt: 'qqqqqqqqq',
-              resultUrl: 'https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp'
-            },
-          ]
-        },
-        {
-          taskTime: '2028',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
-            }
-          ]
-        },
-        {
-          taskTime: '2027',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
-            }
-          ]
-        },
-        {
-          taskTime: '2026',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
-            }
-          ]
-        },
-        {
-          taskTime: '2025',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
-            }
-          ]
-        },
-        {
-          taskTime: '2024',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
-            },
-          ]
-        },
-      ]
-      records.reverse()
-      if (isReplace) messages.value = records
-      else messages.value.unshift(...records)
-
-      if (records.length < pagingData.pageSize) pagingData.hasMore = false
-
-      if (isReplace) {
-        nextTick(() => {
-          dynamicScrollerRef.value?.scrollToBottom()
-        })
-      }
-      pagingData.loading = false
-      resolve('')
-    }, 500)
-  })
-}
 getData(true)
 
-const generateAgain2 = (item: any) => {
-  if (loading.value) return
-  loading.value = true
+const { execute } = useInitCheckTaskStatus({ type: 'picture', loading, getData, pagingData })
 
-  creationSubmit(item.params).then((res) => {
-    if (res.code === 0) {
-      start(res.data.taskId)
-      messages.value.push({
-        taskTime: '',
-        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
-        assets: [{ aiPrompt: formData.prompt, status: 1 }],
-      })
-      nextTick(() => {
-        dynamicScrollerRef.value?.scrollToBottom()
-      })
-    }
-  })
-}
 const generateAgain = (item: any) => {
   if (loading.value) return
-  console.log('generateAgain')
-  loading.value = true
 
-  setTimeout(() => {
-    start()
-    messages.value.push({
-      taskTime: '',
-      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
-      assets: [{ aiPrompt: formData.prompt, status: 1 }],
-    })
-    nextTick(() => {
-      dynamicScrollerRef.value?.scrollToBottom()
-    })
-  }, 1000)
+  execute(item.params)
 }
 
 const download = (item: any) => {
-  const urls = item.assets.map((item: any) => item.resultUrl)
+  const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
 
   urls.forEach((url: string, index: number) => {
     setTimeout(() => {
@@ -339,6 +206,12 @@ const download = (item: any) => {
       document.body.removeChild(a)
     }, index * 150) // 每张间隔150ms，足够浏览器响应
   })
+}
+
+const showDownloadBtn = (item: any): boolean => {
+  const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
+
+  return urls.length
 }
 </script>
 
@@ -352,7 +225,7 @@ const download = (item: any) => {
         v-if="scrollerHeight > 0"
         :items="messages"
         :min-item-size="300"
-        key-field="taskTime"
+        key-field="createTime"
         :style="{ height: scrollerHeight + 'px' }"
         class="scroller"
         v-observer-scroll="{
@@ -364,10 +237,10 @@ const download = (item: any) => {
           <DynamicScrollerItem :item="item" :active="active" :data-index="index">
             <div class="message-group">
               <!-- 日期标题 -->
-              <h2 class="message-group__date">{{ item.taskTime }}</h2>
+              <h2 class="message-group__date">{{ item.createTime }}</h2>
 
               <!-- 提示词 -->
-              <p class="message-group__prompt">{{ item.assets[0].aiPrompt }}</p>
+              <p class="message-group__prompt">{{ item.inputParams.params.prompt }}</p>
 
               <!-- 元信息 -->
               <!--              <div class="message-group__meta">-->
@@ -376,9 +249,17 @@ const download = (item: any) => {
 
               <!-- 图片网格 -->
               <div class="message-group__images">
-                <div v-for="(jtem, j) in item.assets" :key="j" class="message-group__image-wrap">
-                  <n-image :src="jtem.resultUrl" alt="" width="100%" height="100%" object-fit="cover" />
-                  <div v-if="jtem.status === 1" class="pending">生成中...</div>
+                <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
+                  <n-image
+                    v-if="jtem.resultUrl"
+                    :src="jtem.resultUrl"
+                    alt=""
+                    width="100%"
+                    height="100%"
+                    object-fit="cover"
+                  />
+                  <div v-if="jtem.status === 1" class="pending">处理中...</div>
+                  <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
                 </div>
               </div>
 
@@ -413,7 +294,7 @@ const download = (item: any) => {
                   </svg>
                   <span>再次生成</span>
                 </button>
-                <button class="action-btn" @click="download(item)">
+                <button v-if="showDownloadBtn(item)" class="action-btn" @click="download(item)">
                   <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <!-- 下载图标 -->
                     <path

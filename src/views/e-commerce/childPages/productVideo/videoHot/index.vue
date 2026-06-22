@@ -12,10 +12,12 @@ import RecordList from '@/views/e-commerce/childPages/components/RecordList/inde
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import CustomModel from './CustomModel/index.vue'
 import { checkboxOps, videoList } from './constants.ts'
+import { useMessage } from 'naive-ui'
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('video-hot')
 provide('recordsData', taskList)
 
+const message = useMessage()
 const loading = ref(false)
 const formData = reactive({
   imageUrls: [],
@@ -57,10 +59,6 @@ const submit = () => {
         <ImageUpload
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"
-          :exampleImages="[
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-          ]"
           multiple
           bottomTips
         />
@@ -77,7 +75,23 @@ const submit = () => {
         />
 
         <div class="module-title">商品卖点&要求</div>
-        <PromptAssist v-model:value="formData.buyPoint" placeholder="输入商品核心点、适用人群、使用场景等信息" />
+        <PromptAssist
+          v-model:value="formData.buyPoint"
+          :params="{
+            prompt: 'ai_writing',
+            imageUrls: formData.imageUrls,
+          }"
+          :validate="
+            () => {
+              if (!formData.imageUrls.length) {
+                message.warning('请先上传产品图')
+                return false
+              }
+              return true
+            }
+          "
+          placeholder="输入商品核心点、适用人群、使用场景等信息"
+        />
 
         <div class="module-title">视频类型</div>
         <CheckboxGroup

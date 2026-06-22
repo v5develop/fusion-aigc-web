@@ -9,7 +9,7 @@ const modelValue = defineModel<TTabValue>({ required: true })
 const options: { label: string; value: TTabValue }[] = [
   { label: 'AI 图片创作', value: 'picture' },
   { label: 'AI 视频创作', value: 'video' },
-  { label: '电商商品', value: 'ecommerce' },
+  // { label: '电商商品', value: 'ecommerce' },
 ]
 
 function handleTabClick(value: TTabValue) {

@@ -57,10 +57,6 @@ const submit = () => {
         <ImageUpload
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"
-          :exampleImages="[
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-          ]"
           multiple
           bottomTips
         />
@@ -79,6 +75,19 @@ const submit = () => {
         <div class="module-title">商品卖点&要求</div>
         <PromptAssist
           v-model:value="formData.buyPoint"
+          :params="{
+            prompt: 'ai_writing',
+            imageUrls: formData.imageUrls,
+          }"
+          :validate="
+            () => {
+              if (!formData.imageUrls.length) {
+                message.warning('请先上传产品图')
+                return false
+              }
+              return true
+            }
+          "
           placeholder="1、商品名称：LYCOCELLE绽家303丝绸桑蚕丝专用丝毛洗涤剂\n2、核心卖点：\n专用丝净配方，呵护丝织物纤维柔顺\n温和清洁成分，去污同时护衣不发硬\n典雅香调留香，洗净衣物自带淡香氛"
         />
 

@@ -97,9 +97,6 @@ function useBg() {
         <ImageUpload
           v-model:imgList="formData.imageUrls"
           btnName="上传人像"
-          :tryImages="[
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-          ]"
           :limitNumber="1"
           :topRightTips="false"
         >
@@ -134,6 +131,19 @@ function useBg() {
           <div class="module-title">添加描述</div>
           <PromptAssist
             v-model:value="formData.description"
+            :params="{
+              prompt: 'ai_writing_background',
+              imageUrls: formData.imageUrls,
+            }"
+            :validate="
+              () => {
+                if (!formData.imageUrls.length) {
+                  message.warning('请先上传产品图')
+                  return false
+                }
+                return true
+              }
+            "
             placeholder="参考公式：主体对象+场景+元素/光影+风格/氛围/画质"
           />
 

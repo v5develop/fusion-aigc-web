@@ -71,10 +71,6 @@ const customResultHandle = (urls: string[]) => {
         <ImageUpload
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"
-          :exampleImages="[
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-          ]"
           multiple
           bottomTips
         />

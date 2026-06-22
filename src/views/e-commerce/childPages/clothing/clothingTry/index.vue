@@ -236,9 +236,6 @@ function useBg() {
         <ImageUpload
           v-model:imgList="formData.imageUrls"
           btnName="上传产品图"
-          :tryImages="[
-            'https://i.pixiv.re/c/540x540_70/img-master/img/2023/10/24/06/00/01/112804798_p0_master1200.jpg',
-          ]"
           :limitNumber="1"
           :topRightTips="false"
         >

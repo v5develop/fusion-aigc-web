@@ -1,24 +1,41 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { optimizePrompt } from '@/api/methods.ts'
 
-const { placeholder } = defineProps<{ placeholder?: string }>()
+interface IProps {
+  placeholder?: string
+  params: {
+    // ai_writing:商品套图、a+商品详情、爆款视频、复刻视频  ai_writing_background:人像换背景  aiMergeClothes:搭配融图
+    prompt: 'ai_writing' | 'ai_writing_background' | 'aiMergeClothes'
+    imageUrls: string[]
+  }
+  validate: () => boolean // 验证是否可提交，true可，false不可
+}
+const { placeholder, params, validate } = defineProps<IProps>()
 const value = defineModel<string>('value', { required: true })
 
-const show = ref(false)
+const loading = ref(false)
 
 // 将 \n 转为换行符，让 placeholder 支持多行
 const placeholderText = computed(() => placeholder?.replace(/\\n/g, '\n'))
 
 const getPrompt = () => {
-  if (show.value) return
-  show.value = true
-  setTimeout(() => (show.value = false), 1000)
+  if (!validate()) return
+
+  if (loading.value) return
+
+  loading.value = true
+  optimizePrompt({ ...params, userInput: value.value }).then(res => {
+    if (res.code === 0) {
+      value.value = res.data.prompt
+    }
+  }).finally(() => loading.value = false)
 }
 </script>
 
 <template>
   <div class="prompt-assist">
-    <n-spin :show="show">
+    <n-spin :show="loading">
       <textarea class="textarea-box" v-model="value" maxlength="2000" :placeholder="placeholderText"></textarea>
     </n-spin>
 

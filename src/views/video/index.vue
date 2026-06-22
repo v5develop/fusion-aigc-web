@@ -8,9 +8,11 @@ import { durationOps, modelOps, ratioOps, taskOps } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import type { ICreationSubmit } from '@/api/types.ts'
-import { assetAll, creationSubmit } from '@/api/methods.ts'
-import { usePolling } from '@/utils/hooks/usePolling.ts'
+import { creationHistory } from '@/api/methods.ts'
+import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
+import { useMessage } from 'naive-ui'
 
+const message = useMessage()
 const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
 let _formData: any
@@ -66,10 +68,20 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
 })
 
-const submit2 = () => {
+const submit = () => {
   if (loading.value) return
-  loading.value = true
 
+  if (!formData.prompt) {
+    message.warning('请输入提示词')
+    return
+  }
+
+  if (['imageToVideo', 'firstLastFrames'].includes(formData.entryCode) && !formData.images.length) {
+    message.warning('请上传图片')
+    return
+  }
+
+  loading.value = true
   const wh = formData.ratio.split(',')
   const params: ICreationSubmit = {
     type: 'VIDEO',
@@ -85,103 +97,26 @@ const submit2 = () => {
     },
     images: formData.images,
   }
-  creationSubmit(params).then((res) => {
-    if (res.code === 0) {
-      start(res.data.taskId)
-      messages.value.push({
-        taskTime: '',
-        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
-        assets: [{ aiPrompt: formData.prompt, status: 1 }],
-      })
-      nextTick(() => {
-        dynamicScrollerRef.value?.scrollToBottom()
-      })
-    }
-  })
-}
-const submit = () => {
-  if (loading.value) return
-  loading.value = true
-
-  setTimeout(() => {
-    start()
-    messages.value.push({
-      taskTime: '',
-      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
-      assets: [{ aiPrompt: formData.prompt, status: 1 }],
-    })
-    nextTick(() => {
-      dynamicScrollerRef.value?.scrollToBottom()
-    })
-  }, 1000)
+  execute(params)
 }
 
-/*const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
-  autoStop(res: any) {
-    if (res.code === 0) {
-      const data = res.data
-      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
-      if (data.status !== 2 && !data.statusView.terminal) {
-        return false
-      }
-    }
-
-    pagingData.page = 1
-    pagingData.hasMore = true
-    getData(true)?.finally(() => (loading.value = false))
-    return true
-  },
-})*/
-let count = 0
-const { start } = usePolling(() => {
-  count ++
-  return new Promise(resolve => {
-    console.log(count)
-    resolve({
-      code: 0,
-      data:{
-        status: count < 3 ? 1 : 2,
-        statusView: {
-          terminal: false
-        }
-      }
-    })
-  })
-}, 1000, {
-  autoStop(res: any) {
-    if (res.code === 0) {
-      const data = res.data
-      console.log(data)
-      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
-      if (data.status !== 2 && !data.statusView.terminal) {
-        return false
-      }
-    }
-
-    pagingData.page = 1
-    pagingData.hasMore = true
-    getData(true)?.finally(() => (loading.value = false))
-    return true
-  },
-})
-
-
-const getData2 = (isReplace?: boolean) => {
+const getData = (isReplace?: boolean) => {
   if (!pagingData.hasMore) return
 
   if (pagingData.loading) return
   pagingData.loading = true
 
   const params = {
-    ...pagingData,
-    type: 'video',
+    type: 'video' as const,
+    page: pagingData.page,
+    pageSize: pagingData.pageSize,
   }
-  return assetAll(params)
+  return creationHistory(params)
     .then((res) => {
       if (res.code === 0) {
         pagingData.page++
 
-        const records = res.data.records
+        const records = res.data.list
         records.reverse()
         if (isReplace) messages.value = records
         else messages.value.unshift(...records)
@@ -190,25 +125,6 @@ const getData2 = (isReplace?: boolean) => {
 
         // 类微信聊天：仅首次加载数据后自动滚动到底部
         if (isReplace) {
-          // scrollToBottom() 源码内部已处理时序问题：
-          // 通过 _undefinedSizes 计数器 + requestAnimationFrame 循环，
-          // 直到所有 item 尺寸被 ResizeObserver 测量完成后才停止
-          /*const doScroll = () => {
-            if (dynamicScrollerRef.value) {
-              dynamicScrollerRef.value.scrollToBottom()
-              console.log(1111)
-            } else {
-              console.log(2222)
-              // DynamicScroller 受 v-if="scrollerHeight > 0" 控制，
-              // 若 API 返回较快、组件尚未挂载，则监听 scrollerHeight 就绪后再滚动
-              const stop = watch(scrollerHeight, (h) => {
-                if (h > 0) {
-                  stop()
-                  nextTick(() => dynamicScrollerRef.value?.scrollToBottom())
-                }
-              })
-            }
-          }*/
           nextTick(() => {
             dynamicScrollerRef.value?.scrollToBottom()
           })
@@ -217,132 +133,20 @@ const getData2 = (isReplace?: boolean) => {
     })
     .finally(() => (pagingData.loading = false))
 }
-const getData = (isReplace?: boolean) => {
-  if (!pagingData.hasMore) return
-
-  if (pagingData.loading) return
-  pagingData.loading = true
-
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      pagingData.page++
-
-      const records = [
-        {
-          taskTime: '2029',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
-            },
-            {
-              aiPrompt: 'qqqqqqqqq',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot2.mp4'
-            },
-          ]
-        },
-        {
-          taskTime: '2028',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
-            }
-          ]
-        },
-        {
-          taskTime: '2027',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
-            }
-          ]
-        },
-        {
-          taskTime: '2026',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
-            }
-          ]
-        },
-        {
-          taskTime: '2025',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/video/video-hot1.mp4'
-            }
-          ]
-        },
-        {
-          taskTime: '2024',
-          assets: [
-            {
-              aiPrompt: 'xxxxxxxxxxxxxxxxxxxxx',
-              resultUrl: 'http://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/logo.png'
-            },
-          ]
-        },
-      ]
-      records.reverse()
-      if (isReplace) messages.value = records
-      else messages.value.unshift(...records)
-
-      if (records.length < pagingData.pageSize) pagingData.hasMore = false
-
-      if (isReplace) {
-        nextTick(() => {
-          dynamicScrollerRef.value?.scrollToBottom()
-        })
-      }
-      pagingData.loading = false
-      resolve('')
-    }, 500)
-  })
-}
 getData(true)
 
-const generateAgain2 = (item: any) => {
-  if (loading.value) return
-  loading.value = true
+const { execute } = useInitCheckTaskStatus({ type: 'video', loading, getData, pagingData })
 
-  creationSubmit(item.params).then((res) => {
-    if (res.code === 0) {
-      start(res.data.taskId)
-      messages.value.push({
-        taskTime: '',
-        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
-        assets: [{ aiPrompt: formData.prompt, status: 1 }],
-      })
-      nextTick(() => {
-        dynamicScrollerRef.value?.scrollToBottom()
-      })
-    }
-  })
-}
 const generateAgain = (item: any) => {
   if (loading.value) return
-  console.log('generateAgain')
-  loading.value = true
 
-  setTimeout(() => {
-    start()
-    messages.value.push({
-      taskTime: '',
-      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
-      assets: [{ aiPrompt: formData.prompt, status: 1 }],
-    })
-    nextTick(() => {
-      dynamicScrollerRef.value?.scrollToBottom()
-    })
-  }, 1000)
+  execute(item.params)
 }
 
 const download = (item: any) => {
-  const urls = item.assets.map((item: any) => item.resultUrl)
+  const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
+
+  if (!urls.length) return
 
   urls.forEach((url: string, index: number) => {
     setTimeout(() => {
@@ -366,7 +170,7 @@ const download = (item: any) => {
         v-if="scrollerHeight > 0"
         :items="messages"
         :min-item-size="300"
-        key-field="taskTime"
+        key-field="createTime"
         :style="{ height: scrollerHeight + 'px' }"
         class="scroller"
         v-observer-scroll="{
@@ -378,21 +182,22 @@ const download = (item: any) => {
           <DynamicScrollerItem :item="item" :active="active" :data-index="index">
             <div class="message-group">
               <!-- 日期标题 -->
-              <h2 class="message-group__date">{{ item.taskTime }}</h2>
+              <h2 class="message-group__date">{{ item.createTime }}</h2>
 
               <!-- 提示词 -->
-              <p class="message-group__prompt">{{ item.assets[0].aiPrompt }}</p>
+              <p class="message-group__prompt">{{ item.inputParams.params.prompt }}</p>
 
               <!-- 元信息 -->
-<!--              <div class="message-group__meta">-->
-<!--                <span>{{ item.meta }}</span>-->
-<!--              </div>-->
+              <!--              <div class="message-group__meta">-->
+              <!--                <span>{{ item.meta }}</span>-->
+              <!--              </div>-->
 
               <!-- 图片网格 -->
               <div class="message-group__images">
-                <div v-for="(jtem, j) in item.assets" :key="j" class="message-group__image-wrap">
-                  <video class="video" :src="jtem.resultUrl" controls/>
-                  <div v-if="jtem.status === 1" class="pending">生成中...</div>
+                <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
+                  <video v-if="jtem.resultUrl" class="video" :src="jtem.resultUrl" controls />
+                  <div v-if="jtem.status === 1" class="pending">处理中...</div>
+                  <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
                 </div>
               </div>
 

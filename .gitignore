@@ -37,3 +37,6 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# AI tools - 保留规则文件，忽略缓存
+.claude/settings.local.json
