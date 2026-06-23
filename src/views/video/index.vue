@@ -4,7 +4,7 @@ import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
-import { durationOps, modelOps, ratioOps, taskOps } from './constants.ts'
+import { durationOps, modelOps, ratioOps, taskOps, config } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import type { ICreationSubmit } from '@/api/types.ts'
@@ -25,8 +25,9 @@ if (global_formData.value.home) {
     resolution = '720p',
     duration = 4,
     images = [],
+    video = [],
   } = global_formData.value.video
-  _formData = { entryCode, modelCode, prompt, ratio, resolution, duration, images }
+  _formData = { entryCode, modelCode, prompt, ratio, resolution, duration, images, video }
   store.reset()
 }
 
@@ -41,6 +42,7 @@ const formData = reactive(
     resolution: '720p',
     duration: 4,
     images: [],
+    video: [],
   },
 )
 const pagingData = reactive({
@@ -76,9 +78,25 @@ const submit = () => {
     return
   }
 
-  if (['imageToVideo', 'firstLastFrames'].includes(formData.entryCode) && !formData.images.length) {
+  if (['imageToVideo'].includes(formData.entryCode) && !formData.images.length) {
     message.warning('请上传图片')
     return
+  }
+
+  if (['firstLastFrames'].includes(formData.entryCode) && formData.images.length < 2) {
+    message.warning('请上传2张图片')
+    return
+  }
+
+  if (['actionTransfer'].includes(formData.entryCode)) {
+    if (!formData.images.length) {
+      message.warning('请上传图片')
+      return
+    }
+    if (!formData.video.length) {
+      message.warning('请上传视频')
+      return
+    }
   }
 
   loading.value = true
@@ -96,6 +114,7 @@ const submit = () => {
       duration: formData.duration,
     },
     images: formData.images,
+    video: ['actionTransfer'].includes(formData.entryCode) ? formData.video[0] : '',
   }
   execute(params)
 }
@@ -257,10 +276,11 @@ const download = (item: any) => {
       <h1 v-if="!messages.length" class="h1">和我聊聊， 你想要什么设计～</h1>
 
       <ChatInputBox
-        v-model:imgList="formData.images"
-        v-model:prompt="formData.prompt"
+        v-model:formData="formData"
         :submit="submit"
         :btnLoading="loading"
+        :showVideoUpload="formData.entryCode === 'actionTransfer'"
+        v-bind="config[formData.entryCode]"
       >
         <template #bottomSelect>
           <div class="select-cont">

@@ -7,30 +7,40 @@ interface IProps {
   submit: () => void
   activeChatTab?: string
   btnLoading?: boolean
+  showVideoUpload?: boolean
+  imageLimit?: number
+  videoLimit?: number
 }
-const { showUpload = true, submit, activeChatTab, btnLoading } = defineProps<IProps>()
-const imgList = defineModel<any[]>('imgList')
-const prompt = defineModel<string>('prompt')
+const {
+  showUpload = true,
+  submit,
+  activeChatTab,
+  btnLoading,
+  showVideoUpload,
+  imageLimit = 5,
+  videoLimit = 1,
+} = defineProps<IProps>()
+const formData = defineModel<any>('formData')
 
 // contenteditable 双向绑定
 const textareaRef = ref<HTMLDivElement | null>(null)
 
 const onInput = (e: Event) => {
-  prompt.value = (e.target as HTMLDivElement).innerText || ''
+  formData.value.prompt = (e.target as HTMLDivElement).innerText || ''
 }
 
 onMounted(() => {
   const el = textareaRef.value
-  if (el && el.innerText !== prompt.value) {
-    el.innerText = prompt.value ?? ''
+  if (el && el.innerText !== formData.value.prompt) {
+    el.innerText = formData.value.prompt ?? ''
   }
 })
 watch(
   () => activeChatTab,
   () => {
     const el = textareaRef.value
-    if (el && el.innerText !== prompt.value) {
-      el.innerText = prompt.value ?? ''
+    if (el && el.innerText !== formData.value.prompt) {
+      el.innerText = formData.value.prompt ?? ''
     }
   },
 )
@@ -40,7 +50,15 @@ watch(
   <div class="chat-content">
     <div class="main-content">
       <div v-if="showUpload" class="upload-cont">
-        <Upload v-model:imgList="imgList!" :limitNumber="5" multiple />
+        <Upload style="width: 72px" v-model:fileList="formData.images" :limitNumber="imageLimit" multiple />
+        <Upload
+          v-if="showVideoUpload"
+          style="width: 72px"
+          v-model:fileList="formData.video"
+          type="video"
+          :limitNumber="videoLimit"
+          label="视频"
+        />
       </div>
 
       <div
@@ -59,7 +77,7 @@ watch(
         <i class="icon-ic_hone_bean"></i>
         <span>限免</span>
         <div class="btn" @click="submit" v-loading="btnLoading">
-          <i class="icon-ic_hone_bean"></i>
+          <i class="icon-ic_home_send"></i>
         </div>
       </div>
     </div>
@@ -87,9 +105,10 @@ watch(
     display: flex;
     gap: 20px;
     > .upload-cont {
-      width: 72px;
+      //min-width: 72px;
       height: 80px;
       flex-shrink: 0;
+      display: flex;
     }
     > .textarea-box {
       height: 100%;
@@ -134,6 +153,9 @@ watch(
         > i {
           font-size: 24px;
           color: white;
+        }
+        .icon-ic_home_send {
+          font-size: 38px;
         }
       }
     }

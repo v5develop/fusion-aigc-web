@@ -1,27 +1,89 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import { upload } from '@/api/ossUpload.ts'
 
 interface IProps {
-  limitNumber?: number // 限制上传张数
+  type?: 'image' | 'video'
+  limitNumber?: number
   multiple?: boolean
+  label?: string
 }
-const { limitNumber, multiple = false } = defineProps<IProps>()
-const imgList = defineModel<any[]>('imgList', { required: true })
+const { type = 'image', limitNumber, multiple = false, label } = defineProps<IProps>()
+const fileList = defineModel<any[]>('fileList', { required: true })
 
 const message = useMessage()
 const uploadRef = ref<HTMLInputElement | null>(null)
 const expand = ref(false)
 const loading = ref(false)
 
+const acceptType = computed(() => (type === 'video' ? 'video/*' : 'image/*'))
+
+const getPreviewSrc = (item: any) => {
+  if (type === 'video') return item.thumbnail
+  return item
+}
+
 const beforeUpload = () => {
   if (loading.value) return
 
-  if (limitNumber && imgList.value.length >= limitNumber) {
-    return message.warning(`最多上传${limitNumber}张图片`)
+  if (limitNumber && fileList.value.length >= limitNumber) {
+    const unit = type === 'video' ? '个视频' : '张图片'
+    return message.warning(`最多上传${limitNumber}${unit}`)
   }
   uploadRef.value!.click()
+}
+
+const extractVideoThumbnail = (videoUrl: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    video.crossOrigin = 'anonymous'
+    video.preload = 'metadata'
+    video.src = videoUrl
+    video.muted = true
+
+    const cleanup = () => {
+      video.removeEventListener('seeked', handleSeeked)
+      video.removeEventListener('error', handleError)
+      video.removeEventListener('loadedmetadata', handleLoaded)
+    }
+
+    const handleSeeked = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        const width = video.videoWidth || 48
+        const height = video.videoHeight || 48
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, width, height)
+          cleanup()
+          resolve(canvas.toDataURL('image/png'))
+        } else {
+          cleanup()
+          resolve('')
+        }
+      } catch {
+        cleanup()
+        resolve('')
+      }
+    }
+
+    const handleLoaded = () => {
+      video.currentTime = 0.5
+    }
+
+    const handleError = () => {
+      cleanup()
+      resolve('')
+    }
+
+    video.addEventListener('seeked', handleSeeked)
+    video.addEventListener('loadedmetadata', handleLoaded)
+    video.addEventListener('error', handleError)
+    video.load()
+  })
 }
 
 const handleUpload = async (e: Event) => {
@@ -29,30 +91,40 @@ const handleUpload = async (e: Event) => {
   const files = target.files
   if (!files || files.length === 0) return
 
-  // 校验是否为图片类型
   const fileArray = Array.from(files)
+  const mimePrefix = type === 'video' ? 'video/' : 'image/'
+  const label = type === 'video' ? '视频' : '图片'
+
   for (const file of fileArray) {
-    if (!file.type.startsWith('image/')) {
-      return message.warning(`${file.name} 不是有效的图片`)
+    if (!file.type.startsWith(mimePrefix)) {
+      return message.warning(`${file.name} 不是有效的${label}`)
     }
   }
+
   loading.value = true
-  upload(fileArray)
-    .then((urls) => {
-      if (limitNumber) {
-        imgList.value.push(...urls.slice(0, limitNumber - imgList.value.length))
-      } else {
-        imgList.value.push(urls)
+  try {
+    const urls = await upload(fileArray)
+    const remaining = limitNumber ? limitNumber - fileList.value.length : urls.length
+    const validUrls = urls.slice(0, remaining)
+
+    if (type === 'video') {
+      for (const url of validUrls) {
+        const thumbnail = await extractVideoThumbnail(url)
+        fileList.value.push({ url, thumbnail })
       }
-    })
-    .finally(() => {
-      loading.value = false
-      uploadRef.value!.value = ''
-    })
+    } else {
+      fileList.value.push(...validUrls)
+    }
+  } catch {
+    message.error(`${type === 'video' ? '视频' : '图片'}上传失败，请重试`)
+  } finally {
+    loading.value = false
+    uploadRef.value!.value = ''
+  }
 }
 
 const deleteImg = (index: number) => {
-  imgList.value.splice(index, 1)
+  fileList.value.splice(index, 1)
 }
 </script>
 
@@ -61,9 +133,8 @@ const deleteImg = (index: number) => {
     <input
       ref="uploadRef"
       type="file"
-      accept="image/*"
+      :accept="acceptType"
       :multiple="multiple"
-      id="file-upload"
       @change="handleUpload"
       style="display: none"
     />
@@ -73,10 +144,10 @@ const deleteImg = (index: number) => {
         <div
           class="item"
           :style="{ '--transformX': expand ? 60 * i + 'px' : 0 }"
-          v-for="(item, i) in imgList"
-          :key="item"
+          v-for="(item, i) in fileList"
+          :key="type === 'video' ? item.url : item"
         >
-          <img class="img-item" :src="item" alt="" @mouseenter="expand = true" />
+          <img class="img-item" :src="getPreviewSrc(item)" alt="" @mouseenter="expand = true" />
 
           <div class="delete-box" @click="deleteImg(i)">
             <i class="icon-ic_ds_return-2"></i>
@@ -84,13 +155,14 @@ const deleteImg = (index: number) => {
         </div>
 
         <div
-          :style="{ '--transformX': expand ? 60 * imgList.length + 'px' : 0 }"
+          :style="{ '--transformX': expand ? 60 * fileList.length + 'px' : 0 }"
           class="item upload-btn"
-          :class="[imgList.length && !expand ? 'upload-btn-small' : '', { disabled: loading }]"
+          :class="[fileList.length && !expand ? 'upload-btn-small' : '', { disabled: loading }]"
           @click="beforeUpload"
           v-loading="loading"
         >
           <i class="icon-ic_home_upload1"></i>
+          <span class="label">{{ label }}</span>
         </div>
       </div>
     </div>
@@ -104,6 +176,10 @@ const deleteImg = (index: number) => {
   display: flex;
   justify-content: center;
   align-items: center;
+  position: relative;
+  &:hover {
+    z-index: 1;
+  }
   > .content {
     width: 100%;
     height: 100%;
@@ -176,6 +252,15 @@ const deleteImg = (index: number) => {
         > .icon-ic_home_upload1 {
           color: #8f8f8f;
         }
+        > .label {
+          font-size: 12px;
+          white-space: nowrap;
+          position: absolute;
+          left: 50%;
+          top: 65%;
+          transform: translateX(-50%);
+          transition: all 0.3s;
+        }
       }
       > .upload-btn-small {
         width: 30px;
@@ -185,6 +270,9 @@ const deleteImg = (index: number) => {
         position: absolute;
         left: 60%;
         top: 60%;
+        > .label {
+          opacity: 0;
+        }
       }
       > .disabled {
         pointer-events: none;

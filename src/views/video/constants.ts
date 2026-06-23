@@ -52,3 +52,19 @@ export const durationOps = [
   { label: '14s', value: 14 },
   { label: '15s', value: 15 },
 ]
+
+export const config: Record<string, any> = {
+  textToVideo: {
+    imageLimit: 5,
+  },
+  imageToVideo: {
+    imageLimit: 5,
+  },
+  actionTransfer: {
+    imageLimit: 1,
+    videoLimit: 1,
+  },
+  firstLastFrames: {
+    imageLimit: 2,
+  },
+}

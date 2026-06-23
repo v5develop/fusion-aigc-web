@@ -43,16 +43,11 @@ router.beforeEach(async (to, from) => {
   // 如果没有 token，进行模拟登录
   if (!token) {
     const unionToken = getUrlQuery('unionToken')
-    if (!!'aaa') {
+    if (!!'') {
       await unionTokenLogin({ token: unionToken! }).then(async (res) => {
         if (res.code === 0) {
           localStorage.setItem('fusion_accessToken', res.data.accessToken)
           localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
-
-          const { code, data } = await getUserInfo()
-          if (code === 0) {
-            localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
-          }
         }
       })
     } else {

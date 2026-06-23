@@ -14,6 +14,7 @@ interface IProps {
   tryImages?: any[] // 试一试图片
   field?: string // imgList为对象数组时，取图片地址的key，默认image
   customResultHandle?: (value: string[]) => void // 自定义返回处理
+  customBeforeUpload?: () => boolean // 文件上传之前的回调，返回 false 会取消本次上传
 }
 const {
   type = 'default',
@@ -25,6 +26,7 @@ const {
   btnName = '上传产品图',
   field = 'image',
   customResultHandle,
+  customBeforeUpload,
 } = defineProps<IProps>()
 const imgList = defineModel<any[]>('imgList', {
   default: () => [],
@@ -66,6 +68,8 @@ const handleUpload = async (e: Event) => {
 }
 
 const beforeUpload = () => {
+  if (!customBeforeUpload?.()) return;
+
   if (limitNumber && imgList.value.length >= limitNumber) {
     return message.warning(`最多上传${limitNumber}张图片`)
   }

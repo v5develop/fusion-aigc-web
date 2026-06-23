@@ -10,7 +10,13 @@ import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 import ChatInputBox from './ChatInputBox/index.vue'
 import { taskOps, ratioOps } from '@/views/picture/constants.ts'
-import { taskOps as videoTaskOps, ratioOps as videoRatioOps, durationOps, modelOps } from '@/views/video/constants.ts'
+import {
+  taskOps as videoTaskOps,
+  ratioOps as videoRatioOps,
+  durationOps,
+  modelOps,
+  config as videoConfig,
+} from '@/views/video/constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 
@@ -34,6 +40,7 @@ const formData = reactive({
     resolution: '720p',
     duration: 4,
     images: [],
+    video: [],
   },
   ecommerce: {
     images: [],
@@ -148,9 +155,10 @@ const submit = () => {
 
       <ChatInputBox
         :activeChatTab="activeChatTab"
-        v-model:imgList="formData[activeChatTab as keyof typeof formData].images"
-        v-model:prompt="formData[activeChatTab as keyof typeof formData].prompt"
+        v-model:formData="formData[activeChatTab]"
+        :showVideoUpload="formData.video.entryCode === 'actionTransfer'"
         :submit="submit"
+        v-bind="activeChatTab === 'video' ? videoConfig[formData.video.entryCode] : {}"
       >
         <template #bottomSelect>
           <div v-if="activeChatTab === 'picture'" class="select-cont">

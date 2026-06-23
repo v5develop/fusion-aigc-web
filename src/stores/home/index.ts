@@ -18,6 +18,7 @@ export const useHomeStore = defineStore('counter', () => {
       resolution: '720p',
       duration: 4,
       images: [],
+      video: [],
     },
     ecommerce: {
       images: [],

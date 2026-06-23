@@ -50,6 +50,7 @@ export interface ICreationSubmit {
     [key: string]: any
   }
   images?: string[]
+  video?: string
 }
 
 export interface IOptimizePrompt {

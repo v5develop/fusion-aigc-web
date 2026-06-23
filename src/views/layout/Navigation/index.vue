@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
-import { ref, watch } from 'vue'
+import { useUserInfoStore } from '@/stores/userInfo.ts'
+import { storeToRefs } from 'pinia'
 
 const router = useRouter() // 用来跳转
 const route = useRoute() // 用来获取当前地址
+const store = useUserInfoStore()
+const { userInfo } = storeToRefs(store)
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
+
 const menuList = [
   { name: '首页', path: '/', icon: 'icon-ic_nav_home', iconActive: 'icon-ic_nav_home_full' },
   { name: '图片', path: '/picture', icon: 'icon-ic_nav_pic', iconActive: 'icon-ic_nav_pic_full' },
@@ -13,7 +17,6 @@ const menuList = [
   { name: '电商', path: '/e-commerce', icon: 'icon-ic_nav_ds', iconActive: 'icon-ic_nav_ds_full' },
   { name: '资产', path: '/asset', icon: 'icon-ic_nav_asset', iconActive: 'icon-ic_nav_asset_full' },
 ]
-const beansNum = ref(100)
 
 function handleRouterActive(path: string) {
   if (path === '/') {
@@ -37,9 +40,12 @@ function handleRouterActive(path: string) {
     <div class="bottom-content">
       <div class="beans-cont">
         <i class="icon-ic_hone_bean"></i>
-        <span>{{ beansNum }}</span>
+        <span>{{ userInfo?.availablePoints }}</span>
       </div>
+
+      <img v-if="userInfo?.avatar" :src="userInfo?.avatar" alt="" />
       <img
+        v-else
         src="https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp"
         alt=""
       />
@@ -93,12 +99,18 @@ function handleRouterActive(path: string) {
   }
 
   > .bottom-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 5px;
     margin: auto 0 40px 0;
     > .beans-cont {
       display: flex;
       align-items: center;
       gap: 6px;
+      word-break: break-all;
       > .icon-ic_hone_bean {
+        flex-shrink: 0;
         color: var(--main-color);
       }
     }

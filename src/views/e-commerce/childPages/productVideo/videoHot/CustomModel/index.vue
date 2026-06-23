@@ -14,6 +14,8 @@ import Tab from '@/components/Tab/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import ImagePopover from '@/components/ImagePopover/index.vue'
+import CustomModelNotice from '@/components/CustomModelNotice/index.vue'
+import { modelNoticeObj } from '@/components/CustomModelNotice/useData.ts'
 
 const { modelCode } = defineProps<{
   modelCode: string
@@ -46,7 +48,7 @@ const pagingData = reactive({
 const uploadImage = ref<string[]>([])
 
 // 轮询达人生成
-const { start: startModelPolling } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
+const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
   onError() {
     btnLoading.value = false
     localStorage.removeItem('modelTaskId')
@@ -55,6 +57,7 @@ const { start: startModelPolling } = usePolling((taskId) => pollingSingleTask(ta
     if (res.code === 0) {
       if (res.data.status === 2) {
         localStorage.removeItem('modelTaskId')
+        btnLoading.value = false
         getModelData()
         return true
       }
@@ -67,7 +70,7 @@ const { start: startModelPolling } = usePolling((taskId) => pollingSingleTask(ta
 const localModelTaskId = localStorage.getItem('modelTaskId')
 if (localModelTaskId) {
   btnLoading.value = true
-  startModelPolling(localModelTaskId)
+  start(localModelTaskId)
 }
 
 // 生成达人
@@ -79,16 +82,14 @@ const generateModel = () => {
     params: modelData,
   }
   btnLoading.value = true
-  ecommerceSubmit(params)
-    .then((res) => {
-      if (res.code === 0) {
-        // 开始轮询，生成完清除localStorage的modelTaskId
-        const modelTaskId = res.data.taskId
-        localStorage.setItem('modelTaskId', modelTaskId)
-        startModelPolling(modelTaskId)
-      }
-    })
-    .finally(() => (btnLoading.value = false))
+  ecommerceSubmit(params).then((res) => {
+    if (res.code === 0) {
+      // 开始轮询，生成完清除localStorage的modelTaskId
+      const modelTaskId = res.data.taskId
+      localStorage.setItem('modelTaskId', modelTaskId)
+      start(modelTaskId)
+    }
+  })
 }
 // 获取达人列表
 const getModelData = () => {
@@ -142,6 +143,15 @@ const customResultHandle = (urls: string[]) => {
     }
   })
 }
+
+const customBeforeUpload = () => {
+  if (!modelNoticeObj.value.customModelNoticeConfirmed) {
+    modelNoticeObj.value.show = true
+    return false
+  }
+
+  return true
+}
 </script>
 
 <template>
@@ -149,6 +159,7 @@ const customResultHandle = (urls: string[]) => {
     定制专属模特
     <n-switch class="switch-pos" v-model:value="switchValue" />
   </div>
+
   <div class="custom-model-cont" v-show="switchValue">
     <Tab
       v-model:value="modelTabValue"
@@ -205,12 +216,19 @@ const customResultHandle = (urls: string[]) => {
       }"
     >
       <div style="height: 86px">
-        <ImageUpload v-model:imgList="uploadImage" type="card" :customResultHandle="customResultHandle" />
+        <ImageUpload
+          v-model:imgList="uploadImage"
+          type="card"
+          :customResultHandle="customResultHandle"
+          :customBeforeUpload="customBeforeUpload"
+        />
       </div>
 
       <ImagePopover v-model="personUrl" :imgList="modelData.images.map((item) => item.coverUrl)" style="height: 86px" />
     </div>
   </div>
+
+  <CustomModelNotice v-model:data="modelNoticeObj" />
 </template>
 
 <style scoped lang="less">

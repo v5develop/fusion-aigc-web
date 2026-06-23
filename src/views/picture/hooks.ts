@@ -22,9 +22,18 @@ export function useInitCheckTaskStatus(props: IProps) {
       const { data } = res
 
       for (const item of data.tasks) {
-        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
-        if (item.status !== 2 && !item.statusView.terminal) {
-          return false
+        /*if (item.status === 4 && item.statusView.terminal) {
+          clearSessionId()
+          pagingData.page = 1
+          pagingData.hasMore = true
+          getData(true)?.finally(() => (loading.value = false))
+          return true
+        }*/
+        for (const jtem of item.contents) {
+          // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
+          if (jtem.status !== 2 && !jtem.statusView.terminal) {
+            return false
+          }
         }
       }
 
@@ -53,9 +62,9 @@ export function useInitCheckTaskStatus(props: IProps) {
 
     creationSubmit(params).then((res) => {
       if (res.code === 0) {
+        pagingData.page = 1
+        pagingData.hasMore = true
         getData(true)?.finally(() => {
-          pagingData.page = 1
-          pagingData.hasMore = true
           // 开始轮询
           start(params.sessionId)
         })

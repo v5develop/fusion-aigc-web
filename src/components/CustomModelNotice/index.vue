@@ -7,15 +7,11 @@
  *
  * 点击"同意"后会自动保存 customModelNoticeConfirmed 到 localStorage
  */
-
 const data = defineModel<{ show: boolean; customModelNoticeConfirmed: boolean }>('data', { required: true })
 
 /** 点击遮罩关闭 */
 function onMaskClick() {
-  data.value = {
-    ...data.value,
-    show: false,
-  }
+  data.value.show = false
 }
 
 /** 点击同意 */
@@ -40,27 +36,11 @@ function onAgree() {
           </div>
 
           <!-- Body -->
-          <div class="modal-body">
-            <p class="intro">
-              亲爱的可灵 AI 伙伴，欢迎您使用我们的主体库功能。
-              请您知悉，当前服务依托人工智能模型生成。我们强烈建议并要求您：
-            </p>
-
-            <div class="clause">
-              <p class="clause-title">严禁利用 AI 技术侵犯他人合法权益</p>
-              <p class="clause-content">
-                请勿利用 AI 技术生成、编辑或传播违反法律法规、侵犯其他用户或第三方合法权益的内容，不得利用 AI
-                技术造谣传谣、恶意中伤他人、侵犯他人隐私和肖像权、名誉权及其他合法权益、侵犯他人知识产权、传播违法违规信息。否则一切后果由您本人承担！
-              </p>
-            </div>
-
-            <div class="clause">
-              <p class="clause-title">内容获得权利人合法授权</p>
-              <p class="clause-content">
-                您应保证对于所上传、提交和输入的内容拥有合法的权利或者已经取得了相关权利人（包括但不限于其他网络平台等，以下统称"授权方"）的完整合法授权，即您应始终确保所上传、提交和输入的内容不包含侵犯任何第三方权益（包括肖像权、名誉权、荣誉权、声音权益、个人信息权益等人格权、著作权及著作邻接权、专利权、商标权、财产权、保密信息等）的信息或者材料。否则我方有权直接下架、删除相关主体及该主体所有的生成内容，且您已支付灵感值不予退还。
-              </p>
-            </div>
-          </div>
+          <iframe
+            class="modal-body"
+            src="https://aigc.pengqiwl.com/agreements/ai-generate-terms-of-use.pdf"
+            frameborder="0"
+          ></iframe>
 
           <!-- Footer -->
           <div class="modal-footer">
@@ -85,7 +65,8 @@ function onAgree() {
 }
 
 .modal {
-  width: 520px;
+  //width: 520px;
+  width: 1000px;
   background: #ffffff;
   border-radius: 8px;
   box-shadow:
@@ -122,37 +103,10 @@ function onAgree() {
 }
 
 .modal-body {
+  width: 100%;
+  height: 80vh;
   padding: 12px 24px;
-  max-height: 460px;
   overflow-y: auto;
-
-  .intro {
-    font-size: 14px;
-    font-weight: 500;
-    color: #3a3a3a;
-    line-height: 20px;
-    margin: 0 0 12px;
-  }
-
-  .clause {
-    margin-bottom: 12px;
-
-    .clause-title {
-      font-size: 14px;
-      font-weight: 500;
-      color: #3a3a3a;
-      line-height: 20px;
-      margin: 0 0 12px;
-    }
-
-    .clause-content {
-      font-size: 14px;
-      font-weight: 400;
-      color: #9e9e9e;
-      line-height: 22px;
-      margin: 0;
-    }
-  }
 }
 
 .modal-footer {

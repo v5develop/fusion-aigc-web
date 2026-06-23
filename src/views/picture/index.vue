@@ -84,53 +84,7 @@ const submit = () => {
     images: formData.images,
   }
   execute(params)
-  /*creationSubmit(params).then((res) => {
-    if (res.code === 0) {
-      start(res.data.taskId)
-      messages.value.push({
-        taskTime: '',
-        // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
-        assets: [{ aiPrompt: formData.prompt, status: 1 }],
-      })
-      nextTick(() => {
-        dynamicScrollerRef.value?.scrollToBottom()
-      })
-    }
-  })*/
 }
-/*const submit2 = () => {
-  if (loading.value) return
-  loading.value = true
-
-  setTimeout(() => {
-    start()
-    messages.value.push({
-      taskTime: '',
-      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消，造条假的
-      assets: [{ aiPrompt: formData.prompt, status: 1 }],
-    })
-    nextTick(() => {
-      dynamicScrollerRef.value?.scrollToBottom()
-    })
-  }, 1000)
-}*/
-
-/*const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
-  autoStop(res: any) {
-    if (res.code === 0) {
-      const data = res.data
-      // status: 0=排队 1=处理中 2=成功 3=失败 4=取消   terminal: 是否为终态（不再变化）
-      if (data.status !== 2 && !data.statusView.terminal) {
-        return false
-      }
-    }
-
-    pagingData.page = 1
-    pagingData.hasMore = true
-    getData(true)?.finally(() => (loading.value = false))
-    return true
-  },
-})*/
 
 const getData = (isReplace?: boolean) => {
   if (!pagingData.hasMore) return
