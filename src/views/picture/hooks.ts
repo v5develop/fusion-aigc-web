@@ -69,7 +69,7 @@ export function useInitCheckTaskStatus(props: IProps) {
           start(params.sessionId)
         })
       }
-    })
+    }).catch(() => loading.value = false)
   }
 
   return { execute }
