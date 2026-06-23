@@ -6,10 +6,11 @@ import { upload } from '@/api/ossUpload.ts'
 interface IProps {
   type?: 'image' | 'video'
   limitNumber?: number
+  limitDuration?: number // 视频时长限制（秒）
   multiple?: boolean
   label?: string
 }
-const { type = 'image', limitNumber, multiple = false, label } = defineProps<IProps>()
+const { type = 'image', limitNumber, limitDuration = 10, multiple = false, label } = defineProps<IProps>()
 const fileList = defineModel<any[]>('fileList', { required: true })
 
 const message = useMessage()
@@ -86,6 +87,22 @@ const extractVideoThumbnail = (videoUrl: string): Promise<string> => {
   })
 }
 
+const getVideoDuration = (file: File): Promise<number> => {
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.src = URL.createObjectURL(file)
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src)
+      resolve(video.duration)
+    }
+    video.onerror = () => {
+      URL.revokeObjectURL(video.src)
+      resolve(0)
+    }
+  })
+}
+
 const handleUpload = async (e: Event) => {
   const target = e.target as HTMLInputElement
   const files = target.files
@@ -98,6 +115,15 @@ const handleUpload = async (e: Event) => {
   for (const file of fileArray) {
     if (!file.type.startsWith(mimePrefix)) {
       return message.warning(`${file.name} 不是有效的${label}`)
+    }
+  }
+
+  if (type === 'video') {
+    for (const file of fileArray) {
+      const duration = await getVideoDuration(file)
+      if (duration > limitDuration) {
+        return message.warning(`视频时长不能超过${limitDuration}秒`)
+      }
     }
   }
 
