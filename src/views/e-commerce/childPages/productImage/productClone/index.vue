@@ -10,6 +10,9 @@ import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useMessage } from 'naive-ui'
+import { quotePreview } from '@/api/methods.ts'
+
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('product-clone')
 provide('recordsData', taskList)
@@ -29,6 +32,7 @@ const formData = reactive({
   allStyle: '',
 })
 const refImageLimit = 5
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -61,10 +65,27 @@ const customResultHandle = (urls: string[]) => {
     ...urls.slice(0, refImageLimit - formData.refImageUrl.length).map((url) => ({ image: url, input: '' })),
   )
 }
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'hitReplication',
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="爆款图复刻 " :submit="submit" :loading="loading">
+  <Container class="commerce" title="爆款图复刻 " :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -73,6 +94,11 @@ const customResultHandle = (urls: string[]) => {
           :limitNumber="3"
           multiple
           bottomTips
+          :exampleImages="[
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-clone1.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-clone2.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-clone3.png',
+          ]"
         />
 
         <div class="module-title">参考内容</div>

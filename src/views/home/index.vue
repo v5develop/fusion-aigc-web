@@ -105,15 +105,15 @@ function useWaterfall() {
   }
   getList()
 
-  useDebounce(
-    imageTab,
-    () => {
+  useDebounce({
+    data: imageTab,
+    callback: () => {
       pagingData.page = 1
       pagingData.hasMore = true
       getList(true)
     },
-    0,
-  )
+    delay: 0,
+  })
 
   return { imageTab, waterfallData, getList }
 }

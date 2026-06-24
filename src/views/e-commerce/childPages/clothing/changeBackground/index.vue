@@ -9,7 +9,7 @@ import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
-import { publicTemplate } from '@/api/methods.ts'
+import { publicTemplate, quotePreview } from '@/api/methods.ts'
 import { useMessage } from 'naive-ui'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 
@@ -27,6 +27,7 @@ const formData = reactive({
   refImageUrl: [],
 })
 const { bgTabValue, bgList, bgScrollCallBack } = useBg()
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -87,10 +88,27 @@ function useBg() {
 
   return { bgTabValue, bgList, bgScrollCallBack }
 }
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'backgroundSwitching',
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="人像换背景" :submit="submit" :loading="loading">
+  <Container class="commerce" title="人像换背景" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">人像图</div>
@@ -99,6 +117,15 @@ function useBg() {
           btnName="上传人像"
           :limitNumber="1"
           :topRightTips="false"
+          :tryImages="[
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/change-background1.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/change-background2.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/change-background3.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/change-background4.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/change-background5.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/change-background6.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/change-background7.png',
+          ]"
         >
           <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>

@@ -26,7 +26,7 @@ const {
   btnName = '上传产品图',
   field = 'image',
   customResultHandle,
-  customBeforeUpload,
+  customBeforeUpload = () => true,
 } = defineProps<IProps>()
 const imgList = defineModel<any[]>('imgList', {
   default: () => [],
@@ -68,12 +68,22 @@ const handleUpload = async (e: Event) => {
 }
 
 const beforeUpload = () => {
-  if (!customBeforeUpload?.()) return;
+  if (!customBeforeUpload?.()) return
 
   if (limitNumber && imgList.value.length >= limitNumber) {
     return message.warning(`最多上传${limitNumber}张图片`)
   }
   uploadRef.value!.click()
+}
+
+const tryClick = (url: string) => {
+  if (imgList.value.includes(url)) return
+  
+  if (limitNumber && imgList.value.length >= limitNumber) {
+    return message.warning(`最多上传${limitNumber}张图片`)
+  }
+
+  imgList.value.push(url)
 }
 </script>
 
@@ -99,7 +109,7 @@ const beforeUpload = () => {
 
       <div v-if="exampleImages" class="example-cont">
         <span>示例</span>
-        <n-image
+        <!--        <n-image
           v-for="item in exampleImages"
           :key="item"
           width="44"
@@ -107,7 +117,15 @@ const beforeUpload = () => {
           :src="item"
           object-fit="cover"
           style="border-radius: 4px"
-        />
+        />-->
+        <template v-for="item in exampleImages" :key="item">
+          <n-popover trigger="hover">
+            <template #trigger>
+              <img class="img" :src="item" alt="" />
+            </template>
+            <img class="preview" :src="item" alt="" />
+          </n-popover>
+        </template>
       </div>
 
       <div class="upload-img-list">
@@ -128,7 +146,14 @@ const beforeUpload = () => {
     <div v-if="tryImages" class="try-try">
       <span class="title">试一试</span>
       <div class="content">
-        <img class="img" :src="item" alt="" v-for="item in tryImages" :key="item" />
+        <template v-for="item in tryImages" :key="item">
+          <n-popover trigger="hover">
+            <template #trigger>
+              <img class="img" :src="item" alt="" @click="tryClick(item)" />
+            </template>
+            <img class="preview" :src="item" alt="" />
+          </n-popover>
+        </template>
       </div>
     </div>
   </div>
@@ -195,6 +220,10 @@ const beforeUpload = () => {
       align-items: center;
       gap: 4px;
       color: #9e9e9e;
+      .img {
+        height: 44px;
+        border-radius: 4px;
+      }
     }
 
     > .upload-img-list {
@@ -248,24 +277,25 @@ const beforeUpload = () => {
 
   > .try-try {
     margin-top: 12px;
+    padding-right: 2px;
     height: 44px;
     border-radius: 8px;
     background: #edeff5;
     display: flex;
     align-items: center;
     > .title {
-      font-size: 11px;
+      font-size: 12px;
       color: #9e9e9e;
-      padding: 0 12px;
+      padding: 0 5px;
     }
     > .content {
       flex: 1;
       height: 90%;
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 4px;
       overflow: auto;
-      > .img {
+      .img {
         height: 100%;
         aspect-ratio: 1/1;
         border-radius: 8px;

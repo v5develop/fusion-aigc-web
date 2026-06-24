@@ -10,9 +10,10 @@ import Textarea from '@/components/Textarea/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
-import { publicTemplate } from '@/api/methods.ts'
+import { publicTemplate, quotePreview } from '@/api/methods.ts'
 import { ageOps, genderOps, skinOps } from '@/views/e-commerce/childPages/constants.ts'
 import { useMessage } from 'naive-ui'
+import { useDebounce } from '@/utils/hooks'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
@@ -31,6 +32,7 @@ const formData = reactive({
 })
 const switchValue = ref(true)
 const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -45,14 +47,13 @@ const submit = () => {
     return message.warning('请上传模特')
   }
 
-  if (formData.prompt) formData.scenePhoto.push(formData.prompt)
   const params = {
     type: 'wearingProductSetImages',
     imageUrls: formData.imageUrls,
     params: {
       personUrl: tabValue.value === 'modelLib' ? formData.personUrl : formData.uploadPersonUrl[0],
       aspectRatio: formData.aspectRatio,
-      scenePhoto: formData.scenePhoto,
+      scenePhoto: formData.prompt ? [...formData.scenePhoto, formData.prompt] : formData.scenePhoto,
     },
   }
   execute(params, loading)
@@ -115,10 +116,39 @@ function useModelList() {
 
   return { modelFilterData, pagingData, tabValue, modelList, scrollCallBack }
 }
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'wearingProductSetImages',
+      params: {
+        scenePhoto: formData.prompt ? [...formData.scenePhoto, formData.prompt] : formData.scenePhoto,
+      },
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  useDebounce({
+    data: [() => formData.scenePhoto],
+    callback: quotePreviewApi,
+    delay: 1000,
+    options: {
+      deep: true,
+    },
+  })
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="穿戴套图" :submit="submit" :loading="loading">
+  <Container class="commerce" title="穿戴套图" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -217,13 +247,13 @@ function useModelList() {
             :col="2"
             gap="8px"
           />
-          <div class="textarea-cont">
+<!--          <div class="textarea-cont">
             <div class="label">或自定义描述场景（可选）</div>
             <Textarea
               v-model:value="formData.prompt"
               placeholder="描述你想要的场景：春日樱花漫道、柔白窗边天光、女生斜倚木质窗台…"
             />
-          </div>
+          </div>-->
         </template>
       </div>
     </template>

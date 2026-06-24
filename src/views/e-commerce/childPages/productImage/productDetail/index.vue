@@ -10,6 +10,10 @@ import RecordList from '@/views/e-commerce/childPages/components/RecordList/inde
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
 import { useMessage } from 'naive-ui'
+import { quotePreview } from '@/api/methods.ts'
+import { useDebounce } from '@/utils/hooks'
+
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('product-detail')
 provide('recordsData', taskList)
@@ -23,8 +27,9 @@ const formData = reactive({
   language: '中文',
   aspectRatio: '1:1',
   buyPoint: '',
-  image_types: ref([]),
+  image_types: [],
 })
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -47,10 +52,40 @@ const submit = () => {
   }
   execute(params, loading)
 }
+
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'aplusDetailPage',
+      params: {
+        image_types: formData.image_types,
+      },
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  useDebounce({
+    data: [() => formData.image_types],
+    callback: quotePreviewApi,
+    delay: 1000,
+    options: {
+      deep: true,
+    },
+  })
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="商品详情图" :submit="submit" :loading="loading">
+  <Container class="commerce" title="商品详情图" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -59,6 +94,11 @@ const submit = () => {
           :limitNumber="3"
           multiple
           bottomTips
+          :exampleImages="[
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-detail1.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-detail2.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-detail3.png',
+          ]"
         />
 
         <div class="module-title">生成设置</div>

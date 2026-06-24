@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { provide, reactive, ref } from 'vue'
+import { quotePreview } from '@/api/methods.ts'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
@@ -12,6 +13,9 @@ import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../const
 import type { ICheckboxCustomImageItem } from './constants.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useMessage } from 'naive-ui'
+import { useDebounce } from '@/utils/hooks/index.ts'
+
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('product-kit')
 provide('recordsData', taskList)
@@ -34,6 +38,7 @@ const defaultCustomData = {
   detai: 0,
 }
 const { customData, checkboxClickHandle, sub, add } = useCheckbox()
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -57,6 +62,7 @@ const submit = () => {
   }
   execute(params, loading)
 }
+
 function useCheckbox() {
   const customData = reactive(defaultCustomData)
   const checkboxClickHandle = (value: string) => {
@@ -84,10 +90,34 @@ function useCheckbox() {
 
   return { customData, checkboxClickHandle, sub, add, limit }
 }
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'productSetImages',
+      params: formData.checked.includes('auto') ? defaultCustomData : customData,
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  useDebounce({
+    data: [() => formData.checked, customData],
+    callback: quotePreviewApi,
+    delay: 1000,
+  })
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="商品套图" :submit="submit" :loading="loading">
+  <Container class="commerce" title="商品套图" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -96,6 +126,11 @@ function useCheckbox() {
           :limitNumber="3"
           multiple
           bottomTips
+          :exampleImages="[
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-kit1.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-kit2.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-kit3.png',
+          ]"
         />
 
         <div class="module-title">生成设置</div>

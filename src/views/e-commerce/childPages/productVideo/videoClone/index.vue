@@ -13,6 +13,8 @@ import SelectGroup from '@/components/SelectGroup/index.vue'
 import CustomModel from '@/views/e-commerce/childPages/productVideo/videoHot/CustomModel/index.vue'
 import { videoList } from './constants.ts'
 import { useMessage } from 'naive-ui'
+import { quotePreview } from '@/api/methods.ts'
+import { useDebounce } from '@/utils/hooks'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
@@ -31,6 +33,7 @@ const formData = reactive({
   checked: [] as string[],
   personUrl: '',
 })
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -49,10 +52,35 @@ const submit = () => {
   }
   execute(params, loading)
 }
+
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'hitVideoReplication',
+      modelCode: formData.modelCode,
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  useDebounce({
+    data: [() => formData.modelCode],
+    callback: quotePreviewApi,
+    delay: 1000,
+  })
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="复刻视频" :submit="submit" :loading="loading">
+  <Container class="commerce" title="复刻视频" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -61,6 +89,11 @@ const submit = () => {
           :limitNumber="3"
           multiple
           bottomTips
+          :exampleImages="[
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/video-clone1.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/video-clone2.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/video-clone3.png',
+          ]"
         />
 
         <div class="module-title">参考视频</div>

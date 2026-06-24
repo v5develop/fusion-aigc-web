@@ -1,12 +1,34 @@
-import { ref, watch } from 'vue'
+import { watch, onUnmounted, type WatchSource, type WatchOptions } from 'vue'
 
-//防抖
-export function useDebounce(data: any, fn: () => void, delay: number = 300) {
-  const timer = ref<ReturnType<typeof setTimeout>>()
-  watch(data, () => {
-    clearTimeout(timer.value)
-    timer.value = setTimeout(() => {
-      fn()
-    }, delay)
+export function useDebounce(config: {
+  data: WatchSource | WatchSource[] | object
+  callback: () => void
+  delay?: number
+  options?: WatchOptions
+}) {
+  const { data, callback, delay = 300, options = {} } = config
+
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  const clear = () => {
+    if (timer) clearTimeout(timer)
+    timer = null
+  }
+
+  const stop = watch(
+    data,
+    () => {
+      clear()
+
+      timer = setTimeout(() => {
+        callback()
+      }, delay)
+    },
+    options,
+  )
+
+  onUnmounted(() => {
+    clear()
+    stop()
   })
 }

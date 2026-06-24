@@ -6,6 +6,8 @@ import VideoUpload, { type IVideoItem } from '@/components/VideoUpload/index.vue
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+import { quotePreview } from '@/api/methods.ts'
+import { useDebounce } from '@/utils/hooks'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
@@ -17,6 +19,7 @@ const formData = reactive({
   imageUrls: [],
   videoUrl: [] as IVideoItem[],
 })
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -28,16 +31,43 @@ const submit = () => {
   }
   execute(params, loading)
 }
+
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'productReplacement',
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="商品替换" :submit="submit" :loading="loading">
+  <Container class="commerce" title="商品替换" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
         <ImageUpload
           v-model:imgList="formData.imageUrls"
           btnName="上传参产品图"
+          :tryImages="[
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/product-replace1.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/product-replace2.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/product-replace3.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/product-replace4.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/product-replace5.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/product-replace6.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/product-replace7.png',
+          ]"
         >
           <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>

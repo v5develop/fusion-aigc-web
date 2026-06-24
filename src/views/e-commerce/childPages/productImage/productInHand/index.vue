@@ -8,9 +8,11 @@ import { platformOps, regionOps, languageOps, aspectRatioOps, genderOps, ageOps,
 import Tab from '@/components/Tab/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
-import { publicTemplate } from '@/api/methods.ts'
+import { publicTemplate, quotePreview } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useMessage } from 'naive-ui'
+
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('product-in-hand')
 provide('recordsData', taskList)
@@ -31,6 +33,7 @@ const formData = reactive({
 const { handPagingData, handTabValue, handListObj, handScrollCallBack } = useHandList()
 const { modelFilterData, modelPagingData, modelList, scrollCallBack } = useModelList()
 const { bgList, bgScrollCallBack } = useBg()
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -112,7 +115,6 @@ function useHandList() {
 
   return { handPagingData, handTabValue, handListObj, handScrollCallBack }
 }
-
 function useModelList() {
   const modelFilterData = reactive({
     gender: null,
@@ -173,7 +175,6 @@ function useModelList() {
 
   return { modelFilterData, modelPagingData, modelList, scrollCallBack }
 }
-
 function useBg() {
   const bgPagingData = reactive({
     page: 1,
@@ -212,10 +213,27 @@ function useBg() {
 
   return { bgList, bgScrollCallBack }
 }
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'aiGestures',
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="手持商品" :submit="submit" :loading="loading">
+  <Container class="commerce" title="手持商品" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -224,6 +242,11 @@ function useBg() {
           :limitNumber="3"
           multiple
           bottomTips
+          :exampleImages="[
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-in-hand1.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-in-hand2.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/product-in-hand3.png',
+          ]"
         />
 
         <div class="module-title">生成设置</div>

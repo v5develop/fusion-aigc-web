@@ -65,3 +65,12 @@ export interface ICreationHistory {
   pageSize: number
   type: 'image' | 'video'
 }
+
+export interface IQuotePreview {
+  entryCode: string
+  modelCode?: string
+  params?: {
+    [key: string]: any
+  }
+  imageUrls?: string[]
+}

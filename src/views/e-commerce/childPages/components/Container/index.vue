@@ -1,8 +1,9 @@
 <script setup lang="ts">
-const { title, submit, loading } = defineProps<{
+const { title, submit, loading, integral } = defineProps<{
   title: string
   submit: () => void
   loading?: boolean
+  integral: number
 }>()
 </script>
 
@@ -17,7 +18,7 @@ const { title, submit, loading } = defineProps<{
 
       <div class="generate-btn" @click="submit">
         <span>立即生成</span>
-        <span>100</span>
+        <span>{{ integral }}</span>
         <i class="icon-ic_hone_bean"></i>
         <n-spin v-show="loading" class="spin" size="small" />
       </div>

@@ -9,8 +9,10 @@ import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import { useMessage } from 'naive-ui'
-import { publicTemplate } from '@/api/methods.ts'
+import { publicTemplate, quotePreview } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('try-shoe')
 provide('recordsData', taskList)
@@ -23,6 +25,7 @@ const formData = reactive({
   uploadPersonUrl: [], // 上传的鞋
 })
 const { shoeFilterData, pagingData, tabValue, shoeList, scrollCallBack } = useShoeList()
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -104,16 +107,44 @@ function useShoeList() {
 
   return { shoeFilterData, pagingData, tabValue, shoeList, scrollCallBack }
 }
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'shoeSwapping',
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="AI试鞋" :submit="submit" :loading="loading">
+  <Container class="commerce" title="AI试鞋" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
         <ImageUpload
           v-model:imgList="formData.imageUrls"
           btnName="上传产品图"
+          :limitNumber="1"
+          :topRightTips="false"
+          :tryImages="[
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/try-shoe1.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/try-shoe2.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/try-shoe3.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/try-shoe4.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/try-shoe5.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/try-shoe6.png',
+            VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/try-shoe7.png',
+          ]"
         >
           <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>

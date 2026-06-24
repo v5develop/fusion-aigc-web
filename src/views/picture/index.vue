@@ -273,8 +273,7 @@ const showDownloadBtn = (item: any): boolean => {
       <h1 v-if="!messages.length" class="h1">和我聊聊， 你想要什么设计～</h1>
 
       <ChatInputBox
-        v-model:imgList="formData.images"
-        v-model:prompt="formData.prompt"
+        v-model:formData="formData"
         :submit="submit"
         :btnLoading="loading"
       >

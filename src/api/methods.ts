@@ -76,3 +76,7 @@ export function optimizePrompt(params: types.IOptimizePrompt) {
 export function creationHistory(params: types.ICreationHistory) {
   return get('/api/v1/creation/history', params)
 }
+
+export function quotePreview(data: types.IQuotePreview) {
+  return post('/api/v1/billing/quote/preview', data)
+}

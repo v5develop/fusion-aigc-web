@@ -7,7 +7,7 @@ import SelectGroup from '@/components/SelectGroup/index.vue'
 import { genderOps, ageOps, skinOps } from '../../constants.ts'
 import Tab from '@/components/Tab/index.vue'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
-import { publicTemplate } from '@/api/methods.ts'
+import { publicTemplate, quotePreview } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
@@ -27,6 +27,7 @@ const formData = reactive({
   target: 'face', // face:换脸  head:换头  person:换全身
 })
 const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()
+const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
@@ -108,10 +109,27 @@ function useModelList() {
 
   return { modelFilterData, pagingData, tabValue, modelList, scrollCallBack }
 }
+function useIntegral() {
+  const integral = ref(0)
+
+  const quotePreviewApi = () => {
+    const params = {
+      entryCode: 'personReplacement',
+    }
+    quotePreview(params).then((res) => {
+      if (res.code === 0) {
+        integral.value = res.data.pricePoints
+      }
+    })
+  }
+  quotePreviewApi()
+
+  return { integral }
+}
 </script>
 
 <template>
-  <Container class="commerce" title="模特替换" :submit="submit" :loading="loading">
+  <Container class="commerce" title="模特替换" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">参考视频</div>
@@ -155,6 +173,15 @@ function useModelList() {
               btnName="上传模特图"
               :limitNumber="1"
               :topRightTips="false"
+              :tryImages="[
+                VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/model-replace1.png',
+                VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/model-replace2.png',
+                VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/model-replace3.png',
+                VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/model-replace4.png',
+                VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/model-replace5.png',
+                VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/model-replace6.png',
+                VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/model-replace7.png',
+              ]"
             />
           </div>
         </div>
