@@ -83,7 +83,12 @@
 
 // ==================== 消息组 ====================
 .message-group {
-  padding-bottom: 24px;
+  padding-bottom: 50px;
+  &:hover{
+    .message-group__actions {
+      opacity: 1;
+    }
+  }
 
   // 日期标题
   &__date {
@@ -175,6 +180,8 @@
   &__actions {
     display: flex;
     gap: 8px;
+    opacity: 0;
+    transition: opacity 0.3s;
   }
 }
 

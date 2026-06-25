@@ -45,7 +45,7 @@ router.beforeEach(async (to, from) => {
     const unionToken = getUrlQuery('unionToken')
     const baseURL = import.meta.env.PROD ? 'https://aigc.pengqiwl.com' : ''
     if (!!baseURL) {
-      await unionTokenLogin({ token: unionToken! }).then(async (res) => {
+      await unionTokenLogin({ token: unionToken! }).then((res) => {
         if (res.code === 0) {
           localStorage.setItem('fusion_accessToken', res.data.accessToken)
           localStorage.setItem('fusion_refreshToken', res.data.refreshToken)

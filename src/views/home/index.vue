@@ -9,9 +9,9 @@ import { filterData1, filterData2 } from './constants.ts'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 import ChatInputBox from './ChatInputBox/index.vue'
-import { taskOps, ratioOps } from '@/views/picture/constants.ts'
+import { entryCodeOps, ratioOps } from '@/views/picture/constants.ts'
 import {
-  taskOps as videoTaskOps,
+  entryCodeOps as videoEntryCodeOps,
   ratioOps as videoRatioOps,
   durationOps,
   modelOps,
@@ -27,13 +27,13 @@ const { global_formData } = storeToRefs(store)
 const activeChatTab = ref<TTabValue>('picture')
 const formData = reactive({
   picture: {
-    entryCode: 'textToImage',
+    entryCode: 'imageToImage',
     prompt: '',
     ratio: '1024,1024',
     images: [],
   },
   video: {
-    entryCode: 'textToVideo',
+    entryCode: 'imageToVideo',
     modelCode: 'local-video',
     prompt: '',
     ratio: '720,1280',
@@ -156,20 +156,24 @@ const submit = () => {
       <ChatInputBox
         :activeChatTab="activeChatTab"
         v-model:formData="formData[activeChatTab]"
-        :showVideoUpload="formData.video.entryCode === 'actionTransfer'"
+        :showVideoUpload="activeChatTab === 'video' && formData.video.entryCode === 'actionTransfer'"
+        :showImageUpload="
+          (activeChatTab === 'picture' && formData.picture.entryCode === 'imageToImage') ||
+          (activeChatTab === 'video' && formData.video.entryCode !== 'textToVideo')
+        "
         :submit="submit"
         v-bind="activeChatTab === 'video' ? videoConfig[formData.video.entryCode] : {}"
       >
         <template #bottomSelect>
           <div v-if="activeChatTab === 'picture'" class="select-cont">
-            <ChatInputSelect v-model:value="formData.picture.entryCode" :options="taskOps" />
+            <ChatInputSelect v-model:value="formData.picture.entryCode" :options="entryCodeOps" />
             <ChatInputSelect v-model:value="formData.picture.ratio" :options="ratioOps" style="margin-left: 10px" />
           </div>
           <div v-else-if="activeChatTab === 'video'" class="select-cont">
-            <ChatInputSelect v-model:value="formData.video.entryCode" :options="videoTaskOps" />
+            <ChatInputSelect v-model:value="formData.video.entryCode" :options="videoEntryCodeOps" />
             <ChatInputSelect
               v-model:value="formData.video.modelCode"
-              :options="videoTaskOps.find((item) => item.value === formData.video.entryCode)?.modelOps!"
+              :options="videoEntryCodeOps.find((item) => item.value === formData.video.entryCode)?.modelOps!"
             />
             <ChatInputSelect v-model:value="formData.video.ratio" :options="videoRatioOps" />
             <ChatInputSelect

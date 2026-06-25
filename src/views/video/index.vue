@@ -4,13 +4,15 @@ import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
-import { durationOps, modelOps, ratioOps, taskOps, config } from './constants.ts'
+import { durationOps, modelOps, ratioOps, entryCodeOps, config } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import type { ICreationSubmit } from '@/api/types.ts'
 import { creationHistory } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
 import { useMessage } from 'naive-ui'
+import { download, showDownloadBtn } from '@/views/picture/utils.ts'
+import { getMetaData } from './utils.ts'
 
 const message = useMessage()
 const store = useHomeStore()
@@ -18,7 +20,7 @@ const { global_formData } = storeToRefs(store)
 let _formData: any
 if (global_formData.value.home) {
   const {
-    entryCode = 'textToVideo',
+    entryCode = 'imageToVideo',
     modelCode = 'local-video',
     prompt = '',
     ratio = '720,1280',
@@ -35,7 +37,7 @@ if (global_formData.value.home) {
 const loading = ref(false)
 const formData = reactive(
   _formData ?? {
-    entryCode: 'textToVideo',
+    entryCode: 'imageToVideo',
     modelCode: 'local-video',
     prompt: '',
     ratio: '720,1280',
@@ -159,23 +161,7 @@ const { execute } = useInitCheckTaskStatus({ type: 'video', loading, getData, pa
 const generateAgain = (item: any) => {
   if (loading.value) return
 
-  execute(item.params)
-}
-
-const download = (item: any) => {
-  const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
-
-  if (!urls.length) return
-
-  urls.forEach((url: string, index: number) => {
-    setTimeout(() => {
-      const a = document.createElement('a')
-      a.href = url
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-    }, index * 150) // 每张间隔150ms，足够浏览器响应
-  })
+  execute(item.inputParams)
 }
 </script>
 
@@ -207,9 +193,9 @@ const download = (item: any) => {
               <p class="message-group__prompt">{{ item.inputParams.params.prompt }}</p>
 
               <!-- 元信息 -->
-              <!--              <div class="message-group__meta">-->
-              <!--                <span>{{ item.meta }}</span>-->
-              <!--              </div>-->
+              <div class="message-group__meta">
+                <span>{{ getMetaData(item.inputParams) }}</span>
+              </div>
 
               <!-- 图片网格 -->
               <div class="message-group__images">
@@ -225,7 +211,7 @@ const download = (item: any) => {
 
               <!-- 操作按钮 -->
               <div class="message-group__actions">
-                <button class="action-btn" @click="generateAgain(item)">
+                <button v-show="!loading" class="action-btn" @click="generateAgain(item)">
                   <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <!-- 重新生成图标 -->
                     <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.333" />
@@ -251,7 +237,7 @@ const download = (item: any) => {
                   </svg>
                   <span>再次生成</span>
                 </button>
-                <button class="action-btn" @click="download(item)">
+                <button v-show="showDownloadBtn(item)" class="action-btn" @click="download(item)">
                   <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <!-- 下载图标 -->
                     <path
@@ -279,15 +265,16 @@ const download = (item: any) => {
         v-model:formData="formData"
         :submit="submit"
         :btnLoading="loading"
+        :showImageUpload="formData.entryCode !== 'textToVideo'"
         :showVideoUpload="formData.entryCode === 'actionTransfer'"
         v-bind="config[formData.entryCode]"
       >
         <template #bottomSelect>
           <div class="select-cont">
-            <ChatInputSelect v-model:value="formData.entryCode" :options="taskOps" />
+            <ChatInputSelect v-model:value="formData.entryCode" :options="entryCodeOps" />
             <ChatInputSelect
               v-model:value="formData.modelCode"
-              :options="taskOps.find((item) => item.value === formData.entryCode)?.modelOps!"
+              :options="entryCodeOps.find((item) => item.value === formData.entryCode)?.modelOps!"
             />
             <ChatInputSelect v-model:value="formData.ratio" :options="ratioOps" />
             <ChatInputSelect

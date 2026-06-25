@@ -3,10 +3,11 @@ import { ref, onMounted, watch } from 'vue'
 import Upload from '@/components/ChatImageUpload/index.vue'
 
 interface IProps {
-  showUpload?: boolean
   submit: () => void
   activeChatTab?: string
   btnLoading?: boolean
+  showUpload?: boolean
+  showImageUpload?: boolean
   showVideoUpload?: boolean
   imageLimit?: number
   videoLimit?: number
@@ -16,6 +17,7 @@ const {
   submit,
   activeChatTab,
   btnLoading,
+  showImageUpload = true,
   showVideoUpload,
   imageLimit = 5,
   videoLimit = 1,
@@ -24,10 +26,6 @@ const formData = defineModel<any>('formData')
 
 // contenteditable 双向绑定
 const textareaRef = ref<HTMLDivElement | null>(null)
-
-const onInput = (e: Event) => {
-  formData.value.prompt = (e.target as HTMLDivElement).innerText || ''
-}
 
 onMounted(() => {
   const el = textareaRef.value
@@ -44,13 +42,49 @@ watch(
     }
   },
 )
+
+const onInput = (e: Event) => {
+  const el = e.target as HTMLDivElement
+  const text = el.innerText.replace(/\n$/, '')
+  if (!text) {
+    el.innerHTML = ''
+  }
+  formData.value.prompt = text
+}
+// 拦截粘贴，强制纯文本
+const handlePaste = (e: ClipboardEvent) => {
+  e.preventDefault()
+  // 获取剪贴板纯文本
+  const text = e.clipboardData?.getData('text/plain') ?? ''
+  if (!text || !textareaRef.value) return
+
+  // 在光标位置插入纯文本
+  const selection = window.getSelection()
+  if (!selection?.rangeCount) return
+  const range = selection.getRangeAt(0)
+  range.deleteContents()
+  range.insertNode(document.createTextNode(text))
+  // 光标移到插入文字末尾
+  range.collapse(false)
+  selection.removeAllRanges()
+  selection.addRange(range)
+
+  // 同步响应式数据
+  formData.value.prompt = textareaRef.value.innerText
+}
 </script>
 
 <template>
   <div class="chat-content">
     <div class="main-content">
-      <div v-if="showUpload" class="upload-cont">
-        <Upload style="width: 72px" v-model:fileList="formData.images" :limitNumber="imageLimit" multiple />
+      <div v-show="showImageUpload || showVideoUpload" class="upload-cont">
+        <Upload
+          v-show="showImageUpload"
+          style="width: 72px"
+          v-model:fileList="formData.images"
+          :limitNumber="imageLimit"
+          multiple
+        />
         <Upload
           v-if="showVideoUpload"
           style="width: 72px"
@@ -67,6 +101,7 @@ watch(
         contenteditable
         data-placeholder="和我聊聊，你想要什么设计。"
         @input="onInput"
+        @paste="handlePaste"
       ></div>
     </div>
 

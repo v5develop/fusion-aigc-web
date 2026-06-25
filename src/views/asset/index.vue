@@ -17,7 +17,6 @@ const pagingData = reactive({
 })
 const records = ref<any[]>([])
 provide('recordsData', records)
-// provide('selectImgUrls', ref(new Set([])))
 
 const getData = (isReplace?: boolean) => {
   if (!pagingData.hasMore) return

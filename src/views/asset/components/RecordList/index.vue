@@ -50,11 +50,32 @@ const getGroupSelectState = (group: any) => {
         <Card class="card-item" v-for="(jtem, j) in item.assets" :key="j" :data="jtem" />
       </div>
     </div>
+
+    <div v-if="!recordsData?.length" class="empty-state">
+      <i class="icon-ic_ds_empty" />
+      <span>暂无数据</span>
+    </div>
   </div>
 </template>
 
 <style scoped lang="less">
 .record-list {
+  > .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 0;
+    color: #999;
+    > i {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+    > span {
+      font-size: 14px;
+    }
+  }
+
   > .record-item {
     margin-bottom: 50px;
     > .title-cont {

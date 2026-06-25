@@ -48,6 +48,7 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://192.168.0.3:18080',
+        // target: 'https://aigc.pengqiwl.com',
         changeOrigin: true,
         // rewrite: (path) => path.replace(/^\/api/, ''),
       },

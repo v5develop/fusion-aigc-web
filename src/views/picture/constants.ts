@@ -1,4 +1,4 @@
-export const taskOps = [
+export const entryCodeOps = [
   { label: '图生图', value: 'imageToImage' },
   { label: '文生图', value: 'textToImage' },
 ]
@@ -12,3 +12,11 @@ export const ratioOps = [
   { label: '9:16', value: '720,1280' },
   { label: '16:9', value: '1280,720' },
 ]
+
+export const entryCodeVal2Label: Record<string, any> = getMap(entryCodeOps)
+
+export const ratioVal2Label: Record<string, any> = getMap(ratioOps)
+
+export function getMap(options: any) {
+  return Object.fromEntries(options.map((item: any) => [item.value, item.label]))
+}

@@ -78,7 +78,7 @@ const beforeUpload = () => {
 
 const tryClick = (url: string) => {
   if (imgList.value.includes(url)) return
-  
+
   if (limitNumber && imgList.value.length >= limitNumber) {
     return message.warning(`最多上传${limitNumber}张图片`)
   }

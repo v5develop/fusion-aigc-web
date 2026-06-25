@@ -6,11 +6,12 @@ import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import type { ICreationSubmit } from '@/api/types.ts'
-import { taskOps, ratioOps } from './constants.ts'
+import { entryCodeOps, ratioOps } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import { useInitCheckTaskStatus } from './hooks.ts'
 import { useMessage } from 'naive-ui'
+import * as utils from './utils.ts'
 
 const message = useMessage()
 const store = useHomeStore()
@@ -145,27 +146,7 @@ const { execute } = useInitCheckTaskStatus({ type: 'picture', loading, getData, 
 const generateAgain = (item: any) => {
   if (loading.value) return
 
-  execute(item.params)
-}
-
-const download = (item: any) => {
-  const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
-
-  urls.forEach((url: string, index: number) => {
-    setTimeout(() => {
-      const a = document.createElement('a')
-      a.href = url
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-    }, index * 150) // 每张间隔150ms，足够浏览器响应
-  })
-}
-
-const showDownloadBtn = (item: any): boolean => {
-  const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
-
-  return urls.length
+  execute(item.inputParams)
 }
 </script>
 
@@ -197,9 +178,9 @@ const showDownloadBtn = (item: any): boolean => {
               <p class="message-group__prompt">{{ item.inputParams.params.prompt }}</p>
 
               <!-- 元信息 -->
-              <!--              <div class="message-group__meta">-->
-              <!--                <span>{{ item.meta }}</span>-->
-              <!--              </div>-->
+              <div class="message-group__meta">
+                <span>{{ utils.getMetaData(item.inputParams) }}</span>
+              </div>
 
               <!-- 图片网格 -->
               <div class="message-group__images">
@@ -222,7 +203,7 @@ const showDownloadBtn = (item: any): boolean => {
 
               <!-- 操作按钮 -->
               <div class="message-group__actions">
-                <button class="action-btn" @click="generateAgain(item)">
+                <button v-show="!loading" class="action-btn" @click="generateAgain(item)">
                   <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <!-- 重新生成图标 -->
                     <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.333" />
@@ -248,7 +229,7 @@ const showDownloadBtn = (item: any): boolean => {
                   </svg>
                   <span>再次生成</span>
                 </button>
-                <button v-if="showDownloadBtn(item)" class="action-btn" @click="download(item)">
+                <button v-show="utils.showDownloadBtn(item)" class="action-btn" @click="utils.download(item)">
                   <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <!-- 下载图标 -->
                     <path
@@ -276,9 +257,10 @@ const showDownloadBtn = (item: any): boolean => {
         v-model:formData="formData"
         :submit="submit"
         :btnLoading="loading"
+        :showImageUpload="formData.entryCode === 'imageToImage'"
       >
         <template #bottomSelect>
-          <ChatInputSelect v-model:value="formData.entryCode" :options="taskOps" />
+          <ChatInputSelect v-model:value="formData.entryCode" :options="entryCodeOps" />
           <ChatInputSelect v-model:value="formData.ratio" :options="ratioOps" style="margin-left: 10px" />
         </template>
       </ChatInputBox>

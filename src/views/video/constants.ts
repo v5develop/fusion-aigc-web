@@ -1,3 +1,5 @@
+import { getMap } from '@/views/picture/constants.ts'
+
 export const modelOps = [
   {
     label: '本地模型',
@@ -26,7 +28,7 @@ export const modelOps = [
   },
 ]
 
-export const taskOps = [
+export const entryCodeOps = [
   { label: '文生视频', value: 'textToVideo', modelOps },
   { label: '图生视频', value: 'imageToVideo', modelOps },
   { label: '动作迁移', value: 'actionTransfer', modelOps: modelOps.slice(0, 1) },
@@ -68,3 +70,13 @@ export const config: Record<string, any> = {
     imageLimit: 2,
   },
 }
+
+
+
+export const entryCodeVal2Label: Record<string, any> = getMap(entryCodeOps)
+
+export const modelVal2Label: Record<string, any> = getMap(modelOps)
+
+export const ratioVal2Label: Record<string, any> = getMap(ratioOps)
+
+export const durationVal2Label: Record<string, any> = getMap(durationOps)
