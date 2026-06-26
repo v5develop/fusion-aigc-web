@@ -56,7 +56,7 @@ function useIntegral() {
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
-        <ImageUpload v-model:imgList="formData.imageUrls" btnName="上传产品图">
+        <ImageUpload v-model:imgList="formData.imageUrls" btnName="上传产品图" :topRightTips="false" :limitNumber="1">
           <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>
       </div>

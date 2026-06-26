@@ -39,7 +39,7 @@ const submit = () => {
   }
 
   const params = {
-    type: 'aplusDetailPage',
+    type: 'aPlusDetailPage',
     imageUrls: formData.imageUrls,
     params: {
       image_types: formData.image_types,
@@ -58,7 +58,7 @@ function useIntegral() {
 
   const quotePreviewApi = () => {
     const params = {
-      entryCode: 'aplusDetailPage',
+      entryCode: 'aPlusDetailPage',
       params: {
         image_types: formData.image_types,
       },

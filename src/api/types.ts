@@ -39,10 +39,10 @@ export interface ICreationSubmit {
   type: 'IMAGE' | 'VIDEO' // IMAGE：图片  VIDEO：视频
   entryCode: 'imageToImage' | 'textToImage'
   modelCode: string
-  params: {
+  params?: {
     prompt?: string
-    width: number
-    height: number
+    width?: number
+    height?: number
     num?: number
     ratio?: string
     resolution?: string

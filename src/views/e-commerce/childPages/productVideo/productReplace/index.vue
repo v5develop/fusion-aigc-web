@@ -59,6 +59,8 @@ function useIntegral() {
         <ImageUpload
           v-model:imgList="formData.imageUrls"
           btnName="上传参产品图"
+          :topRightTips="false"
+          :limitNumber="1"
           :tryImages="[
             VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/product-replace1.png',
             VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/product-replace2.png',

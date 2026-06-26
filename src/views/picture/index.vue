@@ -201,6 +201,8 @@ const generateAgain = (item: any) => {
               <!-- AI 声明 -->
               <p class="message-group__disclaimer">{{ item.disclaimer }}</p>
 
+              <div style="color: #9e9e9e; margin-bottom: 8px;">以上内容由AI生成</div>
+
               <!-- 操作按钮 -->
               <div class="message-group__actions">
                 <button v-show="!loading" class="action-btn" @click="generateAgain(item)">

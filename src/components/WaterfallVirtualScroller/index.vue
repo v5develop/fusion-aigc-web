@@ -23,7 +23,8 @@ const { waterfallOption, calcItemHeight } = useWaterfall()
   >
     <template #default="{ item }">
       <div class="card">
-        <img v-if="item.mediaType === 'image'" class="img" :src="item.url" alt="" />
+<!--        <img v-if="item.mediaType === 'image'" class="img" :src="item.url" alt="" />-->
+        <n-image v-if="item.mediaType === 'image'" :src="item.url" width="100%" height="100%" object-fit="cover"></n-image>
         <video v-else class="video" :src="item.url" controls></video>
       </div>
     </template>
@@ -31,11 +32,11 @@ const { waterfallOption, calcItemHeight } = useWaterfall()
 </template>
 
 <style scoped lang="less">
-.img {
+/*.img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
+}*/
 .video {
   width: 100%;
   height: 100%;

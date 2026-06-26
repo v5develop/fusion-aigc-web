@@ -31,8 +31,9 @@ export const bodyOps = [
   { label: '微胖', value: '微胖' },
 ]
 
+export const localModelValue = 'local'
 export const modelOps = [
-  { label: '本地模型', value: 'local' },
-  { label: 'seedance2.0', value: 'seedance2.0' },
-  { label: 'seedance2.0-fast', value: 'seedance2.0-fast' },
+  { label: '本地模型', value: localModelValue },
+  { label: 'seedance2.0', value: 'doubao-seedance-2-0-260128' },
+  { label: 'seedance2.0-fast', value: 'doubao-seedance-2-0-fast-260128' },
 ]

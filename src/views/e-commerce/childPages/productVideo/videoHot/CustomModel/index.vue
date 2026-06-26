@@ -8,7 +8,13 @@ import {
   faceRecognitionStatusQuery,
 } from '@/api/methods.ts'
 import { usePolling } from '@/utils/hooks/usePolling.ts'
-import { ageOps, appearanceOps, bodyOps, genderOps } from '@/views/e-commerce/childPages/productVideo/constants.ts'
+import {
+  ageOps,
+  appearanceOps,
+  bodyOps,
+  genderOps,
+  localModelValue,
+} from '@/views/e-commerce/childPages/productVideo/constants.ts'
 import Textarea from '@/components/Textarea/index.vue'
 import Tab from '@/components/Tab/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
@@ -16,16 +22,20 @@ import SelectGroup from '@/components/SelectGroup/index.vue'
 import ImagePopover from '@/components/ImagePopover/index.vue'
 import CustomModelNotice from '@/components/CustomModelNotice/index.vue'
 import { modelNoticeObj } from '@/components/CustomModelNotice/useData.ts'
+import { useMessage } from 'naive-ui'
 
 const { modelCode } = defineProps<{
   modelCode: string
 }>()
 const personUrl = defineModel<string>('personUrl', { required: true })
 
+const message = useMessage()
 const modelPollingType = computed(() => {
-  if (['seedance2.0', 'seedance2.0-fast'].includes(modelCode)) return 'realpersonmodel'
   // 本地模型
-  return 'customizedmodel'
+  if (modelCode == localModelValue) return 'customizedmodel'
+
+  // seedance模型
+  return 'realpersonmodel'
 })
 
 const switchValue = ref(false)
@@ -46,6 +56,11 @@ const pagingData = reactive({
   loading: false,
 })
 const uploadImage = ref<string[]>([])
+const faceAuthDialog = reactive({
+  show: false,
+  qrCode: '',
+  errorMsg: '',
+})
 
 // 轮询达人生成
 const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
@@ -56,9 +71,11 @@ const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
   autoStop(res) {
     if (res.code === 0) {
       if (res.data.status === 2) {
+        message.success('达人生成成功')
         localStorage.removeItem('modelTaskId')
         btnLoading.value = false
-        getModelData()
+        modelTabValue.value = 'myModel'
+        resetData()
         return true
       }
     }
@@ -77,23 +94,33 @@ if (localModelTaskId) {
 const generateModel = () => {
   if (btnLoading.value) return
 
+  if (modelCode !== localModelValue) {
+    message.warning('只有本地模型可定制模特')
+    return
+  }
+
   const params = {
     type: 'aiExpert',
     params: modelData,
   }
   btnLoading.value = true
-  ecommerceSubmit(params).then((res) => {
-    if (res.code === 0) {
-      // 开始轮询，生成完清除localStorage的modelTaskId
-      const modelTaskId = res.data.taskId
-      localStorage.setItem('modelTaskId', modelTaskId)
-      start(modelTaskId)
-    }
-  })
+  ecommerceSubmit(params)
+    .then((res) => {
+      if (res.code === 0) {
+        // 开始轮询，生成完清除localStorage的modelTaskId
+        const modelTaskId = res.data.taskId
+        localStorage.setItem('modelTaskId', modelTaskId)
+        start(modelTaskId)
+      }
+    })
+    .catch(() => {
+      btnLoading.value = false
+    })
 }
 // 获取达人列表
 const getModelData = () => {
   if (pagingData.loading || !pagingData.loadMore) return
+
   pagingData.loading = true
   assetAll({ type: modelPollingType.value, ...pagingData })
     .then((res) => {
@@ -122,11 +149,17 @@ const { start: startFaceValidate } = usePolling((taskId) => faceRecognitionStatu
   autoStop(res) {
     const { data } = res
     // 0待处理  1处理中  2已完成  3失败
-    if ([0, 1].includes(data.status)) {
-      return false
+    if ([0, 1].includes(data.status)) return false
+
+    if (data.status === 3) {
+      faceAuthDialog.errorMsg = data.errorMsg
+    } else {
+      message.success('认证成功')
+      faceAuthDialog.show = false
+      faceAuthDialog.qrCode = ''
+      resetData()
     }
 
-    resetData()
     return true
   },
 })
@@ -134,15 +167,17 @@ const customResultHandle = (urls: string[]) => {
   uploadImage.value = urls
   faceRecognition({ modelCode, imageUrls: urls }).then((res) => {
     if (res.code === 0) {
-      if (modelCode === 'local') {
+      if (modelCode === localModelValue) {
         resetData()
       } else {
         startFaceValidate(res.data.taskId)
-        window.open(res.data.h5Link, '_blank')
+        faceAuthDialog.show = true
+        faceAuthDialog.qrCode = res.data.h5Link
       }
     }
   })
 }
+const windowOpen = () => window.open(faceAuthDialog.qrCode, '_blank')
 
 const customBeforeUpload = () => {
   if (!modelNoticeObj.value.customModelNoticeConfirmed) {
@@ -165,7 +200,7 @@ const customBeforeUpload = () => {
       v-model:value="modelTabValue"
       :tabs="[
         { label: '定制达人', value: 'customModel' },
-        { label: '上传我的达人', value: 'myModel' },
+        { label: '我的达人', value: 'myModel' },
       ]"
       style="margin-bottom: 12px"
     />
@@ -228,6 +263,35 @@ const customBeforeUpload = () => {
     </div>
   </div>
 
+  <n-modal
+    v-model:show="faceAuthDialog.show"
+    preset="dialog"
+    title="人脸认证"
+    :style="{ width: '600px' }"
+    :on-after-leave="
+      () => {
+        faceAuthDialog.qrCode = ''
+        faceAuthDialog.errorMsg = ''
+      }
+    "
+  >
+    <div class="face-auth-cont">
+      <div>
+        <span>电脑端认证：电脑上有摄像头可以点击此按钮，在电脑上进行人脸认证</span>
+        <div class="auth-btn" @click="windowOpen">开始认证</div>
+      </div>
+
+      <div class="split-line"></div>
+
+      <div style="display: flex;flex-direction: column;align-items: center;">
+        <span>手机端认证：手机扫描此二维码</span>
+        <n-qr-code :size="300" :value="faceAuthDialog.qrCode" />
+      </div>
+
+      <div style="color: #f30000; margin-top: 40px;text-align: center">{{ faceAuthDialog.errorMsg }}</div>
+    </div>
+  </n-modal>
+
   <CustomModelNotice v-model:data="modelNoticeObj" />
 </template>
 
@@ -240,6 +304,7 @@ const customBeforeUpload = () => {
   top: 50%;
   transform: translateY(-50%);
 }
+
 .custom-model-cont {
   > .custom-model {
     > .textarea-area {
@@ -277,6 +342,29 @@ const customBeforeUpload = () => {
     .active {
       border: 1px solid var(--main-color);
     }
+  }
+}
+
+.face-auth-cont {
+  padding: 30px 0 10px;
+  .auth-btn {
+    width: 80px;
+    height: 32px;
+    line-height: 32px;
+    text-align: center;
+    margin-top: 10px;
+    border-radius: 5px;
+    background-color: var(--main-color);
+    color: #fff;
+    cursor: pointer;
+    &:hover {
+      opacity: 0.8;
+    }
+  }
+  > .split-line {
+    height: 1px;
+    margin: 30px 0;
+    background-color: #dcdcdc;
   }
 }
 </style>
