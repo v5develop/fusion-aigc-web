@@ -33,6 +33,7 @@ const formData = reactive({
   modelCode: 'local',
   checked: [] as string[],
   personUrl: '',
+  personUrlHs: '',
 })
 const { integral } = useIntegral()
 
@@ -50,6 +51,7 @@ const submit = () => {
       buyPoint: formData.buyPoint,
       templateName: formData.checked[0],
       personUrl: formData.personUrl,
+      personUrlHs: formData.personUrlHs,
     },
   }
   execute(params, loading)
@@ -142,7 +144,11 @@ function useIntegral() {
         <div class="module-title">选择模型</div>
         <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
 
-        <CustomModel v-model:personUrl="formData.personUrl" :modelCode="formData.modelCode" />
+        <CustomModel
+          v-model:personUrl="formData.personUrl"
+          v-model:personUrlHs="formData.personUrlHs"
+          :modelCode="formData.modelCode"
+        />
       </div>
     </template>
 

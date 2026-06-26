@@ -10,7 +10,8 @@ interface IUserInfo {
 export const useUserInfoStore = defineStore('useUserInfoStore', () => {
   const userInfo = ref<IUserInfo>()
 
-  const getUserInfoApi = () => {
+  console.log(21111)
+  const fetchUserInfo = () => {
     if (userInfo.value) return
 
     getUserInfo().then((res) => {
@@ -24,7 +25,20 @@ export const useUserInfoStore = defineStore('useUserInfoStore', () => {
       }
     })
   }
-  getUserInfoApi()
+  fetchUserInfo()
 
-  return { userInfo }
+  const updateUserInfo = () => {
+    getUserInfo().then((res) => {
+      if (res.code === 0) {
+        const data = res.data
+
+        userInfo.value = {
+          availablePoints: data.availablePoints,
+          avatar: data.avatar,
+        }
+      }
+    })
+  }
+
+  return { userInfo, updateUserInfo }
 })

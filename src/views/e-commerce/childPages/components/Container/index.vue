@@ -83,6 +83,7 @@ const { title, submit, loading, integral } = defineProps<{
     flex: 1;
     height: 100%;
     position: relative;
+    overflow: auto;
   }
 }
 </style>

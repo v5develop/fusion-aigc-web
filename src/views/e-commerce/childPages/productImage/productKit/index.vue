@@ -35,7 +35,7 @@ const defaultCustomData = {
   white: 1,
   scence: 1,
   key_points: 1,
-  detai: 0,
+  detail: 0,
 }
 const { customData, checkboxClickHandle, sub, add } = useCheckbox()
 const { integral } = useIntegral()
@@ -47,7 +47,7 @@ const submit = () => {
     return message.warning('请上传产品图')
   }
 
-  const { white, scence, key_points, detai } = formData.checked.includes('auto') ? defaultCustomData : customData
+  const { white, scence, key_points, detail } = formData.checked.includes('auto') ? defaultCustomData : customData
   const params = {
     type: 'productSetImages',
     imageUrls: formData.imageUrls,
@@ -57,7 +57,7 @@ const submit = () => {
       language: formData.language,
       aspectRatio: formData.aspectRatio,
       buyPoint: formData.buyPoint,
-      ...{ white, scence, key_points, detai },
+      ...{ white, scence, key_points, detail },
     },
   }
   execute(params, loading)

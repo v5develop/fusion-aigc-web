@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import { useSessionIdStore } from '@/stores/e-commerce'
+import { useUserInfoStore } from '@/stores/userInfo'
 import { usePolling } from '@/utils/hooks/usePolling.ts'
 import { pollingTask } from '@/api/methods.ts'
 import { creationSubmit } from '@/api/methods.ts'
@@ -14,6 +15,7 @@ interface IProps {
 export function useInitCheckTaskStatus(props: IProps) {
   const { type, loading, getData, pagingData } = props
 
+  const { updateUserInfo } = useUserInfoStore()
   const { useSessionId } = useSessionIdStore()
   const { getSessionId, clearSessionId } = useSessionId(type)
 
@@ -35,6 +37,7 @@ export function useInitCheckTaskStatus(props: IProps) {
       pagingData.hasMore = true
       pagingData.loading = false
       getData(true)?.finally(() => (loading.value = false))
+      updateUserInfo()
 
       return true
     },

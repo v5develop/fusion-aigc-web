@@ -43,7 +43,7 @@ router.beforeEach(async (to, from) => {
   // 如果没有 token，进行模拟登录
   if (!token) {
     const unionToken = getUrlQuery('unionToken')
-    const baseURL = import.meta.env.PROD ? 'https://aigc.pengqiwl.com' : 'A'
+    const baseURL = import.meta.env.PROD ? 'https://aigc.pengqiwl.com' : 'a'
     if (!!baseURL) {
       await unionTokenLogin({ token: unionToken! }).then((res) => {
         if (res.code === 0) {

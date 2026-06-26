@@ -23,19 +23,35 @@ import ImagePopover from '@/components/ImagePopover/index.vue'
 import CustomModelNotice from '@/components/CustomModelNotice/index.vue'
 import { modelNoticeObj } from '@/components/CustomModelNotice/useData.ts'
 import { useMessage } from 'naive-ui'
+import { un } from 'vue-router/dist/useApi-D6ckOsFy'
 
 const { modelCode } = defineProps<{
   modelCode: string
 }>()
 const personUrl = defineModel<string>('personUrl', { required: true })
+const personUrlHs = defineModel<string | undefined>('personUrlHs', { required: true })
+
+watch(personUrl, () => {
+  if (modelCode !== localModelValue) {
+    const item = modelData.images.find((item) => item.coverUrl === personUrl.value)
+    let properties = item?.assets?.[0]?.items?.[0]?.properties
+    if (properties) {
+      properties = JSON.parse(properties)
+      personUrlHs.value = properties.doubaoAddress
+      return
+    }
+  }
+
+  personUrlHs.value = undefined
+})
 
 const message = useMessage()
 const modelPollingType = computed(() => {
   // 本地模型
-  if (modelCode == localModelValue) return 'customizedmodel'
+  if (modelCode == localModelValue) return 'customizedModel'
 
   // seedance模型
-  return 'realpersonmodel'
+  return 'realPersonModel'
 })
 
 const switchValue = ref(false)
@@ -48,7 +64,8 @@ const modelData = reactive({
   userInput: '',
 })
 const modelTabValue = ref<'customModel' | 'myModel'>('customModel')
-const btnLoading = ref(false)
+const btnLoading = ref(false) // 定制达人loading
+const faceLoading = ref(false) // 人脸验证loading
 const pagingData = reactive({
   page: 1,
   size: 15,
@@ -160,6 +177,7 @@ const { start: startFaceValidate } = usePolling((taskId) => faceRecognitionStatu
       resetData()
     }
 
+    faceLoading.value = false
     return true
   },
 })
@@ -170,6 +188,7 @@ const customResultHandle = (urls: string[]) => {
       if (modelCode === localModelValue) {
         resetData()
       } else {
+        faceLoading.value = true
         startFaceValidate(res.data.taskId)
         faceAuthDialog.show = true
         faceAuthDialog.qrCode = res.data.h5Link
@@ -185,8 +204,18 @@ const customBeforeUpload = () => {
     return false
   }
 
+  if (faceLoading.value) {
+    message.warning('等待人脸认证结果中，请稍等...')
+    return false
+  }
+
   return true
 }
+
+watch([switchValue, modelPollingType], () => {
+  personUrl.value = ''
+  personUrlHs.value = ''
+})
 </script>
 
 <template>
@@ -241,15 +270,7 @@ const customBeforeUpload = () => {
       </div>
     </div>
 
-    <div
-      v-else
-      class="my-model"
-      v-observer-scroll="{
-        callback() {
-          if (pagingData.loadMore) getModelData()
-        },
-      }"
-    >
+    <div v-else class="my-model" v-observer-scroll="{ callback: getModelData }">
       <div style="height: 86px">
         <ImageUpload
           v-model:imgList="uploadImage"
@@ -283,12 +304,12 @@ const customBeforeUpload = () => {
 
       <div class="split-line"></div>
 
-      <div style="display: flex;flex-direction: column;align-items: center;">
+      <div style="display: flex; flex-direction: column; align-items: center">
         <span>手机端认证：手机扫描此二维码</span>
         <n-qr-code :size="300" :value="faceAuthDialog.qrCode" />
       </div>
 
-      <div style="color: #f30000; margin-top: 40px;text-align: center">{{ faceAuthDialog.errorMsg }}</div>
+      <div style="color: #f30000; margin-top: 40px; text-align: center">{{ faceAuthDialog.errorMsg }}</div>
     </div>
   </n-modal>
 

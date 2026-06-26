@@ -36,8 +36,8 @@ export const entryCodeOps = [
 ]
 
 export const ratioOps = [
-  { label: '9:16', value: '720,1280' },
-  { label: '16:9', value: '1280,720' },
+  { label: '9:16', value: '9:16' },
+  { label: '16:9', value: '16:9' },
 ]
 
 export const durationOps = [
