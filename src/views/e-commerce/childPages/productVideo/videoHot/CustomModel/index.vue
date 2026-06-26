@@ -23,7 +23,6 @@ import ImagePopover from '@/components/ImagePopover/index.vue'
 import CustomModelNotice from '@/components/CustomModelNotice/index.vue'
 import { modelNoticeObj } from '@/components/CustomModelNotice/useData.ts'
 import { useMessage } from 'naive-ui'
-import { un } from 'vue-router/dist/useApi-D6ckOsFy'
 
 const { modelCode } = defineProps<{
   modelCode: string

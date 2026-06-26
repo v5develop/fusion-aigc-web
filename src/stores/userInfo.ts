@@ -10,7 +10,6 @@ interface IUserInfo {
 export const useUserInfoStore = defineStore('useUserInfoStore', () => {
   const userInfo = ref<IUserInfo>()
 
-  console.log(21111)
   const fetchUserInfo = () => {
     if (userInfo.value) return
 
