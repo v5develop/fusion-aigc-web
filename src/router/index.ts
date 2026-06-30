@@ -1,10 +1,21 @@
-import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
-import { login, unionTokenLogin, getUserInfo } from '@/api/methods.ts'
+import { createRouter, createWebHashHistory } from 'vue-router'
+import { login, unionTokenLogin } from '@/api/methods.ts'
 import eCommerceRouter from './e-commerce'
+
+const hasBridge = !!(window as any).ThirdServiceBridge
 
 const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
   routes: [
+    ...(!hasBridge
+      ? [
+          {
+            path: '/login',
+            name: 'login',
+            component: () => import('@/views/login/index.vue'),
+          },
+        ]
+      : []),
     {
       path: '/',
       component: () => import('@/views/layout/index.vue'),
@@ -36,14 +47,23 @@ const router = createRouter({
 })
 
 // 路由守卫：登录验证
-router.beforeEach(async (to, from) => {
+router.beforeEach(async (to) => {
   // 检查 localStorage 中是否有 token
   const token = localStorage.getItem('fusion_accessToken')
 
   // 如果没有 token，进行模拟登录
   if (!token) {
     const unionToken = getUrlQuery('unionToken')
-    const baseURL = import.meta.env.PROD ? 'https://aigc.pengqiwl.com' : ''
+    const baseURL = import.meta.env.VITE_FUSION_API_BASE ?? ''
+
+    // 独立运行时（不在 APP 容器内），跳转登录页
+    if (!(window as any).ThirdServiceBridge) {
+      if (to.name !== 'login') {
+        return { name: 'login', query: { redirect: to.fullPath } }
+      }
+      return
+    }
+
     if (!!baseURL) {
       await unionTokenLogin({ token: unionToken! }).then((res) => {
         if (res.code === 0) {
@@ -80,4 +100,3 @@ function getUrlQuery(key: string): string | null {
 
 
 export default router
-

@@ -3,13 +3,14 @@ import type { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axio
 import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
 import { getUserInfo, unionTokenLogin } from '@/api/methods.ts'
+import { refreshToken, getAuthToken } from '@/api/union'
 
 const { message } = createDiscreteApi(['message'])
 let isRefreshing = false
 let requestQueue: { resolve: (value: any) => void; reject: (reason?: any) => void; config: InternalAxiosRequestConfig }[] = []
 const refreshTokenApi = '/api/v1/auth/refresh'
 
-const baseURL = import.meta.env.PROD ? 'https://aigc.pengqiwl.com' : ''
+const baseURL = import.meta.env.VITE_FUSION_API_BASE ?? ''
 const service = axios.create({
   baseURL,
   timeout: 10000,
@@ -19,25 +20,47 @@ const service = axios.create({
 let refreshing: Promise<string> | null = null
 async function refreshUnionToken() {
   const bridge = (window as any).ThirdServiceBridge
-  if (!bridge?.refreshUnionToken) {
-    localStorage.removeItem('fusion_accessToken')
-    localStorage.removeItem('fusion_refreshToken')
-    message.error('请关掉页面重新打开')
-    return Promise.reject()
+
+  // 容器内：走桥接刷新
+  if (bridge?.refreshUnionToken) {
+    if (!refreshing) {
+      refreshing = bridge.refreshUnionToken().finally(() => {
+        refreshing = null
+      })
+    }
+    const token = await refreshing!
+    const res = await unionTokenLogin({ token })
+    localStorage.setItem('fusion_accessToken', res.data.accessToken)
+    localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
+    const { code, data } = await getUserInfo()
+    if (code === 0) {
+      localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
+    }
+    return
   }
+
+  // 独立运行：用联盟 refreshToken 刷新
+  const unionRefresh = localStorage.getItem('union_refreshToken')
+  if (!unionRefresh) {
+    logoutToLogin()
+    return Promise.reject(new Error('no union refresh token'))
+  }
+
   if (!refreshing) {
-    refreshing = bridge.refreshUnionToken().finally(() => {
+    refreshing = (async () => {
+      const newUnion = await refreshToken(unionRefresh)
+      localStorage.setItem('union_token', newUnion.token)
+      localStorage.setItem('union_refreshToken', newUnion.refreshToken)
+      const authRes = await getAuthToken(newUnion.token)
+      const res = await unionTokenLogin({ token: authRes.temp_token })
+      localStorage.setItem('fusion_accessToken', res.data.accessToken)
+      localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
+      return res.data.accessToken
+    })().finally(() => {
       refreshing = null
     })
   }
-  const token = await refreshing!
-  const res = await unionTokenLogin({ token })
-  localStorage.setItem('fusion_accessToken', res.data.accessToken)
-  localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
-  const { code, data } = await getUserInfo()
-  if (code === 0) {
-    localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
-  }
+  await refreshing
 }
 
 // 请求拦截：自动加 token
@@ -129,8 +152,9 @@ service.interceptors.response.use(
 function logoutToLogin() {
   localStorage.removeItem('fusion_accessToken')
   localStorage.removeItem('fusion_refreshToken')
-  // 跳转到登录（根据你的项目改）
-  // window.location.href = '/login'
+  localStorage.removeItem('union_token')
+  localStorage.removeItem('union_refreshToken')
+  window.location.hash = '#/login'
 }
 
 export function post(url: string, data: any, headers?: any): Promise<ApiResponse> {
