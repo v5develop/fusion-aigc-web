@@ -6,6 +6,7 @@ import VideoUpload, { type IVideoItem } from '@/components/VideoUpload/index.vue
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+import { useMessage } from 'naive-ui'
 import { quotePreview } from '@/api/methods.ts'
 import { useDebounce } from '@/utils/hooks'
 
@@ -14,6 +15,7 @@ const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 const { taskList, showList, execute } = useInitCheckTaskStatus('product-replace')
 provide('recordsData', taskList)
 
+const message = useMessage()
 const loading = ref(false)
 const formData = reactive({
   imageUrls: [],
@@ -23,6 +25,9 @@ const { integral } = useIntegral()
 
 const submit = () => {
   if (loading.value) return
+
+  if (!formData.imageUrls.length) return message.warning('请先上传产品图')
+  if (!formData.videoUrl.length) return message.warning('请上传参考视频')
 
   const params = {
     type: 'productReplacement',

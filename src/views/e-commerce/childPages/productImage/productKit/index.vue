@@ -47,6 +47,10 @@ const submit = () => {
     return message.warning('请上传产品图')
   }
 
+  if (!formData.buyPoint) {
+    return message.warning('请填写商品卖点')
+  }
+
   const { white, scence, key_points, detail } = formData.checked.includes('auto') ? defaultCustomData : customData
   const params = {
     type: 'productSetImages',

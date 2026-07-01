@@ -42,6 +42,19 @@ const submit = () => {
     return message.warning('请上传产品图')
   }
 
+  if (handTabValue.value === 'modelGestures' && !formData.modelGesturesUrl) {
+    return message.warning('请选择模特手持图')
+  }
+  if (handTabValue.value === 'handGestures' && !formData.gesturesUrl) {
+    return message.warning('请选择纯手持图')
+  }
+  if (!formData.personUrl) {
+    return message.warning('请选择模特图')
+  }
+  if (!formData.bgImageUrl) {
+    return message.warning('请选择背景图')
+  }
+
   const params = {
     type: 'aiGestures',
     imageUrls: formData.imageUrls,

@@ -39,6 +39,10 @@ const { integral } = useIntegral()
 const submit = () => {
   if (loading.value) return
 
+  if (!formData.imageUrls.length) return message.warning('请先上传产品图')
+  if (!formData.videoUrl.length) return message.warning('请上传参考视频')
+  if (!formData.buyPoint) return message.warning('请填写商品卖点')
+
   const params = {
     type: 'hitVideoReplication',
     imageUrls: formData.imageUrls,

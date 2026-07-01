@@ -36,6 +36,16 @@ const submit = () => {
     return message.warning('请上传服装图片')
   }
 
+  if (bgTabValue.value === 'recommend' && !formData.bgImageUrl) {
+    return message.warning('请选择背景图')
+  }
+  if (bgTabValue.value === 'custom' && !formData.refImageUrl.length) {
+    return message.warning('请上传参考背景图')
+  }
+  if (bgTabValue.value === 'custom' && !formData.description) {
+    return message.warning('请填写背景描述')
+  }
+
   const params = {
     type: 'backgroundSwitching',
     imageUrls: formData.imageUrls,

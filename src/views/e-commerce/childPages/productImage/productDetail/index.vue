@@ -38,6 +38,14 @@ const submit = () => {
     return message.warning('请上传产品图')
   }
 
+  if (!formData.image_types.length) {
+    return message.warning('请选择图片类型')
+  }
+
+  if (!formData.buyPoint) {
+    return message.warning('请填写商品卖点')
+  }
+
   const params = {
     type: 'aPlusDetailPage',
     imageUrls: formData.imageUrls,
