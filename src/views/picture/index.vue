@@ -88,6 +88,10 @@ const submit = () => {
     images: formData.images,
   }
   execute(params)
+
+  // 发送后清空输入框及素材
+  formData.prompt = ''
+  formData.images = []
 }
 
 const getData = (isReplace?: boolean) => {
@@ -177,16 +181,29 @@ const generateAgain = (item: any) => {
               <!-- 日期标题 -->
               <h2 class="message-group__date">{{ item.createTime }}</h2>
 
-              <!-- 提示词 -->
-              <p class="message-group__prompt">{{ item.inputParams.params.prompt }}</p>
-
-              <!-- 元信息 -->
-              <div class="message-group__meta">
-                <span>{{ utils.getMetaData(item.inputParams) }}</span>
-              </div>
+              <!-- 提示词 & 元信息 -->
+              <p class="message-group__prompt">
+                {{ item.inputParams.params.prompt }}
+                <span class="message-group__prompt-meta">{{ utils.getMetaData(item.inputParams) }}</span>
+              </p>
 
               <!-- 图片网格 -->
               <div class="message-group__images">
+                <!-- 图生图：展示上传的原图 -->
+                <div
+                  v-for="(imgUrl, k) in item.inputParams.entryCode === 'imageToImage' ? item.inputParams.images ?? [] : []"
+                  :key="'src-' + k"
+                  class="message-group__image-wrap"
+                >
+                  <n-image
+                    :src="imgUrl"
+                    alt="原图"
+                    width="100%"
+                    height="100%"
+                    object-fit="cover"
+                  />
+                  <span class="source-tag">原图</span>
+                </div>
                 <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
                   <n-image
                     v-if="jtem.resultUrl"
