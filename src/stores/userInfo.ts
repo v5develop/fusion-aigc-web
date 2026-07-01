@@ -22,7 +22,7 @@ export const useUserInfoStore = defineStore('useUserInfoStore', () => {
           avatar: data.avatar,
         }
       }
-    })
+    }).catch(() => {})
   }
   fetchUserInfo()
 
@@ -36,7 +36,7 @@ export const useUserInfoStore = defineStore('useUserInfoStore', () => {
           avatar: data.avatar,
         }
       }
-    })
+    }).catch(() => {})
   }
 
   return { userInfo, updateUserInfo }

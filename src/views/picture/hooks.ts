@@ -65,6 +65,8 @@ export function useInitCheckTaskStatus(props: IProps) {
           // 开始轮询
           start(params.sessionId)
         })
+      } else {
+        loading.value = false
       }
     }).catch(() => loading.value = false)
   }
