@@ -14,6 +14,14 @@ export const download = (item: any) => {
   })
 }
 
+export const downloadSingle = (url: string) => {
+  const a = document.createElement('a')
+  a.href = url
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
 export const showDownloadBtn = (item: any) => {
   const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
 
