@@ -79,14 +79,17 @@ function parseSlotsFromDOM(): PromptSlot[] {
   return result
 }
 
+let suppressRender = false
+
 function syncFromDOM() {
+  suppressRender = true
   slots.value = parseSlotsFromDOM()
 }
 
 // ========== 事件处理 ==========
 
 function onInput() {
-  syncFromDOM()
+  // 文字编辑由浏览器原生处理，不需要同步 DOM
 }
 
 function findPrevRealNode(node: Node | null): Node | null {
@@ -140,7 +143,6 @@ function onBeforeInput(e: InputEvent) {
           if (zwnbsp && zwnbsp.nodeType === Node.TEXT_NODE && zwnbsp.textContent === '​') zwnbsp.remove()
           prev.remove()
           mergeAdjacentText()
-          syncFromDOM()
           return
         }
       }
@@ -155,7 +157,6 @@ function onBeforeInput(e: InputEvent) {
           if (zwnbsp && zwnbsp.nodeType === Node.TEXT_NODE && zwnbsp.textContent === '​') zwnbsp.remove()
           next.remove()
           mergeAdjacentText()
-          syncFromDOM()
           return
         }
       }
@@ -249,7 +250,13 @@ onMounted(() => {
 
 watch(
   () => slots.value,
-  (val) => renderSlots(val),
+  (val) => {
+    if (suppressRender) {
+      suppressRender = false
+      return
+    }
+    renderSlots(val)
+  },
   { deep: true },
 )
 </script>
