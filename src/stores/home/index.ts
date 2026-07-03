@@ -1,9 +1,39 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
+interface FileItem {
+  url: string
+  thumbnail?: string
+  name?: string
+}
+
+interface FormData {
+  home: boolean
+  picture: {
+    entryCode: string
+    prompt: string
+    ratio: string
+    images: FileItem[]
+  }
+  video: {
+    entryCode: string
+    modelCode: string
+    prompt: string
+    ratio: string
+    resolution: string
+    duration: number
+    images: FileItem[]
+    video: FileItem[]
+  }
+  ecommerce: {
+    images: FileItem[]
+    prompt: string
+  }
+}
+
 export const useHomeStore = defineStore('counter', () => {
-  const data = {
-    home: false, // true：图片和视频初始化读取这里的参数，false：不读
+  const data: FormData = {
+    home: false,
     picture: {
       entryCode: 'textToImage',
       prompt: '',
