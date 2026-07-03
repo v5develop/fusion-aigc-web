@@ -151,13 +151,14 @@ const submit = () => {
 
       <h1 class="h1">和我聊聊， 你想要什么设计～</h1>
 
-      <ChatTab v-model="activeChatTab" style="justify-content: center" />
+      <ChatTab v-model="activeChatTab" />
 
       <ChatInputBox
         :activeChatTab="activeChatTab"
         v-model:formData="formData[activeChatTab]"
         :showVideoUpload="activeChatTab === 'video' && formData.video.entryCode === 'actionTransfer'"
         :showImageUpload="
+          activeChatTab === 'ecommerce' ||
           (activeChatTab === 'picture' && formData.picture.entryCode === 'imageToImage') ||
           (activeChatTab === 'video' && formData.video.entryCode !== 'textToVideo')
         "
