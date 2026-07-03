@@ -13,6 +13,7 @@ import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
 import { useMessage } from 'naive-ui'
 import { download, showDownloadBtn } from '@/views/picture/utils.ts'
 import { getMetaData } from './utils.ts'
+import SourceImageStack from '@/components/SourceImageStack/index.vue'
 
 const message = useMessage()
 const store = useHomeStore()
@@ -186,12 +187,18 @@ const generateAgain = (item: any) => {
               <!-- 日期标题 -->
               <h2 class="message-group__date">{{ item.createTime }}</h2>
 
-              <!-- 提示词 -->
-              <p class="message-group__prompt">{{ item.inputParams.params.prompt }}</p>
-
-              <!-- 元信息 -->
-              <div class="message-group__meta">
-                <span>{{ getMetaData(item.inputParams) }}</span>
+              <!-- 原图 + 提示词 -->
+              <div class="message-group__header">
+                <SourceImageStack
+                  v-if="item.inputParams.entryCode === 'imageToVideo'"
+                  :images="item.inputParams.images ?? []"
+                />
+                <div class="message-group__prompt-wrapper">
+                  <p class="message-group__prompt">
+                    {{ item.inputParams.params.prompt }}
+                    <span class="message-group__prompt-meta">{{ getMetaData(item.inputParams) }}</span>
+                  </p>
+                </div>
               </div>
 
               <!-- 图片网格 -->

@@ -12,6 +12,7 @@ import { storeToRefs } from 'pinia'
 import { useInitCheckTaskStatus } from './hooks.ts'
 import { useMessage } from 'naive-ui'
 import * as utils from './utils.ts'
+import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import downloadAllIcon from '@/assets/icons/download-all.svg'
@@ -181,29 +182,22 @@ const generateAgain = (item: any) => {
               <!-- 日期标题 -->
               <h2 class="message-group__date">{{ item.createTime }}</h2>
 
-              <!-- 提示词 & 元信息 -->
-              <p class="message-group__prompt">
-                {{ item.inputParams.params.prompt }}
-                <span class="message-group__prompt-meta">{{ utils.getMetaData(item.inputParams) }}</span>
-              </p>
+              <!-- 原图 + 提示词 -->
+              <div class="message-group__header">
+                <SourceImageStack
+                  v-if="item.inputParams.entryCode === 'imageToImage'"
+                  :images="item.inputParams.images ?? []"
+                />
+                <div class="message-group__prompt-wrapper">
+                  <p class="message-group__prompt">
+                    {{ item.inputParams.params.prompt }}
+                    <span class="message-group__prompt-meta">{{ utils.getMetaData(item.inputParams) }}</span>
+                  </p>
+                </div>
+              </div>
 
               <!-- 图片网格 -->
               <div class="message-group__images">
-                <!-- 图生图：展示上传的原图 -->
-                <div
-                  v-for="(imgUrl, k) in item.inputParams.entryCode === 'imageToImage' ? item.inputParams.images ?? [] : []"
-                  :key="'src-' + k"
-                  class="message-group__image-wrap"
-                >
-                  <n-image
-                    :src="imgUrl"
-                    alt="原图"
-                    width="100%"
-                    height="100%"
-                    object-fit="cover"
-                  />
-                  <span class="source-tag">原图</span>
-                </div>
                 <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
                   <n-image
                     v-if="jtem.resultUrl"
