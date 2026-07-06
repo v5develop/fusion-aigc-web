@@ -1,4 +1,5 @@
-import { post, get } from './index.ts'
+import { post, get, ssePost } from './index.ts'
+import type { SsePostHandlers } from './index.ts'
 import * as types from './types'
 import type { IOptimizePrompt } from './types'
 
@@ -71,6 +72,11 @@ export function publicDisplay(params: any) {
 
 export function optimizePrompt(params: types.IOptimizePrompt) {
   return post('/api/v1/creation/optimize-prompt', params)
+}
+
+/** 流式优化提示词（SSE）：逐段返回正文增量，改善带图优化的等待体感。返回可用于中断的 abort 函数。 */
+export function optimizePromptStream(params: types.IOptimizePrompt, handlers: SsePostHandlers) {
+  return ssePost('/api/v1/creation/optimize-prompt-stream', params, handlers)
 }
 
 export function creationHistory(params: types.ICreationHistory) {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { optimizePrompt } from '@/api/methods.ts'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { optimizePromptStream } from '@/api/methods.ts'
 
 interface IProps {
   placeholder?: string
@@ -15,22 +15,41 @@ const { placeholder, params, validate } = defineProps<IProps>()
 const value = defineModel<string>('value', { required: true })
 
 const loading = ref(false)
+let abort: (() => void) | null = null
 
 // 将 \n 转为换行符，让 placeholder 支持多行
 const placeholderText = computed(() => placeholder?.replace(/\\n/g, '\n'))
 
 const getPrompt = () => {
   if (!validate()) return
-
   if (loading.value) return
 
+  const userInput = value.value
   loading.value = true
-  optimizePrompt({ ...params, userInput: value.value }).then(res => {
-    if (res.code === 0) {
-      value.value = res.data.prompt
-    }
-  }).finally(() => loading.value = false)
+  value.value = '' // 清空后由流式增量逐段填充
+
+  abort = optimizePromptStream(
+    { ...params, userInput },
+    {
+      onDelta: delta => {
+        value.value += delta
+      },
+      onDone: () => {
+        loading.value = false
+        abort = null
+        // 流式无任何输出时（模型不可用/模板缺失），回退用户原输入，避免清空丢失
+        if (!value.value) value.value = userInput
+      },
+      onError: () => {
+        loading.value = false
+        abort = null
+        value.value = userInput
+      },
+    },
+  )
 }
+
+onBeforeUnmount(() => abort?.())
 </script>
 
 <template>
