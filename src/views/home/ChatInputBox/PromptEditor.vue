@@ -328,11 +328,15 @@ watch(
   }
 
   :deep(.ps-slot--upload) {
-    background: #f0ebff;
-    border: 1px dashed #d8b4fe;
-    color: #8e66f9;
-    gap: 5px;
+    background: linear-gradient(319deg, #fff6fb 2%, #ede6ff 97%);
+    border: 1px solid #fff;
+    color: rgba(142, 102, 249, 0.5);
+    gap: 4px;
     cursor: pointer;
+    box-shadow: 0 1px 6px 0 rgba(0, 0, 0, 0.03);
+    height: 27px;
+    padding: 2px 8px;
+    border-radius: 4px;
 
     .ps-icon {
       width: 16px;
@@ -347,10 +351,12 @@ watch(
 
     &.filled {
       height: auto;
-      padding: 2px;
-      border: none;
-      background: transparent;
-      gap: 4px;
+      padding: 4px;
+      background: #fff;
+      border: 1px solid #f0f0f0;
+      box-shadow: 0 1px 6px 0 rgba(0, 0, 0, 0.06);
+      gap: 6px;
+      border-radius: 8px;
 
       .ps-thumbs {
         display: flex;
@@ -359,8 +365,8 @@ watch(
       }
 
       .ps-thumb {
-        width: 48px;
-        height: 48px;
+        width: 64px;
+        height: 64px;
         border-radius: 6px;
         background-size: cover;
         background-position: center;
@@ -371,9 +377,9 @@ watch(
         position: absolute;
         top: -4px;
         right: -4px;
-        width: 18px;
-        height: 18px;
-        border-radius: 9px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
         background: #8e66f9;
         color: #fff;
         font-size: 11px;
@@ -387,6 +393,7 @@ watch(
         color: #bfbfbf;
         font-size: 14px;
         flex-shrink: 0;
+        padding: 0 2px;
 
         &:hover {
           color: #f5222d;
