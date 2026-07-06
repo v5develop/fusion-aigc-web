@@ -4,11 +4,13 @@ import ratio1_1 from '@/assets/icons/ecommerce/ratio-1-1.svg?raw'
 import ratio3_4 from '@/assets/icons/ecommerce/ratio-3-4.svg?raw'
 import ratio9_16 from '@/assets/icons/ecommerce/ratio-9-16.svg?raw'
 import ratio16_9 from '@/assets/icons/ecommerce/ratio-16-9.svg?raw'
+import uploadIcon from '@/assets/icons/ecommerce/upload.svg?raw'
 
 export const ICON_RATIO_1_1 = ratio1_1
 export const ICON_RATIO_3_4 = ratio3_4
 export const ICON_RATIO_9_16 = ratio9_16
 export const ICON_RATIO_16_9 = ratio16_9
+export const ICON_UPLOAD = uploadIcon
 
 export const ICON_SHOP = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
   <path d="M2 14V2.5C2 2.22386 2.22386 2 2.5 2H5.5C5.77614 2 6 2.22386 6 2.5V14" stroke="#3A3A3A" stroke-width="1.2"/>

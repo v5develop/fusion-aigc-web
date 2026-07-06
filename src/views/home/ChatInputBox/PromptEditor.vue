@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, nextTick } from 'vue'
 import type { PromptSlot, FileItem } from './types'
 import { buildSelectHTML, showDropdown, closeAllDropdowns } from './slots/select'
 import { buildUploadHTML, updateUploadBlockDOM } from './slots/upload'
+
+declare global {
+  interface Window {
+    __psClickUpload?: (e: Event) => void
+    __psRemoveUpload?: (e: Event) => void
+  }
+}
 
 const slots = defineModel<PromptSlot[]>('slots', { required: true })
 
@@ -84,6 +91,9 @@ let suppressRender = false
 function syncFromDOM() {
   suppressRender = true
   slots.value = parseSlotsFromDOM()
+  nextTick(() => {
+    suppressRender = false
+  })
 }
 
 // ========== 事件处理 ==========
@@ -174,31 +184,6 @@ function onClick(e: MouseEvent) {
     showDropdown(selectBlock, syncFromDOM)
     return
   }
-
-  const uploadBlock = target.closest('.ps-slot--upload') as HTMLElement | null
-  if (uploadBlock && !target.classList.contains('ps-remove')) {
-    e.stopPropagation()
-    pendingUploadLabel = uploadBlock.getAttribute('data-slot-label') || ''
-    fileInputRef.value?.click()
-    return
-  }
-
-  if (target.classList.contains('ps-remove')) {
-    e.stopPropagation()
-    const block = target.closest('.ps-slot--upload') as HTMLElement | null
-    if (block && surfaceRef.value) {
-      const label = block.getAttribute('data-slot-label') || ''
-      const slot = slots.value.find((s): s is typeof s & { type: 'upload'; value: FileItem[] } =>
-        s.type === 'upload' && s.label === label,
-      )
-      if (slot) {
-        slot.value = []
-        updateUploadBlockDOM(surfaceRef.value, label, [])
-        syncFromDOM()
-      }
-    }
-    return
-  }
 }
 
 function onDocumentClick(e: MouseEvent) {
@@ -217,8 +202,9 @@ function onFileChange(e: Event) {
   const files = input.files
   if (!files || files.length === 0) return
 
+  const label = pendingUploadLabel
   const slot = slots.value.find((s): s is typeof s & { type: 'upload'; value: FileItem[] } =>
-    s.type === 'upload' && s.label === pendingUploadLabel,
+    s.type === 'upload' && s.label === label,
   )
   if (slot && surfaceRef.value) {
     const newItems: FileItem[] = []
@@ -230,7 +216,7 @@ function onFileChange(e: Event) {
         loaded++
         if (loaded === files.length) {
           slot.value = [...slot.value, ...newItems]
-          updateUploadBlockDOM(surfaceRef.value!, pendingUploadLabel, slot.value)
+          updateUploadBlockDOM(surfaceRef.value!, label, slot.value)
           syncFromDOM()
         }
       }
@@ -246,15 +232,37 @@ function onFileChange(e: Event) {
 onMounted(() => {
   renderSlots(slots.value)
   document.addEventListener('click', onDocumentClick)
+
+  // 注册全局上传回调（供 innerHTML 内联 onclick 调用）
+  window.__psClickUpload = (e: Event) => {
+    const target = e.target as HTMLElement
+    const block = target.closest('.ps-slot--upload') as HTMLElement | null
+    if (block) {
+      pendingUploadLabel = block.getAttribute('data-slot-label') || ''
+      fileInputRef.value?.click()
+    }
+  }
+  window.__psRemoveUpload = (e: Event) => {
+    const target = e.target as HTMLElement
+    const block = target.closest('.ps-slot--upload') as HTMLElement | null
+    if (block && surfaceRef.value) {
+      const label = block.getAttribute('data-slot-label') || ''
+      const slot = slots.value.find((s): s is typeof s & { type: 'upload'; value: FileItem[] } =>
+        s.type === 'upload' && s.label === label,
+      )
+      if (slot) {
+        slot.value = []
+        updateUploadBlockDOM(surfaceRef.value, label, [])
+        syncFromDOM()
+      }
+    }
+  }
 })
 
 watch(
   () => slots.value,
   (val) => {
-    if (suppressRender) {
-      suppressRender = false
-      return
-    }
+    if (suppressRender) return
     renderSlots(val)
   },
   { deep: true },
@@ -327,29 +335,58 @@ watch(
     cursor: pointer;
 
     .ps-icon {
-      font-size: 14px;
+      width: 16px;
+      height: 16px;
+      border-radius: 2px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
     }
 
     &.filled {
-      border-style: solid;
-      background: #fff;
-      color: #3a3a3a;
-      gap: 6px;
+      height: auto;
+      padding: 2px;
+      border: none;
+      background: transparent;
+      gap: 4px;
+
+      .ps-thumbs {
+        display: flex;
+        gap: 4px;
+        position: relative;
+      }
 
       .ps-thumb {
-        width: 22px;
-        height: 22px;
-        border-radius: 4px;
+        width: 48px;
+        height: 48px;
+        border-radius: 6px;
         background-size: cover;
         background-position: center;
         flex-shrink: 0;
+      }
+
+      .ps-count {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: #8e66f9;
+        color: #fff;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
       .ps-remove {
         cursor: pointer;
         color: #bfbfbf;
         font-size: 14px;
-        margin-left: 2px;
+        flex-shrink: 0;
 
         &:hover {
           color: #f5222d;
