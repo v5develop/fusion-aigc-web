@@ -47,7 +47,7 @@ const getGroupSelectState = (group: any) => {
       </div>
 
       <div class="card-cont">
-        <Card class="card-item" v-for="(jtem, j) in item.contents" :key="j" :data="jtem" />
+        <Card class="card-item" v-for="jtem in item.contents" :key="jtem.taskId" :data="jtem" />
       </div>
     </div>
   </div>

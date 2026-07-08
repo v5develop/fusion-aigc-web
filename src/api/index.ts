@@ -174,3 +174,81 @@ export function get(url: string, params?: any, headers?: any): Promise<ApiRespon
     headers,
   })
 }
+
+export interface SsePostHandlers {
+  onDelta: (delta: string) => void
+  onDone?: () => void
+  onError?: (err: unknown) => void
+}
+
+/**
+ * 以 SSE 流式消费一个 POST 接口（EventSource 不支持 POST/自定义头，故用 fetch + ReadableStream 手动解析）。
+ * 复用与 axios 相同的 baseURL 与 Bearer token。返回一个可用于中断的 abort 函数。
+ * 解析后端 ServerSentEvent：event=delta 的 data 为正文增量，event=done 表示结束。
+ */
+export function ssePost(url: string, data: any, handlers: SsePostHandlers): () => void {
+  const controller = new AbortController()
+  const token = localStorage.getItem('fusion_accessToken')
+  let doneFired = false
+  const fireDone = () => {
+    if (doneFired) return
+    doneFired = true
+    handlers.onDone?.()
+  }
+
+  ;(async () => {
+    try {
+      const resp = await fetch(baseURL + url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...(token ? { Authorization: 'Bearer ' + token } : {}),
+        },
+        body: JSON.stringify(data),
+        signal: controller.signal,
+      })
+      if (!resp.ok || !resp.body) {
+        throw new Error(`SSE request failed: ${resp.status}`)
+      }
+
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // SSE 帧以空行分隔；逐帧解析 event 与 data 字段
+      const flushFrame = (frame: string) => {
+        let event = 'message'
+        const dataLines: string[] = []
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''))
+        }
+        const data = dataLines.join('\n')
+        if (event === 'done') {
+          fireDone()
+        } else if (event === 'delta' || event === 'message') {
+          if (data) handlers.onDelta(data)
+        }
+      }
+
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let sep: number
+        while ((sep = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, sep)
+          buffer = buffer.slice(sep + 2)
+          if (frame.trim()) flushFrame(frame)
+        }
+      }
+      if (buffer.trim()) flushFrame(buffer)
+      fireDone()
+    } catch (err) {
+      if ((err as any)?.name !== 'AbortError') handlers.onError?.(err)
+    }
+  })()
+
+  return () => controller.abort()
+}
