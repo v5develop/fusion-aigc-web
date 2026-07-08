@@ -1,6 +1,7 @@
 import { post, get } from './index.ts'
 import * as types from './types'
 import type { IOptimizePrompt } from './types'
+import { createSafeUuid } from '@/utils/utils'
 
 export function getSts(data: types.IGetSts) {
   const { subDir = 'uploads', visibility = 'public', ...rest } = data
@@ -27,7 +28,7 @@ export function getUserInfo() {
   return get('/api/v1/auth/user-info', {})
 }
 
-export function ecommerceSubmit(data: any, headers: any = { 'Idempotency-Key': crypto.randomUUID() }) {
+export function ecommerceSubmit(data: any, headers: any = { 'Idempotency-Key': createSafeUuid() }) {
   return post('/api/v1/creation/ecommerce/submit', data, headers)
 }
 
@@ -61,7 +62,7 @@ export function publicTemplate(params: types.IPublicTemplate) {
   })
 }
 
-export function creationSubmit(data: types.ICreationSubmit, headers: any = { 'Idempotency-Key': crypto.randomUUID() }) {
+export function creationSubmit(data: types.ICreationSubmit, headers: any = { 'Idempotency-Key': createSafeUuid() }) {
   return post('/api/v1/creation/submit', data, headers)
 }
 

@@ -19,6 +19,12 @@ export function useInitCheckTaskStatus(props: IProps) {
   const { useSessionId } = useSessionIdStore()
   const { getSessionId, clearSessionId } = useSessionId(type)
 
+  const refreshData = async (isReplace?: boolean) => {
+    try {
+      await getData(isReplace)
+    } catch {}
+  }
+
   const { start } = usePolling((sessionId) => pollingTask(sessionId!), 3000, {
     autoStop: (res) => {
       const { data } = res
@@ -36,12 +42,13 @@ export function useInitCheckTaskStatus(props: IProps) {
       pagingData.page = 1
       pagingData.hasMore = true
       pagingData.loading = false
-      getData(true)?.finally(() => (loading.value = false))
+      refreshData(true).finally(() => (loading.value = false))
       updateUserInfo()
 
       return true
     },
     onError() {
+      clearSessionId()
       loading.value = false
     }
   })
@@ -52,23 +59,26 @@ export function useInitCheckTaskStatus(props: IProps) {
     start(sessionId)
   }
 
-  const execute = (params: any) => {
-
+  const execute = async (params: any) => {
     loading.value = true
-    params.sessionId = getSessionId()
 
-    creationSubmit(params).then((res) => {
-      if (res.code === 0) {
-        pagingData.page = 1
-        pagingData.hasMore = true
-        getData(true)?.finally(() => {
-          // 开始轮询
-          start(params.sessionId)
-        })
-      } else {
+    try {
+      params.sessionId = getSessionId()
+      const res = await creationSubmit(params)
+
+      if (res.code !== 0) {
         loading.value = false
+        return
       }
-    }).catch(() => loading.value = false)
+
+      pagingData.page = 1
+      pagingData.hasMore = true
+      pagingData.loading = false
+      await refreshData(true)
+      start(params.sessionId)
+    } catch {
+      loading.value = false
+    }
   }
 
   return { execute }
