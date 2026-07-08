@@ -63,7 +63,7 @@ async function handleLogin() {
     localStorage.setItem('union_token', smsRes.token)
     localStorage.setItem('union_refreshToken', smsRes.refreshToken)
     const authRes = await getAuthToken(smsRes.token)
-    const unionToken = authRes.temp_token
+    const unionToken = authRes.tempToken
 
     const fusionRes = await unionTokenLogin({ token: unionToken })
     if (fusionRes.code === 0) {

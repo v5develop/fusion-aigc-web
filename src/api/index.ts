@@ -52,7 +52,7 @@ async function refreshUnionToken() {
       localStorage.setItem('union_token', newUnion.token)
       localStorage.setItem('union_refreshToken', newUnion.refreshToken)
       const authRes = await getAuthToken(newUnion.token)
-      const res = await unionTokenLogin({ token: authRes.temp_token })
+      const res = await unionTokenLogin({ token: authRes.tempToken })
       localStorage.setItem('fusion_accessToken', res.data.accessToken)
       localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
       return res.data.accessToken

@@ -78,9 +78,9 @@ export async function smsLogin(data: { phone: string; code: string; inviteCode?:
 }
 
 export async function getAuthToken(accessToken: string) {
-  return unionApi.get<{ temp_token: string }>('/api/v1/user/auth/token', {
+  return unionApi.get<{ tempToken: string }>('/api/v1/user/auth/token', {
     headers: { Authorization: `Bearer ${accessToken}` },
-  }).then(unwrap<{ temp_token: string }>)
+  }).then(unwrap<{ tempToken: string }>)
 }
 
 export async function refreshToken(refreshToken: string) {
