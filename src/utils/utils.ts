@@ -15,3 +15,17 @@ export function createSafeUuid() {
 
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`
 }
+
+/**
+ * 会话下所有任务内容是否都已到终态。
+ * status: 0=排队 1=处理中 2=成功 3=失败 4=取消   statusView.terminal: 是否为终态（不再变化）
+ * tasks 为空时也返回 true，调用方需自行处理"任务尚未写入会话"的宽限。
+ */
+export function isAllTasksTerminal(tasks: any[]) {
+  for (const task of tasks) {
+    for (const content of task.contents ?? []) {
+      if (content.status !== 2 && !content.statusView?.terminal) return false
+    }
+  }
+  return true
+}

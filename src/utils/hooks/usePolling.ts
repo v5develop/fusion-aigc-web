@@ -7,9 +7,10 @@ export function usePolling<T = any>(
     immediate?: boolean // 是否立即执行（默认 true）
     autoStop?: (result: T) => boolean // 自动停止条件函数
     onError?: (error: unknown) => void // 错误回调
+    stopOnError?: boolean // 出错时是否停止轮询（默认 true；false 则错误后继续下一轮）
   } = {},
 ) {
-  const { immediate = true, autoStop, onError } = options
+  const { immediate = true, autoStop, onError, stopOnError = true } = options
 
   const isPolling = ref(false)
   const result = ref<T | null>(null)
@@ -34,7 +35,8 @@ export function usePolling<T = any>(
     } catch (e) {
       error.value = e
       onError?.(e)
-      stop()
+      if (stopOnError) stop()
+      else scheduleNext()
     }
   }
 

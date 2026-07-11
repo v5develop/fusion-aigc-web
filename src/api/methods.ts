@@ -30,7 +30,7 @@ export function getUserInfo() {
 }
 
 export function ecommerceSubmit(data: any, headers: any = { 'Idempotency-Key': createSafeUuid() }) {
-  return post('/api/v1/creation/ecommerce/submit', data, headers)
+  return post('/api/v1/creation/ecommerce/submit', data, headers, 60000)
 }
 
 export function pollingTask(sessionId: string) {
@@ -64,7 +64,8 @@ export function publicTemplate(params: types.IPublicTemplate) {
 }
 
 export function creationSubmit(data: types.ICreationSubmit, headers: any = { 'Idempotency-Key': createSafeUuid() }) {
-  return post('/api/v1/creation/submit', data, headers)
+  // 图生图等任务后端需先处理输入图，提交耗时可能超过全局 10s 超时，单独放宽
+  return post('/api/v1/creation/submit', data, headers, 60000)
 }
 
 export function publicDisplay(params: any) {

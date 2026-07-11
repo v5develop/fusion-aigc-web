@@ -157,12 +157,13 @@ function logoutToLogin() {
   window.location.hash = '#/login'
 }
 
-export function post(url: string, data: any, headers?: any): Promise<ApiResponse> {
+export function post(url: string, data: any, headers?: any, timeout?: number): Promise<ApiResponse> {
   return service({
     method: 'post',
     url,
     data,
     headers,
+    ...(timeout ? { timeout } : {}),
   })
 }
 
