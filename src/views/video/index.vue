@@ -130,7 +130,7 @@ const submit = () => {
       duration: formData.duration,
     },
     images: formData.images,
-    video: ['actionTransfer'].includes(formData.entryCode) ? formData.video[0] : '',
+    video: ['actionTransfer'].includes(formData.entryCode) ? formData.video[0]?.url || '' : '',
   }
   execute(params)
 }
