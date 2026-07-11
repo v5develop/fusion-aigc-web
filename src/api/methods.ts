@@ -54,12 +54,21 @@ export function faceRecognitionStatusQuery(taskId: string) {
 }
 
 export function publicTemplate(params: types.IPublicTemplate) {
+  const { bizType, moduleCode, slotCode, type, filters, page, pageSize } = params as types.IPublicTemplate
+  // 后端 /asset/public/template 约定 filters 为「JSON 字符串」，值须为数组：
+  // {"gender":["female"],"handType":["handGestures"]}。axios 默认会把嵌套对象展开成
+  // filters[gender][]=... 使后端 @RequestParam filters 取不到值、筛选整体失效，故此处统一序列化。
+  const normalizedFilters =
+    filters && typeof filters === 'object' ? JSON.stringify(filters) : filters
+  // 仅透传契约字段，剔除调用方 spread 分页状态带入的 loading/hasMore 等无关参数
   return get('/api/v1/asset/public/template', {
-    bizType: 'ecommerce',
-    type: 'image',
-    page: 1,
-    pageSize: 15,
-    ...params,
+    bizType: bizType ?? 'ecommerce',
+    type: type ?? 'image',
+    moduleCode,
+    ...(slotCode ? { slotCode } : {}),
+    page: page ?? 1,
+    pageSize: pageSize ?? 15,
+    ...(normalizedFilters ? { filters: normalizedFilters } : {}),
   })
 }
 
