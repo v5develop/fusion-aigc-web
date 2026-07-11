@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
+import { ref, reactive, watch, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
@@ -48,6 +48,22 @@ const formData = reactive(
     video: [],
   },
 )
+
+// 切换生成模式时校验已选图片：超出新模式上限只保留前面的，文生视频不需要图片则清空
+watch(
+  () => formData.entryCode,
+  (entryCode) => {
+    if (entryCode === 'textToVideo') {
+      formData.images = []
+      return
+    }
+    const limit = config[entryCode]?.imageLimit
+    if (limit && formData.images.length > limit) {
+      formData.images = formData.images.slice(0, limit)
+    }
+  },
+)
+
 const pagingData = reactive({
   page: 1,
   pageSize: 8,
