@@ -27,10 +27,15 @@ const color = defineModel<string>('color', { required: true })
 
 <style scoped lang="less">
 .color-picker {
+  // 与 GridImage 的 .item 一致，用 padding-bottom 撑正方形，避免依赖同行 item 的行高
   width: 100%;
-  height: 100%;
+  height: 0;
+  padding-bottom: 100%;
+  position: relative;
 
   :deep(.n-color-picker) {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
 

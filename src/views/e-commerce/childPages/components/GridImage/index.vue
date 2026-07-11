@@ -53,7 +53,11 @@ const selectColor = () => {
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   > .item {
-    aspect-ratio: 1/1;
+    // 用 padding-bottom 百分比撑出正方形，不依赖 aspect-ratio
+    // （旧内核不支持、部分 Chromium 在非整数缩放下行高传播有 bug，会导致图片叠加）
+    position: relative;
+    height: 0;
+    padding-bottom: 100%;
     background: #f5f6f8;
     border-radius: 8px;
     border: 2px solid transparent;
@@ -67,6 +71,9 @@ const selectColor = () => {
       border-color: var(--main-color);
     }
     > .img {
+      position: absolute;
+      left: 0;
+      top: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
