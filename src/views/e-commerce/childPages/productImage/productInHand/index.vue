@@ -102,7 +102,7 @@ function useHandList() {
       moduleCode: 'aiGestures',
       slotCode: 'gestures',
       filters: {
-        handType,
+        handType: [handType],
       },
       ...handPagingData[handType],
     }
