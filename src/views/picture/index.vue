@@ -248,6 +248,7 @@ const generateAgain = (item: any) => {
         v-model:formData="formData"
         :submit="submit"
         :btnLoading="loading"
+        :imageLimit="3"
         :showImageUpload="formData.entryCode === 'imageToImage'"
       >
         <template #bottomSelect>

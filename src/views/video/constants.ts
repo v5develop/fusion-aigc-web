@@ -60,11 +60,12 @@ export const config: Record<string, any> = {
     imageLimit: 5,
   },
   imageToVideo: {
-    imageLimit: 5,
+    imageLimit: 1,
   },
   actionTransfer: {
     imageLimit: 1,
     videoLimit: 1,
+    videoDuration: 10,
   },
   firstLastFrames: {
     imageLimit: 2,

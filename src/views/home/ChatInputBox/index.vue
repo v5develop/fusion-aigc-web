@@ -12,6 +12,8 @@ interface IProps {
   showVideoUpload?: boolean
   imageLimit?: number
   videoLimit?: number
+  /** 视频时长上限（秒） */
+  videoDuration?: number
   mode?: 'default' | 'slot'
 }
 const {
@@ -22,6 +24,7 @@ const {
   showVideoUpload,
   imageLimit = 5,
   videoLimit = 1,
+  videoDuration = 10,
   mode = 'default',
 } = defineProps<IProps>()
 const formData = defineModel<any>('formData')
@@ -117,6 +120,7 @@ const handlePaste = (e: ClipboardEvent) => {
             v-model:fileList="formData.video"
             type="video"
             :limitNumber="videoLimit"
+            :limitDuration="videoDuration"
             label="视频"
           />
         </div>
