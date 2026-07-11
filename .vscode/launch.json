@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "调试 (开发)",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "dev"
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "调试 (测试)",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "dev:test"
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "调试 (生产)",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "dev:prod"
+    }
+  ]
+}
