@@ -17,6 +17,15 @@ const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 const { taskList, showList, execute } = useInitCheckTaskStatus('clothing-try')
 provide('recordsData', taskList)
 
+// /asset/public/template 契约（见 2da03cc）：filters 值须为数组，未选择的项不传
+const buildFilters = (filterData: Record<string, any>) => {
+  const filters: Record<string, any[]> = {}
+  for (const [key, val] of Object.entries(filterData)) {
+    if (val !== null && val !== undefined && val !== '') filters[key] = [val]
+  }
+  return filters
+}
+
 const message = useMessage()
 const loading = ref(false)
 const formData = reactive({
@@ -85,12 +94,9 @@ function useModelList() {
     const params = {
       moduleCode: 'aiClothExchange',
       slotCode: 'model',
-      filters: {
-        gender: [modelFilterData.gender],
-        age: [modelFilterData.age],
-        skin: [modelFilterData.skin],
-      },
-      ...pagingData,
+      filters: buildFilters(modelFilterData),
+      page: pagingData.page,
+      pageSize: pagingData.pageSize,
     } as const
     pagingData.loading = true
     publicTemplate(params)
@@ -142,10 +148,9 @@ function usePose() {
     const params = {
       moduleCode: 'aiClothExchange',
       slotCode: 'tryOnTemplate',
-      filters: {
-        clothStyle: [poseFilterData.clothStyle],
-      },
-      ...posePagingData,
+      filters: buildFilters(poseFilterData),
+      page: posePagingData.page,
+      pageSize: posePagingData.pageSize,
     } as const
     posePagingData.loading = true
     publicTemplate(params)
@@ -276,7 +281,6 @@ function useIntegral() {
               :col="3"
               style="margin-top: 12px"
               clearable
-              multiple
             />
             <GridImage
               style="margin-top: 8px"
@@ -312,7 +316,6 @@ function useIntegral() {
               :col="1"
               style="margin-top: 12px"
               clearable
-              multiple
             />
             <GridImage
               style="margin-top: 8px"
