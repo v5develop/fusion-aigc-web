@@ -34,6 +34,6 @@ export const bodyOps = [
 export const localModelValue = 'local'
 export const modelOps = [
   { label: '本地模型', value: localModelValue },
-  { label: 'seedance2.0', value: 'doubao-seedance-2-0-260128' },
-  { label: 'seedance2.0-fast', value: 'doubao-seedance-2-0-fast-260128' },
+  { label: 'Seedance-2.0', value: 'doubao-seedance-2-0-260128' },
+  { label: 'Seedance-2.0-Fast', value: 'doubao-seedance-2-0-fast-260128' },
 ]
