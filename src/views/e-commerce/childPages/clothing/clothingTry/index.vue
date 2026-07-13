@@ -50,6 +50,9 @@ const submit = () => {
   if (poseTabValue.value === 'uploadPose' && !formData.uploadPoseUrl.length) {
     return message.warning('请上传试衣模板')
   }
+  if (!formData.bgImageUrl) {
+    return message.warning('请选择场景')
+  }
 
   const params = {
     type: 'aiClothExchange',
