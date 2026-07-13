@@ -48,7 +48,7 @@ const submit = () => {
   if (handTabValue.value === 'handGestures' && !formData.gesturesUrl) {
     return message.warning('请选择纯手持图')
   }
-  if (!formData.personUrl) {
+  if (handTabValue.value === 'modelGestures' && !formData.personUrl) {
     return message.warning('请选择模特图')
   }
   if (!formData.bgImageUrl) {
@@ -60,8 +60,8 @@ const submit = () => {
     imageUrls: formData.imageUrls,
     params: {
       modelGesturesUrl: handTabValue.value === 'modelGestures' ? formData.modelGesturesUrl : '',
-      gesturesUrl: formData.gesturesUrl,
-      personUrl: formData.personUrl,
+      gesturesUrl: handTabValue.value === 'handGestures' ? formData.gesturesUrl : '',
+      personUrl: handTabValue.value === 'modelGestures' ? formData.personUrl : '',
       bgImageUrl: formData.bgImageUrl,
       platform: formData.platform,
       region: formData.region,
