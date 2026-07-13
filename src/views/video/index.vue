@@ -187,6 +187,13 @@ const generateAgain = (item: any) => {
 
   execute(item.inputParams)
 }
+
+// 动作迁移的输入视频 URL；兼容早期历史数据 video 为 { url, thumbnail } 对象的情况
+const getSourceVideo = (inputParams: any): string => {
+  if (inputParams.entryCode !== 'actionTransfer') return ''
+  const video = inputParams.video
+  return typeof video === 'string' ? video : video?.url || ''
+}
 </script>
 
 <template>
@@ -216,8 +223,9 @@ const generateAgain = (item: any) => {
               <!-- 原图 + 提示词 -->
               <div class="message-group__header">
                 <SourceImageStack
-                  v-if="item.inputParams.entryCode === 'imageToVideo'"
+                  v-if="item.inputParams.entryCode !== 'textToVideo'"
                   :images="item.inputParams.images ?? []"
+                  :video="getSourceVideo(item.inputParams)"
                 />
                 <div class="message-group__prompt-wrapper">
                   <p class="message-group__prompt">
