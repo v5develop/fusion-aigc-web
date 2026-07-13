@@ -3,15 +3,7 @@ import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import Tab from '@/components/Tab/index.vue'
-import {
-  ageOps,
-  genderOps,
-  angleOps,
-  shotTypeOps,
-  clothStyleOps,
-  styleOps,
-  skinOps,
-} from '@/views/e-commerce/childPages/constants.ts'
+import { ageOps, genderOps, clothStyleOps, skinOps } from '@/views/e-commerce/childPages/constants.ts'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
@@ -130,11 +122,8 @@ function useModelList() {
 }
 
 function usePose() {
+  // 试衣模版筛选只保留款式模版
   const poseFilterData = reactive({
-    gender: null,
-    age: null,
-    angle: null,
-    shotType: null,
     clothStyle: null,
   })
   const posePagingData = reactive({
@@ -154,10 +143,6 @@ function usePose() {
       moduleCode: 'aiClothExchange',
       slotCode: 'tryOnTemplate',
       filters: {
-        gender: [poseFilterData.gender],
-        age: [poseFilterData.age],
-        angle: [poseFilterData.angle],
-        shotType: [poseFilterData.shotType],
         clothStyle: [poseFilterData.clothStyle],
       },
       ...posePagingData,
@@ -323,15 +308,8 @@ function useIntegral() {
           <div v-show="poseTabValue === 'poseLib'">
             <SelectGroup
               v-model:data="poseFilterData"
-              :list="[
-                { field: 'gender', options: genderOps, placeholder: '性别' },
-                { field: 'age', options: ageOps, placeholder: '年龄' },
-                { field: 'angle', options: angleOps, placeholder: '角度' },
-                { field: 'shotType', options: shotTypeOps, placeholder: '景别' },
-                { field: 'style', options: styleOps, placeholder: '风格' },
-                { field: 'clothStyle', options: clothStyleOps, placeholder: '款式模版' },
-              ]"
-              :col="3"
+              :list="[{ field: 'clothStyle', options: clothStyleOps, placeholder: '款式模版' }]"
+              :col="1"
               style="margin-top: 12px"
               clearable
               multiple
