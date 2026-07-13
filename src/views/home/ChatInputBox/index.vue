@@ -14,6 +14,9 @@ interface IProps {
   videoLimit?: number
   /** 视频时长上限（秒） */
   videoDuration?: number
+  /** 禁用提示词输入（如动作迁移模式无需提示词） */
+  promptDisabled?: boolean
+  promptPlaceholder?: string
   mode?: 'default' | 'slot'
 }
 const {
@@ -25,6 +28,8 @@ const {
   imageLimit = 5,
   videoLimit = 1,
   videoDuration = 10,
+  promptDisabled = false,
+  promptPlaceholder = '和我聊聊，你想要什么设计。',
   mode = 'default',
 } = defineProps<IProps>()
 const formData = defineModel<any>('formData')
@@ -128,8 +133,8 @@ const handlePaste = (e: ClipboardEvent) => {
         <div
           ref="textareaRef"
           class="textarea-box"
-          contenteditable
-          data-placeholder="和我聊聊，你想要什么设计。"
+          :contenteditable="!promptDisabled"
+          :data-placeholder="promptPlaceholder"
           @input="onInput"
           @paste="handlePaste"
         ></div>

@@ -66,6 +66,8 @@ export const config: Record<string, any> = {
     imageLimit: 1,
     videoLimit: 1,
     videoDuration: 10,
+    promptDisabled: true,
+    promptPlaceholder: '上传图片，上传参考的动作视频即可生成',
   },
   firstLastFrames: {
     imageLimit: 2,

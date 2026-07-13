@@ -55,6 +55,10 @@ const formData = reactive(
 watch(
   () => formData.entryCode,
   (entryCode) => {
+    // 动作迁移不可编辑提示词，清掉其他模式的残留文字，避免显示后无法删除且被提交
+    if (entryCode === 'actionTransfer') {
+      formData.prompt = ''
+    }
     if (entryCode === 'textToVideo') {
       formData.images = []
       return
@@ -94,7 +98,8 @@ onUnmounted(() => {
 const submit = async () => {
   if (btnLoading.value) return
 
-  if (!formData.prompt) {
+  // 动作迁移不需要提示词
+  if (!formData.prompt && formData.entryCode !== 'actionTransfer') {
     message.warning('请输入提示词')
     return
   }
