@@ -58,8 +58,19 @@ export function publicTemplate(params: types.IPublicTemplate) {
   // 后端 /asset/public/template 约定 filters 为「JSON 字符串」，值须为数组：
   // {"gender":["female"],"handType":["handGestures"]}。axios 默认会把嵌套对象展开成
   // filters[gender][]=... 使后端 @RequestParam filters 取不到值、筛选整体失效，故此处统一序列化。
-  const normalizedFilters =
-    filters && typeof filters === 'object' ? JSON.stringify(filters) : filters
+  // 同时剔除空值：调用方普遍写 gender: [filterData.gender]，未选择时是 [null]，
+  // 后端会把 null 当筛选值导致查不到数据，故值数组过滤空元素、过滤后为空的字段整个不传。
+  let normalizedFilters: string | undefined
+  if (filters && typeof filters === 'object') {
+    const cleaned: Record<string, any[]> = {}
+    for (const [key, val] of Object.entries(filters)) {
+      const arr = (Array.isArray(val) ? val : [val]).filter((v) => v !== null && v !== undefined && v !== '')
+      if (arr.length) cleaned[key] = arr
+    }
+    normalizedFilters = Object.keys(cleaned).length ? JSON.stringify(cleaned) : undefined
+  } else {
+    normalizedFilters = filters
+  }
   // 仅透传契约字段，剔除调用方 spread 分页状态带入的 loading/hasMore 等无关参数
   return get('/api/v1/asset/public/template', {
     bizType: bizType ?? 'ecommerce',

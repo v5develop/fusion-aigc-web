@@ -17,15 +17,6 @@ const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 const { taskList, showList, execute } = useInitCheckTaskStatus('clothing-try')
 provide('recordsData', taskList)
 
-// /asset/public/template 契约（见 2da03cc）：filters 值须为数组，未选择的项不传
-const buildFilters = (filterData: Record<string, any>) => {
-  const filters: Record<string, any[]> = {}
-  for (const [key, val] of Object.entries(filterData)) {
-    if (val !== null && val !== undefined && val !== '') filters[key] = [val]
-  }
-  return filters
-}
-
 const message = useMessage()
 const loading = ref(false)
 const formData = reactive({
@@ -94,7 +85,11 @@ function useModelList() {
     const params = {
       moduleCode: 'aiClothExchange',
       slotCode: 'model',
-      filters: buildFilters(modelFilterData),
+      filters: {
+        gender: [modelFilterData.gender],
+        age: [modelFilterData.age],
+        skin: [modelFilterData.skin],
+      },
       page: pagingData.page,
       pageSize: pagingData.pageSize,
     } as const
@@ -148,7 +143,9 @@ function usePose() {
     const params = {
       moduleCode: 'aiClothExchange',
       slotCode: 'tryOnTemplate',
-      filters: buildFilters(poseFilterData),
+      filters: {
+        clothStyle: [poseFilterData.clothStyle],
+      },
       page: posePagingData.page,
       pageSize: posePagingData.pageSize,
     } as const
