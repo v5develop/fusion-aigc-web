@@ -52,6 +52,7 @@ const submit = () => {
       region: formData.region,
       language: formData.language,
       aspectRatio: formData.aspectRatio,
+      duration: formData.duration,
       buyPoint: formData.buyPoint,
       templateName: formData.checked[0],
       personUrl: formData.personUrl,
