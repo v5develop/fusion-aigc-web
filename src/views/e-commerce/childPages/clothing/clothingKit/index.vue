@@ -46,6 +46,9 @@ const submit = () => {
   if (tabValue.value === 'uploadModel' && !formData.uploadPersonUrl.length) {
     return message.warning('请上传模特')
   }
+  if (!formData.scenePhoto.length && !formData.prompt) {
+    return message.warning('请选择拍摄场景')
+  }
 
   const params = {
     type: 'wearingProductSetImages',
