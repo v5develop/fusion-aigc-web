@@ -33,6 +33,12 @@ const containerStyle = computed(() => {
     >
       <!-- 媒体片段 #t=0.5 让浏览器停在 0.5s 处的帧作为封面 -->
       <video class="source-image-stack__video" :src="video + '#t=0.5'" preload="metadata" muted />
+      <!-- 视频标识：播放小图标 -->
+      <div class="source-image-stack__play-badge">
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+          <path d="M2 1.2v5.6c0 .32.36.51.63.34l4.2-2.8a.4.4 0 0 0 0-.68l-4.2-2.8A.4.4 0 0 0 2 1.2Z" fill="#fff" />
+        </svg>
+      </div>
     </div>
   </div>
 </template>
@@ -83,6 +89,21 @@ const containerStyle = computed(() => {
     height: 100%;
     object-fit: cover;
     display: block;
+    pointer-events: none;
+  }
+
+  &__play-badge {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     pointer-events: none;
   }
 }
