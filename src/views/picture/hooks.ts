@@ -91,6 +91,7 @@ export function useInitCheckTaskStatus(props: IProps) {
     startPolling(sessionId)
   }
 
+  /** 提交任务，返回是否提交成功（成功后任务进入会话，由轮询跟进） */
   const execute = async (params: any) => {
     loading.value = true
     submitting = true
@@ -101,18 +102,20 @@ export function useInitCheckTaskStatus(props: IProps) {
 
       if (res.code !== 0) {
         loading.value = false
-        return
+        return false
       }
 
       await afterSubmit(params.sessionId)
+      return true
     } catch (e: any) {
       // 提交请求超时/断网时后端可能已创建任务，sessionId 已持久化，兜底发起轮询；
       // 若任务确实未创建，宽限轮数耗尽后完成副作用会复位 loading 并轮换会话
       if (e?.code === 'ECONNABORTED' || e?.message === 'Network Error') {
         await afterSubmit(params.sessionId)
-      } else {
-        loading.value = false
+        return true
       }
+      loading.value = false
+      return false
     } finally {
       submitting = false
     }
