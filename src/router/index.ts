@@ -64,25 +64,27 @@ router.beforeEach(async (to) => {
       return
     }
 
-    if (!!baseURL) {
-      await unionTokenLogin({ token: unionToken! }).then((res) => {
+    // 静默登录失败不阻断导航（拦截器已提示），放行后由请求层的 401 刷新流程接管
+    try {
+      if (!!baseURL) {
+        const res = await unionTokenLogin({ token: unionToken! })
         if (res.code === 0) {
           localStorage.setItem('fusion_accessToken', res.data.accessToken)
           localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
         }
-      })
-    } else {
-      await login({
-        username: 'adad',
-        password: 'admin123',
-      }).then((res) => {
+      } else {
+        const res = await login({
+          username: 'adad',
+          password: 'admin123',
+        })
         if (res.code === 0) {
           localStorage.setItem('fusion_accessToken', res.data.accessToken)
           localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
         }
-      })
+      }
+    } catch {
+      // 忽略：token 缺失时后续请求会走 401 → 刷新/登出 流程
     }
-
   }
 })
 

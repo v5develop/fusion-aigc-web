@@ -2,13 +2,12 @@ import axios from 'axios'
 import type { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
 import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
-import { getUserInfo, unionTokenLogin } from '@/api/methods.ts'
+import { getUserInfo } from '@/api/methods.ts'
 import { refreshToken, getAuthToken } from '@/api/union'
 
 const { message } = createDiscreteApi(['message'])
-let isRefreshing = false
-let requestQueue: { resolve: (value: any) => void; reject: (reason?: any) => void; config: InternalAxiosRequestConfig }[] = []
 const refreshTokenApi = '/api/v1/auth/refresh'
+const unionTokenLoginApi = '/api/v1/auth/union-token-login'
 
 const baseURL = import.meta.env.VITE_FUSION_API_BASE ?? ''
 const service = axios.create({
@@ -16,51 +15,77 @@ const service = axios.create({
   timeout: 10000,
 })
 
-// 单航班：失效瞬间多个请求同时失败时，只调用一次桥
-let refreshing: Promise<string> | null = null
-async function refreshUnionToken() {
+function saveTokens(data: { accessToken: string; refreshToken: string }) {
+  localStorage.setItem('fusion_accessToken', data.accessToken)
+  localStorage.setItem('fusion_refreshToken', data.refreshToken)
+}
+
+// 刷新链路内的 fusion 接口一律用裸 axios（不走 service 拦截器）：
+// 结构性避免「刷新接口的响应再次触发刷新」的重入死锁，也不依赖拦截器改写后的响应形状
+async function unionTokenLoginRaw(token: string): Promise<string> {
+  const { data: body } = await axios.post<ApiResponse>(baseURL + unionTokenLoginApi, { token }, { timeout: 10000 })
+  if (body?.code !== 0 || !body.data?.accessToken) {
+    throw new Error(`union-token-login failed: code=${body?.code}`)
+  }
+  saveTokens(body.data)
+  return body.data.accessToken
+}
+
+// fusion refresh 失败后的兜底：用联盟侧凭证换新的 fusion token。
+// 失败只 throw，登出决策统一收敛在 handleTokenExpired，避免双 toast/双跳转
+async function refreshViaUnion(): Promise<string> {
   const bridge = (window as any).ThirdServiceBridge
 
   // 容器内：走桥接刷新
   if (bridge?.refreshUnionToken) {
-    if (!refreshing) {
-      refreshing = bridge.refreshUnionToken().finally(() => {
-        refreshing = null
-      })
-    }
-    const token = await refreshing!
-    const res = await unionTokenLogin({ token })
-    localStorage.setItem('fusion_accessToken', res.data.accessToken)
-    localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
-    const { code, data } = await getUserInfo()
-    if (code === 0) {
-      localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
-    }
-    return
+    const token = await bridge.refreshUnionToken()
+    return unionTokenLoginRaw(token)
   }
 
   // 独立运行：用联盟 refreshToken 刷新
   const unionRefresh = localStorage.getItem('union_refreshToken')
   if (!unionRefresh) {
-    logoutToLogin()
-    return Promise.reject(new Error('no union refresh token'))
+    throw new Error('no union refresh token')
   }
+  const newUnion = await refreshToken(unionRefresh)
+  localStorage.setItem('union_token', newUnion.token)
+  localStorage.setItem('union_refreshToken', newUnion.refreshToken)
+  const authRes = await getAuthToken(newUnion.token)
+  return unionTokenLoginRaw(authRes.tempToken)
+}
 
-  if (!refreshing) {
-    refreshing = (async () => {
-      const newUnion = await refreshToken(unionRefresh)
-      localStorage.setItem('union_token', newUnion.token)
-      localStorage.setItem('union_refreshToken', newUnion.refreshToken)
-      const authRes = await getAuthToken(newUnion.token)
-      const res = await unionTokenLogin({ token: authRes.tempToken })
-      localStorage.setItem('fusion_accessToken', res.data.accessToken)
-      localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
-      return res.data.accessToken
+// 单航班：失效瞬间多个请求同时失败时只刷新一次，各请求 await 同一个 promise 后自行重放
+let refreshPromise: Promise<string> | null = null
+
+function doRefresh(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const rt = localStorage.getItem('fusion_refreshToken')
+        if (!rt) throw new Error('no fusion refresh token')
+        const { data: body } = await axios.post<ApiResponse>(baseURL + refreshTokenApi, { refreshToken: rt }, { timeout: 10000 })
+        if (body?.code !== 0 || !body.data?.accessToken) {
+          throw new Error(`fusion refresh failed: code=${body?.code}`)
+        }
+        saveTokens(body.data)
+        return body.data.accessToken as string
+      } catch {
+        return refreshViaUnion()
+      }
     })().finally(() => {
-      refreshing = null
+      refreshPromise = null
     })
+    // 刷新成功后异步补拉用户信息（头像缓存），不阻塞请求重放、失败忽略
+    refreshPromise
+      .then(async () => {
+        const { code, data } = await getUserInfo()
+        if (code === 0) {
+          localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
+        }
+      })
+      .catch(() => {})
   }
-  await refreshing
+  return refreshPromise
 }
 
 // 请求拦截：自动加 token
@@ -70,91 +95,98 @@ service.interceptors.request.use((config) => {
   return config
 })
 
-const TOKEN_EXPIRED_CODES = [2001, 2002, 2003]
+const TOKEN_EXPIRED_CODES = new Set([2001, 2002, 2003])
+// msg 关键词兜底：后端存在白名单外的失效码（表现为只弹"令牌失效"不刷新）。
+// 窄匹配（须同时含「令牌/token」与「失效/过期/无效」）压低误伤普通业务错误的概率；
+// 误判有 _retried 一次性保险丝兜底，代价上限是多一次刷新尝试
+const TOKEN_INVALID_MSG = /(令牌|token).{0,6}(失效|过期|无效|expired|invalid)/i
 
-// 无感刷新核心逻辑，成功回调和错误回调共用
-async function silentRefresh(config: InternalAxiosRequestConfig) {
-  if (isRefreshing) {
-    return new Promise((resolve, reject) => {
-      requestQueue.push({ resolve, reject, config })
-    })
+function isTokenInvalid(body: ApiResponse | undefined): boolean {
+  if (!body || body.code === 0) return false
+  if (TOKEN_EXPIRED_CODES.has(body.code)) return true
+  if (typeof body.msg === 'string' && TOKEN_INVALID_MSG.test(body.msg)) {
+    // 打出真实 code，便于补进 TOKEN_EXPIRED_CODES 后收窄兜底
+    console.warn('[auth] 按 msg 兜底识别为令牌失效, code =', body.code, ', msg =', body.msg)
+    return true
   }
-
-  isRefreshing = true
-
-  try {
-    const { data } = await service.post(refreshTokenApi, {
-      refreshToken: localStorage.getItem('fusion_refreshToken'),
-    })
-    const newAccessToken = data.data.accessToken
-    const newRefreshToken = data.data.refreshToken
-
-    localStorage.setItem('fusion_accessToken', newAccessToken)
-    localStorage.setItem('fusion_refreshToken', newRefreshToken)
-
-    requestQueue.forEach(({ resolve, config: queuedConfig }) => {
-      queuedConfig.headers.Authorization = `Bearer ${newAccessToken}`
-      resolve(service(queuedConfig))
-    })
-    requestQueue = []
-    isRefreshing = false
-
-    config.headers.Authorization = `Bearer ${newAccessToken}`
-    return service(config)
-  } catch {
-    try {
-      await refreshUnionToken()
-
-      const freshToken = localStorage.getItem('fusion_accessToken')
-      requestQueue.forEach(({ resolve, config: queuedConfig }) => {
-        queuedConfig.headers.Authorization = `Bearer ${freshToken}`
-        resolve(service(queuedConfig))
-      })
-      requestQueue = []
-      isRefreshing = false
-
-      config.headers.Authorization = `Bearer ${freshToken}`
-      return service(config)
-    } catch {
-      requestQueue.forEach(({ reject }) => reject(new Error('token refresh failed')))
-      requestQueue = []
-      isRefreshing = false
-      logoutToLogin()
-      return Promise.reject(new Error('token refresh failed'))
-    }
-  }
+  return false
 }
 
-// 响应拦截
+// 令牌失效统一处理：单航班刷新成功后重放原请求；重放后仍失效、或刷新链路彻底失败才登出
+async function handleTokenExpired(config: InternalAxiosRequestConfig): Promise<any> {
+  const cfg = config as InternalAxiosRequestConfig & { _retried?: boolean }
+  if (cfg._retried) {
+    logoutToLogin()
+    return Promise.reject(new Error('token still invalid after refresh'))
+  }
+  cfg._retried = true
+  try {
+    await doRefresh()
+  } catch (e) {
+    logoutToLogin()
+    return Promise.reject(e)
+  }
+  // 重放走完整拦截器链，请求拦截器会注入 localStorage 里的新 token
+  return service(cfg)
+}
+
+// 响应拦截。令牌语义对齐 App 端 auth_interceptor：401/业务失效码 → 先刷新重放；403 → 直接重新登录
 service.interceptors.response.use(
-  async (res: AxiosResponse<ApiResponse>) => {
+  (res: AxiosResponse<ApiResponse>) => {
     const data = res.data
 
-    if (TOKEN_EXPIRED_CODES.includes(data.code)) {
-      return await silentRefresh(res.config) as any
+    if (isTokenInvalid(data)) {
+      return handleTokenExpired(res.config)
     }
 
     if (data.code !== 0) {
       message.error(data.msg)
-      return Promise.reject()
+      return Promise.reject(new Error(data.msg))
     }
     return data as unknown as AxiosResponse<ApiResponse<unknown>>
   },
-  async (error: AxiosError<ApiResponse>) => {
+  (error: AxiosError<ApiResponse>) => {
     const { response, config } = error || {}
-    if (!response || response.status !== 401 || config?.url === refreshTokenApi) {
-      return Promise.reject(error)
+    if (response?.status === 401 && config) {
+      return handleTokenExpired(config)
     }
-    return silentRefresh(config!)
+    if (response?.status === 403) {
+      logoutToLogin()
+    }
+    return Promise.reject(error)
   },
 )
 
+let loggingOut = false
 function logoutToLogin() {
+  if (loggingOut) return // 并发失败的多个请求只登出一次、只弹一次
+  loggingOut = true
+  message.error('登录已过期，请重新登录')
   localStorage.removeItem('fusion_accessToken')
   localStorage.removeItem('fusion_refreshToken')
   localStorage.removeItem('union_token')
   localStorage.removeItem('union_refreshToken')
-  window.location.hash = '#/login'
+
+  const bridge = (window as any).ThirdServiceBridge
+  if (!bridge) {
+    window.location.hash = '#/login'
+    // hash 跳转不重载页面，复位门闩以便下次会话过期仍能登出
+    setTimeout(() => {
+      loggingOut = false
+    }, 2000)
+    return
+  }
+
+  // 容器内没有注册 /login 路由：清 token 后整页重载，让路由守卫用 URL 上的 unionToken 重新静默登录。
+  // 若 unionToken 也已失效会再次走到这里，用 sessionStorage 时间戳挡住 30s 内的重复 reload 防死循环
+  const lastReloadAt = Number(sessionStorage.getItem('fusion_logout_reload_at') || 0)
+  if (Date.now() - lastReloadAt < 30_000) {
+    loggingOut = false
+    return
+  }
+  sessionStorage.setItem('fusion_logout_reload_at', String(Date.now()))
+  // 留出 toast 展示时间
+  setTimeout(() => window.location.reload(), 500)
 }
 
 export function post(url: string, data: any, headers?: any, timeout?: number): Promise<ApiResponse> {
@@ -189,7 +221,6 @@ export interface SsePostHandlers {
  */
 export function ssePost(url: string, data: any, handlers: SsePostHandlers): () => void {
   const controller = new AbortController()
-  const token = localStorage.getItem('fusion_accessToken')
   let doneFired = false
   const fireDone = () => {
     if (doneFired) return
@@ -197,18 +228,35 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
     handlers.onDone?.()
   }
 
+  const doFetch = () => {
+    const token = localStorage.getItem('fusion_accessToken')
+    return fetch(baseURL + url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...(token ? { Authorization: 'Bearer ' + token } : {}),
+      },
+      body: JSON.stringify(data),
+      signal: controller.signal,
+    })
+  }
+
   ;(async () => {
     try {
-      const resp = await fetch(baseURL + url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-          ...(token ? { Authorization: 'Bearer ' + token } : {}),
-        },
-        body: JSON.stringify(data),
-        signal: controller.signal,
-      })
+      // 正在刷新 token 时等它结束再取 token，避免用刚失效的旧 token 开流
+      if (refreshPromise) await refreshPromise.catch(() => {})
+      let resp = await doFetch()
+      if (resp.status === 401) {
+        // 令牌失效：刷新成功后用新 token 重试一次；刷新失败则登出
+        try {
+          await doRefresh()
+        } catch (err) {
+          logoutToLogin()
+          throw err
+        }
+        resp = await doFetch()
+      }
       if (!resp.ok || !resp.body) {
         throw new Error(`SSE request failed: ${resp.status}`)
       }
