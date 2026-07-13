@@ -29,17 +29,22 @@ See [Vite Configuration Reference](https://vite.dev/config/).
 pnpm install
 ```
 
-### Compile and Hot-Reload for Development
+### 开发环境（本地调试）
 
-```sh
-pnpm dev
-```
+| 命令 | 说明 |
+|------|------|
+| `pnpm dev` | 开发模式，热更新，API 代理到生产 `https://aigc.pengqiwl.com` |
+| `pnpm dev:test` | 开发模式，热更新，API 指向测试 `https://aigc-test.pengqiwl.com` |
+| `pnpm dev:prod` | 开发模式，热更新，API 代理到生产 + Union 测试 |
 
-### Type-Check, Compile and Minify for Production
+### 生产环境（打包构建）
 
-```sh
-pnpm build
-```
+| 命令 | 对应 Vite 命令 | 模式 | API 目标 |
+|------|---------------|------|----------|
+| `pnpm build` | `vite build` | production（默认） | `https://aigc.pengqiwl.com` |
+| `pnpm build:test` | `vite build --mode test` | test | `https://aigc-test.pengqiwl.com` |
+
+产物统一输出到 `dist/` 目录。
 
 ### Lint with [ESLint](https://eslint.org/)
 
