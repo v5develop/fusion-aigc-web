@@ -217,18 +217,29 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
       const decoder = new TextDecoder()
       let buffer = ''
 
-      // SSE 帧以空行分隔；逐帧解析 event 与 data 字段
-      const flushFrame = (frame: string) => {
-        let event = 'message'
-        const dataLines: string[] = []
-        for (const line of frame.split('\n')) {
-          if (line.startsWith('event:')) event = line.slice(6).trim()
-          else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''))
+      // 后端输出不是规范 SSE：event 与 data 常写在同一行（event:deltadata:xxx）、
+      // 事件间仅单个换行、无空行分帧。故不按「空行分帧」解析，而是逐行容错处理：
+      // 行内先定位 data:，其前若粘着 event:xxx 则单独摘出，每个 data 立即派发
+      let curEvent = 'message'
+      const handleLine = (line: string) => {
+        if (!line.trim()) {
+          curEvent = 'message' // 空行 = 规范 SSE 的帧结束，重置事件名
+          return
         }
-        const data = dataLines.join('\n')
-        if (event === 'done') {
+        const dataIdx = line.indexOf('data:')
+        if (dataIdx === -1) {
+          if (line.startsWith('event:')) {
+            curEvent = line.slice(6).trim()
+            if (curEvent === 'done') fireDone()
+          }
+          return
+        }
+        const head = line.slice(0, dataIdx)
+        if (head.startsWith('event:')) curEvent = head.slice(6).trim()
+        const data = line.slice(dataIdx + 5).replace(/^ /, '')
+        if (curEvent === 'done') {
           fireDone()
-        } else if (event === 'delta' || event === 'message') {
+        } else if (curEvent === 'delta' || curEvent === 'message') {
           if (data) handlers.onDelta(data)
         }
       }
@@ -237,19 +248,18 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
-        // SSE 规范允许 CRLF/CR/LF 行分隔，归一为 LF 再切帧；否则 CRLF 流下 \n\n 永远
-        // 匹配不到，全部增量堆积到流结束被当成单帧、event:done 覆盖掉所有 delta。
-        // 末尾的裸 \r 可能是被分包劈开的 CRLF 前半，留待下一个 chunk 拼接后再归一
+        // 行分隔符归一为 LF（兼容 CRLF/CR）；末尾裸 \r 可能是被分包劈开的 CRLF 前半，
+        // 留待下一个 chunk 拼接后再归一
         buffer = buffer.replace(/\r\n/g, '\n').replace(/\r(?!$)/g, '\n')
         let sep: number
-        while ((sep = buffer.indexOf('\n\n')) !== -1) {
-          const frame = buffer.slice(0, sep)
-          buffer = buffer.slice(sep + 2)
-          if (frame.trim()) flushFrame(frame)
+        while ((sep = buffer.indexOf('\n')) !== -1) {
+          const line = buffer.slice(0, sep)
+          buffer = buffer.slice(sep + 1)
+          handleLine(line)
         }
       }
       buffer = buffer.replace(/\r/g, '\n')
-      if (buffer.trim()) flushFrame(buffer)
+      for (const line of buffer.split('\n')) handleLine(line)
       fireDone()
     } catch (err) {
       if ((err as any)?.name !== 'AbortError') handlers.onError?.(err)
