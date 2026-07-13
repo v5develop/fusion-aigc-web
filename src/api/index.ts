@@ -237,6 +237,10 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
+        // SSE 规范允许 CRLF/CR/LF 行分隔，归一为 LF 再切帧；否则 CRLF 流下 \n\n 永远
+        // 匹配不到，全部增量堆积到流结束被当成单帧、event:done 覆盖掉所有 delta。
+        // 末尾的裸 \r 可能是被分包劈开的 CRLF 前半，留待下一个 chunk 拼接后再归一
+        buffer = buffer.replace(/\r\n/g, '\n').replace(/\r(?!$)/g, '\n')
         let sep: number
         while ((sep = buffer.indexOf('\n\n')) !== -1) {
           const frame = buffer.slice(0, sep)
@@ -244,6 +248,7 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
           if (frame.trim()) flushFrame(frame)
         }
       }
+      buffer = buffer.replace(/\r/g, '\n')
       if (buffer.trim()) flushFrame(buffer)
       fireDone()
     } catch (err) {
