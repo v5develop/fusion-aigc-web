@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { provide, reactive, ref } from 'vue'
+import { computed, provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import { regionOps, languageOps, aspectRatioVideoOps } from '@/views/e-commerce/childPages/constants.ts'
-import { durationOps, modelOps } from '../constants.ts'
+import { localDurationOps, modelOps, seedanceDurationOps } from '../constants.ts'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
@@ -35,6 +35,22 @@ const formData = reactive({
   personUrl: '',
   personUrlHs: '',
 })
+const isSeedanceModel = (code: string) => code.startsWith('doubao-seedance')
+const currentDurationOps = computed(() =>
+  isSeedanceModel(formData.modelCode) ? seedanceDurationOps : localDurationOps,
+)
+
+watch(
+  () => formData.modelCode,
+  (newCode) => {
+    if (isSeedanceModel(newCode)) {
+      formData.duration = 15
+    } else if (formData.duration === 15) {
+      formData.duration = 16
+    }
+  },
+)
+
 const { integral } = useIntegral()
 
 const submit = () => {
@@ -112,8 +128,18 @@ function useIntegral() {
             { field: 'region', options: regionOps },
             { field: 'language', options: languageOps },
             { field: 'aspectRatio', options: aspectRatioVideoOps },
-            { field: 'duration', options: durationOps },
+            { field: 'duration', options: currentDurationOps },
           ]"
+        />
+
+        <!--        外面的模型只能选自己上传的达人，本地模型不做限制-->
+        <div class="module-title">选择模型</div>
+        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
+
+        <CustomModel
+          v-model:personUrl="formData.personUrl"
+          v-model:personUrlHs="formData.personUrlHs"
+          :modelCode="formData.modelCode"
         />
 
         <div class="module-title">商品卖点&要求</div>
@@ -143,16 +169,6 @@ function useIntegral() {
           :col="2"
           gap="8px"
           vertical
-        />
-
-        <!--        外面的模型只能选自己上传的达人，本地模型不做限制-->
-        <div class="module-title">选择模型</div>
-        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
-
-        <CustomModel
-          v-model:personUrl="formData.personUrl"
-          v-model:personUrlHs="formData.personUrlHs"
-          :modelCode="formData.modelCode"
         />
       </div>
     </template>

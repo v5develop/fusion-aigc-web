@@ -1,7 +1,15 @@
 export const durationOps = [
   { label: '16秒', value: 16 },
   { label: '32秒', value: 32 },
+  { label: '15秒', value: 15 },
 ]
+
+export const localDurationOps = [
+  { label: '16秒', value: 16 },
+  { label: '32秒', value: 32 },
+]
+
+export const seedanceDurationOps = [{ label: '15秒', value: 15 }]
 
 export const genderOps = [
   { label: '男', value: '男' },
