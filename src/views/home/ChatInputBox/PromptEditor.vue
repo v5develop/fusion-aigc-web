@@ -10,6 +10,9 @@ declare global {
   interface Window {
     __psClickUpload?: (e: Event) => void
     __psRemoveUpload?: (e: Event) => void
+    __psRemoveUploadItem?: (e: Event) => void
+    __psPreviewShow?: (e: Event) => void
+    __psPreviewHide?: () => void
   }
 }
 
@@ -329,9 +332,11 @@ onMounted(() => {
   window.__psClickUpload = (e: Event) => {
     const target = e.target as HTMLElement
     const block = target.closest('.ps-slot--upload') as HTMLElement | null
-    if (block) {
+    if (block && fileInputRef.value) {
       pendingUpload = blockIdentity(block)
-      fileInputRef.value?.click()
+      const slot = findUploadSlot(pendingUpload)
+      fileInputRef.value.multiple = !slot || (slot.limit ?? DEFAULT_UPLOAD_LIMIT) > 1
+      fileInputRef.value.click()
     }
   }
   window.__psRemoveUpload = (e: Event) => {
@@ -345,6 +350,44 @@ onMounted(() => {
         updateUploadBlockDOM(surfaceRef.value, id, [])
         syncFromDOM()
       }
+    }
+  }
+  window.__psRemoveUploadItem = (e: Event) => {
+    const target = e.target as HTMLElement
+    const btn = target.closest('.ps-thumb-remove') as HTMLElement | null
+    const block = target.closest('.ps-slot--upload') as HTMLElement | null
+    if (!btn || !block || !surfaceRef.value) return
+    const idx = parseInt(btn.getAttribute('data-index') || '', 10)
+    if (isNaN(idx)) return
+    const id = blockIdentity(block)
+    const slot = findUploadSlot(id)
+    if (!slot) return
+    slot.value.splice(idx, 1)
+    updateUploadBlockDOM(surfaceRef.value, id, slot.value)
+    syncFromDOM()
+  }
+
+  let previewEl: HTMLImageElement | null = null
+
+  window.__psPreviewShow = (e: Event) => {
+    const thumb = (e.target as HTMLElement).closest('.ps-thumb') as HTMLElement | null
+    if (!thumb) return
+    const srcImg = thumb.querySelector('.ps-thumb-preview-src') as HTMLImageElement | null
+    if (!srcImg?.src) return
+
+    previewEl = document.createElement('img')
+    previewEl.src = srcImg.src
+    previewEl.className = 'ps-thumb-preview-portal'
+    const rect = thumb.getBoundingClientRect()
+    previewEl.style.left = `${rect.left + rect.width / 2 - 100}px`
+    previewEl.style.top = `${rect.top - 208}px`
+    document.body.appendChild(previewEl)
+  }
+
+  window.__psPreviewHide = () => {
+    if (previewEl) {
+      previewEl.remove()
+      previewEl = null
     }
   }
 })
@@ -394,14 +437,13 @@ watch(
     display: inline-flex;
     vertical-align: middle;
     align-items: center;
-    height: 28px;
-    padding: 0 10px;
-    border-radius: 6px;
-    font-size: 15px;
+    height: 27px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 16px;
     white-space: nowrap;
     user-select: none;
     cursor: default;
-    margin: 0 1px;
   }
 
   :deep(.ps-slot--select) {
@@ -412,21 +454,20 @@ watch(
     cursor: pointer;
 
     .ps-arrow {
-      font-size: 10px;
-      opacity: 0.7;
+      width: 16px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
     }
   }
 
   :deep(.ps-slot--upload) {
-    background: linear-gradient(319deg, #fff6fb 2%, #ede6ff 97%);
-    border: 1px solid #fff;
+    background: #f0ebff;
     color: rgba(142, 102, 249, 0.5);
     gap: 4px;
     cursor: pointer;
-    box-shadow: 0 1px 6px 0 rgba(0, 0, 0, 0.03);
-    height: 27px;
-    padding: 2px 8px;
-    border-radius: 4px;
 
     .ps-icon {
       width: 16px;
@@ -440,42 +481,60 @@ watch(
     }
 
     &.filled {
-      height: auto;
-      padding: 4px;
+      height: 24px;
+      padding: 2px 4px;
       background: #fff;
       border: 1px solid #f0f0f0;
       box-shadow: 0 1px 6px 0 rgba(0, 0, 0, 0.06);
       gap: 6px;
       border-radius: 8px;
+      overflow: visible;
 
       .ps-thumbs {
         display: flex;
         gap: 4px;
-        position: relative;
+        overflow: visible;
       }
 
       .ps-thumb {
-        width: 64px;
-        height: 64px;
-        border-radius: 6px;
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
         background-size: cover;
         background-position: center;
         flex-shrink: 0;
+        position: relative;
+        overflow: visible;
       }
 
-      .ps-count {
+      .ps-thumb-preview-src {
+        display: none;
+      }
+
+      .ps-thumb-remove {
+        display: none;
         position: absolute;
-        top: -4px;
-        right: -4px;
-        width: 20px;
-        height: 20px;
-        border-radius: 10px;
-        background: #8e66f9;
-        color: #fff;
-        font-size: 11px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        top: 0;
+        right: 0;
+        width: 14px;
+        height: 14px;
+        border-radius: 0 4px 0 4px;
+        background: rgba(255, 255, 255, 0.85);
+        color: #8f8f8f;
+        font-size: 10px;
+        line-height: 14px;
+        text-align: center;
+        cursor: pointer;
+        z-index: 2;
+
+        &:hover {
+          color: #f5222d;
+          background: #fff;
+        }
+      }
+
+      .ps-thumb:hover .ps-thumb-remove {
+        display: block;
       }
 
       .ps-remove {
@@ -495,6 +554,17 @@ watch(
 </style>
 
 <style>
+.ps-thumb-preview-portal {
+  position: fixed;
+  width: 200px;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.15);
+  z-index: 9999;
+  pointer-events: none;
+}
+
 .ps-dropdown {
   background: #fff;
   border-radius: 12px;

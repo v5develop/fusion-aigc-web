@@ -25,15 +25,15 @@ export function buildUploadHTML(id: UploadIdentity, value: FileItem[]): string {
   const idAttrs = `data-slot-type="upload" data-slot-key="${escapeHtml(id.key || '')}" data-slot-label="${escapeHtml(id.label)}"`
   if (value.length > 0 && value[0]) {
     const imgs = value
-      .map((item) => {
+      .map((item, idx) => {
         const src = item.thumbnail || item.url || ''
-        return `<span class="ps-thumb" style="background-image:url('${escapeHtml(src)}')"></span>`
+        const full = item.url || src
+        return `<span class="ps-thumb" style="background-image:url('${escapeHtml(src)}')" onmouseenter="window.__psPreviewShow?.(event)" onmouseleave="window.__psPreviewHide?.()"><img class="ps-thumb-preview-src" src="${escapeHtml(full)}" /><span class="ps-thumb-remove" data-index="${idx}" onclick="event.stopPropagation();window.__psRemoveUploadItem?.(event)">×</span></span>`
       })
       .join('')
-    const countBadge = value.length > 1 ? `<span class="ps-count">${value.length}</span>` : ''
     return `<span class="ps-slot ps-slot--upload filled" contenteditable="false"
       ${idAttrs}
-      onclick="event.stopPropagation();window.__psClickUpload?.(event)"><span class="ps-thumbs">${imgs}${countBadge}</span><span class="ps-remove" onclick="event.stopPropagation();window.__psRemoveUpload?.(event)">×</span></span>​`
+      onclick="event.stopPropagation();window.__psClickUpload?.(event)"><span class="ps-thumbs">${imgs}</span><span class="ps-remove" onclick="event.stopPropagation();window.__psRemoveUpload?.(event)">×</span></span>​`
   }
   return `<span class="ps-slot ps-slot--upload" contenteditable="false"
     ${idAttrs}

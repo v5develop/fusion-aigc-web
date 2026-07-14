@@ -1,4 +1,5 @@
 import type { SlotSelect } from '../types'
+import { ICON_CARET_DOWN } from './icons'
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div')
@@ -13,7 +14,7 @@ export function buildSelectHTML(s: SlotSelect): string {
   const title = s.title || ''
   return `<span class="ps-slot ps-slot--select" contenteditable="false"
     data-slot-type="select" data-slot-label="${escapeHtml(s.label)}"
-    data-slot-value="${escapeHtml(s.value)}" data-slot-options="${opts}" data-slot-title="${escapeHtml(title)}">${escapeHtml(s.label)}<span class="ps-arrow">▾</span></span>​`
+    data-slot-value="${escapeHtml(s.value)}" data-slot-options="${opts}" data-slot-title="${escapeHtml(title)}">${escapeHtml(s.label)}<span class="ps-arrow">${ICON_CARET_DOWN}</span></span>​`
 }
 
 /** 弹出下拉面板，挂载到 body */
@@ -65,7 +66,7 @@ export function showDropdown(anchor: HTMLElement, onSelect: () => void) {
 
       anchor.setAttribute('data-slot-value', newValue)
       anchor.setAttribute('data-slot-label', newLabel)
-      anchor.innerHTML = `${escapeHtml(newLabel)}<span class="ps-arrow">▾</span>`
+      anchor.innerHTML = `${escapeHtml(newLabel)}<span class="ps-arrow">${ICON_CARET_DOWN}</span>`
 
       dd.remove()
       onSelect()
