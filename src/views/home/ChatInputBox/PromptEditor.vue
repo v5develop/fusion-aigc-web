@@ -26,6 +26,7 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 let pendingUpload: UploadIdentity | null = null
 const showModelModal = ref(false)
 const modelModalModuleCode = ref<string | undefined>(undefined)
+const modelModalExistingUrls = ref<string[]>([])
 let pendingModalSlot: UploadIdentity | null = null
 
 /** 按 key 优先、label 兜底查找上传插槽（label 可能重复，key 来自模板详情接口） */
@@ -342,6 +343,7 @@ onMounted(() => {
       if (slot?.key === 'modelImage') {
         pendingModalSlot = id
         modelModalModuleCode.value = slot.moduleCode
+        modelModalExistingUrls.value = slot.value.map((f) => f.url)
         showModelModal.value = true
         return
       }
@@ -409,7 +411,7 @@ function onModelModalSelect(images: FileItem[]) {
   if (!pendingModalSlot || !surfaceRef.value) return
   const slot = findUploadSlot(pendingModalSlot)
   if (!slot) return
-  slot.value = [...slot.value, ...images]
+  slot.value = images
   updateUploadBlockDOM(surfaceRef.value, pendingModalSlot, slot.value)
   syncFromDOM()
   showModelModal.value = false
@@ -440,6 +442,7 @@ watch(
   <ModelImageModal
     v-model:show="showModelModal"
     :module-code="modelModalModuleCode"
+    :existing-urls="modelModalExistingUrls"
     @select="onModelModalSelect"
   />
 </template>
