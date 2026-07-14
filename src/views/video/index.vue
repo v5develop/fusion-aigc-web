@@ -244,6 +244,10 @@ const getSourceVideo = (inputParams: any): string => {
               <div class="message-group__images">
                 <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
                   <video v-if="jtem.resultUrl" class="video" :src="jtem.resultUrl" controls />
+                  <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio)" class="image-meta-badge">
+                    <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
+                    <span v-if="jtem.ratio">{{ jtem.ratio }}</span>
+                  </div>
                   <div v-if="jtem.status === 1" class="pending">处理中...</div>
                   <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
                 </div>
