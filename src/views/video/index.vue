@@ -14,6 +14,8 @@ import { useMessage } from 'naive-ui'
 import { download, showDownloadBtn } from '@/views/picture/utils.ts'
 import { getMetaData, isMixedSize } from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
+import regenerateIcon from '@/assets/icons/regenerate.svg'
+import downloadAllIcon from '@/assets/icons/download-all.svg'
 
 const message = useMessage()
 const store = useHomeStore()
@@ -261,43 +263,11 @@ const getSourceVideo = (inputParams: any): string => {
               <!-- 操作按钮 -->
               <div class="message-group__actions">
                 <button v-show="!loading" class="action-btn" @click="generateAgain(item)">
-                  <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <!-- 重新生成图标 -->
-                    <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.333" />
-                    <path
-                      d="M14 8a6 6 0 0 0-6-6C4.896 2 2.472 4.065 2.042 6.857"
-                      stroke="currentColor"
-                      stroke-width="1.333"
-                      stroke-linecap="round"
-                    />
-                    <path
-                      d="M5.333 8.667 2.042 6.857 2.809 4.376"
-                      stroke="currentColor"
-                      stroke-width="1.333"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                    <path
-                      d="M9.333 5.333v5.334M12 5.333v5.334"
-                      stroke="currentColor"
-                      stroke-width="1.333"
-                      stroke-linecap="round"
-                    />
-                  </svg>
+                  <img :src="regenerateIcon" class="action-btn__icon" width="16" height="16" alt="再次生成" />
                   <span>再次生成</span>
                 </button>
                 <button v-show="showDownloadBtn(item)" class="action-btn" @click="download(item)">
-                  <svg class="action-btn__icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <!-- 下载图标 -->
-                    <path
-                      d="M8 1.333v9.334M4.667 8 8 11.333 11.333 8"
-                      stroke="currentColor"
-                      stroke-width="1.2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                    <path d="M2 12.667V14h12v-1.333" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-                  </svg>
+                  <img :src="downloadAllIcon" class="action-btn__icon" width="16" height="16" alt="全部下载" />
                   <span>全部下载</span>
                 </button>
               </div>
