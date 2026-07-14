@@ -1,7 +1,6 @@
 import { post, get, ssePost } from './index.ts'
 import type { SsePostHandlers } from './index.ts'
 import * as types from './types'
-import type { IOptimizePrompt } from './types'
 import { createSafeUuid } from '@/utils/utils'
 
 export function getSts(data: types.IGetSts) {
@@ -99,6 +98,16 @@ export function optimizePrompt(params: types.IOptimizePrompt) {
 /** 流式优化提示词（SSE）：逐段返回正文增量，改善带图优化的等待体感。返回可用于中断的 abort 函数。 */
 export function optimizePromptStream(params: types.IOptimizePrompt, handlers: SsePostHandlers) {
   return ssePost('/api/v1/creation/optimize-prompt-stream', params, handlers)
+}
+
+/** 提示词模板列表（首屏卡片，轻量） */
+export function promptList(params: types.IPromptList = {}) {
+  return get('/api/v1/creation/prompts', params)
+}
+
+/** 提示词模板详情（点击卡片后获取完整内容，解析后填充输入框插槽） */
+export function promptDetail(id: string) {
+  return get(`/api/v1/creation/prompts/${id}`)
 }
 
 export function creationHistory(params: types.ICreationHistory) {

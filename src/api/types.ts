@@ -1,4 +1,3 @@
-import { optimizePrompt } from '@/api/methods.ts'
 
 export interface ApiResponse<T = any> {
   code: number
@@ -73,4 +72,21 @@ export interface IQuotePreview {
     [key: string]: any
   }
   imageUrls?: string[]
+}
+
+export interface IPromptList {
+  category?: string
+  page?: number
+  pageSize?: number
+}
+
+/** 提示词模板卡片（首屏轻量列表 GET /api/v1/creation/prompts 返回项） */
+export interface IPromptCard {
+  id: string
+  name: string
+  category?: string
+  description?: string
+  icon?: string
+  coverImage?: string
+  tags?: any[]
 }

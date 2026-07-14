@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick } from 'vue'
-import type { PromptSlot, FileItem } from './types'
+import { useMessage } from 'naive-ui'
+import type { PromptSlot, SlotUpload, FileItem } from './types'
+import { DEFAULT_UPLOAD_LIMIT } from './types'
 import { buildSelectHTML, showDropdown, closeAllDropdowns } from './slots/select'
-import { buildUploadHTML, updateUploadBlockDOM } from './slots/upload'
+import { buildUploadHTML, updateUploadBlockDOM, type UploadIdentity } from './slots/upload'
 
 declare global {
   interface Window {
@@ -13,10 +15,25 @@ declare global {
 
 const slots = defineModel<PromptSlot[]>('slots', { required: true })
 
+const message = useMessage()
 const surfaceRef = ref<HTMLDivElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-let pendingUploadLabel = ''
+let pendingUpload: UploadIdentity | null = null
+
+/** 按 key 优先、label 兜底查找上传插槽（label 可能重复，key 来自模板详情接口） */
+function findUploadSlot(id: UploadIdentity): SlotUpload | undefined {
+  return slots.value.find(
+    (s): s is SlotUpload => s.type === 'upload' && (id.key || s.key ? s.key === id.key : s.label === id.label),
+  )
+}
+
+function blockIdentity(block: HTMLElement): UploadIdentity {
+  return {
+    key: block.getAttribute('data-slot-key') || undefined,
+    label: block.getAttribute('data-slot-label') || '',
+  }
+}
 
 // ========== 渲染 ==========
 
@@ -33,7 +50,7 @@ function renderSlots(list: PromptSlot[]) {
     .map((s) => {
       if (s.type === 'text') return escapeHtml(s.value)
       if (s.type === 'select') return buildSelectHTML(s)
-      if (s.type === 'upload') return buildUploadHTML(s.label, s.value)
+      if (s.type === 'upload') return buildUploadHTML({ key: s.key, label: s.label }, s.value)
       return ''
     })
     .join('')
@@ -62,22 +79,23 @@ function parseSlotsFromDOM(): PromptSlot[] {
     } else if (node instanceof HTMLElement && node.classList.contains('ps-slot')) {
       const slotType = node.getAttribute('data-slot-type')
       if (slotType === 'select') {
+        const title = node.getAttribute('data-slot-title') || ''
         result.push({
           type: 'select',
           label: node.getAttribute('data-slot-label') || '',
           value: node.getAttribute('data-slot-value') || '',
           options: JSON.parse(node.getAttribute('data-slot-options') || '[]'),
+          ...(title ? { title } : {}),
         })
       } else if (slotType === 'upload') {
-        const label = node.getAttribute('data-slot-label') || ''
-        const existing = slots.value.find((s): s is typeof s & { type: 'upload' } =>
-          s.type === 'upload' && s.label === label,
-        )
+        const id = blockIdentity(node)
+        const existing = findUploadSlot(id)
         result.push({
           type: 'upload',
-          label,
+          key: id.key,
+          label: id.label,
           value: existing ? existing.value : [],
-          limit: existing?.limit ?? 5,
+          limit: existing?.limit ?? DEFAULT_UPLOAD_LIMIT,
         })
       }
     }
@@ -99,7 +117,10 @@ function syncFromDOM() {
 // ========== 事件处理 ==========
 
 function onInput() {
-  // 文字编辑由浏览器原生处理，不需要同步 DOM
+  // 打字必须同步回 slots 模型：提交时 slotsToPrompt 读的是模型而非 DOM，
+  // 且首页默认填充依赖 slots 非空来判断「用户已输入，不覆盖」。
+  // syncFromDOM 只解析不重渲（suppressRender），不影响光标与输入法组合
+  syncFromDOM()
 }
 
 function findPrevRealNode(node: Node | null): Node | null {
@@ -202,29 +223,40 @@ function onFileChange(e: Event) {
   const files = input.files
   if (!files || files.length === 0) return
 
-  const label = pendingUploadLabel
-  const slot = slots.value.find((s): s is typeof s & { type: 'upload'; value: FileItem[] } =>
-    s.type === 'upload' && s.label === label,
-  )
-  if (slot && surfaceRef.value) {
+  const id = pendingUpload
+  const slot = id && findUploadSlot(id)
+  if (id && slot && surfaceRef.value) {
+    // 按插槽 limit（接口 maxCount）截断，超出额度时明确提示而非静默丢弃
+    const limit = slot.limit ?? DEFAULT_UPLOAD_LIMIT
+    const remaining = limit - slot.value.length
+    if (files.length > remaining) message.warning(`最多上传 ${limit} 张图片`)
+    const picked = Array.from(files).slice(0, Math.max(0, remaining))
     const newItems: FileItem[] = []
-    let loaded = 0
-    Array.from(files).forEach((file) => {
+    let settled = 0
+    const settle = () => {
+      settled++
+      if (settled !== picked.length) return
+      // 只提交成功读取的文件，单个文件读取失败不拖垮整批
+      if (newItems.length === 0) return
+      slot.value = [...slot.value, ...newItems]
+      updateUploadBlockDOM(surfaceRef.value!, id, slot.value)
+      syncFromDOM()
+    }
+    picked.forEach((file) => {
       const reader = new FileReader()
       reader.onload = () => {
         newItems.push({ url: reader.result as string, name: file.name })
-        loaded++
-        if (loaded === files.length) {
-          slot.value = [...slot.value, ...newItems]
-          updateUploadBlockDOM(surfaceRef.value!, label, slot.value)
-          syncFromDOM()
-        }
+        settle()
+      }
+      reader.onerror = () => {
+        message.error(`「${file.name}」读取失败`)
+        settle()
       }
       reader.readAsDataURL(file)
     })
   }
   input.value = ''
-  pendingUploadLabel = ''
+  pendingUpload = null
 }
 
 // ========== 生命周期 ==========
@@ -238,7 +270,7 @@ onMounted(() => {
     const target = e.target as HTMLElement
     const block = target.closest('.ps-slot--upload') as HTMLElement | null
     if (block) {
-      pendingUploadLabel = block.getAttribute('data-slot-label') || ''
+      pendingUpload = blockIdentity(block)
       fileInputRef.value?.click()
     }
   }
@@ -246,13 +278,11 @@ onMounted(() => {
     const target = e.target as HTMLElement
     const block = target.closest('.ps-slot--upload') as HTMLElement | null
     if (block && surfaceRef.value) {
-      const label = block.getAttribute('data-slot-label') || ''
-      const slot = slots.value.find((s): s is typeof s & { type: 'upload'; value: FileItem[] } =>
-        s.type === 'upload' && s.label === label,
-      )
+      const id = blockIdentity(block)
+      const slot = findUploadSlot(id)
       if (slot) {
         slot.value = []
-        updateUploadBlockDOM(surfaceRef.value, label, [])
+        updateUploadBlockDOM(surfaceRef.value, id, [])
         syncFromDOM()
       }
     }
@@ -432,6 +462,12 @@ watch(
   font-size: 16px;
 }
 
+.ps-dropdown-icon img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .ps-dropdown-label {
   flex: 1;
 }
@@ -466,5 +502,15 @@ watch(
   color: #8e66f9;
   font-size: 12px;
   flex-shrink: 0;
+}
+
+.ps-dropdown-empty {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: #bfbfbf;
+  cursor: default;
 }
 </style>
