@@ -111,6 +111,7 @@ function parseSlotsFromDOM(): PromptSlot[] {
           // 与 value/limit 同路径从旧模型带过来，漏拷会在 syncFromDOM 整体替换时永久丢失
           ...(existing?.required ? { required: true } : {}),
           ...(existing?.moduleCode ? { moduleCode: existing.moduleCode } : {}),
+          ...(existing?.fromLibrary !== undefined ? { fromLibrary: existing.fromLibrary } : {}),
         })
       }
     }
@@ -399,11 +400,12 @@ onMounted(() => {
   }
 })
 
-function onModelModalSelect(images: FileItem[]) {
+function onModelModalSelect(images: FileItem[], fromLibrary: boolean) {
   if (!pendingModalSlot || !surfaceRef.value) return
   const slot = findUploadSlot(pendingModalSlot)
   if (!slot) return
   slot.value = images
+  slot.fromLibrary = fromLibrary
   updateUploadBlockDOM(surfaceRef.value, pendingModalSlot, slot.value)
   syncFromDOM()
   showModelModal.value = false

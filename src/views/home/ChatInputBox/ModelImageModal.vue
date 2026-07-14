@@ -12,7 +12,7 @@ const props = defineProps<{
   existingUrls?: string[]
 }>()
 const emit = defineEmits<{
-  select: [images: FileItem[]]
+  select: [images: FileItem[], fromLibrary: boolean]
   update: [images: FileItem[]]
 }>()
 
@@ -53,7 +53,7 @@ async function readFiles(files: File[]) {
   try {
     const urls = await upload(files)
     const items: FileItem[] = files.map((file, i) => ({ url: urls[i] || '', name: file.name }))
-    emit('select', items)
+    emit('select', items, false)
     show.value = false
   } catch {
     message.error('图片上传失败，请重试')
@@ -143,7 +143,7 @@ async function fetchLib() {
 
 function selectLibItem(item: LibItem) {
   selectedLib.value = item
-  emit('select', [{ url: item.url, name: item.name || 'model' }])
+  emit('select', [{ url: item.url, name: item.name || 'model' }], true)
   show.value = false
 }
 

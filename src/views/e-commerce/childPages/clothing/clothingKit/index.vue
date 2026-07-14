@@ -37,11 +37,15 @@ const formData = reactive({
 
 const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
+const tabValue = ref<'modelLib' | 'uploadModel'>('modelLib')
 if (global_formData.value.home) {
   const p = global_formData.value.ecommerce.params as ClothingKitParams
   if (p.imageUrls?.length) (formData as any).imageUrls = p.imageUrls
   if (p.personUrl) formData.personUrl = p.personUrl
-  if (p.uploadPersonUrl?.length) (formData as any).uploadPersonUrl = p.uploadPersonUrl
+  if (p.uploadPersonUrl?.length) {
+    (formData as any).uploadPersonUrl = p.uploadPersonUrl
+    tabValue.value = 'uploadModel'
+  }
   if (p.aspectRatio) formData.aspectRatio = p.aspectRatio
   if (p.scenePhoto?.length) formData.scenePhoto = p.scenePhoto
   if (p.prompt) formData.prompt = p.prompt
@@ -49,7 +53,7 @@ if (global_formData.value.home) {
 }
 
 const switchValue = ref(true)
-const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()
+const { modelFilterData, pagingData, modelList, scrollCallBack } = useModelList()
 const { integral } = useIntegral()
 
 const submit = () => {
@@ -93,7 +97,6 @@ function useModelList() {
     hasMore: true,
   })
   // modelLib:模特库  uploadModel:上传模特
-  const tabValue = ref<'modelLib' | 'uploadModel'>('modelLib')
   const modelList = ref<any[]>([])
 
   // 模特库tab列表
@@ -135,7 +138,7 @@ function useModelList() {
     publicTemplateApi()
   })
 
-  return { modelFilterData, pagingData, tabValue, modelList, scrollCallBack }
+  return { modelFilterData, pagingData, modelList, scrollCallBack }
 }
 function useIntegral() {
   const integral = ref(0)
