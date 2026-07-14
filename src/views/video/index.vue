@@ -12,7 +12,7 @@ import { creationHistory } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
 import { useMessage } from 'naive-ui'
 import { download, showDownloadBtn } from '@/views/picture/utils.ts'
-import { getMetaData } from './utils.ts'
+import { getMetaData, isMixedSize } from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 
 const message = useMessage()
@@ -244,7 +244,7 @@ const getSourceVideo = (inputParams: any): string => {
               <div class="message-group__images">
                 <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
                   <video v-if="jtem.resultUrl" class="video" :src="jtem.resultUrl" controls />
-                  <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio)" class="image-meta-badge">
+                  <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio) && isMixedSize(item.contents)" class="image-meta-badge">
                     <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
                     <span v-if="jtem.ratio">{{ jtem.ratio }}</span>
                   </div>

@@ -207,7 +207,7 @@ const generateAgain = (item: any) => {
                     height="100%"
                     object-fit="cover"
                   />
-                  <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio)" class="image-meta-badge">
+                  <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio) && utils.isMixedSize(item.contents)" class="image-meta-badge">
                     <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
                     <span v-if="jtem.ratio">{{ jtem.ratio }}</span>
                   </div>

@@ -28,6 +28,18 @@ export const showDownloadBtn = (item: any) => {
   return urls.length
 }
 
+/**
+ * 素材尺寸是否不一致：同一任务多产出的 (resolution,ratio) 有多种取值时为 true。
+ * 用于角标去重——同尺寸由顶部元信息行统一展示、不再逐张打角标；仅尺寸不一致时才逐张标注。
+ */
+export const isMixedSize = (contents: any[] = []): boolean => {
+  const withSize = (contents ?? []).filter((c) => c && (c.resolution || c.ratio))
+  if (withSize.length <= 1) return false
+  const key = (c: any) => `${c.resolution ?? ''}|${c.ratio ?? ''}`
+  const first = key(withSize[0])
+  return withSize.some((c) => key(c) !== first)
+}
+
 /** 宽高 → 画幅比例标签：优先精确映射(ratioOps)，否则按 gcd 约分；无尺寸返回 ''。 */
 function ratioLabel(w?: number, h?: number): string {
   if (!w || !h) return ''
