@@ -85,6 +85,8 @@ export interface IPromptCard {
   id: string
   name: string
   category?: string
+  /** 对应的电商子路由路径，如 /e-commerce/clothing-try */
+  code?: string
   description?: string
   icon?: string
   coverImage?: string

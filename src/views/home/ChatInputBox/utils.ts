@@ -1,5 +1,5 @@
 import type { PromptSlot, SlotOption, FileItem } from './types.ts'
-import { DEFAULT_UPLOAD_LIMIT } from './types.ts'
+import { DEFAULT_UPLOAD_LIMIT, ROUTE_TO_MODULE_CODE } from './types.ts'
 
 /** 将 slots 数组拼接为纯文本 prompt */
 export function slotsToPrompt(slots: PromptSlot[]): {
@@ -44,11 +44,9 @@ interface PromptSlotDef {
   recommendedSize?: string
 }
 
-function defToSlot(def: PromptSlotDef): PromptSlot {
+function defToSlot(def: PromptSlotDef, moduleCode?: string): PromptSlot {
   if (def.slotType === 'select') {
     const options = def.options ?? []
-    // 接口无默认值字段，约定默认选中第一个选项，保证提交文本始终有效；
-    // options 为空时 chip 显示 label、value 置空，点开为「暂无可选项」空态
     const first = options[0]
     return {
       type: 'select',
@@ -64,16 +62,19 @@ function defToSlot(def: PromptSlotDef): PromptSlot {
     label: def.label,
     value: [],
     limit: def.maxCount ?? DEFAULT_UPLOAD_LIMIT,
+    moduleCode,
   }
 }
 
 /** 将提示词模板详情接口返回的 data 解析为编辑器插槽 */
 export function promptDetailToSlots(
   detail: { content?: string | null; slots?: PromptSlotDef[] | null } | null | undefined,
+  routeCode?: string,
 ): PromptSlot[] {
   const content = detail?.content
   if (!content) return []
 
+  const moduleCode = routeCode ? ROUTE_TO_MODULE_CODE[routeCode] : undefined
   const defMap = new Map((detail?.slots ?? []).map((d) => [d.key, d]))
 
   const slots: PromptSlot[] = []
@@ -84,7 +85,7 @@ export function promptDetailToSlots(
     if (m.index > lastIndex) slots.push({ type: 'text', value: content.slice(lastIndex, m.index) })
     const def = defMap.get(m[1]!)
     // 占位符无对应定义时保留为可编辑空文本，避免正文语义丢失
-    slots.push(def ? defToSlot(def) : { type: 'text', value: '' })
+    slots.push(def ? defToSlot(def, moduleCode) : { type: 'text', value: '' })
     lastIndex = re.lastIndex
   }
   if (lastIndex < content.length) slots.push({ type: 'text', value: content.slice(lastIndex) })

@@ -5,6 +5,7 @@ import type { PromptSlot, SlotUpload, FileItem } from './types'
 import { DEFAULT_UPLOAD_LIMIT } from './types'
 import { buildSelectHTML, showDropdown, closeAllDropdowns } from './slots/select'
 import { buildUploadHTML, updateUploadBlockDOM, type UploadIdentity } from './slots/upload'
+import ModelImageModal from './ModelImageModal.vue'
 
 declare global {
   interface Window {
@@ -23,6 +24,9 @@ const surfaceRef = ref<HTMLDivElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 let pendingUpload: UploadIdentity | null = null
+const showModelModal = ref(false)
+const modelModalModuleCode = ref<string | undefined>(undefined)
+let pendingModalSlot: UploadIdentity | null = null
 
 /** 按 key 优先、label 兜底查找上传插槽（label 可能重复，key 来自模板详情接口） */
 function findUploadSlot(id: UploadIdentity): SlotUpload | undefined {
@@ -333,13 +337,21 @@ onMounted(() => {
     const target = e.target as HTMLElement
     const block = target.closest('.ps-slot--upload') as HTMLElement | null
     if (block && fileInputRef.value) {
-      pendingUpload = blockIdentity(block)
-      const slot = findUploadSlot(pendingUpload)
+      const id = blockIdentity(block)
+      const slot = findUploadSlot(id)
+      if (slot?.key === 'modelImage') {
+        pendingModalSlot = id
+        modelModalModuleCode.value = slot.moduleCode
+        showModelModal.value = true
+        return
+      }
+      pendingUpload = id
       fileInputRef.value.multiple = !slot || (slot.limit ?? DEFAULT_UPLOAD_LIMIT) > 1
       fileInputRef.value.click()
     }
   }
   window.__psRemoveUpload = (e: Event) => {
+    window.__psPreviewHide?.()
     const target = e.target as HTMLElement
     const block = target.closest('.ps-slot--upload') as HTMLElement | null
     if (block && surfaceRef.value) {
@@ -353,6 +365,7 @@ onMounted(() => {
     }
   }
   window.__psRemoveUploadItem = (e: Event) => {
+    window.__psPreviewHide?.()
     const target = e.target as HTMLElement
     const btn = target.closest('.ps-thumb-remove') as HTMLElement | null
     const block = target.closest('.ps-slot--upload') as HTMLElement | null
@@ -392,6 +405,17 @@ onMounted(() => {
   }
 })
 
+function onModelModalSelect(images: FileItem[]) {
+  if (!pendingModalSlot || !surfaceRef.value) return
+  const slot = findUploadSlot(pendingModalSlot)
+  if (!slot) return
+  slot.value = [...slot.value, ...images]
+  updateUploadBlockDOM(surfaceRef.value, pendingModalSlot, slot.value)
+  syncFromDOM()
+  showModelModal.value = false
+  pendingModalSlot = null
+}
+
 watch(
   () => slots.value,
   (val) => {
@@ -413,6 +437,11 @@ watch(
     @click="onClick"
   ></div>
   <input ref="fileInputRef" type="file" accept="image/*" multiple style="display: none" @change="onFileChange" />
+  <ModelImageModal
+    v-model:show="showModelModal"
+    :module-code="modelModalModuleCode"
+    @select="onModelModalSelect"
+  />
 </template>
 
 <style scoped lang="less">

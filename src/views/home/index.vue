@@ -66,7 +66,7 @@ function usePreinstall() {
     // 业务错误拦截器已 toast，这里只需吞掉 rejection
     const res = await promptDetail(item.id).catch(() => null)
     if (!res || seq !== requestSeq) return
-    const slots = promptDetailToSlots(res.data)
+    const slots = promptDetailToSlots(res.data, item.code)
     if (!slots.length) return
     // 默认填充是异步的，用户此时可能已开始输入（编辑器打字会同步 slots），不覆盖
     if (isDefaultFill && formData.ecommerce.slots.length > 0) return

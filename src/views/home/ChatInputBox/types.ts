@@ -23,6 +23,16 @@ export interface SlotUpload {
   value: FileItem[]
   limit?: number
   accept?: 'image' | 'video'
+  /** 关联的电商场景 moduleCode，用于弹窗查模特库；无则走普通文件选择器 */
+  moduleCode?: string
+}
+
+/** 路由路径 → publicTemplate moduleCode 映射 */
+export const ROUTE_TO_MODULE_CODE: Record<string, string> = {
+  '/e-commerce/change-background': 'backgroundSwitching',
+  '/e-commerce/clothing-try': 'aiClothExchange',
+  '/e-commerce/product-kit': 'productSetImages',
+  '/e-commerce/clothing-kit': 'wearingProductSetImages',
 }
 
 /** 下拉选项 */
