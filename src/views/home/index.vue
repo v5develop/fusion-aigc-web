@@ -57,6 +57,12 @@ const homeRef = ref<HTMLDivElement | null>(null)
 
 const currentTemplateCode = ref('')
 
+function getOssThumbnail(url?: string): string {
+  if (!url) return ''
+  const base = url.split('?')[0]!
+  return `${base}?x-oss-process=image/resize,w_60,h_60/format,webp`
+}
+
 const { preData, preinstallFallbackImg, handlePreinstallClick } = usePreinstall()
 function usePreinstall() {
   const preData = ref<IPromptCard[]>([])
@@ -253,10 +259,15 @@ const submit = () => {
       </ChatInputBox>
 
       <div v-if="activeChatTab === 'ecommerce' && preData.length" class="preinstall">
-        <div class="item" v-for="item in preData" :key="item.id" :title="item.description" @click="handlePreinstallClick(item)">
-          <img :src="item.coverImage || item.icon || preinstallFallbackImg" alt="" />
+        <div class="item" v-for="item in preData" :key="item.id" @click="handlePreinstallClick(item)">
+          <div class="icon-wrap">
+            <img :src="getOssThumbnail(item.icon) || item.coverImage || preinstallFallbackImg" alt="" />
+          </div>
           <span>{{ item.name }}</span>
           <i class="icon-ic_home_jump1"></i>
+          <div v-if="item.icon" class="preview-panel">
+            <img :src="item.icon" alt="" />
+          </div>
         </div>
       </div>
 
@@ -282,3 +293,4 @@ const submit = () => {
   gap: 12px;
 }
 </style>
+
