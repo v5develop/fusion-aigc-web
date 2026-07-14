@@ -27,6 +27,8 @@ export interface SlotUpload {
   required?: boolean
   /** 关联的电商场景 moduleCode，用于弹窗查模特库；无则走普通文件选择器 */
   moduleCode?: string
+  /** 是否来自模特库（false = 本地上传），用于 buildTargetParams 区分参数 */
+  fromLibrary?: boolean
 }
 
 /** 路由路径 → publicTemplate moduleCode 映射 */

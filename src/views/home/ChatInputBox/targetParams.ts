@@ -45,6 +45,12 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
     if (s?.type === 'upload') return s.value[0]?.url || ''
     return ''
   }
+  /** 获取指定上传插槽是否来自模特库/模板库 */
+  const getUploadFromLibrary = (key: string): boolean => {
+    const s = slots.find((s) => s.type === 'upload' && s.key === key)
+    if (s?.type === 'upload') return s.fromLibrary ?? true
+    return true
+  }
   const getUploadUrls = (key: string) => {
     const s = slots.find((s) => s.type === 'upload' && s.key === key)
     if (s?.type === 'upload') return s.value.map((f) => f.url)
@@ -72,7 +78,7 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
   switch (templateCode) {
     case '/e-commerce/clothing-try': {
       const modelUrl = getUploadUrl('modelImage')
-      const isLibModel = modelUrl && !modelUrl.startsWith('data:')
+      const isLibModel = getUploadFromLibrary('modelImage')
       result = {
         imageUrls: getUploadUrls('apparelImage').length > 0 ? getUploadUrls('apparelImage') : imageUrls,
         personUrl: isLibModel ? modelUrl : '',
@@ -85,7 +91,7 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
 
     case '/e-commerce/change-background': {
       const bgUrl = getUploadUrl('background')
-      const isLibBg = bgUrl && !bgUrl.startsWith('data:')
+      const isLibBg = getUploadFromLibrary('background')
       result = {
         imageUrls: getUploadUrls('personImage').length > 0 ? getUploadUrls('personImage') : imageUrls,
         bgImageUrl: isLibBg ? bgUrl : (getSelectVal('background')),
@@ -97,7 +103,7 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
 
     case '/e-commerce/clothing-kit': {
       const modelUrl = getUploadUrl('modelImage')
-      const isLibModel = modelUrl && !modelUrl.startsWith('data:')
+      const isLibModel = getUploadFromLibrary('modelImage')
       result = {
         imageUrls: getUploadUrls('goodsImage').length > 0 ? getUploadUrls('goodsImage') : imageUrls,
         personUrl: isLibModel ? modelUrl : '',
