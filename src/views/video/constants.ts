@@ -10,7 +10,7 @@ export const modelOps = [
     ],
   },
   {
-    label: 'seedance2.0',
+    label: 'Seedance-2.0',
     value: 'doubao-seedance-2-0-260128',
     resolutionOps: [
       { label: '480p', value: '480p' },
@@ -19,7 +19,7 @@ export const modelOps = [
     ],
   },
   {
-    label: 'seedance2.0-fast',
+    label: 'Seedance-2.0-Fast',
     value: 'doubao-seedance-2-0-fast-260128',
     resolutionOps: [
       { label: '480p', value: '480p' },
