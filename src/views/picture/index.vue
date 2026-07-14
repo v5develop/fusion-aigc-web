@@ -191,7 +191,7 @@ const generateAgain = (item: any) => {
                 <div class="message-group__prompt-wrapper">
                   <p class="message-group__prompt">
                     {{ item.inputParams.params.prompt }}
-                    <span class="message-group__prompt-meta">{{ utils.getMetaData(item.inputParams) }}</span>
+                    <span class="message-group__prompt-meta">{{ utils.getMetaData(item) }}</span>
                   </p>
                 </div>
               </div>
@@ -207,6 +207,10 @@ const generateAgain = (item: any) => {
                     height="100%"
                     object-fit="cover"
                   />
+                  <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio) && utils.isMixedSize(item.contents)" class="image-meta-badge">
+                    <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
+                    <span v-if="jtem.ratio">{{ jtem.ratio }}</span>
+                  </div>
                   <div v-if="jtem.status === 1" class="pending">处理中...</div>
                   <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
                   <button
