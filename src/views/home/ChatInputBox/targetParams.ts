@@ -61,16 +61,20 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
     if (s?.type === 'select') return s.value
     return ''
   }
-  const getTextVal = () => {
-    const s = slots.find((s) => s.type === 'text' && !!s.value)
-    return (s as any)?.value || ''
-  }
-  /** 取最后一个 text 插槽的值，用于"选择场景图"之后的文案 */
-  const getLastTextVal = () => {
-    const texts = slots.filter((s) => s.type === 'text' && !!s.value)
-    const last = texts[texts.length - 1]
-    if (!last) return ''
-    return (last as any).value?.replace(/^[，, ]+/, '') || ''
+  /** 携带到目标页的提示词/描述：最后一个插槽（chip）之后、第一个逗号之后的所有内容 */
+  const getPromptTail = () => {
+    let lastSlotIdx = -1
+    slots.forEach((s, i) => {
+      if (s.type !== 'text') lastSlotIdx = i
+    })
+    const tail = slots
+      .slice(lastSlotIdx + 1)
+      .map((s) => (s.type === 'text' ? s.value : ''))
+      .join('')
+    // 无 chip（纯手输文本）时不做逗号截断，整段带走；尾巴无逗号时同样整段兜底
+    if (lastSlotIdx < 0) return tail.trim()
+    const m = /[，,]/.exec(tail)
+    return (m ? tail.slice(m.index + 1) : tail).trim()
   }
 
   let result: Record<string, any> = {}
@@ -96,7 +100,7 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
         imageUrls: getUploadUrls('personImage').length > 0 ? getUploadUrls('personImage') : imageUrls,
         bgImageUrl: isLibBg ? bgUrl : (getSelectVal('background')),
         refImageUrl: isLibBg ? [] : (bgUrl ? [bgUrl] : []),
-        description: getLastTextVal(),
+        description: getPromptTail(),
       }
       break
     }
@@ -112,7 +116,7 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
         scenePhoto: slots
           .filter((s) => s.type === 'select' && s.key !== 'aspectRatio' && !!s.value)
           .map((s) => s.value) as string[],
-        prompt: getTextVal(),
+        prompt: getPromptTail(),
       }
       break
     }
@@ -124,7 +128,7 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
         region: getSelectVal('region'),
         language: getSelectVal('language'),
         aspectRatio: getSelectVal('aspectRatio'),
-        buyPoint: getTextVal(),
+        buyPoint: getPromptTail(),
       }
       break
   }
