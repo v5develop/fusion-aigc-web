@@ -481,7 +481,7 @@ watch(
     }
 
     &.filled {
-      height: 24px;
+      height: 27px;
       padding: 2px 4px;
       background: #fff;
       border: 1px solid #f0f0f0;
@@ -497,9 +497,9 @@ watch(
       }
 
       .ps-thumb {
-        width: 24px;
-        height: 24px;
-        border-radius: 4px;
+        width: 20px;
+        height: 20px;
+        border-radius: 3px;
         background-size: cover;
         background-position: center;
         flex-shrink: 0;
