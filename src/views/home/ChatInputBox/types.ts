@@ -23,6 +23,8 @@ export interface SlotUpload {
   value: FileItem[]
   limit?: number
   accept?: 'image' | 'video'
+  /** 是否必填（来自模板详情 slot 定义），驱动提交校验 */
+  required?: boolean
   /** 关联的电商场景 moduleCode，用于弹窗查模特库；无则走普通文件选择器 */
   moduleCode?: string
 }
@@ -51,6 +53,8 @@ export interface SlotSelect {
   value: string
   options: SlotOption[]
   title?: string
+  /** 是否必填（来自模板详情 slot 定义），驱动提交校验 */
+  required?: boolean
 }
 
 export type PromptSlot = SlotText | SlotUpload | SlotSelect

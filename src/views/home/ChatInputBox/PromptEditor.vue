@@ -96,6 +96,8 @@ function parseSlotsFromDOM(): PromptSlot[] {
           value: node.getAttribute('data-slot-value') || '',
           options: JSON.parse(node.getAttribute('data-slot-options') || '[]'),
           ...(title ? { title } : {}),
+          // required 必须落 DOM 属性往返（select 完全从 DOM 反解），否则首次打字同步后丢失
+          ...(node.getAttribute('data-slot-required') === 'true' ? { required: true } : {}),
         })
       } else if (slotType === 'upload') {
         const id = blockIdentity(node)
@@ -106,6 +108,9 @@ function parseSlotsFromDOM(): PromptSlot[] {
           label: id.label,
           value: existing ? existing.value : [],
           limit: existing?.limit ?? DEFAULT_UPLOAD_LIMIT,
+          // 与 value/limit 同路径从旧模型带过来，漏拷会在 syncFromDOM 整体替换时永久丢失
+          ...(existing?.required ? { required: true } : {}),
+          ...(existing?.moduleCode ? { moduleCode: existing.moduleCode } : {}),
         })
       }
     }

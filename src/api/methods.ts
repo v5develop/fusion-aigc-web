@@ -102,12 +102,12 @@ export function optimizePromptStream(params: types.IOptimizePrompt, handlers: Ss
 
 /** 提示词模板列表（首屏卡片，轻量） */
 export function promptList(params: types.IPromptList = {}) {
-  return get('/api/v1/creation/prompts', params)
+  return get<types.IPromptListData>('/api/v1/creation/prompts', params)
 }
 
 /** 提示词模板详情（点击卡片后获取完整内容，解析后填充输入框插槽） */
 export function promptDetail(id: string) {
-  return get(`/api/v1/creation/prompts/${id}`)
+  return get<types.IPromptDetail>(`/api/v1/creation/prompts/${id}`)
 }
 
 export function creationHistory(params: types.ICreationHistory) {

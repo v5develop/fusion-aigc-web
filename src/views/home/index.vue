@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import { useMessage } from 'naive-ui'
 import { publicDisplay, promptList, promptDetail } from '@/api/methods.ts'
 import type { IPromptCard } from '@/api/types'
 import { useDebounce } from '@/utils/hooks'
@@ -25,6 +26,7 @@ import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 
 const router = useRouter()
+const message = useMessage()
 const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
 
@@ -157,6 +159,20 @@ const showBackToTop = ref(false)
 
 const submit = () => {
   if (activeChatTab.value === 'ecommerce') {
+    // 按模板详情 slot 的 required 语义校验；非必填空 select（如后端暂未配置 options）不拦截，
+    // slotsToPrompt 对空值 select 输出空串，不会混入占位 label
+    for (const s of formData.ecommerce.slots) {
+      if (s.type === 'select' && s.required && !s.value) {
+        const tip = s.title || s.label
+        message.warning(tip.startsWith('请') ? tip : tip.startsWith('选择') ? `请${tip}` : `请选择${tip}`)
+        return
+      }
+      if (s.type === 'upload' && s.required && s.value.length === 0) {
+        const tip = s.label
+        message.warning(tip.startsWith('请') ? tip : tip.startsWith('上传') ? `请${tip}` : `请上传${tip}`)
+        return
+      }
+    }
     const { plainText, images: slotImages } = slotsToPrompt(formData.ecommerce.slots)
     const allImages = [...slotImages, ...formData.ecommerce.images]
     const targetCode = currentTemplateCode.value || '/e-commerce'

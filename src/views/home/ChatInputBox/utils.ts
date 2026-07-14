@@ -1,5 +1,6 @@
-import type { PromptSlot, SlotOption, FileItem } from './types.ts'
+import type { PromptSlot, FileItem } from './types.ts'
 import { DEFAULT_UPLOAD_LIMIT, ROUTE_TO_MODULE_CODE } from './types.ts'
+import type { IPromptSlotDef } from '@/api/types'
 
 /** 将 slots 数组拼接为纯文本 prompt */
 export function slotsToPrompt(slots: PromptSlot[]): {
@@ -33,18 +34,7 @@ export function slotsToPrompt(slots: PromptSlot[]): {
 //   slots:   插槽定义表（非有序内容块），按 key 被 content 占位符引用
 // 解析统一收敛在本文件，后端契约调整只需改这里。
 
-/** 详情接口 slots 定义项 */
-interface PromptSlotDef {
-  key: string
-  label: string
-  slotType: 'image' | 'select'
-  maxCount?: number
-  options?: SlotOption[]
-  required?: boolean
-  recommendedSize?: string
-}
-
-function defToSlot(def: PromptSlotDef, moduleCode?: string): PromptSlot {
+function defToSlot(def: IPromptSlotDef, moduleCode?: string): PromptSlot {
   if (def.slotType === 'select') {
     const options = def.options ?? []
     const first = options[0]
@@ -55,6 +45,7 @@ function defToSlot(def: PromptSlotDef, moduleCode?: string): PromptSlot {
       value: first?.value ?? '',
       options,
       title: def.label,
+      ...(def.required ? { required: true } : {}),
     }
   }
   return {
@@ -63,13 +54,14 @@ function defToSlot(def: PromptSlotDef, moduleCode?: string): PromptSlot {
     label: def.label,
     value: [],
     limit: def.maxCount ?? DEFAULT_UPLOAD_LIMIT,
+    ...(def.required ? { required: true } : {}),
     moduleCode,
   }
 }
 
 /** 将提示词模板详情接口返回的 data 解析为编辑器插槽 */
 export function promptDetailToSlots(
-  detail: { content?: string | null; slots?: PromptSlotDef[] | null } | null | undefined,
+  detail: { content?: string | null; slots?: IPromptSlotDef[] | null } | null | undefined,
   routeCode?: string,
 ): PromptSlot[] {
   const content = detail?.content

@@ -92,3 +92,34 @@ export interface IPromptCard {
   coverImage?: string
   tags?: any[]
 }
+
+/** 提示词模板列表 data */
+export interface IPromptListData {
+  list: IPromptCard[]
+  total: number
+}
+
+/** 提示词详情 slot 的下拉选项（与编辑器层 SlotOption 结构一致，API 层独立定义避免依赖 views） */
+export interface IPromptSlotOption {
+  label: string
+  value: string
+  icon?: string
+}
+
+/** 提示词详情 slots 定义项（GET /api/v1/creation/prompts/{id}） */
+export interface IPromptSlotDef {
+  key: string
+  label: string
+  slotType: 'image' | 'select'
+  maxCount?: number
+  options?: IPromptSlotOption[]
+  required?: boolean
+  recommendedSize?: string
+}
+
+/** 提示词模板详情 */
+export interface IPromptDetail extends IPromptCard {
+  /** 带 {{key}} 占位符的模板串 */
+  content?: string | null
+  slots?: IPromptSlotDef[] | null
+}

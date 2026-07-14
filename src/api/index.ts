@@ -189,7 +189,7 @@ function logoutToLogin() {
   setTimeout(() => window.location.reload(), 500)
 }
 
-export function post(url: string, data: any, headers?: any, timeout?: number): Promise<ApiResponse> {
+export function post<T = any>(url: string, data: any, headers?: any, timeout?: number): Promise<ApiResponse<T>> {
   return service({
     method: 'post',
     url,
@@ -199,7 +199,7 @@ export function post(url: string, data: any, headers?: any, timeout?: number): P
   })
 }
 
-export function get(url: string, params?: any, headers?: any): Promise<ApiResponse> {
+export function get<T = any>(url: string, params?: any, headers?: any): Promise<ApiResponse<T>> {
   return service({
     method: 'get',
     url,

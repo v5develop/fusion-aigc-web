@@ -8,7 +8,6 @@ import RecordList from '@/views/e-commerce/childPages/components/RecordList/inde
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useMessage } from 'naive-ui'
 import { quotePreview } from '@/api/methods.ts'
-import { useDebounce } from '@/utils/hooks'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 

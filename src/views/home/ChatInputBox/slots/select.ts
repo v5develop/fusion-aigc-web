@@ -14,7 +14,7 @@ export function buildSelectHTML(s: SlotSelect): string {
   const title = s.title || ''
   return `<span class="ps-slot ps-slot--select" contenteditable="false"
     data-slot-type="select" data-slot-key="${escapeHtml(s.key || '')}" data-slot-label="${escapeHtml(s.label)}"
-    data-slot-value="${escapeHtml(s.value)}" data-slot-options="${opts}" data-slot-title="${escapeHtml(title)}">${escapeHtml(s.label)}<span class="ps-arrow">${ICON_CARET_DOWN}</span></span>​`
+    data-slot-value="${escapeHtml(s.value)}" data-slot-options="${opts}" data-slot-title="${escapeHtml(title)}"${s.required ? ' data-slot-required="true"' : ''}>${escapeHtml(s.label)}<span class="ps-arrow">${ICON_CARET_DOWN}</span></span>​`
 }
 
 /** 弹出下拉面板，挂载到 body */
