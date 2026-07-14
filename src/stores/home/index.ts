@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import type { PromptSlot } from '@/views/home/ChatInputBox/types'
 
 interface FileItem {
   url: string
@@ -28,6 +29,9 @@ interface FormData {
   ecommerce: {
     images: FileItem[]
     prompt: string
+    slots: PromptSlot[]
+    templateCode: string
+    params: Record<string, any>
   }
 }
 
@@ -53,6 +57,9 @@ export const useHomeStore = defineStore('counter', () => {
     ecommerce: {
       images: [],
       prompt: '',
+      slots: [],
+      templateCode: '',
+      params: {},
     },
   }
   const global_formData = ref(data)

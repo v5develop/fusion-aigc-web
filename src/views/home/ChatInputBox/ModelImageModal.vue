@@ -85,11 +85,19 @@ function matchExisting() {
   if (match) selectedLib.value = match
 }
 
-// 打开弹窗时回显已选中：数据已加载则直接匹配，否则等 fetch 完成后匹配
+// 弹窗打开时预加载模特库，确保切换到库 Tab 时数据已就绪
 watch(show, (v) => {
-  if (v && props.existingUrls?.length) {
+  if (!v) return
+  if (props.existingUrls?.length) {
     selectedLib.value = null
     if (libList.value.length > 0) matchExisting()
+  }
+  // 预加载：无论当前在哪个 Tab，先把数据拉好
+  if (props.moduleCode) {
+    libPage.value = 1
+    libHasMore.value = true
+    libList.value = []
+    fetchLib()
   }
 })
 
@@ -118,13 +126,19 @@ async function fetchLib() {
       page: libPage.value,
       pageSize: 20,
     })
-    if (res.code === 0) {
+    if (res?.code === 0) {
       const list = (res.data?.list ?? []) as any[]
-      libList.value.push(...list.map((item: any) => ({ id: item.id ?? item.url, url: item.url, name: item.name })))
-      if (list.length < 20) libHasMore.value = false
-      libPage.value++
-      if (props.existingUrls?.length) matchExisting()
+      if (list.length > 0) {
+        libList.value.push(...list.map((item: any) => ({ id: item.id ?? item.url, url: item.url, name: item.name })))
+        if (list.length < 20) libHasMore.value = false
+        libPage.value++
+        if (props.existingUrls?.length) matchExisting()
+      } else {
+        libHasMore.value = false
+      }
     }
+  } catch {
+    // 网络异常静默处理，用户可切换 Tab 重试
   } finally {
     libLoading.value = false
   }

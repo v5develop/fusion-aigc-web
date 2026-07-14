@@ -50,6 +50,7 @@ function defToSlot(def: PromptSlotDef, moduleCode?: string): PromptSlot {
     const first = options[0]
     return {
       type: 'select',
+      key: def.key,
       label: first?.label ?? def.label,
       value: first?.value ?? '',
       options,

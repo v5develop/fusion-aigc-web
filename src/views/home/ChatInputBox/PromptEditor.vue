@@ -90,6 +90,7 @@ function parseSlotsFromDOM(): PromptSlot[] {
         const title = node.getAttribute('data-slot-title') || ''
         result.push({
           type: 'select',
+          key: node.getAttribute('data-slot-key') || undefined,
           label: node.getAttribute('data-slot-label') || '',
           value: node.getAttribute('data-slot-value') || '',
           options: JSON.parse(node.getAttribute('data-slot-options') || '[]'),

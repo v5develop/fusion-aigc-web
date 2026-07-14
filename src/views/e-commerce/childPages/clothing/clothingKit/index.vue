@@ -13,7 +13,10 @@ import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { publicTemplate, quotePreview } from '@/api/methods.ts'
 import { ageOps, genderOps, skinOps } from '@/views/e-commerce/childPages/constants.ts'
 import { useMessage } from 'naive-ui'
+import { useHomeStore } from '@/stores/home'
+import { storeToRefs } from 'pinia'
 import { useDebounce } from '@/utils/hooks'
+import type { ClothingKitParams } from '@/views/home/ChatInputBox/targetParams'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
@@ -30,6 +33,20 @@ const formData = reactive({
   prompt: '',
   scenePhoto: [] as string[],
 })
+
+const store = useHomeStore()
+const { global_formData } = storeToRefs(store)
+if (global_formData.value.home) {
+  const p = global_formData.value.ecommerce.params as ClothingKitParams
+  if (p.imageUrls?.length) (formData as any).imageUrls = p.imageUrls
+  if (p.personUrl) formData.personUrl = p.personUrl
+  if (p.uploadPersonUrl?.length) (formData as any).uploadPersonUrl = p.uploadPersonUrl
+  if (p.aspectRatio) formData.aspectRatio = p.aspectRatio
+  if (p.scenePhoto?.length) formData.scenePhoto = p.scenePhoto
+  if (p.prompt) formData.prompt = p.prompt
+  store.reset()
+}
+
 const switchValue = ref(true)
 const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()
 const { integral } = useIntegral()

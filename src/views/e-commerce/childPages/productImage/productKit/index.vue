@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { provide, reactive, ref } from 'vue'
 import { quotePreview } from '@/api/methods.ts'
+import { useHomeStore } from '@/stores/home'
+import { storeToRefs } from 'pinia'
+import type { ProductKitParams } from '@/views/home/ChatInputBox/targetParams'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
@@ -37,6 +40,19 @@ const defaultCustomData = {
   key_points: 1,
   detail: 0,
 }
+const store = useHomeStore()
+const { global_formData } = storeToRefs(store)
+if (global_formData.value.home) {
+  const p = global_formData.value.ecommerce.params as ProductKitParams
+  if (p.imageUrls?.length) (formData as any).imageUrls = p.imageUrls
+  if (p.platform) formData.platform = p.platform
+  if (p.region) formData.region = p.region
+  if (p.language) formData.language = p.language
+  if (p.aspectRatio) formData.aspectRatio = p.aspectRatio
+  if (p.buyPoint) formData.buyPoint = p.buyPoint
+  store.reset()
+}
+
 const { customData, checkboxClickHandle, sub, add } = useCheckbox()
 const { integral } = useIntegral()
 

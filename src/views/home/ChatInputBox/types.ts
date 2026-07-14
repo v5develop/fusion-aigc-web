@@ -45,6 +45,8 @@ export interface SlotOption {
 /** 下拉选择 */
 export interface SlotSelect {
   type: 'select'
+  /** 模板插槽唯一 key（来自详情接口） */
+  key?: string
   label: string
   value: string
   options: SlotOption[]

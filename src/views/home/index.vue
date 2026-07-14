@@ -12,6 +12,7 @@ import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 import ChatInputBox from './ChatInputBox/index.vue'
 import type { PromptSlot, FileItem } from './ChatInputBox/types'
 import { slotsToPrompt, promptDetailToSlots } from './ChatInputBox/utils'
+import { buildTargetParams } from './ChatInputBox/targetParams'
 import { entryCodeOps, ratioOps } from '@/views/picture/constants.ts'
 import {
   entryCodeOps as videoEntryCodeOps,
@@ -52,6 +53,8 @@ const formData = reactive({
 })
 const homeRef = ref<HTMLDivElement | null>(null)
 
+const currentTemplateCode = ref('')
+
 const { preData, preinstallFallbackImg, handlePreinstallClick } = usePreinstall()
 function usePreinstall() {
   const preData = ref<IPromptCard[]>([])
@@ -70,6 +73,7 @@ function usePreinstall() {
     if (!slots.length) return
     // 默认填充是异步的，用户此时可能已开始输入（编辑器打字会同步 slots），不覆盖
     if (isDefaultFill && formData.ecommerce.slots.length > 0) return
+    currentTemplateCode.value = item.code || ''
     formData.ecommerce.slots = slots
   }
 
@@ -155,15 +159,21 @@ const submit = () => {
   if (activeChatTab.value === 'ecommerce') {
     const { plainText, images: slotImages } = slotsToPrompt(formData.ecommerce.slots)
     const allImages = [...slotImages, ...formData.ecommerce.images]
+    const targetCode = currentTemplateCode.value || '/e-commerce'
+    // 只传侧边栏图片作为兜底，插槽图片由 builder 从 slots 中按 key 精确提取
+    const params = buildTargetParams(targetCode, formData.ecommerce.slots, formData.ecommerce.images)
     global_formData.value = {
       ...global_formData.value,
       home: true,
       ecommerce: {
         prompt: plainText,
         images: allImages,
+        slots: formData.ecommerce.slots,
+        templateCode: targetCode,
+        params,
       },
     }
-    router.push({ name: 'e-commerce' })
+    router.push({ path: targetCode })
     return
   }
   global_formData.value = {

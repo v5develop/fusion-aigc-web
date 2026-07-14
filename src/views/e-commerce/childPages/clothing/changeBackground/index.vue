@@ -3,8 +3,6 @@ import { provide, reactive, ref } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import Tab from '@/components/Tab/index.vue'
-// import { platformOps } from '@/views/e-commerce/childPages/constants.ts'
-// import SelectGroup from '@/components/SelectGroup/index.vue'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
@@ -12,6 +10,9 @@ import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import { publicTemplate, quotePreview } from '@/api/methods.ts'
 import { useMessage } from 'naive-ui'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+import { useHomeStore } from '@/stores/home'
+import { storeToRefs } from 'pinia'
+import type { ChangeBackgroundParams } from '@/views/home/ChatInputBox/targetParams'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
@@ -26,6 +27,17 @@ const formData = reactive({
   description: '',
   refImageUrl: [],
 })
+
+const store = useHomeStore()
+const { global_formData } = storeToRefs(store)
+if (global_formData.value.home) {
+  const p = global_formData.value.ecommerce.params as ChangeBackgroundParams
+  if (p.imageUrls?.length) (formData as any).imageUrls = p.imageUrls
+  if (p.bgImageUrl) formData.bgImageUrl = p.bgImageUrl
+  if (p.description) formData.description = p.description
+  store.reset()
+}
+
 const { bgTabValue, bgList, bgScrollCallBack } = useBg()
 const { integral } = useIntegral()
 

@@ -13,7 +13,7 @@ export function buildSelectHTML(s: SlotSelect): string {
   const opts = escapeHtml(JSON.stringify(s.options)).replace(/"/g, '&quot;')
   const title = s.title || ''
   return `<span class="ps-slot ps-slot--select" contenteditable="false"
-    data-slot-type="select" data-slot-label="${escapeHtml(s.label)}"
+    data-slot-type="select" data-slot-key="${escapeHtml(s.key || '')}" data-slot-label="${escapeHtml(s.label)}"
     data-slot-value="${escapeHtml(s.value)}" data-slot-options="${opts}" data-slot-title="${escapeHtml(title)}">${escapeHtml(s.label)}<span class="ps-arrow">${ICON_CARET_DOWN}</span></span>​`
 }
 
@@ -66,7 +66,12 @@ export function showDropdown(anchor: HTMLElement, onSelect: () => void) {
 
       anchor.setAttribute('data-slot-value', newValue)
       anchor.setAttribute('data-slot-label', newLabel)
-      anchor.innerHTML = `${escapeHtml(newLabel)}<span class="ps-arrow">${ICON_CARET_DOWN}</span>`
+      anchor.textContent = ''
+      anchor.appendChild(document.createTextNode(newLabel))
+      const arrow = document.createElement('span')
+      arrow.className = 'ps-arrow'
+      arrow.innerHTML = ICON_CARET_DOWN
+      anchor.appendChild(arrow)
 
       dd.remove()
       onSelect()
