@@ -191,7 +191,7 @@ const generateAgain = (item: any) => {
                 <div class="message-group__prompt-wrapper">
                   <p class="message-group__prompt">
                     {{ item.inputParams.params.prompt }}
-                    <span class="message-group__prompt-meta">{{ utils.getMetaData(item.inputParams) }}</span>
+                    <span class="message-group__prompt-meta">{{ utils.getMetaData(item) }}</span>
                   </p>
                 </div>
               </div>

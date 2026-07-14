@@ -235,7 +235,7 @@ const getSourceVideo = (inputParams: any): string => {
                 <div class="message-group__prompt-wrapper">
                   <p class="message-group__prompt">
                     {{ item.inputParams.params.prompt }}
-                    <span class="message-group__prompt-meta">{{ getMetaData(item.inputParams) }}</span>
+                    <span class="message-group__prompt-meta">{{ getMetaData(item) }}</span>
                   </p>
                 </div>
               </div>
