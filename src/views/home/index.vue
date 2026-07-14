@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMessage } from 'naive-ui'
 import { publicDisplay, promptList, promptDetail } from '@/api/methods.ts'
 import type { IPromptCard } from '@/api/types'
 import { useDebounce } from '@/utils/hooks'
@@ -11,7 +10,7 @@ import { filterData1, filterData2 } from './constants.ts'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 import ChatInputBox from './ChatInputBox/index.vue'
-import type { PromptSlot, SlotSelect, FileItem } from './ChatInputBox/types'
+import type { PromptSlot, FileItem } from './ChatInputBox/types'
 import { slotsToPrompt, promptDetailToSlots } from './ChatInputBox/utils'
 import { entryCodeOps, ratioOps } from '@/views/picture/constants.ts'
 import {
@@ -25,7 +24,6 @@ import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 
 const router = useRouter()
-const message = useMessage()
 const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
 
@@ -155,13 +153,6 @@ const showBackToTop = ref(false)
 
 const submit = () => {
   if (activeChatTab.value === 'ecommerce') {
-    // 未选择的 select（如后端暂未配置选项）不会输出到 prompt，提交前必须拦下，避免发出残句
-    const unselected = formData.ecommerce.slots.find((s): s is SlotSelect => s.type === 'select' && !s.value)
-    if (unselected) {
-      const tip = unselected.title || unselected.label
-      message.warning(tip.startsWith('请') ? tip : tip.startsWith('选择') ? `请${tip}` : `请选择${tip}`)
-      return
-    }
     const { plainText, images: slotImages } = slotsToPrompt(formData.ecommerce.slots)
     const allImages = [...slotImages, ...formData.ecommerce.images]
     global_formData.value = {

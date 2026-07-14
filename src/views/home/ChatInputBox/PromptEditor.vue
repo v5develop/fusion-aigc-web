@@ -147,11 +147,65 @@ function mergeAdjacentText() {
     const a = nodes[i]
     const b = nodes[i + 1]
     if (!a || !b) continue
+    // nodes 是 childNodes 快照，b 可能已被前一轮 remove() 移出 DOM，
+    // 必须校验两节点在真实 DOM 中仍相邻，否则将陷入无限合并同一对节点的死循环
+    if (a.nextSibling !== b) continue
     if (a.nodeType === Node.TEXT_NODE && b.nodeType === Node.TEXT_NODE) {
       a.textContent = (a.textContent || '') + (b.textContent || '')
       b.remove()
       i--
     }
+  }
+}
+
+/** 计算节点在编辑器中纯文本的起始偏移量（跳过零宽空格守卫节点） */
+function getTextOffsetBeforeNode(target: Node): number {
+  const el = surfaceRef.value
+  if (!el) return 0
+  let offset = 0
+  for (const child of Array.from(el.childNodes)) {
+    if (child === target) return offset
+    if (child.nodeType === Node.TEXT_NODE && (child.textContent || '') !== '​') {
+      offset += (child.textContent || '').length
+    }
+  }
+  return offset
+}
+
+/** 将光标恢复到编辑器纯文本中的指定偏移位置 */
+function restoreCursorAtTextOffset(targetOffset: number) {
+  const el = surfaceRef.value
+  if (!el) return
+  const sel = window.getSelection()
+  if (!sel) return
+
+  let cum = 0
+  for (const child of Array.from(el.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE && (child.textContent || '') !== '​') {
+      const len = (child.textContent || '').length
+      if (cum + len >= targetOffset) {
+        const range = document.createRange()
+        range.setStart(child, targetOffset - cum)
+        range.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(range)
+        return
+      }
+      cum += len
+    }
+  }
+  // 兜底：放到编辑器末尾
+  const last = el.lastChild
+  if (last) {
+    const range = document.createRange()
+    if (last.nodeType === Node.TEXT_NODE) {
+      range.setStart(last, (last.textContent || '').length)
+    } else {
+      range.setStartAfter(last)
+    }
+    range.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(range)
   }
 }
 
@@ -170,10 +224,13 @@ function onBeforeInput(e: InputEvent) {
         const prev = findPrevRealNode(node)
         if (prev && prev instanceof HTMLElement && prev.classList.contains('ps-slot')) {
           e.preventDefault()
+          // 删除前计算光标目标位置：slot 元素之前所有纯文本的长度，即被删插槽的插入点
+          const targetOffset = getTextOffsetBeforeNode(prev)
           const zwnbsp = prev.nextSibling
           if (zwnbsp && zwnbsp.nodeType === Node.TEXT_NODE && zwnbsp.textContent === '​') zwnbsp.remove()
           prev.remove()
           mergeAdjacentText()
+          restoreCursorAtTextOffset(targetOffset)
           return
         }
       }
@@ -184,10 +241,13 @@ function onBeforeInput(e: InputEvent) {
         const next = findNextRealNode(node)
         if (next && next instanceof HTMLElement && next.classList.contains('ps-slot')) {
           e.preventDefault()
+          // 光标在插槽前的文本末尾，目标偏移 = 该文本起始偏移 + 其原始长度
+          const targetOffset = getTextOffsetBeforeNode(node) + (node.textContent || '').length
           const zwnbsp = next.nextSibling
           if (zwnbsp && zwnbsp.nodeType === Node.TEXT_NODE && zwnbsp.textContent === '​') zwnbsp.remove()
           next.remove()
           mergeAdjacentText()
+          restoreCursorAtTextOffset(targetOffset)
           return
         }
       }
