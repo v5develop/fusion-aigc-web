@@ -13,6 +13,7 @@ export interface ClothingTryParams {
 export interface ChangeBackgroundParams {
   imageUrls: string[]
   bgImageUrl: string
+  refImageUrl: string[]
   description: string
 }
 
@@ -58,6 +59,13 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
     const s = slots.find((s) => s.type === 'text' && !!s.value)
     return (s as any)?.value || ''
   }
+  /** 取最后一个 text 插槽的值，用于"选择场景图"之后的文案 */
+  const getLastTextVal = () => {
+    const texts = slots.filter((s) => s.type === 'text' && !!s.value)
+    const last = texts[texts.length - 1]
+    if (!last) return ''
+    return (last as any).value?.replace(/^[，, ]+/, '') || ''
+  }
 
   let result: Record<string, any> = {}
 
@@ -75,13 +83,17 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
       break
     }
 
-    case '/e-commerce/change-background':
+    case '/e-commerce/change-background': {
+      const bgUrl = getUploadUrl('background')
+      const isLibBg = bgUrl && !bgUrl.startsWith('data:')
       result = {
         imageUrls: getUploadUrls('personImage').length > 0 ? getUploadUrls('personImage') : imageUrls,
-        bgImageUrl: getUploadUrl('background') || getSelectVal('background'),
-        description: getTextVal(),
+        bgImageUrl: isLibBg ? bgUrl : (getSelectVal('background')),
+        refImageUrl: isLibBg ? [] : (bgUrl ? [bgUrl] : []),
+        description: getLastTextVal(),
       }
       break
+    }
 
     case '/e-commerce/clothing-kit': {
       const modelUrl = getUploadUrl('modelImage')

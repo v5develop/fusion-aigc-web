@@ -30,15 +30,15 @@ const formData = reactive({
 
 const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
+const { bgTabValue, bgList, bgScrollCallBack } = useBg()
 if (global_formData.value.home) {
   const p = global_formData.value.ecommerce.params as ChangeBackgroundParams
   if (p.imageUrls?.length) (formData as any).imageUrls = p.imageUrls
   if (p.bgImageUrl) formData.bgImageUrl = p.bgImageUrl
+  if (p.refImageUrl?.length) { (formData as any).refImageUrl = p.refImageUrl; bgTabValue.value = 'custom' }
   if (p.description) formData.description = p.description
   store.reset()
 }
-
-const { bgTabValue, bgList, bgScrollCallBack } = useBg()
 const { integral } = useIntegral()
 
 const submit = () => {

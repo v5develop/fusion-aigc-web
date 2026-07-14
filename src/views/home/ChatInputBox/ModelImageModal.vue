@@ -2,6 +2,8 @@
 import { ref, watch, nextTick } from 'vue'
 import { publicTemplate } from '@/api/methods.ts'
 import type { FileItem } from './types'
+import { upload } from '@/api/ossUpload'
+import { useMessage } from 'naive-ui'
 
 const show = defineModel<boolean>('show', { required: true })
 const props = defineProps<{
@@ -45,22 +47,17 @@ function onFileChange(e: Event) {
   readFiles(Array.from(files))
   input.value = ''
 }
-function readFiles(files: File[]) {
-  const items: FileItem[] = []
-  let settled = 0
-  files.forEach((file) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      items.push({ url: reader.result as string, name: file.name })
-      settled++
-      if (settled === files.length) {
-        emit('select', items)
-        show.value = false
-      }
-    }
-    reader.onerror = () => { settled++ }
-    reader.readAsDataURL(file)
-  })
+const message = useMessage()
+
+async function readFiles(files: File[]) {
+  try {
+    const urls = await upload(files)
+    const items: FileItem[] = files.map((file, i) => ({ url: urls[i] || '', name: file.name }))
+    emit('select', items)
+    show.value = false
+  } catch {
+    message.error('图片上传失败，请重试')
+  }
 }
 
 // ========== 模特库 ==========

@@ -6,6 +6,7 @@ import { DEFAULT_UPLOAD_LIMIT } from './types'
 import { buildSelectHTML, showDropdown, closeAllDropdowns } from './slots/select'
 import { buildUploadHTML, updateUploadBlockDOM, type UploadIdentity } from './slots/upload'
 import ModelImageModal from './ModelImageModal.vue'
+import { upload } from '@/api/ossUpload'
 
 declare global {
   interface Window {
@@ -287,7 +288,7 @@ function onDocumentClick(e: MouseEvent) {
 
 // ========== 上传 ==========
 
-function onFileChange(e: Event) {
+async function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   const files = input.files
   if (!files || files.length === 0) return
@@ -295,34 +296,19 @@ function onFileChange(e: Event) {
   const id = pendingUpload
   const slot = id && findUploadSlot(id)
   if (id && slot && surfaceRef.value) {
-    // 按插槽 limit（接口 maxCount）截断，超出额度时明确提示而非静默丢弃
     const limit = slot.limit ?? DEFAULT_UPLOAD_LIMIT
     const remaining = limit - slot.value.length
     if (files.length > remaining) message.warning(`最多上传 ${limit} 张图片`)
     const picked = Array.from(files).slice(0, Math.max(0, remaining))
-    const newItems: FileItem[] = []
-    let settled = 0
-    const settle = () => {
-      settled++
-      if (settled !== picked.length) return
-      // 只提交成功读取的文件，单个文件读取失败不拖垮整批
-      if (newItems.length === 0) return
+    try {
+      const urls = await upload(picked as unknown as File[])
+      const newItems: FileItem[] = picked.map((file, i) => ({ url: urls[i] || '', name: file.name }))
       slot.value = [...slot.value, ...newItems]
       updateUploadBlockDOM(surfaceRef.value!, id, slot.value)
       syncFromDOM()
+    } catch {
+      message.error('图片上传失败，请重试')
     }
-    picked.forEach((file) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        newItems.push({ url: reader.result as string, name: file.name })
-        settle()
-      }
-      reader.onerror = () => {
-        message.error(`「${file.name}」读取失败`)
-        settle()
-      }
-      reader.readAsDataURL(file)
-    })
   }
   input.value = ''
   pendingUpload = null
