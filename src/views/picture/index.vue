@@ -277,16 +277,18 @@ const generateAgainSingle = async (item: any, key: string) => {
                       <span v-if="downloadingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
                       <img v-else :src="downloadSingleIcon" width="24" height="24" alt="下载" />
                     </button>
-                    <span class="single-action-divider"></span>
-                    <button
-                      class="single-action-btn"
-                      title="重新生成"
-                      :disabled="loading || regeneratingSet.has(jtem.resultUrl)"
-                      @click.stop="generateAgainSingle(item, jtem.resultUrl)"
-                    >
-                      <span v-if="regeneratingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
-                      <img v-else :src="regenerateWhiteIcon" width="24" height="24" alt="重新生成" />
-                    </button>
+                    <template v-if="!utils.isFromAigcChat(item)">
+                      <span class="single-action-divider"></span>
+                      <button
+                        class="single-action-btn"
+                        title="重新生成"
+                        :disabled="loading || regeneratingSet.has(jtem.resultUrl)"
+                        @click.stop="generateAgainSingle(item, jtem.resultUrl)"
+                      >
+                        <span v-if="regeneratingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
+                        <img v-else :src="regenerateWhiteIcon" width="24" height="24" alt="重新生成" />
+                      </button>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -298,7 +300,7 @@ const generateAgainSingle = async (item: any, key: string) => {
 
               <!-- 操作按钮 -->
               <div class="message-group__actions">
-                <button class="action-btn" @click="generateAgain(item)">
+                <button v-if="!utils.isFromAigcChat(item)" class="action-btn" @click="generateAgain(item)">
                   <img :src="regenerateIcon" class="action-btn__icon" width="16" height="16" alt="再次生成" />
                   <span>再次生成</span>
                 </button>

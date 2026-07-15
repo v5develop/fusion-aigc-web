@@ -12,7 +12,7 @@ import { creationHistory } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
 import { useQuotePreview } from '@/utils/hooks'
 import { useMessage } from 'naive-ui'
-import { download, showDownloadBtn } from '@/views/picture/utils.ts'
+import { download, showDownloadBtn, isFromAigcChat } from '@/views/picture/utils.ts'
 import { getMetaData, isMixedSize, buildResubmitParams } from './utils.ts'
 import { downloadImage } from '@/utils/download'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
@@ -321,16 +321,18 @@ const getSourceVideo = (inputParams: any): string => {
                       <span v-if="downloadingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
                       <img v-else :src="downloadSingleIcon" width="24" height="24" alt="下载" />
                     </button>
-                    <span class="single-action-divider"></span>
-                    <button
-                      class="single-action-btn"
-                      title="重新生成"
-                      :disabled="loading || regeneratingSet.has(jtem.resultUrl)"
-                      @click.stop="generateAgainSingle(item, jtem.resultUrl)"
-                    >
-                      <span v-if="regeneratingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
-                      <img v-else :src="regenerateWhiteIcon" width="24" height="24" alt="重新生成" />
-                    </button>
+                    <template v-if="!isFromAigcChat(item)">
+                      <span class="single-action-divider"></span>
+                      <button
+                        class="single-action-btn"
+                        title="重新生成"
+                        :disabled="loading || regeneratingSet.has(jtem.resultUrl)"
+                        @click.stop="generateAgainSingle(item, jtem.resultUrl)"
+                      >
+                        <span v-if="regeneratingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
+                        <img v-else :src="regenerateWhiteIcon" width="24" height="24" alt="重新生成" />
+                      </button>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -342,7 +344,7 @@ const getSourceVideo = (inputParams: any): string => {
 
               <!-- 操作按钮 -->
               <div class="message-group__actions">
-                <button v-show="!loading" class="action-btn" @click="generateAgain(item)">
+                <button v-show="!loading && !isFromAigcChat(item)" class="action-btn" @click="generateAgain(item)">
                   <img :src="regenerateIcon" class="action-btn__icon" width="16" height="16" alt="再次生成" />
                   <span>再次生成</span>
                 </button>

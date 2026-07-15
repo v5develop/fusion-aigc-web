@@ -31,6 +31,9 @@ export const buildResubmitParams = (item: any, single = false) => {
   }
 }
 
+/** 记录是否来自 aigc_chat（端上/agent 来源）：这类素材隐藏「重新生成/再次生成」入口 */
+export const isFromAigcChat = (item: any): boolean => item?.inputParams?.source === 'aigc_chat'
+
 export const download = (item: any) => {
   const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
 
