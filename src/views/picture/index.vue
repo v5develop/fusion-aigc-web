@@ -29,8 +29,11 @@ if (global_formData.value.home) {
   store.reset()
 }
 
-// 提交任务loading，跑图完成后再设为false
+// 生成中标志：提交后保持 true 直到本批任务全部到终态（供轮询完成副作用使用）
 const loading = ref(false)
+// 发送按钮 loading：仅在提交请求期间为 true，提交成功即恢复，生成进度看历史列表。
+// 与 loading 解耦，避免后端某张子图卡在处理中时把发送按钮永久锁死（且刷新也无法恢复）。
+const btnLoading = ref(false)
 const formData = reactive(
   _formData ?? {
     entryCode: 'imageToImage',
@@ -64,8 +67,8 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
 })
 
-const submit = () => {
-  if (loading.value) return
+const submit = async () => {
+  if (btnLoading.value) return
 
   if (!formData.prompt) {
     message.warning('请输入提示词')
@@ -90,11 +93,15 @@ const submit = () => {
     },
     images: formData.images,
   }
-  execute(params)
+  btnLoading.value = true
+  const success = await execute(params)
+  btnLoading.value = false
 
-  // 发送后清空输入框及素材
-  formData.prompt = ''
-  formData.images = []
+  // 提交成功后清空输入框及素材，失败保留以便修改后重新提交
+  if (success) {
+    formData.prompt = ''
+    formData.images = []
+  }
 }
 
 const getData = (isReplace?: boolean) => {
@@ -292,7 +299,7 @@ const generateAgainSingle = async (item: any, key: string) => {
       <ChatInputBox
         v-model:formData="formData"
         :submit="submit"
-        :btnLoading="loading"
+        :btnLoading="btnLoading"
         :imageLimit="3"
         :showImageUpload="formData.entryCode === 'imageToImage'"
       >
