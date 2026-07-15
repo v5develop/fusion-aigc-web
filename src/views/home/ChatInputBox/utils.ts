@@ -93,7 +93,14 @@ export function promptDetailToSlots(
     if (m.index > lastIndex) slots.push({ type: 'text', value: content.slice(lastIndex, m.index) })
     const def = defMap.get(m[1]!)
     // 占位符无对应定义时保留为可编辑空文本，避免正文语义丢失
-    slots.push(def ? defToSlot(def, moduleCode) : { type: 'text', value: '' })
+    const slot: PromptSlot = def ? defToSlot(def, moduleCode) : { type: 'text', value: '' }
+    // 每个插槽（chip）前补一个空格，避免紧贴前文
+    if (slot.type !== 'text') {
+      const prev = slots[slots.length - 1]
+      if (prev && prev.type === 'text') prev.value += ' '
+      else slots.push({ type: 'text', value: ' ' })
+    }
+    slots.push(slot)
     lastIndex = re.lastIndex
   }
   if (lastIndex < content.length) slots.push({ type: 'text', value: content.slice(lastIndex) })
