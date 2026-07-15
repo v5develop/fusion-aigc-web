@@ -169,26 +169,58 @@
       justify-content: center;
     }
 
-    .single-download-btn {
+    // 单资源卡片底部居中操作条：下载 / 重新生成（hover 显示）
+    .single-actions {
       position: absolute;
-      right: clamp(10px, 6.3%, 16px);
-      top: clamp(10px, 6.3%, 16px);
-      width: clamp(28px, 17.4%, 44px);
-      height: clamp(28px, 17.4%, 44px);
-      border-radius: clamp(8px, 4.7%, 12px);
-      border: none;
-      background: rgba(0, 0, 0, 0.5);
-      cursor: pointer;
+      left: 50%;
+      bottom: clamp(8px, 5%, 14px);
+      transform: translateX(-50%) translateY(6px);
       display: flex;
-      align-items: center;
-      justify-content: center;
+      gap: 8px;
       opacity: 0;
-      transition: opacity 0.2s;
+      pointer-events: none;
+      z-index: 3;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .single-action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 30px;
+      padding: 0 12px;
+      border: none;
+      border-radius: 15px;
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      font-family: 'PingFang SC', sans-serif;
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background 0.15s ease;
+
+      &:hover:not(:disabled) {
+        background: rgba(0, 0, 0, 0.78);
+      }
+
+      &:disabled {
+        cursor: not-allowed;
+        opacity: 0.8;
+      }
 
       img {
-        width: clamp(16px, 54.5%, 24px);
-        height: clamp(16px, 54.5%, 24px);
+        display: block;
       }
+    }
+
+    .single-action-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: single-action-spin 0.7s linear infinite;
     }
 
     // 素材分辨率(1K/2K/4K) + 画幅比例(1:1/9:16/16:9) 角标
@@ -214,8 +246,10 @@
 
   }
 
-  &__image-wrap:hover .single-download-btn {
+  &__image-wrap:hover .single-actions {
     opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
   }
 
   // AI 声明
@@ -260,5 +294,11 @@
   &__icon {
     flex-shrink: 0;
     color: #3a3a3a;
+  }
+}
+
+@keyframes single-action-spin {
+  to {
+    transform: rotate(360deg);
   }
 }

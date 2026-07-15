@@ -13,6 +13,7 @@ import { useInitCheckTaskStatus } from './hooks.ts'
 import { useMessage } from 'naive-ui'
 import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
+import { downloadImage } from '@/utils/download'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import downloadAllIcon from '@/assets/icons/download-all.svg'
@@ -156,6 +157,33 @@ const generateAgain = (item: any) => {
 
   execute(item.inputParams)
 }
+
+// 单资源卡片：下载中的资源 URL 集合（用于按钮 loading 动效）
+const downloadingSet = reactive(new Set<string>())
+const onDownloadSingle = async (url: string) => {
+  if (!url || downloadingSet.has(url)) return
+  downloadingSet.add(url)
+  try {
+    await downloadImage(url)
+  } finally {
+    downloadingSet.delete(url)
+  }
+}
+
+// 单资源卡片：重新生成中的资源 key 集合（用于按钮 loading 动效）
+const regeneratingSet = reactive(new Set<string>())
+// 单张重新生成：沿用原任务入参（提示词/图片/比例/模型），仅生成 1 张
+const generateAgainSingle = async (item: any, key: string) => {
+  if (loading.value || regeneratingSet.has(key)) return
+  regeneratingSet.add(key)
+  try {
+    const params = JSON.parse(JSON.stringify(item.inputParams))
+    params.params = { ...(params.params ?? {}), num: 1 }
+    await execute(params)
+  } finally {
+    regeneratingSet.delete(key)
+  }
+}
 </script>
 
 <template>
@@ -213,13 +241,26 @@ const generateAgain = (item: any) => {
                   </div>
                   <div v-if="jtem.status === 1" class="pending">处理中...</div>
                   <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
-                  <button
-                    v-if="jtem.resultUrl"
-                    class="single-download-btn"
-                    @click.stop="utils.downloadSingle(jtem.resultUrl)"
-                  >
-                    <img :src="downloadSingleIcon" width="24" height="24" alt="下载" />
-                  </button>
+                  <div v-if="jtem.resultUrl" class="single-actions" @click.stop>
+                    <button
+                      class="single-action-btn"
+                      :disabled="downloadingSet.has(jtem.resultUrl)"
+                      @click.stop="onDownloadSingle(jtem.resultUrl)"
+                    >
+                      <span v-if="downloadingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
+                      <img v-else :src="downloadSingleIcon" width="16" height="16" alt="下载" />
+                      <span>下载</span>
+                    </button>
+                    <button
+                      class="single-action-btn"
+                      :disabled="loading || regeneratingSet.has(jtem.resultUrl)"
+                      @click.stop="generateAgainSingle(item, jtem.resultUrl)"
+                    >
+                      <span v-if="regeneratingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
+                      <img v-else :src="regenerateIcon" width="16" height="16" alt="重新生成" />
+                      <span>重新生成</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

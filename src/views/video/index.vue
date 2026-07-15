@@ -13,8 +13,10 @@ import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
 import { useMessage } from 'naive-ui'
 import { download, showDownloadBtn } from '@/views/picture/utils.ts'
 import { getMetaData, isMixedSize } from './utils.ts'
+import { downloadImage } from '@/utils/download'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
+import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import downloadAllIcon from '@/assets/icons/download-all.svg'
 
 const message = useMessage()
@@ -195,6 +197,31 @@ const generateAgain = (item: any) => {
   execute(item.inputParams)
 }
 
+// 单资源卡片：下载中的资源 URL 集合（用于按钮 loading 动效）
+const downloadingSet = reactive(new Set<string>())
+const onDownloadSingle = async (url: string) => {
+  if (!url || downloadingSet.has(url)) return
+  downloadingSet.add(url)
+  try {
+    await downloadImage(url)
+  } finally {
+    downloadingSet.delete(url)
+  }
+}
+
+// 单资源卡片：重新生成中的资源 key 集合（用于按钮 loading 动效）
+const regeneratingSet = reactive(new Set<string>())
+// 单个视频重新生成：沿用原任务入参（提示词/图片/视频/比例/模型）重发一次
+const generateAgainSingle = async (item: any, key: string) => {
+  if (loading.value || regeneratingSet.has(key)) return
+  regeneratingSet.add(key)
+  try {
+    await execute(JSON.parse(JSON.stringify(item.inputParams)))
+  } finally {
+    regeneratingSet.delete(key)
+  }
+}
+
 // 动作迁移的输入视频 URL；兼容早期历史数据 video 为 { url, thumbnail } 对象的情况
 const getSourceVideo = (inputParams: any): string => {
   if (inputParams.entryCode !== 'actionTransfer') return ''
@@ -252,6 +279,26 @@ const getSourceVideo = (inputParams: any): string => {
                   </div>
                   <div v-if="jtem.status === 1" class="pending">处理中...</div>
                   <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
+                  <div v-if="jtem.resultUrl" class="single-actions" @click.stop>
+                    <button
+                      class="single-action-btn"
+                      :disabled="downloadingSet.has(jtem.resultUrl)"
+                      @click.stop="onDownloadSingle(jtem.resultUrl)"
+                    >
+                      <span v-if="downloadingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
+                      <img v-else :src="downloadSingleIcon" width="16" height="16" alt="下载" />
+                      <span>下载</span>
+                    </button>
+                    <button
+                      class="single-action-btn"
+                      :disabled="loading || regeneratingSet.has(jtem.resultUrl)"
+                      @click.stop="generateAgainSingle(item, jtem.resultUrl)"
+                    >
+                      <span v-if="regeneratingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
+                      <img v-else :src="regenerateIcon" width="16" height="16" alt="重新生成" />
+                      <span>重新生成</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -310,6 +357,12 @@ const getSourceVideo = (inputParams: any): string => {
 
 <style scoped lang="less">
 @import '../picture/index.less';
+
+// 视频卡片底部有原生 controls，单资源操作条上移避免遮挡
+.message-group__image-wrap .single-actions {
+  bottom: 48px;
+}
+
 .select-cont {
   width: 250px;
   display: flex;
