@@ -131,18 +131,24 @@ const submit = async () => {
   }
 
   btnLoading.value = true
+  const isActionTransfer = formData.entryCode === 'actionTransfer'
   const params: ICreationSubmit = {
     type: 'VIDEO',
     entryCode: formData.entryCode as ICreationSubmit['entryCode'],
     modelCode: formData.modelCode,
     params: {
       prompt: formData.prompt,
-      resolution: formData.resolution,
-      aspectRatio: formData.ratio,
-      duration: formData.duration,
+      // 动作迁移由参考视频决定画幅/时长，不传比例/分辨率/时长
+      ...(isActionTransfer
+        ? {}
+        : {
+            resolution: formData.resolution,
+            aspectRatio: formData.ratio,
+            duration: formData.duration,
+          }),
     },
     images: formData.images,
-    video: ['actionTransfer'].includes(formData.entryCode) ? formData.video[0]?.url || '' : '',
+    video: isActionTransfer ? formData.video[0]?.url || '' : '',
   }
   const success = await execute(params)
   btnLoading.value = false
@@ -344,12 +350,15 @@ const getSourceVideo = (inputParams: any): string => {
               v-model:value="formData.modelCode"
               :options="entryCodeOps.find((item) => item.value === formData.entryCode)?.modelOps!"
             />
-            <ChatInputSelect v-model:value="formData.ratio" :options="ratioOps" />
-            <ChatInputSelect
-              v-model:value="formData.resolution"
-              :options="modelOps.find((item) => item.value === formData.modelCode)?.resolutionOps!"
-            />
-            <ChatInputSelect v-model:value="formData.duration" :options="durationOps" />
+            <!-- 动作迁移由参考视频决定画幅/时长，无需选择比例/分辨率/时长 -->
+            <template v-if="formData.entryCode !== 'actionTransfer'">
+              <ChatInputSelect v-model:value="formData.ratio" :options="ratioOps" />
+              <ChatInputSelect
+                v-model:value="formData.resolution"
+                :options="modelOps.find((item) => item.value === formData.modelCode)?.resolutionOps!"
+              />
+              <ChatInputSelect v-model:value="formData.duration" :options="durationOps" />
+            </template>
           </div>
         </template>
       </ChatInputBox>

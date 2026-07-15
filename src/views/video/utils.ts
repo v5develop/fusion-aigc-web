@@ -27,19 +27,25 @@ export const buildResubmitParams = (item: any) => {
   const first = (item?.contents ?? [])[0] ?? {}
   // 结构 2 无 entryCode：按有无输入图兜底推断（多数记录已带 entryCode，走原值）
   const entryCode = src.entryCode ?? (images.length ? 'imageToVideo' : 'textToVideo')
+  const isActionTransfer = entryCode === 'actionTransfer'
   return {
     type: 'VIDEO',
     entryCode,
     modelCode: src.modelCode ?? 'local-video',
     params: {
       prompt: p.prompt ?? src.prompt ?? '',
-      resolution: p.resolution,
-      aspectRatio: p.aspectRatio ?? p.ratio ?? first.ratio,
-      duration: p.duration,
+      // 动作迁移由参考视频决定画幅/时长，不传比例/分辨率/时长
+      ...(isActionTransfer
+        ? {}
+        : {
+            resolution: p.resolution,
+            aspectRatio: p.aspectRatio ?? p.ratio ?? first.ratio,
+            duration: p.duration,
+          }),
     },
     images,
     // 动作迁移才带输入视频
-    video: entryCode === 'actionTransfer' ? video : '',
+    video: isActionTransfer ? video : '',
   }
 }
 
