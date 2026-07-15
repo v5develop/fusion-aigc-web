@@ -1,6 +1,7 @@
 import type { PromptSlot, FileItem } from './types.ts'
 import { DEFAULT_UPLOAD_LIMIT, ROUTE_TO_MODULE_CODE } from './types.ts'
 import type { IPromptSlotDef } from '@/api/types'
+import { sceneOps } from '@/views/e-commerce/childPages/constants.ts'
 
 /** 将 slots 数组拼接为纯文本 prompt */
 export function slotsToPrompt(slots: PromptSlot[]): {
@@ -36,6 +37,20 @@ export function slotsToPrompt(slots: PromptSlot[]): {
 
 function defToSlot(def: IPromptSlotDef, moduleCode?: string): PromptSlot {
   if (def.slotType === 'select') {
+    // 穿戴套图「拍摄场景」下拉：选项与子页面共用 sceneOps，不以后端 options 为数据源。
+    // 识别规则与 buildTargetParams 的 scenePhoto 一致：该模板下 select 且非 aspectRatio 即场景插槽。
+    const isScene = moduleCode === 'wearingProductSetImages' && def.key !== 'aspectRatio'
+    if (isScene) {
+      return {
+        type: 'select',
+        key: def.key,
+        label: def.label, // 占位符（未选态显示「请选择拍摄场景」）
+        value: '',
+        options: sceneOps,
+        title: def.label,
+        ...(def.required ? { required: true } : {}),
+      }
+    }
     const options = def.options ?? []
     const first = options[0]
     return {

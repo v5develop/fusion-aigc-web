@@ -28,6 +28,17 @@ export const aspectRatioVideoOps = [
   { label: '16:', value: '16:9' },
 ]
 
+// 穿戴套图「拍摄场景」选项：子页面 CheckboxGroup 与首页模板场景下拉共用此数据源
+export const sceneOps = [
+  { label: '纯色棚拍', value: '纯色棚拍' },
+  { label: '都市街头', value: '都市街头' },
+  { label: '街头咖啡', value: '街头咖啡' },
+  { label: '自然草坪', value: '自然草坪' },
+  { label: '度假海滩', value: '度假海滩' },
+  { label: '温馨家居', value: '温馨家居' },
+  { label: '艺术展馆', value: '艺术展馆' },
+]
+
 export const genderOps = [
   { label: '男', value: 'male' },
   { label: '女', value: 'female' },

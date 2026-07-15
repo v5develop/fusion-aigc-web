@@ -12,7 +12,7 @@ import RecordList from '@/views/e-commerce/childPages/components/RecordList/inde
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { publicTemplate, quotePreview } from '@/api/methods.ts'
-import { ageOps, genderOps, skinOps } from '@/views/e-commerce/childPages/constants.ts'
+import { ageOps, genderOps, skinOps, sceneOps } from '@/views/e-commerce/childPages/constants.ts'
 import { useMessage } from 'naive-ui'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
@@ -236,41 +236,7 @@ function useIntegral() {
         <!--          <n-switch v-model:value="switchValue" />-->
         <!--        </div>-->
         <template v-if="switchValue">
-          <CheckboxGroup
-            v-model="formData.scenePhoto"
-            :list="[
-              {
-                label: '纯色棚拍',
-                value: '纯色棚拍',
-              },
-              {
-                label: '都市街头',
-                value: '都市街头',
-              },
-              {
-                label: '街头咖啡',
-                value: '街头咖啡',
-              },
-              {
-                label: '自然草坪',
-                value: '自然草坪',
-              },
-              {
-                label: '度假海滩',
-                value: '度假海滩',
-              },
-              {
-                label: '温馨家居',
-                value: '温馨家居',
-              },
-              {
-                label: '艺术展馆',
-                value: '艺术展馆',
-              },
-            ]"
-            :col="2"
-            gap="8px"
-          />
+          <CheckboxGroup v-model="formData.scenePhoto" :list="sceneOps" :col="2" gap="8px" />
 <!--          <div class="textarea-cont">
             <div class="label">或自定义描述场景（可选）</div>
             <Textarea
