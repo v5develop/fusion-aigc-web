@@ -1,9 +1,33 @@
 <script setup lang="ts">
-import { inject, type Ref } from 'vue'
+import { inject, ref, type Ref } from 'vue'
 import Card from '../Card/index.vue'
+import { getDownloadableUrls, downloadImagesAsZip } from '@/utils/download'
+import downloadIcon from '@/assets/icons/download-single.svg'
 
 const recordsData = inject<any[]>('recordsData')
 const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', undefined)
+
+// 正在打包下载的分组 taskId 集合（用于按钮 loading/禁用）
+const downloadingIds = ref<Set<string>>(new Set())
+
+// 下载文件名：AI素材_<创建时间>，非法字符替换为下划线
+const zipNameOf = (item: any) => {
+  const t = String(item?.createTime ?? '')
+    .replace(/[\\/:*?"<>|\s]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return t ? `AI素材_${t}` : 'AI素材'
+}
+
+// 整组下载：打包该组全部生成成功的图片
+const onGroupDownload = async (item: any) => {
+  if (downloadingIds.value.has(item.taskId)) return
+  downloadingIds.value.add(item.taskId)
+  try {
+    await downloadImagesAsZip(getDownloadableUrls(item), zipNameOf(item))
+  } finally {
+    downloadingIds.value.delete(item.taskId)
+  }
+}
 
 // 切换单个分组全部选中
 const toggleGroupAll = (group: any) => {
@@ -44,6 +68,16 @@ const getGroupSelectState = (group: any) => {
           />
           <span>{{ item.createTime }}</span>
         </div>
+
+        <button
+          v-if="getDownloadableUrls(item).length"
+          class="group-download-btn"
+          :disabled="downloadingIds.has(item.taskId)"
+          @click="onGroupDownload(item)"
+        >
+          <img :src="downloadIcon" width="16" height="16" alt="下载" />
+          <span>{{ downloadingIds.has(item.taskId) ? '下载中' : '下载' }}</span>
+        </button>
       </div>
 
       <div class="card-cont">
@@ -58,6 +92,9 @@ const getGroupSelectState = (group: any) => {
   > .record-item {
     margin-bottom: 50px;
     > .title-cont {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       font-size: 16px;
       font-weight: 600;
       line-height: 22px;
@@ -70,6 +107,37 @@ const getGroupSelectState = (group: any) => {
         > .icon-ic_ds_check_nor {
           font-size: 24px;
           cursor: pointer;
+        }
+      }
+
+      > .group-download-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 40px;
+        padding: 0 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        /* token: AI智慧紫/AI主渐变 */
+        background: linear-gradient(0deg, #bba2ff 0%, #ccbaff 99%);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 20px;
+        transition: opacity 0.15s ease;
+
+        > img {
+          display: block;
+        }
+
+        &:hover {
+          opacity: 0.9;
+        }
+
+        &:disabled {
+          opacity: 0.6;
+          cursor: default;
         }
       }
     }

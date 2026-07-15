@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { inject, type Ref } from 'vue'
+import { downloadImage } from '@/utils/download'
+import downloadSingleIcon from '@/assets/icons/download-single.svg'
 
 const { data } = defineProps<{ data: { resultUrl: string; status: 0 | 1 | 2 | 3 } }>()
 
@@ -16,6 +18,9 @@ const toggleImage = () => {
 
 // 判断单张图片是否选中
 const isImgChecked = () => selectImgUrls?.value.has(data.resultUrl)
+
+// 下载当前单张图片
+const onDownload = () => downloadImage(data.resultUrl)
 </script>
 
 <template>
@@ -50,6 +55,10 @@ const isImgChecked = () => selectImgUrls?.value.has(data.resultUrl)
       class="icon"
       @click="toggleImage"
     />
+
+    <div v-if="data.resultUrl" class="download-pill" @click.stop="onDownload">
+      <img :src="downloadSingleIcon" width="24" height="24" alt="下载" />
+    </div>
   </div>
 </template>
 
@@ -57,7 +66,8 @@ const isImgChecked = () => selectImgUrls?.value.has(data.resultUrl)
 .card {
   position: relative;
   &:hover {
-    > .icon {
+    > .icon,
+    > .download-pill {
       opacity: 1;
     }
   }
@@ -130,6 +140,28 @@ const isImgChecked = () => selectImgUrls?.value.has(data.resultUrl)
     right: 20px;
     opacity: 0;
     transition: opacity 0.2s;
+  }
+
+  > .download-pill {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 12px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+
+    img {
+      display: block;
+      width: 24px;
+      height: 24px;
+    }
   }
 }
 </style>
