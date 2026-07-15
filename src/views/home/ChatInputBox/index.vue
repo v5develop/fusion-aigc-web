@@ -102,7 +102,8 @@ const handlePaste = (e: ClipboardEvent) => {
     <!-- ====== Slot 模式 ====== -->
     <template v-if="mode === 'slot'">
       <div class="main-content main-content--slot">
-        <div class="upload-cont">
+        <!-- 电商商品 tab 隐藏左侧图片选择控件（showImageUpload 为 false） -->
+        <div v-show="showImageUpload" class="upload-cont">
           <Upload
             style="width: 72px"
             v-model:fileList="sideImages!"
