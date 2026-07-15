@@ -147,6 +147,8 @@
     overflow: hidden;
     background: #f0f0f0;
     position: relative;
+    // 作为容器查询上下文，使单资源操作条可按卡片宽度(cqw)等比缩放
+    container-type: inline-size;
     :deep(.n-image){
       width: 100%;
       height: 100%;
@@ -170,6 +172,8 @@
     }
 
     // 单资源卡片底部居中操作条：下载 | 重新生成（hover 显示，深色药丸 + 白色图标）
+    // 尺寸随卡片宽度等比缩放：以 font-size 为基准(设计稿卡片宽 253px → 图标 24px，
+    // 24/253 ≈ 9.49cqw)，内部尺寸全部用 em 表达以保持设计稿比例。
     .single-actions {
       position: absolute;
       left: 50%;
@@ -177,9 +181,10 @@
       transform: translateX(-50%) translateY(6px);
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 12px 10px;
-      border-radius: 12px;
+      font-size: clamp(14px, 9.49cqw, 24px); // 图标基准尺寸
+      gap: 0.333em; // 8/24
+      padding: 0.5em 0.417em; // 12/24  10/24
+      border-radius: 0.5em; // 12/24
       background: rgba(0, 0, 0, 0.5);
       opacity: 0;
       pointer-events: none;
@@ -188,8 +193,8 @@
     }
 
     .single-action-btn {
-      width: 24px;
-      height: 24px;
+      width: 1em;
+      height: 1em;
       padding: 0;
       border: none;
       background: transparent;
@@ -204,22 +209,22 @@
 
       img {
         display: block;
-        width: 24px;
-        height: 24px;
+        width: 1em;
+        height: 1em;
       }
     }
 
     // 两图标间的竖分隔线
     .single-action-divider {
       width: 1px;
-      height: 24px;
+      height: 1em;
       background: rgba(255, 255, 255, 0.2);
     }
 
     .single-action-spinner {
-      width: 18px;
-      height: 18px;
-      border: 2px solid rgba(255, 255, 255, 0.35);
+      width: 0.75em; // 18/24
+      height: 0.75em;
+      border: 0.083em solid rgba(255, 255, 255, 0.35); // 2/24
       border-top-color: #fff;
       border-radius: 50%;
       animation: single-action-spin 0.7s linear infinite;
