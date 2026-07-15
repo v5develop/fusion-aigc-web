@@ -16,6 +16,7 @@ import { getMetaData, isMixedSize } from './utils.ts'
 import { downloadImage } from '@/utils/download'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
+import regenerateWhiteIcon from '@/assets/icons/regenerate-white.svg'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import downloadAllIcon from '@/assets/icons/download-all.svg'
 
@@ -282,21 +283,22 @@ const getSourceVideo = (inputParams: any): string => {
                   <div v-if="jtem.resultUrl" class="single-actions" @click.stop>
                     <button
                       class="single-action-btn"
+                      title="下载"
                       :disabled="downloadingSet.has(jtem.resultUrl)"
                       @click.stop="onDownloadSingle(jtem.resultUrl)"
                     >
                       <span v-if="downloadingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
-                      <img v-else :src="downloadSingleIcon" width="16" height="16" alt="下载" />
-                      <span>下载</span>
+                      <img v-else :src="downloadSingleIcon" width="24" height="24" alt="下载" />
                     </button>
+                    <span class="single-action-divider"></span>
                     <button
                       class="single-action-btn"
+                      title="重新生成"
                       :disabled="loading || regeneratingSet.has(jtem.resultUrl)"
                       @click.stop="generateAgainSingle(item, jtem.resultUrl)"
                     >
                       <span v-if="regeneratingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
-                      <img v-else :src="regenerateIcon" width="16" height="16" alt="重新生成" />
-                      <span>重新生成</span>
+                      <img v-else :src="regenerateWhiteIcon" width="24" height="24" alt="重新生成" />
                     </button>
                   </div>
                 </div>

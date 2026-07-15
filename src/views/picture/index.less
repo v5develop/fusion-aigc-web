@@ -169,14 +169,18 @@
       justify-content: center;
     }
 
-    // 单资源卡片底部居中操作条：下载 / 重新生成（hover 显示）
+    // 单资源卡片底部居中操作条：下载 | 重新生成（hover 显示，深色药丸 + 白色图标）
     .single-actions {
       position: absolute;
       left: 50%;
       bottom: clamp(8px, 5%, 14px);
       transform: translateX(-50%) translateY(6px);
-      display: flex;
+      display: inline-flex;
+      align-items: center;
       gap: 8px;
+      padding: 12px 10px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.5);
       opacity: 0;
       pointer-events: none;
       z-index: 3;
@@ -184,39 +188,37 @@
     }
 
     .single-action-btn {
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      height: 30px;
-      padding: 0 12px;
-      border: none;
-      border-radius: 15px;
-      background: rgba(0, 0, 0, 0.6);
-      color: #fff;
-      font-family: 'PingFang SC', sans-serif;
-      font-size: 12px;
-      line-height: 1;
-      white-space: nowrap;
-      cursor: pointer;
-      transition: background 0.15s ease;
-
-      &:hover:not(:disabled) {
-        background: rgba(0, 0, 0, 0.78);
-      }
+      justify-content: center;
 
       &:disabled {
         cursor: not-allowed;
-        opacity: 0.8;
       }
 
       img {
         display: block;
+        width: 24px;
+        height: 24px;
       }
     }
 
+    // 两图标间的竖分隔线
+    .single-action-divider {
+      width: 1px;
+      height: 24px;
+      background: rgba(255, 255, 255, 0.2);
+    }
+
     .single-action-spinner {
-      width: 14px;
-      height: 14px;
+      width: 18px;
+      height: 18px;
       border: 2px solid rgba(255, 255, 255, 0.35);
       border-top-color: #fff;
       border-radius: 50%;
