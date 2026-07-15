@@ -13,6 +13,37 @@ export const isMixedSize = (contents: any[] = []): boolean => {
 }
 
 /**
+ * 归一化历史记录的 inputParams 为视频 submit 入参，供「再次生成」复用。
+ * 历史 inputParams 存在两种结构：
+ *  1) 本站 submit 结构：{ type, entryCode, modelCode, params:{prompt,resolution,aspectRatio,duration}, images, video }
+ *  2) 端上/agent 来源(source=aigc_chat)：{ scene, prompt, imageUrls, videoUrls, modelCode, params:{} }（无 entryCode）
+ * 若不归一化，直接回传结构 2 会被后端拒绝：「创作场景(entryCode)不能为空」。
+ */
+export const buildResubmitParams = (item: any) => {
+  const src = item?.inputParams ?? {}
+  const p = src.params ?? {}
+  const images: string[] = src.images ?? src.imageUrls ?? []
+  const video: string = src.video ?? (src.videoUrls ?? [])[0] ?? ''
+  const first = (item?.contents ?? [])[0] ?? {}
+  // 结构 2 无 entryCode：按有无输入图兜底推断（多数记录已带 entryCode，走原值）
+  const entryCode = src.entryCode ?? (images.length ? 'imageToVideo' : 'textToVideo')
+  return {
+    type: 'VIDEO',
+    entryCode,
+    modelCode: src.modelCode ?? 'local-video',
+    params: {
+      prompt: p.prompt ?? src.prompt ?? '',
+      resolution: p.resolution,
+      aspectRatio: p.aspectRatio ?? p.ratio ?? first.ratio,
+      duration: p.duration,
+    },
+    images,
+    // 动作迁移才带输入视频
+    video: entryCode === 'actionTransfer' ? video : '',
+  }
+}
+
+/**
  * 视频任务元信息：能力 | 模型 | 画幅 | 分辨率 | 时长。入参为整条历史 item（含 inputParams + contents）。
  * 画幅/分辨率权威来源是实际生成的素材(content.ratio/resolution，后端已返回)，缺失才回退请求入参；
  * 能力/模型/时长为请求侧属性，取自 inputParams。防御式取值：缺字段/未知映射的段留空，仅拼接非空段，

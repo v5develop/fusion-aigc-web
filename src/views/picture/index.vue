@@ -156,7 +156,7 @@ const { execute } = useInitCheckTaskStatus({ type: 'picture', loading, getData, 
 const generateAgain = (item: any) => {
   if (loading.value) return
 
-  execute(item.inputParams)
+  execute(utils.buildResubmitParams(item))
 }
 
 // 单资源卡片：下载中的资源 URL 集合（用于按钮 loading 动效）
@@ -178,9 +178,7 @@ const generateAgainSingle = async (item: any, key: string) => {
   if (loading.value || regeneratingSet.has(key)) return
   regeneratingSet.add(key)
   try {
-    const params = JSON.parse(JSON.stringify(item.inputParams))
-    params.params = { ...(params.params ?? {}), num: 1 }
-    await execute(params)
+    await execute(utils.buildResubmitParams(item, true))
   } finally {
     regeneratingSet.delete(key)
   }

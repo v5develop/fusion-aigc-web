@@ -1,5 +1,36 @@
 import { entryCodeVal2Label, ratioVal2Label } from './constants.ts'
 
+/**
+ * 归一化历史记录的 inputParams 为图片 submit 入参，供「再次生成」复用。
+ * 历史 inputParams 存在两种结构：
+ *  1) 本站 submit 结构：{ type, entryCode, modelCode, params:{prompt,width,height,num}, images }
+ *  2) 端上/agent 来源(source=aigc_chat)：{ scene, prompt, imageUrls, modelCode, params:{} }（无 entryCode）
+ * 若不归一化，直接回传结构 2 会被后端拒绝：「创作场景(entryCode)不能为空」。
+ * 尺寸缺失时回退到已生成素材 contents[0] 的宽高，尽量还原原始画幅。
+ * @param single 单张再次生成时强制只出 1 张；否则沿用原任务数量
+ */
+export const buildResubmitParams = (item: any, single = false) => {
+  const src = item?.inputParams ?? {}
+  const p = src.params ?? {}
+  const images: string[] = src.images ?? src.imageUrls ?? []
+  const first = (item?.contents ?? [])[0] ?? {}
+  // 结构 2 无 entryCode：图片仅两种能力，按有无输入图推断
+  const entryCode = src.entryCode ?? (images.length ? 'imageToImage' : 'textToImage')
+  return {
+    type: 'IMAGE',
+    entryCode,
+    modelCode: src.modelCode ?? 'local-image',
+    params: {
+      prompt: p.prompt ?? src.prompt ?? '',
+      width: p.width ?? first.width ?? 1024,
+      height: p.height ?? first.height ?? 1024,
+      // 单张固定 1 张；整批沿用原数量，缺失则按已生成素材数兜底
+      num: single ? 1 : (p.num ?? (item?.contents?.length || 1)),
+    },
+    images,
+  }
+}
+
 export const download = (item: any) => {
   const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
 

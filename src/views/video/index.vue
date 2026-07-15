@@ -12,7 +12,7 @@ import { creationHistory } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
 import { useMessage } from 'naive-ui'
 import { download, showDownloadBtn } from '@/views/picture/utils.ts'
-import { getMetaData, isMixedSize } from './utils.ts'
+import { getMetaData, isMixedSize, buildResubmitParams } from './utils.ts'
 import { downloadImage } from '@/utils/download'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
@@ -195,7 +195,7 @@ const { execute } = useInitCheckTaskStatus({ type: 'video', loading, getData, pa
 const generateAgain = (item: any) => {
   if (loading.value) return
 
-  execute(item.inputParams)
+  execute(buildResubmitParams(item))
 }
 
 // 单资源卡片：下载中的资源 URL 集合（用于按钮 loading 动效）
@@ -217,7 +217,7 @@ const generateAgainSingle = async (item: any, key: string) => {
   if (loading.value || regeneratingSet.has(key)) return
   regeneratingSet.add(key)
   try {
-    await execute(JSON.parse(JSON.stringify(item.inputParams)))
+    await execute(buildResubmitParams(item))
   } finally {
     regeneratingSet.delete(key)
   }
