@@ -3,7 +3,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { publicDisplay, promptList, promptDetail } from '@/api/methods.ts'
-import type { IPromptCard } from '@/api/types'
+import type { IPromptCard, IQuotePreview } from '@/api/types'
 import { useDebounce, useQuotePreview } from '@/utils/hooks'
 import ImageTab from './ImageTab/index.vue'
 import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
@@ -57,22 +57,23 @@ const homeRef = ref<HTMLDivElement | null>(null)
 
 const currentTemplateCode = ref('')
 
-// 电商模板路由 → 计费 entryCode，用于首页 ecommerce Tab 按当前模板询基础价
-const ECOMMERCE_ENTRY_CODE: Record<string, string> = {
-  '/e-commerce/product-detail': 'aPlusDetailPage',
-  '/e-commerce/product-kit': 'productSetImages',
-  '/e-commerce/product-clone': 'hitReplication',
-  '/e-commerce/product-in-hand': 'aiGestures',
-  '/e-commerce/video-clone': 'hitVideoReplication',
-  '/e-commerce/video-hot': 'hitVideo',
-  '/e-commerce/model-replace': 'personReplacement',
-  '/e-commerce/product-replace': 'productReplacement',
-  '/e-commerce/change-background': 'backgroundSwitching',
-  '/e-commerce/clothing-kit': 'wearingProductSetImages',
-  '/e-commerce/clothing-try': 'aiClothExchange',
-  '/e-commerce/clothing-remove-wrinkle': 'removeWrinkles',
-  '/e-commerce/merge-image': 'mergeClothes',
-  '/e-commerce/try-shoe': 'shoeSwapping',
+// 电商模板路由 → 完整询价入参，用于首页 ecommerce Tab 按当前模板询基础价。
+// 需要额外 modelCode/params 的模板，按对应子页面初始默认值补齐（缺失会导致 1003 或价格不一致）
+const ECOMMERCE_QUOTE: Record<string, IQuotePreview> = {
+  '/e-commerce/product-detail': { entryCode: 'aPlusDetailPage', params: { image_types: [] } },
+  '/e-commerce/product-kit': { entryCode: 'productSetImages', params: { white: 1, scence: 1, key_points: 1, detail: 0 } },
+  '/e-commerce/product-clone': { entryCode: 'hitReplication' },
+  '/e-commerce/product-in-hand': { entryCode: 'aiGestures' },
+  '/e-commerce/video-clone': { entryCode: 'hitVideoReplication', modelCode: 'local' },
+  '/e-commerce/video-hot': { entryCode: 'hitVideo', modelCode: 'local' },
+  '/e-commerce/model-replace': { entryCode: 'personReplacement' },
+  '/e-commerce/product-replace': { entryCode: 'productReplacement' },
+  '/e-commerce/change-background': { entryCode: 'backgroundSwitching' },
+  '/e-commerce/clothing-kit': { entryCode: 'wearingProductSetImages', params: { scenePhoto: [] } },
+  '/e-commerce/clothing-try': { entryCode: 'aiClothExchange' },
+  '/e-commerce/clothing-remove-wrinkle': { entryCode: 'removeWrinkles' },
+  '/e-commerce/merge-image': { entryCode: 'mergeClothes' },
+  '/e-commerce/try-shoe': { entryCode: 'shoeSwapping' },
 }
 
 // 提交前积分预览：按当前 Tab 镜像各自提交参数；ecommerce 按模板取 entryCode 询基础价
@@ -100,9 +101,8 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
         video: isAT ? v.video[0]?.url || '' : '',
       }
     }
-    // ecommerce：按当前模板路由取 entryCode，未知模板 → null（兜底「限免」）
-    const entryCode = ECOMMERCE_ENTRY_CODE[currentTemplateCode.value]
-    return entryCode ? { entryCode } : null
+    // ecommerce：按当前模板路由取完整询价入参（含默认 modelCode/params），未知模板 → null（兜底「限免」）
+    return ECOMMERCE_QUOTE[currentTemplateCode.value] ?? null
   },
   [
     () => activeChatTab.value,
