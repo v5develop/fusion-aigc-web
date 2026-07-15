@@ -310,12 +310,15 @@ const submit = () => {
               v-model:value="formData.video.modelCode"
               :options="videoEntryCodeOps.find((item) => item.value === formData.video.entryCode)?.modelOps!"
             />
-            <ChatInputSelect v-model:value="formData.video.ratio" :options="videoRatioOps" />
-            <ChatInputSelect
-              v-model:value="formData.video.resolution"
-              :options="modelOps.find((item) => item.value === formData.video.modelCode)?.resolutionOps!"
-            />
-            <ChatInputSelect v-model:value="formData.video.duration" :options="durationOps" />
+            <!-- 动作迁移由参考视频决定画幅/时长，无需选择比例/分辨率/时长 -->
+            <template v-if="formData.video.entryCode !== 'actionTransfer'">
+              <ChatInputSelect v-model:value="formData.video.ratio" :options="videoRatioOps" />
+              <ChatInputSelect
+                v-model:value="formData.video.resolution"
+                :options="modelOps.find((item) => item.value === formData.video.modelCode)?.resolutionOps!"
+              />
+              <ChatInputSelect v-model:value="formData.video.duration" :options="durationOps" />
+            </template>
           </div>
         </template>
       </ChatInputBox>
