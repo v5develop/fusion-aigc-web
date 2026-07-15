@@ -210,8 +210,40 @@ export function get<T = any>(url: string, params?: any, headers?: any): Promise<
 
 export interface SsePostHandlers {
   onDelta: (delta: string) => void
-  onDone?: () => void
+  /**
+   * 流结束回调。fullText 为「整段原始字节一次性权威解码」后重新解析出的完整正文，
+   * 上层应以它为准覆盖增量累加结果——增量阶段在部分宿主 webview 里可能丢字/乱码，
+   * 而非增量的整段解码在所有 webview 都稳。abort 中断时不带 fullText。
+   */
+  onDone?: (fullText?: string) => void
   onError?: (err: unknown) => void
+}
+
+/**
+ * 从完整 SSE 文本中提取拼接后的正文（与增量 onDelta 的拼接结果一致）。
+ * 用于流结束时对「整段原始字节一次性解码」出的字符串做权威重解析，规避各宿主 webview
+ * 增量解码（TextDecoder stream 模式）在多字节字符 chunk 边界上的丢字/乱码差异。
+ */
+function parseSseDeltas(text: string): string {
+  const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  let ev = 'message'
+  let out = ''
+  for (const line of norm.split('\n')) {
+    if (!line.trim()) {
+      ev = 'message'
+      continue
+    }
+    const di = line.indexOf('data:')
+    if (di === -1) {
+      if (line.startsWith('event:')) ev = line.slice(6).trim()
+      continue
+    }
+    const head = line.slice(0, di)
+    if (head.startsWith('event:')) ev = head.slice(6).trim()
+    if (ev === 'done') break
+    if (ev === 'delta' || ev === 'message') out += line.slice(di + 5).replace(/^ /, '')
+  }
+  return out
 }
 
 /**
@@ -222,10 +254,10 @@ export interface SsePostHandlers {
 export function ssePost(url: string, data: any, handlers: SsePostHandlers): () => void {
   const controller = new AbortController()
   let doneFired = false
-  const fireDone = () => {
+  const fireDone = (fullText?: string) => {
     if (doneFired) return
     doneFired = true
-    handlers.onDone?.()
+    handlers.onDone?.(fullText)
   }
 
   const doFetch = () => {
@@ -264,6 +296,23 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      // 保存全部原始字节：结束时用一次性（非增量）解码得到权威全文，
+      // 覆盖增量阶段在部分宿主 webview 里可能出现的丢字/乱码
+      const rawChunks: Uint8Array[] = []
+
+      // 结束：以整段原始字节权威解码出的全文交给上层覆盖增量结果
+      const finishDone = () => {
+        if (doneFired) return
+        let total = 0
+        for (const c of rawChunks) total += c.byteLength
+        const merged = new Uint8Array(total)
+        let off = 0
+        for (const c of rawChunks) {
+          merged.set(c, off)
+          off += c.byteLength
+        }
+        fireDone(parseSseDeltas(new TextDecoder().decode(merged)))
+      }
 
       // 后端输出不是规范 SSE：event 与 data 常写在同一行（event:deltadata:xxx）、
       // 事件间仅单个换行、无空行分帧。故不按「空行分帧」解析，而是逐行容错处理：
@@ -278,7 +327,7 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
         if (dataIdx === -1) {
           if (line.startsWith('event:')) {
             curEvent = line.slice(6).trim()
-            if (curEvent === 'done') fireDone()
+            if (curEvent === 'done') finishDone()
           }
           return
         }
@@ -286,7 +335,7 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
         if (head.startsWith('event:')) curEvent = head.slice(6).trim()
         const data = line.slice(dataIdx + 5).replace(/^ /, '')
         if (curEvent === 'done') {
-          fireDone()
+          finishDone()
         } else if (curEvent === 'delta' || curEvent === 'message') {
           if (data) handlers.onDelta(data)
         }
@@ -295,6 +344,7 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
+        if (value) rawChunks.push(value)
         buffer += decoder.decode(value, { stream: true })
         // 行分隔符归一为 LF（兼容 CRLF/CR）；末尾裸 \r 可能是被分包劈开的 CRLF 前半，
         // 留待下一个 chunk 拼接后再归一
@@ -306,9 +356,11 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
           handleLine(line)
         }
       }
+      // flush 解码器：收尾被 chunk 边界劈开的多字节序列，避免尾字丢失
+      buffer += decoder.decode()
       buffer = buffer.replace(/\r/g, '\n')
       for (const line of buffer.split('\n')) handleLine(line)
-      fireDone()
+      finishDone()
     } catch (err) {
       if ((err as any)?.name !== 'AbortError') handlers.onError?.(err)
     }

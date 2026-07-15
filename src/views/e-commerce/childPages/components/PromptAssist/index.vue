@@ -34,9 +34,11 @@ const getPrompt = () => {
       onDelta: delta => {
         value.value += delta
       },
-      onDone: () => {
+      onDone: fullText => {
         loading.value = false
         abort = null
+        // 以整段字节权威解码的全文为准覆盖增量结果，纠正部分宿主 webview 增量解码的丢字/乱码
+        if (fullText) value.value = fullText
         // 流式无任何输出时（模型不可用/模板缺失），回退用户原输入，避免清空丢失
         if (!value.value) value.value = userInput
       },
