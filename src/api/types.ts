@@ -18,6 +18,10 @@ export interface IAssetAll {
   type: string // customizedmodel:本地local上传, realpersonmodel:豆包验证库
 }
 
+export interface IAssetBatchDelete {
+  ids: number[] // 资产 id 列表
+}
+
 export interface IFaceRecognition {
   modelCode: string
   imageUrls: string[]

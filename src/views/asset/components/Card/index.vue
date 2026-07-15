@@ -1,25 +1,29 @@
 <script setup lang="ts">
 import { inject, type Ref } from 'vue'
 
-const { data } = defineProps<{ data: { resultUrl: string; status: 0 | 1 | 2 | 3; mediaType: 'image' | 'video' } }>()
+const { data } = defineProps<{
+  data: { id: number; resultUrl: string; status: 0 | 1 | 2 | 3; mediaType: 'image' | 'video' }
+}>()
 
-const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', undefined)
+// 管理模式开关 + 已选资产 id 集合（删除按 id、下载按 resultUrl，故选择以 id 为准）
+const manageMode = inject<Ref<boolean> | undefined>('assetManageMode', undefined)
+const selectedIds = inject<Ref<Set<number>> | undefined>('assetSelectedIds', undefined)
 
-// 切换单张图片选中
+// 切换单张素材选中
 const toggleImage = () => {
-  if (selectImgUrls?.value.has(data.resultUrl)) {
-    selectImgUrls?.value.delete(data.resultUrl)
+  if (selectedIds?.value.has(data.id)) {
+    selectedIds?.value.delete(data.id)
   } else {
-    selectImgUrls?.value.add(data.resultUrl)
+    selectedIds?.value.add(data.id)
   }
 }
 
-// 判断单张图片是否选中
-const isImgChecked = () => selectImgUrls?.value.has(data.resultUrl)
+// 判断单张素材是否选中
+const isImgChecked = () => selectedIds?.value.has(data.id)
 </script>
 
 <template>
-  <div class="card" :class="{ cursor: selectImgUrls }">
+  <div class="card" :class="{ cursor: manageMode }">
     <template v-if="data.resultUrl">
       <n-image
         v-if="data.mediaType === 'image'"
@@ -55,7 +59,7 @@ const isImgChecked = () => selectImgUrls?.value.has(data.resultUrl)
     </div>
 
     <i
-      v-if="selectImgUrls"
+      v-if="manageMode"
       :class="isImgChecked() ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"
       class="icon"
       @click="toggleImage"
@@ -66,11 +70,6 @@ const isImgChecked = () => selectImgUrls?.value.has(data.resultUrl)
 <style scoped lang="less">
 .card {
   position: relative;
-  &:hover {
-    > .icon {
-      opacity: 1;
-    }
-  }
   .video {
     width: 100%;
     height: 100%;
@@ -142,8 +141,6 @@ const isImgChecked = () => selectImgUrls?.value.has(data.resultUrl)
     position: absolute;
     top: 10px;
     right: 20px;
-    opacity: 0;
-    transition: opacity 0.2s;
   }
 }
 </style>

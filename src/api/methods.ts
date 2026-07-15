@@ -44,6 +44,11 @@ export function assetAll(params: types.IAssetAll, headers?: any) {
   return get('/api/v1/asset/all', params, headers)
 }
 
+/** 批量删除资产：ids 为资产 id 列表 */
+export function assetBatchDelete(data: types.IAssetBatchDelete) {
+  return post('/api/v1/asset/batch-delete', data)
+}
+
 export function faceRecognition(data: types.IFaceRecognition) {
   return post('/api/v1/creation/face-recognition/submit', data)
 }
