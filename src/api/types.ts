@@ -72,6 +72,7 @@ export interface IQuotePreview {
     [key: string]: any
   }
   imageUrls?: string[]
+  video?: string
 }
 
 export interface IPromptList {

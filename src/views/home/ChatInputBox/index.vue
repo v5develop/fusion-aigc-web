@@ -18,6 +18,10 @@ interface IProps {
   promptDisabled?: boolean
   promptPlaceholder?: string
   mode?: 'default' | 'slot'
+  /** 本次生成所需积分：>0 显示数字，0/null 显示「限免」 */
+  pricePoints?: number | null
+  /** 询价失败：显示「获取失败」 */
+  quoteFailed?: boolean
 }
 const {
   submit,
@@ -31,6 +35,8 @@ const {
   promptDisabled = false,
   promptPlaceholder = '和我聊聊，你想要什么设计。',
   mode = 'default',
+  pricePoints,
+  quoteFailed,
 } = defineProps<IProps>()
 const formData = defineModel<any>('formData')
 const slots = defineModel<PromptSlot[]>('slots')
@@ -145,8 +151,8 @@ const handlePaste = (e: ClipboardEvent) => {
       <slot name="bottomSelect"></slot>
 
       <div class="send-cont">
-        <i class="icon-ic_hone_bean"></i>
-        <span>限免</span>
+        <i v-if="!quoteFailed" class="icon-ic_hone_bean"></i>
+        <span>{{ quoteFailed ? '获取失败' : pricePoints ? pricePoints : '限免' }}</span>
         <div class="btn" @click="submit" v-loading="btnLoading">
           <i class="icon-ic_home_send"></i>
         </div>

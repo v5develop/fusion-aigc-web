@@ -10,6 +10,7 @@ import { entryCodeOps, ratioOps } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import { useInitCheckTaskStatus } from './hooks.ts'
+import { useQuotePreview } from '@/utils/hooks'
 import { useMessage } from 'naive-ui'
 import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
@@ -42,6 +43,25 @@ const formData = reactive(
     images: [],
   },
 )
+// 提交前积分预览：镜像提交参数，切换入口/比例时防抖重询
+const { pricePoints, status: quoteStatus } = useQuotePreview(
+  () => {
+    const [w, h] = formData.ratio.split(',')
+    return {
+      entryCode: formData.entryCode,
+      modelCode: 'local-image',
+      params: {
+        prompt: formData.prompt,
+        width: +w!,
+        height: +h!,
+        num: formData.entryCode === 'textToImage' ? 4 : 1,
+      },
+      imageUrls: formData.images,
+    }
+  },
+  [() => formData.entryCode, () => formData.ratio],
+)
+
 const pagingData = reactive({
   page: 1,
   pageSize: 8,
@@ -302,6 +322,8 @@ const generateAgainSingle = async (item: any, key: string) => {
         :btnLoading="btnLoading"
         :imageLimit="3"
         :showImageUpload="formData.entryCode === 'imageToImage'"
+        :pricePoints="pricePoints"
+        :quoteFailed="quoteStatus === 'error'"
       >
         <template #bottomSelect>
           <ChatInputSelect v-model:value="formData.entryCode" :options="entryCodeOps" />

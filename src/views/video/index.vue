@@ -10,6 +10,7 @@ import { storeToRefs } from 'pinia'
 import type { ICreationSubmit } from '@/api/types.ts'
 import { creationHistory } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
+import { useQuotePreview } from '@/utils/hooks'
 import { useMessage } from 'naive-ui'
 import { download, showDownloadBtn } from '@/views/picture/utils.ts'
 import { getMetaData, isMixedSize, buildResubmitParams } from './utils.ts'
@@ -54,6 +55,30 @@ const formData = reactive(
     images: [],
     video: [],
   },
+)
+
+// 提交前积分预览：镜像提交参数，切换入口/模型/比例/分辨率/时长时防抖重询
+const { pricePoints, status: quoteStatus } = useQuotePreview(
+  () => {
+    const isAT = formData.entryCode === 'actionTransfer'
+    return {
+      entryCode: formData.entryCode,
+      modelCode: formData.modelCode,
+      params: {
+        prompt: formData.prompt,
+        ...(isAT ? {} : { resolution: formData.resolution, aspectRatio: formData.ratio, duration: formData.duration }),
+      },
+      imageUrls: formData.images,
+      video: isAT ? formData.video[0]?.url || '' : '',
+    }
+  },
+  [
+    () => formData.entryCode,
+    () => formData.modelCode,
+    () => formData.resolution,
+    () => formData.duration,
+    () => formData.ratio,
+  ],
 )
 
 // 切换生成模式时校验已选图片：超出新模式上限只保留前面的，文生视频不需要图片则清空
@@ -341,6 +366,8 @@ const getSourceVideo = (inputParams: any): string => {
         :btnLoading="btnLoading"
         :showImageUpload="formData.entryCode !== 'textToVideo'"
         :showVideoUpload="formData.entryCode === 'actionTransfer'"
+        :pricePoints="pricePoints"
+        :quoteFailed="quoteStatus === 'error'"
         v-bind="config[formData.entryCode]"
       >
         <template #bottomSelect>

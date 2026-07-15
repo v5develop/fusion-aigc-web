@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { publicDisplay, promptList, promptDetail } from '@/api/methods.ts'
 import type { IPromptCard } from '@/api/types'
-import { useDebounce } from '@/utils/hooks'
+import { useDebounce, useQuotePreview } from '@/utils/hooks'
 import ImageTab from './ImageTab/index.vue'
 import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
 import { filterData1, filterData2 } from './constants.ts'
@@ -36,7 +36,7 @@ const formData = reactive({
     entryCode: 'imageToImage',
     prompt: '',
     ratio: '1024,1024',
-    images: [],
+    images: [] as string[],
   },
   video: {
     entryCode: 'imageToVideo',
@@ -45,8 +45,8 @@ const formData = reactive({
     ratio: '720,1280',
     resolution: '720p',
     duration: 4,
-    images: [],
-    video: [],
+    images: [] as string[],
+    video: [] as FileItem[],
   },
   ecommerce: {
     slots: [] as PromptSlot[],
@@ -56,6 +56,66 @@ const formData = reactive({
 const homeRef = ref<HTMLDivElement | null>(null)
 
 const currentTemplateCode = ref('')
+
+// 电商模板路由 → 计费 entryCode，用于首页 ecommerce Tab 按当前模板询基础价
+const ECOMMERCE_ENTRY_CODE: Record<string, string> = {
+  '/e-commerce/product-detail': 'aPlusDetailPage',
+  '/e-commerce/product-kit': 'productSetImages',
+  '/e-commerce/product-clone': 'hitReplication',
+  '/e-commerce/product-in-hand': 'aiGestures',
+  '/e-commerce/video-clone': 'hitVideoReplication',
+  '/e-commerce/video-hot': 'hitVideo',
+  '/e-commerce/model-replace': 'personReplacement',
+  '/e-commerce/product-replace': 'productReplacement',
+  '/e-commerce/change-background': 'backgroundSwitching',
+  '/e-commerce/clothing-kit': 'wearingProductSetImages',
+  '/e-commerce/clothing-try': 'aiClothExchange',
+  '/e-commerce/clothing-remove-wrinkle': 'removeWrinkles',
+  '/e-commerce/merge-image': 'mergeClothes',
+  '/e-commerce/try-shoe': 'shoeSwapping',
+}
+
+// 提交前积分预览：按当前 Tab 镜像各自提交参数；ecommerce 按模板取 entryCode 询基础价
+const { pricePoints, status: quoteStatus } = useQuotePreview(
+  () => {
+    const tab = activeChatTab.value
+    if (tab === 'picture') {
+      const p = formData.picture
+      const [w, h] = p.ratio.split(',')
+      return {
+        entryCode: p.entryCode,
+        modelCode: 'local-image',
+        params: { prompt: p.prompt, width: +w!, height: +h!, num: p.entryCode === 'textToImage' ? 4 : 1 },
+        imageUrls: p.images,
+      }
+    }
+    if (tab === 'video') {
+      const v = formData.video
+      const isAT = v.entryCode === 'actionTransfer'
+      return {
+        entryCode: v.entryCode,
+        modelCode: v.modelCode,
+        params: { prompt: v.prompt, ...(isAT ? {} : { resolution: v.resolution, aspectRatio: v.ratio, duration: v.duration }) },
+        imageUrls: v.images,
+        video: isAT ? v.video[0]?.url || '' : '',
+      }
+    }
+    // ecommerce：按当前模板路由取 entryCode，未知模板 → null（兜底「限免」）
+    const entryCode = ECOMMERCE_ENTRY_CODE[currentTemplateCode.value]
+    return entryCode ? { entryCode } : null
+  },
+  [
+    () => activeChatTab.value,
+    () => currentTemplateCode.value,
+    () => formData.picture.entryCode,
+    () => formData.picture.ratio,
+    () => formData.video.entryCode,
+    () => formData.video.modelCode,
+    () => formData.video.resolution,
+    () => formData.video.duration,
+    () => formData.video.ratio,
+  ],
+)
 
 function getOssThumbnail(url?: string): string {
   if (!url) return ''
@@ -235,6 +295,8 @@ const submit = () => {
           (activeChatTab === 'video' && formData.video.entryCode !== 'textToVideo')
         "
         :submit="submit"
+        :pricePoints="pricePoints"
+        :quoteFailed="quoteStatus === 'error'"
         v-bind="activeChatTab === 'video' ? videoConfig[formData.video.entryCode] : {}"
       >
         <template #bottomSelect>
