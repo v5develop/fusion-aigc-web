@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
     },
-    // jszip 仅通过懒加载路由里的动态 import() 引用，显式声明确保 Vite 预构建它
+    // 显式声明确保 Vite 预构建 jszip（电商素材打包下载用）
     optimizeDeps: {
       include: ['jszip'],
     },

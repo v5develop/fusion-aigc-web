@@ -3,6 +3,7 @@
  * 单图：fetch→blob→<a download>，跨域失败时降级为 OSS response-content-disposition 强制下载。
  * 整组：优先打包 ZIP（需 fetch 到二进制），任一图片抓取失败则整体降级为逐张下载。
  */
+import JSZip from 'jszip'
 
 /** 取一组任务里可下载的图片 URL（仅生成成功、有 resultUrl 的） */
 export function getDownloadableUrls(item: any): string[] {
@@ -97,7 +98,6 @@ export async function downloadImagesAsZip(urls: string[], zipName = 'AI素材'):
         return { blob: await res.blob(), ext: extFromUrl(url) }
       }),
     )
-    const { default: JSZip } = await import('jszip')
     const zip = new JSZip()
     files.forEach((file, i) => {
       zip.file(`${zipName}_${i + 1}.${file.ext}`, file.blob)
