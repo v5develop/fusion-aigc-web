@@ -1,9 +1,11 @@
 @main-color: var(--main-color);
 
-.scrollbar(@width: 12px, @trackColor: transparent, @thumbColor: #cccccc) {
+// @width 轨道总宽；@thumbWidth 滑块可视宽（默认与轨道同宽=旧行为，通过透明 border+content-box 让滑块比轨道细）；@hoverColor 悬停色
+.scrollbar(@width: 12px, @trackColor: transparent, @thumbColor: #cccccc, @thumbWidth: @width, @hoverColor: #999) {
   /* 整个滚动条 */
   &::-webkit-scrollbar {
-    width: @width; /* 滚动条的宽度 */
+    width: @width; /* 纵向滚动条宽度 */
+    height: @width; /* 横向滚动条高度 */
   }
 
   /* 滚动条轨道 */
@@ -15,11 +17,15 @@
   &::-webkit-scrollbar-thumb {
     background: @thumbColor; /* 滑块颜色 */
     border-radius: 10px; /* 滑块圆角 */
+    /* 透明 border + content-box：滑块可视宽 = 轨道宽 - 两侧 border，实现滑块比轨道细并居中 */
+    border: ~'calc((@{width} - @{thumbWidth}) / 2)' solid transparent;
+    background-clip: content-box;
   }
 
   /* 滑块在鼠标悬停时的样式 */
   &::-webkit-scrollbar-thumb:hover {
-    background: #999; /* 滑块悬停时的颜色 */
+    background: @hoverColor; /* 滑块悬停时的颜色 */
+    background-clip: content-box;
     cursor: pointer;
   }
 }

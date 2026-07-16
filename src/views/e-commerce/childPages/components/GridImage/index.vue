@@ -46,9 +46,11 @@ const selectColor = () => {
 </template>
 
 <style scoped lang="less">
+@import '@/assets/variables.less';
 .grid-container {
   max-height: 400px;
   overflow: auto;
+  .scrollbar(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;

@@ -146,7 +146,10 @@ function useIntegral() {
             VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/try-shoe7.png',
           ]"
         >
-          <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
+          <span style="color: #9e9e9e; margin-top: 15px; text-align: center"
+            >建议上传白底、无杂物的单独鞋子素材，复杂背景会影响试鞋合成效果</span
+          >
+          <span style="color: #9e9e9e; margin-top: 4px">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>
 
         <div class="module-title">选择试鞋模版</div>

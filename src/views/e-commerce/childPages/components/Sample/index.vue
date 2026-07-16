@@ -23,6 +23,7 @@ const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 </template>
 
 <style scoped lang="less">
+@import '@/assets/variables.less';
 .sample-cont {
   width: 100%;
   height: 100%;
@@ -31,6 +32,7 @@ const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
   left: 0;
   padding: 40px 48px;
   overflow: auto;
+  .scrollbar(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
   display: flex;
   flex-direction: column;
   justify-content: center;

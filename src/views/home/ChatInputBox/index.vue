@@ -181,7 +181,7 @@ const handlePaste = (e: ClipboardEvent) => {
   > .main-content {
     height: 100px;
     display: flex;
-    gap: 20px;
+    gap: 24px;
     > .upload-cont {
       height: 80px;
       flex-shrink: 0;

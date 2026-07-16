@@ -277,7 +277,7 @@ const tryClick = (url: string) => {
 
   > .try-try {
     margin-top: 12px;
-    padding-right: 2px;
+    padding: 0 14px;
     height: 44px;
     border-radius: 8px;
     background: #edeff5;
@@ -286,7 +286,7 @@ const tryClick = (url: string) => {
     > .title {
       font-size: 12px;
       color: #9e9e9e;
-      padding: 0 5px;
+      padding: 0 5px 0 6px;
     }
     > .content {
       flex: 1;

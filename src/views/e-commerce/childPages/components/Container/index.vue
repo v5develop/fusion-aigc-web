@@ -31,6 +31,7 @@ const { title, submit, loading, integral } = defineProps<{
 </template>
 
 <style scoped lang="less">
+@import '@/assets/variables.less';
 .container {
   height: 100%;
   display: flex;
@@ -53,6 +54,7 @@ const { title, submit, loading, integral } = defineProps<{
       flex: 1;
       padding: 0 16px;
       overflow: auto;
+      .scrollbar(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
     }
     > .generate-btn {
       height: 44px;
@@ -84,6 +86,7 @@ const { title, submit, loading, integral } = defineProps<{
     height: 100%;
     position: relative;
     overflow: auto;
+    .scrollbar(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
   }
 }
 </style>
