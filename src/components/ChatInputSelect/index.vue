@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { getOptionIcon, type IconCategory } from './icons.ts'
 
 interface IOption {
   label: string
@@ -7,7 +8,11 @@ interface IOption {
   icon?: string
 }
 
-const { options, title } = defineProps<{ options: IOption[]; title?: string }>()
+const { options, title, iconCategory } = defineProps<{
+  options: IOption[]
+  title?: string
+  iconCategory?: IconCategory
+}>()
 const value = defineModel<string | number>('value', { required: true })
 
 const visible = ref(false)
@@ -15,6 +20,9 @@ const dropdownRef = ref<HTMLElement | null>(null)
 
 // 当前选中项
 const currentOption = computed(() => options.find((o) => o.value === value.value))
+
+// 选项前的设计图标（按 iconCategory + 选项生成）
+const iconFor = (option: IOption) => getOptionIcon(iconCategory, option)
 
 const toggle = () => {
   visible.value = !visible.value
@@ -113,6 +121,7 @@ onUnmounted(() => {
   <div ref="dropdownRef" class="chat-select">
     <div class="trigger" @click="toggle">
       <i v-if="currentOption?.icon" :class="currentOption.icon" class="trigger-icon"></i>
+      <span v-if="iconCategory && currentOption" class="opt-icon" v-html="iconFor(currentOption)"></span>
       <span class="label">{{ currentOption?.label || '请选择' }}</span>
       <svg
         class="arrow"
@@ -144,6 +153,7 @@ onUnmounted(() => {
           @click.stop="select(option)"
         >
           <i v-if="option.icon" :class="option.icon"></i>
+          <span v-if="iconCategory" class="opt-icon" v-html="iconFor(option)"></span>
           <span class="option-label">{{ option.label }}</span>
           <svg
             v-if="value === option.value"
@@ -186,6 +196,19 @@ onUnmounted(() => {
     .trigger-icon {
       font-size: 14px;
       color: #3a3a3a;
+    }
+
+    .opt-icon {
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      :deep(svg) {
+        display: block;
+        width: 16px;
+        height: 16px;
+      }
     }
 
     .label {
@@ -253,6 +276,19 @@ onUnmounted(() => {
       align-items: center;
       gap: 8px;
       transition: background 0.15s ease;
+
+      .opt-icon {
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+        :deep(svg) {
+          display: block;
+          width: 16px;
+          height: 16px;
+        }
+      }
 
       .check {
         margin-left: auto;
