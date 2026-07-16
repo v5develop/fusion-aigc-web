@@ -328,8 +328,13 @@ const generateAgainSingle = async (item: any, key: string) => {
         :quoteFailed="quoteStatus === 'error'"
       >
         <template #bottomSelect>
-          <ChatInputSelect v-model:value="formData.entryCode" :options="entryCodeOps" />
-          <ChatInputSelect v-model:value="formData.ratio" :options="ratioOps" style="margin-left: 10px" />
+          <ChatInputSelect v-model:value="formData.entryCode" title="选择创作类型" :options="entryCodeOps" />
+          <ChatInputSelect
+            v-model:value="formData.ratio"
+            title="选择比例"
+            :options="ratioOps"
+            style="margin-left: 10px"
+          />
         </template>
       </ChatInputBox>
     </div>

@@ -301,23 +301,30 @@ const submit = () => {
       >
         <template #bottomSelect>
           <div v-if="activeChatTab === 'picture'" class="select-cont">
-            <ChatInputSelect v-model:value="formData.picture.entryCode" :options="entryCodeOps" />
-            <ChatInputSelect v-model:value="formData.picture.ratio" :options="ratioOps" style="margin-left: 10px" />
+            <ChatInputSelect v-model:value="formData.picture.entryCode" title="选择创作类型" :options="entryCodeOps" />
+            <ChatInputSelect
+              v-model:value="formData.picture.ratio"
+              title="选择比例"
+              :options="ratioOps"
+              style="margin-left: 10px"
+            />
           </div>
           <div v-else-if="activeChatTab === 'video'" class="select-cont">
-            <ChatInputSelect v-model:value="formData.video.entryCode" :options="videoEntryCodeOps" />
+            <ChatInputSelect v-model:value="formData.video.entryCode" title="选择创作类型" :options="videoEntryCodeOps" />
             <ChatInputSelect
               v-model:value="formData.video.modelCode"
+              title="选择模型"
               :options="videoEntryCodeOps.find((item) => item.value === formData.video.entryCode)?.modelOps!"
             />
             <!-- 动作迁移由参考视频决定画幅/时长，无需选择比例/分辨率/时长 -->
             <template v-if="formData.video.entryCode !== 'actionTransfer'">
-              <ChatInputSelect v-model:value="formData.video.ratio" :options="videoRatioOps" />
+              <ChatInputSelect v-model:value="formData.video.ratio" title="选择比例" :options="videoRatioOps" />
               <ChatInputSelect
                 v-model:value="formData.video.resolution"
+                title="选择分辨率"
                 :options="modelOps.find((item) => item.value === formData.video.modelCode)?.resolutionOps!"
               />
-              <ChatInputSelect v-model:value="formData.video.duration" :options="durationOps" />
+              <ChatInputSelect v-model:value="formData.video.duration" title="选择时长" :options="durationOps" />
             </template>
           </div>
         </template>

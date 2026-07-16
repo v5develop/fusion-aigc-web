@@ -374,19 +374,21 @@ const getSourceVideo = (inputParams: any): string => {
       >
         <template #bottomSelect>
           <div class="select-cont">
-            <ChatInputSelect v-model:value="formData.entryCode" :options="entryCodeOps" />
+            <ChatInputSelect v-model:value="formData.entryCode" title="选择创作类型" :options="entryCodeOps" />
             <ChatInputSelect
               v-model:value="formData.modelCode"
+              title="选择模型"
               :options="entryCodeOps.find((item) => item.value === formData.entryCode)?.modelOps!"
             />
             <!-- 动作迁移由参考视频决定画幅/时长，无需选择比例/分辨率/时长 -->
             <template v-if="formData.entryCode !== 'actionTransfer'">
-              <ChatInputSelect v-model:value="formData.ratio" :options="ratioOps" />
+              <ChatInputSelect v-model:value="formData.ratio" title="选择比例" :options="ratioOps" />
               <ChatInputSelect
                 v-model:value="formData.resolution"
+                title="选择分辨率"
                 :options="modelOps.find((item) => item.value === formData.modelCode)?.resolutionOps!"
               />
-              <ChatInputSelect v-model:value="formData.duration" :options="durationOps" />
+              <ChatInputSelect v-model:value="formData.duration" title="选择时长" :options="durationOps" />
             </template>
           </div>
         </template>

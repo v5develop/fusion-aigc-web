@@ -7,7 +7,7 @@ interface IOption {
   icon?: string
 }
 
-const { options } = defineProps<{ options: IOption[] }>()
+const { options, title } = defineProps<{ options: IOption[]; title?: string }>()
 const value = defineModel<string | number>('value', { required: true })
 
 const visible = ref(false)
@@ -135,6 +135,7 @@ onUnmounted(() => {
 
     <Transition name="slide-fade">
       <ul v-show="visible" ref="dropdownListRef" class="dropdown" :class="{ 'placement-top': placement === 'top' }">
+        <li v-if="title" class="dropdown-title">{{ title }}</li>
         <li
           v-for="option in options"
           :key="option.value"
@@ -143,7 +144,24 @@ onUnmounted(() => {
           @click.stop="select(option)"
         >
           <i v-if="option.icon" :class="option.icon"></i>
-          <span>{{ option.label }}</span>
+          <span class="option-label">{{ option.label }}</span>
+          <svg
+            v-if="value === option.value"
+            class="check"
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M3.5 8.5L6.5 11.5L12.5 4.5"
+              stroke="#8E66F9"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
         </li>
       </ul>
     </Transition>
@@ -192,14 +210,14 @@ onUnmounted(() => {
     overflow: auto;
     position: absolute;
     top: calc(100% + 2px);
-    left: -8px;
-    min-width: calc(100% + 16px);
+    left: 0;
+    min-width: 148px;
     margin: 0;
-    padding: 4px;
+    padding: 8px 4px;
     list-style: none;
     background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.12);
     display: flex;
     flex-direction: column;
     z-index: 1000;
@@ -210,25 +228,45 @@ onUnmounted(() => {
       bottom: calc(100% + 2px);
     }
 
-    .option {
+    // 顶部标题（选择比例/时长…），设计：辅助文字灰
+    .dropdown-title {
+      position: sticky;
+      top: 0;
       padding: 8px 16px;
-      font-size: 12px;
+      font-size: 14px;
+      line-height: 20px;
+      color: #8f8f8f;
+      white-space: nowrap;
+      cursor: default;
+      background: #fff;
+    }
+
+    .option {
+      padding: 10px 16px;
+      font-size: 14px;
+      line-height: 20px;
       color: #3a3a3a;
-      border-radius: 2px;
+      border-radius: 8px;
       cursor: pointer;
       white-space: nowrap;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       transition: background 0.15s ease;
 
-      &:hover {
-        background: #f5f5f5;
+      .check {
+        margin-left: auto;
+        flex-shrink: 0;
       }
 
+      &:hover {
+        background: #f5f6f8;
+      }
+
+      // 选中态：浅灰底 + 右侧紫色对勾（正文色不变）
       &.active {
-        color: #8e66f9;
-        background: #f5f0ff;
+        color: #3a3a3a;
+        background: #f5f6f8;
       }
     }
   }
