@@ -42,7 +42,7 @@ const formData = reactive({
     entryCode: 'imageToVideo',
     modelCode: 'local-video',
     prompt: '',
-    ratio: '720,1280',
+    ratio: '9:16',
     resolution: '720p',
     duration: 4,
     images: [] as string[],
