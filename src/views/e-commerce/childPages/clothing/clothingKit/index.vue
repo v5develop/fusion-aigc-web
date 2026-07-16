@@ -261,7 +261,13 @@ function useIntegral() {
         title="穿戴套图"
         :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
       >
-        <n-carousel style="height: 384px; width: 100%" dot-type="line" autoplay :interval="3000">
+        <n-carousel
+          style="height: 384px; width: 100%"
+          dot-type="line"
+          autoplay
+          :interval="3000"
+          :theme-overrides="{ dotColor: '#c4c4c4', dotColorActive: '#8e66f9' }"
+        >
           <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit1.webp'" alt="" />
           <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit2.webp'" alt="" />
           <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit3.webp'" alt="" />
@@ -299,12 +305,8 @@ function useIntegral() {
   }
   :deep(.n-carousel) {
     border-radius: 24px;
-    .n-carousel__dot {
-      background-color: #c4c4c4;
-    }
-    .n-carousel__dot--active {
-      background-color: var(--main-color) !important;
-    }
+    // 指示器颜色改用 n-carousel 的 theme-overrides（dotColor/dotColorActive）设置，
+    // 避免自定义 CSS 与 naive 运行时规则同权重打架导致非激活点仍是半透明白而"看不见"
   }
   .carousel-img {
     width: 100%;

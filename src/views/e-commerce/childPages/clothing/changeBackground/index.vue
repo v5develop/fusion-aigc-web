@@ -4,6 +4,7 @@ import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import Tab from '@/components/Tab/index.vue'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
+import { PRESET_SCENE_IMAGES } from '@/views/e-commerce/childPages/components/GridImage/ColorPicker/constants.ts'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
@@ -172,7 +173,8 @@ function useIntegral() {
             v-model:imageUrl="formData.bgImageUrl"
             :imgList="bgList.map((item) => item.url)"
             :scrollCallBack="bgScrollCallBack"
-            :showColorPicker="false"
+            :showColorPicker="true"
+            :presets="PRESET_SCENE_IMAGES"
           />
         </div>
 
