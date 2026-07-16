@@ -121,7 +121,6 @@ onUnmounted(() => {
   <div ref="dropdownRef" class="chat-select">
     <div class="trigger" @click="toggle">
       <i v-if="currentOption?.icon" :class="currentOption.icon" class="trigger-icon"></i>
-      <span v-if="iconCategory && currentOption" class="opt-icon" v-html="iconFor(currentOption)"></span>
       <span class="label">{{ currentOption?.label || '请选择' }}</span>
       <svg
         class="arrow"
