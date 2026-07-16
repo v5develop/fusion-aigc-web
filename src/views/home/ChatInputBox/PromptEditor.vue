@@ -281,6 +281,10 @@ function onClick(e: MouseEvent) {
     showDropdown(selectBlock, syncFromDOM)
     return
   }
+
+  // 点击编辑区内其它元素（模特图/上传块/文本等）时，收起已打开的下拉
+  // 下拉项挂在 body 上且自带 stopPropagation，不会触发此处，故不会误关。
+  closeAllDropdowns()
 }
 
 function onDocumentClick(e: MouseEvent) {
