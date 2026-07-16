@@ -161,7 +161,7 @@ function useIntegral() {
       <Sample
         v-else
         title="AI商品详情"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        :rightDesc="`上传产品素材，智能排版生成适配多电商平台规范的完整商品详情页。`"
         image="e-commerce/product-detail-sample.webp"
       />
     </template>

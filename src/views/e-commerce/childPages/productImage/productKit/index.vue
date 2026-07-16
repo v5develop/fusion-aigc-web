@@ -180,7 +180,7 @@ function useIntegral() {
               return true
             }
           "
-          placeholder="请输入商品信息包括:商品名称、商品描述、商品尺寸、目标受众、商品卖点。您也可以在上传多视角商品图后点击【A帮写】一键分析"
+          placeholder="建议填写产品名称、核心卖点、适用人群、使用场景、尺寸参数，生成高清写实电商详情图，自然光质感，完整展示产品细节，画面干净简约，符合电商商用标准画质。"
         />
 
         <div class="module-title">套图结构配置</div>
@@ -220,7 +220,7 @@ function useIntegral() {
       <Sample
         v-else
         title="AI商品套图"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的高转化率商品套图。`"
+        :rightDesc="`上传商品原图，支持自定义提示词或AI自动生成，批量产出全套多角度电商套图。`"
         image="e-commerce/product-kit-sample.webp"
       />
     </template>

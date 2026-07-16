@@ -181,7 +181,7 @@ function useIntegral() {
       <Sample
         v-else
         title="爆款视频"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的爆款视频。`"
+        :rightDesc="`上传商品素材，一键生成短平快带货短片，适配全平台店铺短视频流量需求。`"
       >
         <div class="video-cont">
           <div class="item" v-for="item in videoList" :key="item.title">

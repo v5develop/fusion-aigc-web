@@ -259,7 +259,7 @@ function useIntegral() {
       <Sample
         v-else
         title="穿戴套图"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        :rightDesc="`同款服饰搭配同一模特，批量生成居家、户外等多种场景穿搭成片。`"
       >
         <n-carousel
           style="height: 384px; width: 100%"

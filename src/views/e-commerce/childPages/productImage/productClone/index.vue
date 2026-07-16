@@ -153,7 +153,7 @@ function useIntegral() {
       <Sample
         v-else
         title="爆款图复刻"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        :rightDesc="`导入爆款参考图，复刻构图光影风格，快速产出同质感高清商品宣传图。`"
         image="e-commerce/product-clone-sample.webp"
       />
     </template>

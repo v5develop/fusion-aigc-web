@@ -202,7 +202,7 @@ function useIntegral() {
       <Sample
         v-else
         title="AI试鞋"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        :rightDesc="`上传鞋子单品图，自动生成真人上脚实拍图，省去线下实景拍摄流程。`"
         image="e-commerce/try-shoe.webp"
       >
       </Sample>

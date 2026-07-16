@@ -224,7 +224,7 @@ function useIntegral() {
               return true
             }
           "
-          placeholder="请输入生成穿搭描述，您也可以在上传多张素材图后点击【A帮写】一键分析"
+          placeholder="填写单品款式、整套搭配组合、风格卖点、拍摄场景、版型面料要求，融合多件素材生成光影色调统一、自然协调的真人成套穿搭效果图，画质高清干净，符合电商店铺商用标准。"
         />
       </div>
     </template>
@@ -237,7 +237,7 @@ function useIntegral() {
       <Sample
         v-else
         title="搭配融图"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        :rightDesc="`上衣、下装、配饰自由融合拼接，直观呈现完整成套穿搭视觉效果。`"
         image="e-commerce/merge-image.webp"
       >
       </Sample>

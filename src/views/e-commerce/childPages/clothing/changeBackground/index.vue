@@ -219,7 +219,7 @@ function useIntegral() {
       <Sample
         v-else
         title="人像换背景"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        :rightDesc="`完整保留模特人像主体，一键切换室内、海景等各类拍摄场景背景。`"
       >
         <video class="video" controls :src="VITE_OSS_ASSET_URL + 'e-commerce/video/change-background.mp4'"></video>
       </Sample>

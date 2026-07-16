@@ -70,7 +70,7 @@ function useIntegral() {
       <Sample
         v-else
         title="服装去皱"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        :rightDesc="`上传带褶皱服饰原图，一键智能抚平面料褶皱，还原平整高级服装质感。`"
         image="e-commerce/clothing-remove-wrinkle.webp"
       >
       </Sample>

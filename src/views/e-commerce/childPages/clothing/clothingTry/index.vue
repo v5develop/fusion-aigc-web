@@ -372,7 +372,7 @@ function useIntegral() {
       <Sample
         v-else
         title="AI试衣"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        :rightDesc="`上传服装平铺原图，智能匹配真人模特，生成实景上身穿搭展示效果图。`"
         image="e-commerce/clothing-try.webp"
       >
       </Sample>

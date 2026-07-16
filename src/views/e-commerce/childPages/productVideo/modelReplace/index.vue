@@ -133,6 +133,7 @@ function useIntegral() {
     <template #default>
       <div class="default-content">
         <div class="module-title">参考视频</div>
+        <div style="color: #9e9e9e; margin: -8px 0 12px">上传参考样片，AI 精准复刻镜头运镜、色调与画面整体风格</div>
         <VideoUpload v-model:videoList="formData.videoUrl" btnName="上传参考视频">
           <span style="color: #9e9e9e; margin-top: 15px">视频过长时，将自动压缩至15秒，确保最佳效果。</span>
         </VideoUpload>
@@ -206,7 +207,7 @@ function useIntegral() {
       <Sample
         v-else
         title="模特替换"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的商品详情页。`"
+        :rightDesc="`锁定画面场景灯光不变，自由更换出镜模特，快速更新商品人像展示素材。`"
       >
         <video class="video" controls :src="VITE_OSS_ASSET_URL + 'e-commerce/video/model-replace.mp4'"></video>
       </Sample>

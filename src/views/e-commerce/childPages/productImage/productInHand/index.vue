@@ -343,7 +343,7 @@ function useIntegral() {
       <Sample
         v-else
         title="手持商品"
-        :rightDesc="`上传商品图，Al 即刻生成符合 <span style='color: #8e66f9'>多电商平台规范</span> 的手持商品。`"
+        :rightDesc="`上传单品素材，自动生成真人手持实拍图，打造生活化真实商品展示效果。`"
         image="e-commerce/product-in-hand-sample.webp"
       />
     </template>
