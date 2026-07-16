@@ -177,12 +177,17 @@ function useIntegral() {
               btnName="上传模特图"
               :limitNumber="1"
               :topRightTips="false"
-            />
+            >
+              <span style="color: #9e9e9e; margin-top: 15px">建议上传模特全身图</span>
+              <span style="color: #9e9e9e; margin-top: 4px">图片大小20k-15M，分辨率大于400*400</span>
+            </ImageUpload>
           </div>
         </div>
 
         <div class="module-title">选择搭配图</div>
-        <ImageUpload v-model:imgList="formData.imageUrls" :limitNumber="7" btnName="上传搭配图" />
+        <ImageUpload v-model:imgList="formData.imageUrls" :limitNumber="7" btnName="上传搭配图">
+          <span style="color: #9e9e9e; margin-top: 15px">建议使用服饰白底图、服饰平铺图，识别效果更佳</span>
+        </ImageUpload>
 
         <div class="module-title">生成设置</div>
         <SelectGroup
