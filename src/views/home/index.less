@@ -25,6 +25,9 @@
       }
     }
     >.h1{
+      // 抬升到装饰光晕之上，避免 .top_bg::before 的模糊粉紫光晕覆盖标题、染浑颜色
+      position: relative;
+      z-index: 1;
       font-size: 28px;
       font-weight: bold;
       text-align: center;
