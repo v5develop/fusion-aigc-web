@@ -116,6 +116,8 @@ const downloadGroup = async (group: any) => {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      // 预留下载按钮高度，进入/退出管理态时行高不变，避免下方内容跳动
+      min-height: 40px;
       font-size: 16px;
       font-weight: 600;
       line-height: 22px;
