@@ -172,7 +172,7 @@ function useIntegral() {
 </script>
 
 <template>
-  <Container class="commerce" title="穿戴套图" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="AI穿戴套图" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -258,7 +258,7 @@ function useIntegral() {
       </div>
       <Sample
         v-else
-        title="穿戴套图"
+        title="AI穿戴套图"
         :rightDesc="`同款服饰搭配同一模特，批量生成居家、户外等多种场景穿搭成片。`"
       >
         <n-carousel

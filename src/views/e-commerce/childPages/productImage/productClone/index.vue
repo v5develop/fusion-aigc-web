@@ -85,7 +85,7 @@ function useIntegral() {
 </script>
 
 <template>
-  <Container class="commerce" title="爆款图复刻 " :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="爆款图复刻" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>

@@ -93,7 +93,7 @@ function useIntegral() {
 </script>
 
 <template>
-  <Container class="commerce" title="商品详情图" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="AI详情页" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -160,7 +160,7 @@ function useIntegral() {
       </div>
       <Sample
         v-else
-        title="AI商品详情"
+        title="AI详情页"
         :rightDesc="`上传产品素材，智能排版生成适配多电商平台规范的完整商品详情页。`"
         image="e-commerce/product-detail-sample.webp"
       />

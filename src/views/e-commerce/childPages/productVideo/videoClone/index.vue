@@ -86,7 +86,7 @@ function useIntegral() {
 </script>
 
 <template>
-  <Container class="commerce" title="复刻视频" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="视频复刻" :submit="submit" :loading="loading" :integral="integral">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -154,7 +154,7 @@ function useIntegral() {
       </div>
       <Sample
         v-else
-        title="爆款视频"
+        title="视频复刻"
         :rightDesc="`导入热门参考视频，复刻运镜色调，低成本快速制作同款风格带货视频。`"
       >
         <div class="video-cont">
