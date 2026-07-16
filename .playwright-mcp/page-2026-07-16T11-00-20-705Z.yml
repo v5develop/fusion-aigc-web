@@ -1,0 +1,10 @@
+- generic [active] [ref=f6e1]:
+  - generic [ref=f6e2]: 图生图
+  - generic [ref=f6e10]: 文生图
+  - generic [ref=f6e18]: 文生视频
+  - generic [ref=f6e26]: 图生视频
+  - generic [ref=f6e34]: 动作迁移
+  - generic [ref=f6e39]: 首尾帧视频
+  - generic [ref=f6e48]: 本地模型
+  - generic [ref=f6e56]: 1080p
+  - generic [ref=f6e62]: 5s
