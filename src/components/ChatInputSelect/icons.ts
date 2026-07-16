@@ -2,7 +2,8 @@
 // 比例图标是纯几何矩形，按选项 label(W:H) 生成对应比例的矩形轮廓（覆盖任意比例）。
 import IMG2IMG from '@/assets/icons/select/img2img.svg?raw'
 import TEXT2IMG from '@/assets/icons/select/text2img.svg?raw'
-import MODEL from '@/assets/icons/select/model.svg?raw'
+import MODEL_LOCAL from '@/assets/icons/select/model.svg?raw'
+import MODEL_SEEDANCE from '@/assets/icons/select/model-seedance.svg?raw'
 import RESOLUTION from '@/assets/icons/select/resolution.svg?raw'
 import DURATION from '@/assets/icons/select/duration.svg?raw'
 import TEXT2VIDEO from '@/assets/icons/select/video-text2video.svg?raw'
@@ -51,7 +52,8 @@ export function getOptionIcon(
     case 'duration':
       return DURATION
     case 'model':
-      return MODEL
+      // 本地模型 → 立方体；Seedance 等云端模型 → 彩色条
+      return /^local/i.test(String(option.value)) ? MODEL_LOCAL : MODEL_SEEDANCE
     case 'resolution':
       return RESOLUTION
     case 'entryCode':
