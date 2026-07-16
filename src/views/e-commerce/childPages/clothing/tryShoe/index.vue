@@ -53,8 +53,8 @@ const submit = () => {
 function useShoeList() {
   const shoeFilterData = reactive({
     gender: null,
-    age: null,
-    skin: null,
+    pose: null,
+    shoeStyle: null,
   })
   const pagingData = reactive({
     page: 1,
@@ -74,8 +74,8 @@ function useShoeList() {
       slotCode: 'shoeTemplate',
       filters: {
         gender: [shoeFilterData.gender],
-        age: [shoeFilterData.age],
-        skin: [shoeFilterData.skin],
+        pose: [shoeFilterData.pose],
+        shoeStyle: [shoeFilterData.shoeStyle],
       },
       ...pagingData,
     } as const
@@ -172,7 +172,6 @@ function useIntegral() {
               :col="3"
               style="margin-top: 12px"
               clearable
-              multiple
             />
             <GridImage
               style="margin-top: 8px"
