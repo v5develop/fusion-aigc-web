@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { inject, type Ref } from 'vue'
+import { CHECK_PATH } from '../../constants.ts'
 
 const { data } = defineProps<{
   data: { id: number; resultUrl: string; status: 0 | 1 | 2 | 3; mediaType: 'image' | 'video' }
@@ -58,12 +59,15 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
       </template>
     </div>
 
-    <i
-      v-if="manageMode"
-      :class="isImgChecked() ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"
-      class="icon"
-      @click="toggleImage"
-    />
+    <span v-if="manageMode" class="icon" @click="toggleImage">
+      <svg viewBox="0 0 16 16" width="20" height="20">
+        <template v-if="isImgChecked()">
+          <circle cx="8" cy="8" r="8" fill="#202020" />
+          <path :d="CHECK_PATH" fill="#FFFFFF" />
+        </template>
+        <circle v-else cx="8" cy="8" r="7.33" fill="#FFFFFF" stroke="#D8D8D8" stroke-width="1.33" />
+      </svg>
+    </span>
   </div>
 </template>
 
@@ -137,10 +141,14 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
     }
   }
   > .icon {
-    font-size: 28px;
     position: absolute;
     top: 10px;
     right: 20px;
+    display: inline-flex;
+    cursor: pointer;
+    > svg {
+      display: block;
+    }
   }
 }
 </style>
