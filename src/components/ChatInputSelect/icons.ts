@@ -5,6 +5,20 @@ import TEXT2IMG from '@/assets/icons/select/text2img.svg?raw'
 import MODEL from '@/assets/icons/select/model.svg?raw'
 import RESOLUTION from '@/assets/icons/select/resolution.svg?raw'
 import DURATION from '@/assets/icons/select/duration.svg?raw'
+import TEXT2VIDEO from '@/assets/icons/select/video-text2video.svg?raw'
+import IMG2VIDEO from '@/assets/icons/select/video-img2video.svg?raw'
+import ACTION_TRANSFER from '@/assets/icons/select/video-action.svg?raw'
+import FIRST_LAST_FRAMES from '@/assets/icons/select/video-frames.svg?raw'
+
+// entryCode 各选项对应设计切图（按精确 value 映射，每个创作类型有各自图标）
+const ENTRY_CODE_ICONS: Record<string, string> = {
+  imageToImage: IMG2IMG,
+  textToImage: TEXT2IMG,
+  textToVideo: TEXT2VIDEO,
+  imageToVideo: IMG2VIDEO,
+  actionTransfer: ACTION_TRANSFER,
+  firstLastFrames: FIRST_LAST_FRAMES,
+}
 
 // 比例：按 label "W:H" 生成对应比例的矩形轮廓（几何图形，非插画重绘；覆盖任意比例，「智能比例」→ 正方形）
 export function ratioIconSvg(label: string): string {
@@ -41,8 +55,8 @@ export function getOptionIcon(
     case 'resolution':
       return RESOLUTION
     case 'entryCode':
-      // 文生* → 文生图；其余（图生/动作迁移/首尾帧）→ 图生图
-      return /^text/i.test(String(option.value)) ? TEXT2IMG : IMG2IMG
+      // 按精确 value 映射到对应创作类型图标；未知值兜底用图生图
+      return ENTRY_CODE_ICONS[String(option.value)] ?? IMG2IMG
     default:
       return ''
   }
