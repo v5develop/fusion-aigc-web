@@ -328,19 +328,20 @@ const generateAgainSingle = async (item: any, key: string) => {
         :quoteFailed="quoteStatus === 'error'"
       >
         <template #bottomSelect>
-          <ChatInputSelect
-            v-model:value="formData.entryCode"
-            title="选择创作类型"
-            icon-category="entryCode"
-            :options="entryCodeOps"
-          />
-          <ChatInputSelect
-            v-model:value="formData.ratio"
-            title="选择比例"
-            icon-category="ratio"
-            :options="ratioOps"
-            style="margin-left: 10px"
-          />
+          <div class="select-cont">
+            <ChatInputSelect
+              v-model:value="formData.entryCode"
+              title="选择创作类型"
+              icon-category="entryCode"
+              :options="entryCodeOps"
+            />
+            <ChatInputSelect
+              v-model:value="formData.ratio"
+              title="选择比例"
+              icon-category="ratio"
+              :options="ratioOps"
+            />
+          </div>
         </template>
       </ChatInputBox>
     </div>
@@ -349,4 +350,9 @@ const generateAgainSingle = async (item: any, key: string) => {
 
 <style scoped lang="less">
 @import './index';
+
+.select-cont {
+  display: flex;
+  gap: 24px;
+}
 </style>

@@ -312,7 +312,6 @@ const submit = () => {
               title="选择比例"
               icon-category="ratio"
               :options="ratioOps"
-              style="margin-left: 10px"
             />
           </div>
           <div v-else-if="activeChatTab === 'video'" class="select-cont">
@@ -385,7 +384,7 @@ const submit = () => {
 .select-cont {
   width: 250px;
   display: flex;
-  gap: 12px;
+  gap: 24px;
 }
 </style>
 

@@ -12,7 +12,6 @@ import {
 interface IOption {
   label: string
   value: string | number
-  icon?: string
 }
 
 const { options, title, iconCategory, panelWidth } = defineProps<{
@@ -86,8 +85,6 @@ function renderLabel(option: DropdownOption) {
   >
     <div class="chat-select">
       <div class="trigger">
-        <span v-if="currentOption && iconCategory" class="opt-icon" v-html="iconFor(currentOption)"></span>
-        <i v-if="currentOption?.icon" :class="currentOption.icon" class="trigger-icon"></i>
         <span class="label">{{ currentOption?.label || '请选择' }}</span>
         <svg
           class="arrow"
@@ -126,24 +123,6 @@ function renderLabel(option: DropdownOption) {
     gap: 4px;
     cursor: pointer;
     user-select: none;
-
-    .trigger-icon {
-      font-size: 14px;
-      color: #3a3a3a;
-    }
-
-    .opt-icon {
-      display: inline-flex;
-      align-items: center;
-      flex-shrink: 0;
-      width: 16px;
-      height: 16px;
-      :deep(svg) {
-        display: block;
-        width: 16px;
-        height: 16px;
-      }
-    }
 
     .label {
       font-size: 12px;

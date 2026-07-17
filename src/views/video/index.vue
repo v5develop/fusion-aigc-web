@@ -420,6 +420,6 @@ const getSourceVideo = (inputParams: any): string => {
 .select-cont {
   width: 250px;
   display: flex;
-  gap: 12px;
+  gap: 24px;
 }
 </style>
