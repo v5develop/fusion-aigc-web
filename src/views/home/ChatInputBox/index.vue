@@ -22,6 +22,8 @@ interface IProps {
   pricePoints?: number | null
   /** 询价失败：显示「获取失败」 */
   quoteFailed?: boolean
+  /** 询价进行中：显示转圈，避免未返回时误显示「限免」 */
+  quoteLoading?: boolean
 }
 const {
   submit,
@@ -152,8 +154,12 @@ const handlePaste = (e: ClipboardEvent) => {
       <slot name="bottomSelect"></slot>
 
       <div class="send-cont">
-        <i v-if="!quoteFailed" class="icon-ic_hone_bean"></i>
-        <span>{{ quoteFailed ? '获取失败' : pricePoints ? pricePoints : '限免' }}</span>
+        <!-- 询价未返回时转圈，避免把「未知」显示成「限免」 -->
+        <n-spin v-if="quoteLoading" class="quote-spin" size="small" />
+        <template v-else>
+          <i v-if="!quoteFailed" class="icon-ic_hone_bean"></i>
+          <span>{{ quoteFailed ? '获取失败' : pricePoints ? pricePoints : '限免' }}</span>
+        </template>
         <div class="btn" @click="submit" v-loading="btnLoading">
           <i class="icon-ic_home_send"></i>
         </div>

@@ -9,8 +9,9 @@ import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import { useMessage } from 'naive-ui'
-import { publicTemplate, quotePreview } from '@/api/methods.ts'
+import { publicTemplate } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
+import { useQuotePreview } from '@/utils/hooks'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
@@ -25,7 +26,7 @@ const formData = reactive({
   uploadPersonUrl: [], // 上传的鞋
 })
 const { shoeFilterData, pagingData, tabValue, shoeList, scrollCallBack } = useShoeList()
-const { integral } = useIntegral()
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'shoeSwapping' }), [])
 
 const submit = () => {
   if (loading.value) return
@@ -107,27 +108,10 @@ function useShoeList() {
 
   return { shoeFilterData, pagingData, tabValue, shoeList, scrollCallBack }
 }
-function useIntegral() {
-  const integral = ref(0)
-
-  const quotePreviewApi = () => {
-    const params = {
-      entryCode: 'shoeSwapping',
-    }
-    quotePreview(params).then((res) => {
-      if (res.code === 0) {
-        integral.value = res.data.pricePoints
-      }
-    })
-  }
-  quotePreviewApi()
-
-  return { integral }
-}
 </script>
 
 <template>
-  <Container class="commerce" title="AI试鞋" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="AI试鞋" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>

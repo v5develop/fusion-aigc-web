@@ -1,9 +1,12 @@
 <script setup lang="ts">
-const { title, submit, loading, integral } = defineProps<{
+const { title, submit, loading, integral, quoteStatus } = defineProps<{
   title: string
   submit: () => void
   loading?: boolean
-  integral: number
+  /** 本次生成所需金豆；询价未返回时为 null */
+  integral: number | null
+  /** 询价状态：loading 转圈、error 显示「获取失败」 */
+  quoteStatus?: 'loading' | 'success' | 'error'
 }>()
 </script>
 
@@ -20,8 +23,13 @@ const { title, submit, loading, integral } = defineProps<{
 
       <div class="generate-btn" @click="submit">
         <span>立即生成</span>
-        <span>{{ integral }}</span>
-        <i class="icon-ic_hone_bean"></i>
+        <!-- 询价未返回时转圈，避免把「未知」显示成 0 金豆 -->
+        <n-spin v-if="quoteStatus === 'loading'" class="quote-spin" size="small" />
+        <span v-else-if="quoteStatus === 'error'">获取失败</span>
+        <template v-else>
+          <span>{{ integral }}</span>
+          <i class="icon-ic_hone_bean"></i>
+        </template>
         <n-spin v-show="loading" class="spin" size="small" />
       </div>
     </div>

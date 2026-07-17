@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
@@ -6,7 +7,6 @@ import RecordList from '@/views/e-commerce/childPages/components/RecordList/inde
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useMessage } from 'naive-ui'
-import { quotePreview } from '@/api/methods.ts'
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('clothing-remove-wrinkle')
 provide('recordsData', taskList)
@@ -16,7 +16,7 @@ const loading = ref(false)
 const formData = reactive({
   imageUrls: [],
 })
-const { integral } = useIntegral()
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'removeWrinkles' }), [])
 
 const submit = () => {
   if (loading.value) return
@@ -32,27 +32,10 @@ const submit = () => {
   execute(params, loading)
 }
 
-function useIntegral() {
-  const integral = ref(0)
-
-  const quotePreviewApi = () => {
-    const params = {
-      entryCode: 'removeWrinkles',
-    }
-    quotePreview(params).then((res) => {
-      if (res.code === 0) {
-        integral.value = res.data.pricePoints
-      }
-    })
-  }
-  quotePreviewApi()
-
-  return { integral }
-}
 </script>
 
 <template>
-  <Container class="commerce" title="服装去皱" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="服装去皱" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>

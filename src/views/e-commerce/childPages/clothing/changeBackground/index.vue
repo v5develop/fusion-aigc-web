@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
@@ -8,7 +9,7 @@ import { PRESET_SCENE_IMAGES } from '@/views/e-commerce/childPages/components/Gr
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
-import { publicTemplate, quotePreview } from '@/api/methods.ts'
+import { publicTemplate } from '@/api/methods.ts'
 import { useMessage } from 'naive-ui'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useHomeStore } from '@/stores/home'
@@ -40,7 +41,7 @@ if (global_formData.value.home) {
   if (p.description) formData.description = p.description
   store.reset()
 }
-const { integral } = useIntegral()
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'backgroundSwitching' }), [])
 
 const submit = () => {
   if (loading.value) return
@@ -111,27 +112,10 @@ function useBg() {
 
   return { bgTabValue, bgList, bgScrollCallBack }
 }
-function useIntegral() {
-  const integral = ref(0)
-
-  const quotePreviewApi = () => {
-    const params = {
-      entryCode: 'backgroundSwitching',
-    }
-    quotePreview(params).then((res) => {
-      if (res.code === 0) {
-        integral.value = res.data.pricePoints
-      }
-    })
-  }
-  quotePreviewApi()
-
-  return { integral }
-}
 </script>
 
 <template>
-  <Container class="commerce" title="人像换背景" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="人像换背景" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
       <div class="default-content">
         <div class="module-title">人像图</div>

@@ -223,9 +223,8 @@ getData(true)
 
 const { execute } = useInitCheckTaskStatus({ type: 'video', loading, getData, pagingData })
 
+// 生成中不拦截：新任务并入当前会话，轮询按会话整体判终态，两批任务都会被跟进
 const generateAgain = (item: any) => {
-  if (loading.value) return
-
   execute(buildResubmitParams(item))
 }
 
@@ -344,7 +343,7 @@ const getSourceVideo = (inputParams: any): string => {
 
               <!-- 操作按钮 -->
               <div class="message-group__actions">
-                <button v-show="!loading && !isFromAigcChat(item)" class="action-btn" @click="generateAgain(item)">
+                <button v-show="!isFromAigcChat(item)" class="action-btn" @click="generateAgain(item)">
                   <img :src="regenerateIcon" class="action-btn__icon" width="16" height="16" alt="再次生成" />
                   <span>再次生成</span>
                 </button>
@@ -370,6 +369,7 @@ const getSourceVideo = (inputParams: any): string => {
         :showVideoUpload="formData.entryCode === 'actionTransfer'"
         :pricePoints="pricePoints"
         :quoteFailed="quoteStatus === 'error'"
+        :quoteLoading="quoteStatus === 'loading'"
         v-bind="config[formData.entryCode]"
       >
         <template #bottomSelect>

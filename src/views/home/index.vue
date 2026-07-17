@@ -297,6 +297,7 @@ const submit = () => {
         :submit="submit"
         :pricePoints="pricePoints"
         :quoteFailed="quoteStatus === 'error'"
+        :quoteLoading="quoteStatus === 'loading'"
         v-bind="activeChatTab === 'video' ? videoConfig[formData.video.entryCode] : {}"
       >
         <template #bottomSelect>

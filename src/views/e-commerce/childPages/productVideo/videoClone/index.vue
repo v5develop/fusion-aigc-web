@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useQuotePreview } from '@/utils/hooks'
 import { reactive, ref, provide } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
@@ -13,8 +14,6 @@ import SelectGroup from '@/components/SelectGroup/index.vue'
 import CustomModel from '@/views/e-commerce/childPages/productVideo/videoHot/CustomModel/index.vue'
 import { videoList } from './constants.ts'
 import { useMessage } from 'naive-ui'
-import { quotePreview } from '@/api/methods.ts'
-import { useDebounce } from '@/utils/hooks'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
@@ -34,7 +33,10 @@ const formData = reactive({
   personUrl: '',
   personUrlHs: '',
 })
-const { integral } = useIntegral()
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
+  () => ({ entryCode: 'hitVideoReplication', modelCode: formData.modelCode }),
+  [() => formData.modelCode],
+)
 
 const submit = () => {
   if (loading.value) return
@@ -59,34 +61,10 @@ const submit = () => {
   execute(params, loading)
 }
 
-function useIntegral() {
-  const integral = ref(0)
-
-  const quotePreviewApi = () => {
-    const params = {
-      entryCode: 'hitVideoReplication',
-      modelCode: formData.modelCode,
-    }
-    quotePreview(params).then((res) => {
-      if (res.code === 0) {
-        integral.value = res.data.pricePoints
-      }
-    })
-  }
-  quotePreviewApi()
-
-  useDebounce({
-    data: [() => formData.modelCode],
-    callback: quotePreviewApi,
-    delay: 1000,
-  })
-
-  return { integral }
-}
 </script>
 
 <template>
-  <Container class="commerce" title="视频复刻" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="视频复刻" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>

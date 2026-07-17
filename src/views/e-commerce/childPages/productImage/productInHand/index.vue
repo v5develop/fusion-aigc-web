@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref, watch } from 'vue'
 import Container from '@/views/e-commerce/childPages/components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
@@ -8,7 +9,7 @@ import { platformOps, regionOps, languageOps, aspectRatioOps, genderOps, ageOps,
 import Tab from '@/components/Tab/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
-import { publicTemplate, quotePreview } from '@/api/methods.ts'
+import { publicTemplate } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useMessage } from 'naive-ui'
 
@@ -33,7 +34,7 @@ const formData = reactive({
 const { handPagingData, handTabValue, handListObj, handScrollCallBack } = useHandList()
 const { modelFilterData, modelPagingData, modelList, scrollCallBack } = useModelList()
 const { bgList, bgScrollCallBack } = useBg()
-const { integral } = useIntegral()
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'aiGestures' }), [])
 
 const submit = () => {
   if (loading.value) return
@@ -226,27 +227,10 @@ function useBg() {
 
   return { bgList, bgScrollCallBack }
 }
-function useIntegral() {
-  const integral = ref(0)
-
-  const quotePreviewApi = () => {
-    const params = {
-      entryCode: 'aiGestures',
-    }
-    quotePreview(params).then((res) => {
-      if (res.code === 0) {
-        integral.value = res.data.pricePoints
-      }
-    })
-  }
-  quotePreviewApi()
-
-  return { integral }
-}
 </script>
 
 <template>
-  <Container class="commerce" title="手持商品" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="手持商品" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>

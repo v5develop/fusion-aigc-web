@@ -180,9 +180,8 @@ getData(true)
 
 const { execute } = useInitCheckTaskStatus({ type: 'picture', loading, getData, pagingData })
 
+// 生成中不拦截：新任务并入当前会话，轮询按会话整体判终态，两批任务都会被跟进
 const generateAgain = (item: any) => {
-  if (loading.value) return
-
   execute(utils.buildResubmitParams(item))
 }
 
@@ -326,6 +325,7 @@ const generateAgainSingle = async (item: any, key: string) => {
         :showImageUpload="formData.entryCode === 'imageToImage'"
         :pricePoints="pricePoints"
         :quoteFailed="quoteStatus === 'error'"
+        :quoteLoading="quoteStatus === 'loading'"
       >
         <template #bottomSelect>
           <div class="select-cont">

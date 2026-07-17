@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import VideoUpload, { type IVideoItem } from '@/components/VideoUpload/index.vue'
@@ -7,7 +8,7 @@ import SelectGroup from '@/components/SelectGroup/index.vue'
 import { genderOps, ageOps, skinOps } from '../../constants.ts'
 import Tab from '@/components/Tab/index.vue'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
-import { publicTemplate, quotePreview } from '@/api/methods.ts'
+import { publicTemplate } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
@@ -27,7 +28,7 @@ const formData = reactive({
   target: 'face', // face:换脸  head:换头  person:换全身
 })
 const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()
-const { integral } = useIntegral()
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'personReplacement' }), [])
 
 const submit = () => {
   if (loading.value) return
@@ -109,27 +110,10 @@ function useModelList() {
 
   return { modelFilterData, pagingData, tabValue, modelList, scrollCallBack }
 }
-function useIntegral() {
-  const integral = ref(0)
-
-  const quotePreviewApi = () => {
-    const params = {
-      entryCode: 'personReplacement',
-    }
-    quotePreview(params).then((res) => {
-      if (res.code === 0) {
-        integral.value = res.data.pricePoints
-      }
-    })
-  }
-  quotePreviewApi()
-
-  return { integral }
-}
 </script>
 
 <template>
-  <Container class="commerce" title="模特替换" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="模特替换" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
       <div class="default-content">
         <div class="module-title">参考视频</div>

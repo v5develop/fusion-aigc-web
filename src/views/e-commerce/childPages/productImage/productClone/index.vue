@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref } from 'vue'
 import Container from '@/views/e-commerce/childPages/components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
@@ -10,7 +11,6 @@ import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useMessage } from 'naive-ui'
-import { quotePreview } from '@/api/methods.ts'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
@@ -32,7 +32,7 @@ const formData = reactive({
   allStyle: '',
 })
 const refImageLimit = 5
-const { integral } = useIntegral()
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'hitReplication' }), [])
 
 const submit = () => {
   if (loading.value) return
@@ -65,27 +65,10 @@ const customResultHandle = (urls: string[]) => {
     ...urls.slice(0, refImageLimit - formData.refImageUrl.length).map((url) => ({ image: url, input: '' })),
   )
 }
-function useIntegral() {
-  const integral = ref(0)
-
-  const quotePreviewApi = () => {
-    const params = {
-      entryCode: 'hitReplication',
-    }
-    quotePreview(params).then((res) => {
-      if (res.code === 0) {
-        integral.value = res.data.pricePoints
-      }
-    })
-  }
-  quotePreviewApi()
-
-  return { integral }
-}
 </script>
 
 <template>
-  <Container class="commerce" title="爆款图复刻" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="爆款图复刻" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>

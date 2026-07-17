@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref } from 'vue'
-import { quotePreview } from '@/api/methods.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import type { ProductKitParams } from '@/views/home/ChatInputBox/targetParams'
@@ -16,7 +16,6 @@ import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../const
 import type { ICheckboxCustomImageItem } from './constants.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useMessage } from 'naive-ui'
-import { useDebounce } from '@/utils/hooks/index.ts'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
@@ -54,7 +53,15 @@ if (global_formData.value.home) {
 }
 
 const { customData, checkboxClickHandle, sub, add } = useCheckbox()
-const { integral } = useIntegral()
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
+  () => ({
+    entryCode: 'productSetImages',
+    params: formData.checked.includes('auto') ? defaultCustomData : customData,
+  }),
+  // customData 是 reactive 对象，需 deep 才能监听到内部数量变化
+  [() => formData.checked, () => customData],
+  { deep: true },
+)
 
 const submit = () => {
   if (loading.value) return
@@ -110,34 +117,10 @@ function useCheckbox() {
 
   return { customData, checkboxClickHandle, sub, add, limit }
 }
-function useIntegral() {
-  const integral = ref(0)
-
-  const quotePreviewApi = () => {
-    const params = {
-      entryCode: 'productSetImages',
-      params: formData.checked.includes('auto') ? defaultCustomData : customData,
-    }
-    quotePreview(params).then((res) => {
-      if (res.code === 0) {
-        integral.value = res.data.pricePoints
-      }
-    })
-  }
-  quotePreviewApi()
-
-  useDebounce({
-    data: [() => formData.checked, customData],
-    callback: quotePreviewApi,
-    delay: 1000,
-  })
-
-  return { integral }
-}
 </script>
 
 <template>
-  <Container class="commerce" title="AI商品套图" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="AI商品套图" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>

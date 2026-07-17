@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
@@ -11,12 +12,11 @@ import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
-import { publicTemplate, quotePreview } from '@/api/methods.ts'
+import { publicTemplate } from '@/api/methods.ts'
 import { ageOps, genderOps, skinOps, sceneOps } from '@/views/e-commerce/childPages/constants.ts'
 import { useMessage } from 'naive-ui'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
-import { useDebounce } from '@/utils/hooks'
 import type { ClothingKitParams } from '@/views/home/ChatInputBox/targetParams'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
@@ -54,7 +54,16 @@ if (global_formData.value.home) {
 
 const switchValue = ref(true)
 const { modelFilterData, pagingData, modelList, scrollCallBack } = useModelList()
-const { integral } = useIntegral()
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
+  () => ({
+    entryCode: 'wearingProductSetImages',
+    params: {
+      scenePhoto: formData.prompt ? [...formData.scenePhoto, formData.prompt] : formData.scenePhoto,
+    },
+  }),
+  [() => formData.scenePhoto],
+  { deep: true },
+)
 
 const submit = () => {
   if (loading.value) return
@@ -140,39 +149,10 @@ function useModelList() {
 
   return { modelFilterData, pagingData, modelList, scrollCallBack }
 }
-function useIntegral() {
-  const integral = ref(0)
-
-  const quotePreviewApi = () => {
-    const params = {
-      entryCode: 'wearingProductSetImages',
-      params: {
-        scenePhoto: formData.prompt ? [...formData.scenePhoto, formData.prompt] : formData.scenePhoto,
-      },
-    }
-    quotePreview(params).then((res) => {
-      if (res.code === 0) {
-        integral.value = res.data.pricePoints
-      }
-    })
-  }
-  quotePreviewApi()
-
-  useDebounce({
-    data: [() => formData.scenePhoto],
-    callback: quotePreviewApi,
-    delay: 1000,
-    options: {
-      deep: true,
-    },
-  })
-
-  return { integral }
-}
 </script>
 
 <template>
-  <Container class="commerce" title="AI穿戴套图" :submit="submit" :loading="loading" :integral="integral">
+  <Container class="commerce" title="AI穿戴套图" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
