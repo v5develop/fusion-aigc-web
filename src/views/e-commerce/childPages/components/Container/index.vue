@@ -13,7 +13,9 @@ const { title, submit, loading, integral } = defineProps<{
       <h1 class="title">{{ title }}</h1>
 
       <div class="content">
-        <slot></slot>
+        <div class="content-scroll">
+          <slot></slot>
+        </div>
       </div>
 
       <div class="generate-btn" @click="submit">
@@ -52,9 +54,13 @@ const { title, submit, loading, integral } = defineProps<{
     }
     > .content {
       flex: 1;
+      min-height: 0;
       padding: 0 16px;
-      overflow: auto;
-      .scrollbar(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
+      > .content-scroll {
+        height: 100%;
+        overflow: auto;
+        .scrollbar(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
+      }
     }
     > .generate-btn {
       height: 44px;

@@ -71,7 +71,7 @@ const submit = () => {
     return message.warning('请上传试衣模板')
   }
   if (!formData.bgImageUrl) {
-    return message.warning('请选择场景')
+    return message.warning('请选择背景')
   }
 
   const params = {
@@ -354,7 +354,7 @@ function useIntegral() {
           </div>
         </div>
 
-        <div class="module-title">选择场景</div>
+        <div class="module-title">选择背景</div>
         <GridImage
           style="margin-top: 8px"
           v-model:imageUrl="formData.bgImageUrl"

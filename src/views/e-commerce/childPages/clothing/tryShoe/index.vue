@@ -152,7 +152,7 @@ function useIntegral() {
           <span style="color: #9e9e9e; margin-top: 4px">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>
 
-        <div class="module-title">选择试鞋模版</div>
+        <div class="module-title">试鞋模版</div>
         <div v-loading="pagingData.loading" style="position: relative">
           <Tab
             v-model:value="tabValue"

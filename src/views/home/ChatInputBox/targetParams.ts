@@ -94,7 +94,7 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
     }
 
     case '/e-commerce/change-background': {
-      // 「选择场景图」插槽只有本地上传一条路径（已直传 OSS，不能再靠 data: 前缀区分本地/素材库），
+      // 「选择背景图」插槽只有本地上传一条路径（已直传 OSS，不能再靠 data: 前缀区分本地/素材库），
       // 统一作为参考图携带：目标页据 refImageUrl 自动切「自定义」并填入背景风格参考
       const bgUrl = getUploadUrl('background')
       result = {
