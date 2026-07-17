@@ -67,6 +67,9 @@ const { title, submit, loading, integral, quoteStatus } = defineProps<{
       > .content-scroll {
         height: 100%;
         overflow: auto;
+        /* 始终预留滚动条宽度。自定义 ::-webkit-scrollbar 后 Chrome 会用「占位」而非「浮层」滚动条，
+           内容加载后由不溢出变为溢出时会挤窄内容、造成宽度突变；stable 让这段宽度恒定保留 */
+        scrollbar-gutter: stable;
         .scrollbar-autohide(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
       }
     }

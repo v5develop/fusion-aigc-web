@@ -278,7 +278,8 @@ const tryClick = (url: string) => {
 
   > .try-try {
     margin-top: 12px;
-    padding: 0 14px;
+    /* 收窄左右内边距，给 7 张试用图腾出宽度（原 14px 时第 7 张会被截断） */
+    padding: 0 8px;
     height: 44px;
     border-radius: 8px;
     background: #edeff5;
@@ -287,7 +288,8 @@ const tryClick = (url: string) => {
     > .title {
       font-size: 12px;
       color: #9e9e9e;
-      padding: 0 5px 0 6px;
+      padding: 0 4px 0 0;
+      flex-shrink: 0;
     }
     > .content {
       flex: 1;
@@ -295,7 +297,13 @@ const tryClick = (url: string) => {
       display: flex;
       align-items: center;
       gap: 4px;
-      overflow: auto;
+      overflow-x: auto;
+      overflow-y: hidden;
+      /* 隐藏滚动条，靠滚轮/触控板横滑。不占高度，图片得以铺满 .try-try */
+      scrollbar-width: none; /* Firefox */
+      &::-webkit-scrollbar {
+        display: none;
+      }
       .img {
         height: 100%;
         aspect-ratio: 1/1;
