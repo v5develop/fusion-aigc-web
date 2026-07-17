@@ -157,8 +157,8 @@ function useIntegral() {
           <Tab
             v-model:value="tabValue"
             :tabs="[
-              { label: '模特库', value: 'shoeLib' },
-              { label: '上传模特', value: 'uploadShoe' },
+              { label: '试鞋模版', value: 'shoeLib' },
+              { label: '上传模版', value: 'uploadShoe' },
             ]"
           />
           <div v-show="tabValue === 'shoeLib'">
@@ -184,7 +184,7 @@ function useIntegral() {
           <div v-show="tabValue === 'uploadShoe'" style="margin-top: 8px">
             <ImageUpload
               v-model:imgList="formData.uploadPersonUrl"
-              btnName="上传模特图"
+              btnName="上传模版图"
               :limitNumber="1"
               :topRightTips="false"
             />
