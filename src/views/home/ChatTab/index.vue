@@ -67,6 +67,8 @@ function handleTabClick(value: TTabValue) {
     font-weight: 600;
     line-height: 22px;
     white-space: nowrap;
+    // 需显式指定：父级是 button，浏览器 UA 样式的 color: buttontext 会让文字变黑，不会继承全局色
+    color: #3a3a3a;
     transition: color 0.25s ease;
 
     .chat-tab__item--active & {
