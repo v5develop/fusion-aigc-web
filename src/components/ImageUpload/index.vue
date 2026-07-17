@@ -161,6 +161,7 @@ const tryClick = (url: string) => {
   <div v-else-if="type === 'card'" class="card-style" v-loading="loading">
     <div class="upload-trigger" @click="beforeUpload">
       <i class="icon-ic_ds_CloudUpload1"></i>
+      <span>{{ btnName }}</span>
     </div>
   </div>
 </template>
@@ -316,16 +317,17 @@ const tryClick = (url: string) => {
     width: 100%;
     height: 100%;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 4px;
     cursor: pointer;
-    border: 1px dashed #d9d9d9;
-    border-radius: 5px;
+    background-color: #f5f6f8;
+    border-radius: 8px;
     transition: all 0.3s ease;
 
     &:hover {
-      border-color: var(--main-color);
-      background-color: #fafafa;
+      background-color: #ebecef;
     }
 
     &:active {
@@ -333,8 +335,14 @@ const tryClick = (url: string) => {
     }
 
     i {
-      font-size: 24px;
-      color: #999;
+      font-size: 20px;
+      color: #3a3a3a;
+    }
+
+    span {
+      font-size: 14px;
+      line-height: 20px;
+      color: #3a3a3a;
     }
   }
 }

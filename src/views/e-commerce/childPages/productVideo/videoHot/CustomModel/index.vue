@@ -228,7 +228,7 @@ watch([switchValue, modelPollingType], () => {
       v-model:value="modelTabValue"
       :tabs="[
         { label: '定制达人', value: 'customModel' },
-        { label: '我的达人', value: 'myModel' },
+        { label: '上传我的达人', value: 'myModel' },
       ]"
       style="margin-bottom: 12px"
     />
@@ -270,16 +270,21 @@ watch([switchValue, modelPollingType], () => {
     </div>
 
     <div v-else class="my-model" v-observer-scroll="{ callback: getModelData }">
-      <div style="height: 86px">
+      <div class="model-card">
         <ImageUpload
           v-model:imgList="uploadImage"
           type="card"
+          btnName="上传达人"
           :customResultHandle="customResultHandle"
           :customBeforeUpload="customBeforeUpload"
         />
       </div>
 
-      <ImagePopover v-model="personUrl" :imgList="modelData.images.map((item) => item.coverUrl)" style="height: 86px" />
+      <ImagePopover
+        v-model="personUrl"
+        :imgList="modelData.images.map((item) => item.coverUrl)"
+        style="height: 155px; border-radius: 8px"
+      />
     </div>
   </div>
 
@@ -353,14 +358,19 @@ watch([switchValue, modelPollingType], () => {
     }
   }
 
+  // 设计稿：卡片 116×155、间距 10；左侧内容区宽 368（400 - 16*2），116*3 + 10*2 = 368 恰好三列
   > .my-model {
     max-height: 500px;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 4px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
     overflow: auto;
     .active {
       border: 1px solid var(--main-color);
+    }
+
+    > .model-card {
+      height: 155px;
     }
   }
 }
