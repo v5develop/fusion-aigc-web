@@ -25,11 +25,18 @@ const value = defineModel<string | number>('value', { required: true })
 const currentOption = computed(() => options.find((o) => o.value === value.value))
 const iconFor = (option: IOption) => getOptionIcon(iconCategory, option)
 
-// 设计稿中比例/时长面板为 156px，创作类型/模型/分辨率为 194px
+// 面板宽度：设计稿中比例/时长为 156px，其余为 194px；
+// 模型下拉的文案偏长（如 Seedance2.0-fast），在设计稿基础上加宽 20px
+const PANEL_WIDTH: Record<IconCategory, number> = {
+  ratio: 156,
+  duration: 156,
+  entryCode: 194,
+  resolution: 194,
+  model: 214,
+}
+
 const menuProps = computed(() =>
-  dropdownMenuProps(
-    panelWidth ?? (iconCategory === 'ratio' || iconCategory === 'duration' ? 156 : 194),
-  ),
+  dropdownMenuProps(panelWidth ?? (iconCategory ? PANEL_WIDTH[iconCategory] : 194)),
 )
 const nodeProps = dropdownNodeProps(() => value.value)
 
