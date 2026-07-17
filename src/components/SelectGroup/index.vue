@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ComponentPublicInstance } from 'vue'
 import type { DropdownOption } from 'naive-ui'
 import {
   DROPDOWN_THEME_OVERRIDES,
@@ -42,7 +43,18 @@ function onClear(field: string, opts: { label: string; value: string | number }[
   data.value[field] = undefined
 }
 
-const menuProps = dropdownMenuProps()
+// 下拉面板与触发器等宽。触发器是 grid 项、宽度随容器变化，
+// 只能在展开时实测，不能取固定值。
+const triggerEls: HTMLElement[] = []
+const menuWidths = ref<(number | undefined)[]>([])
+
+function setTriggerRef(el: Element | ComponentPublicInstance | null, i: number) {
+  if (el instanceof HTMLElement) triggerEls[i] = el
+}
+
+function onShow(show: boolean, i: number) {
+  if (show) menuWidths.value[i] = triggerEls[i]?.offsetWidth
+}
 
 function renderLabel(field: string, option: DropdownOption) {
   return renderDropdownLabel({
@@ -59,13 +71,19 @@ function renderLabel(field: string, option: DropdownOption) {
         :options="toDropdownOptions(item.options)"
         placement="bottom-start"
         trigger="click"
-        :menu-props="menuProps"
+        :menu-props="dropdownMenuProps(menuWidths[i])"
         :node-props="dropdownNodeProps(() => data[item.field])"
         :theme-overrides="DROPDOWN_THEME_OVERRIDES"
         :render-label="(option: DropdownOption) => renderLabel(item.field, option)"
+        @update:show="(show: boolean) => onShow(show, i)"
         @select="(key: string | number) => onSelect(item.field, key)"
       >
-        <div class="trigger" :style="item.style" :class="{ placeholder: !selectedLabel(item.field, item.options) }">
+        <div
+          :ref="(el) => setTriggerRef(el, i)"
+          class="trigger"
+          :style="item.style"
+          :class="{ placeholder: !selectedLabel(item.field, item.options) }"
+        >
           <span class="trigger-label">
             {{ selectedLabel(item.field, item.options) || item.placeholder || '' }}
           </span>
