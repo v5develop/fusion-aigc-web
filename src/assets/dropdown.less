@@ -50,10 +50,12 @@
   }
 
   // 选项超过 8 条滚动时，让分组标题保持可见（设计稿中标题在滚动区之外）
+  // z-index 必须大于 1：naive 的 option prefix/label/suffix 都是 z-index:1 的 flex 子项，
+  // 打平时同层级按 DOM 顺序绘制，后面的选项文字会盖住标题
   .n-dropdown-option:has(> .n-dropdown-option-body--group) {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 2;
     background-color: #fff;
   }
 }

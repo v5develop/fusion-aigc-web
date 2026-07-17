@@ -67,7 +67,7 @@ const { title, submit, loading, integral, quoteStatus } = defineProps<{
       > .content-scroll {
         height: 100%;
         overflow: auto;
-        .scrollbar(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
+        .scrollbar-autohide(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
       }
     }
     > .generate-btn {

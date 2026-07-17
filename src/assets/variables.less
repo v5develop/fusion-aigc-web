@@ -29,3 +29,30 @@
     cursor: pointer;
   }
 }
+
+// 滑块默认隐藏，鼠标移入容器才显示；参数同 .scrollbar
+// 只把滑块置为透明、不动轨道宽度，避免显隐时挤压内容产生抖动
+.scrollbar-autohide(@width: 12px, @trackColor: transparent, @thumbColor: #cccccc, @thumbWidth: @width, @hoverColor: #999) {
+  .scrollbar(@width, @trackColor, @thumbColor, @thumbWidth, @hoverColor);
+
+  /* 始终预留滚动条宽度。自定义 ::-webkit-scrollbar 后 Chrome 会用「占位」而非「浮层」滚动条，
+     内容加载后由不溢出变为溢出时会挤窄内容、造成宽度突变；stable 让这段宽度恒定保留 */
+  scrollbar-gutter: stable;
+
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+  }
+
+  &:hover {
+    &::-webkit-scrollbar-thumb {
+      background: @thumbColor;
+      background-clip: content-box;
+    }
+
+    /* 多一个 :hover，权重高于上一条，保留「悬停滑块本身时加深」的行为 */
+    &::-webkit-scrollbar-thumb:hover {
+      background: @hoverColor;
+      background-clip: content-box;
+    }
+  }
+}
