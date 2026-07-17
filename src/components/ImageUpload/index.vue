@@ -40,6 +40,10 @@ const uploadRef = ref<HTMLInputElement | null>(null)
 // 需要换图时先删除已传图片，上传按钮会重新出现。
 const limitReached = computed(() => !!limitNumber && imgList.value.length >= limitNumber)
 
+// 只能传 1 张时，让按钮与图片共用一个固定高度的槽位。
+// 否则上传瞬间按钮消失(-72)、图片出现(+58)，净 -14，整个上传框会跳一下。
+const singleSlot = computed(() => limitNumber === 1)
+
 const deleteImg = (index: number) => {
   imgList.value.splice(index, 1)
 }
@@ -106,38 +110,31 @@ const tryClick = (url: string) => {
     <div class="main">
       <div v-if="limitNumber && topRightTips" class="limit-tips">支持多图(最多{{ limitNumber }}张)</div>
 
-      <div v-if="!limitReached" class="upload-btn" @click="beforeUpload">
-        <i class="icon-ic_ds_CloudUpload1"></i>
-        <span>{{ btnName }}</span>
-      </div>
+      <div class="upload-area" :class="{ 'upload-area--single': singleSlot }">
+        <div v-if="!limitReached" class="upload-btn" @click="beforeUpload">
+          <i class="icon-ic_ds_CloudUpload1"></i>
+          <span>{{ btnName }}</span>
+        </div>
 
-      <div v-if="exampleImages" class="example-cont">
-        <span>示例</span>
-        <!--        <n-image
-          v-for="item in exampleImages"
-          :key="item"
-          width="44"
-          height="44"
-          :src="item"
-          object-fit="cover"
-          style="border-radius: 4px"
-        />-->
-        <template v-for="item in exampleImages" :key="item">
-          <n-popover trigger="hover">
-            <template #trigger>
-              <img class="img" :src="item" alt="" />
-            </template>
-            <img class="preview" :src="item" alt="" />
-          </n-popover>
-        </template>
-      </div>
+        <div v-if="exampleImages" class="example-cont">
+          <span>示例</span>
+          <template v-for="item in exampleImages" :key="item">
+            <n-popover trigger="hover">
+              <template #trigger>
+                <img class="img" :src="item" alt="" />
+              </template>
+              <img class="preview" :src="item" alt="" />
+            </n-popover>
+          </template>
+        </div>
 
-      <div class="upload-img-list">
-        <div class="item" v-for="(item, i) in imgList" :key="item">
-          <n-image width="58" height="58" :src="item[field] ?? item" object-fit="cover" style="border-radius: 8px" />
+        <div class="upload-img-list">
+          <div class="item" v-for="(item, i) in imgList" :key="item">
+            <n-image width="58" height="58" :src="item[field] ?? item" object-fit="cover" style="border-radius: 8px" />
 
-          <div class="delete" @click="deleteImg(i)">
-            <i class="icon-ic_ds_return-2"></i>
+            <div class="delete" @click="deleteImg(i)">
+              <i class="icon-ic_ds_return-2"></i>
+            </div>
           </div>
         </div>
       </div>
@@ -198,7 +195,28 @@ const tryClick = (url: string) => {
       background: linear-gradient(101deg, #e8e4ff 0%, #ffdada 100%);
     }
 
-    > .upload-btn {
+    > .upload-area {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+
+      /* 只能传 1 张时：按钮与图片共用一个固定 58px（一张图高）的槽位，
+         上传/删除不改变整体高度，图片正好落在按钮原来的位置。
+         不这样处理的话，按钮消失(-72) 与 图片出现(+58) 不抵消，会跳 -14。
+         槽位内顶部对齐：按钮保持原本 32px 的上边距位置，此时上下留白 32 / 34 基本对称；
+         若改为居中，按钮会被槽位多推下 9px，上下变成 41 / 25 明显偏下 */
+      &.upload-area--single {
+        margin-top: 32px;
+        height: 58px;
+        > .upload-btn,
+        > .upload-img-list {
+          margin-top: 0;
+        }
+      }
+    }
+
+    > .upload-area > .upload-btn {
       min-width: 130px;
       height: 40px;
       margin-top: 32px;
@@ -218,7 +236,7 @@ const tryClick = (url: string) => {
       }
     }
 
-    > .example-cont {
+    > .upload-area > .example-cont {
       height: 44px;
       margin-top: 8px;
       display: flex;
@@ -231,7 +249,7 @@ const tryClick = (url: string) => {
       }
     }
 
-    > .upload-img-list {
+    > .upload-area > .upload-img-list {
       margin-top: 8px;
       display: flex;
       flex-wrap: wrap;
