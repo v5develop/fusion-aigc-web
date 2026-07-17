@@ -14,7 +14,8 @@ import ChatInputBox from './ChatInputBox/index.vue'
 import type { PromptSlot, FileItem } from './ChatInputBox/types'
 import { slotsToPrompt, promptDetailToSlots } from './ChatInputBox/utils'
 import { buildTargetParams } from './ChatInputBox/targetParams'
-import { entryCodeOps, ratioOps } from '@/views/picture/constants.ts'
+import { entryCodeOps, modelOps as pictureModelOps, ratioOps } from '@/views/picture/constants.ts'
+import { ratioLabel } from '@/views/picture/utils.ts'
 import {
   entryCodeOps as videoEntryCodeOps,
   ratioOps as videoRatioOps,
@@ -34,6 +35,7 @@ const activeChatTab = ref<TTabValue>('picture')
 const formData = reactive({
   picture: {
     entryCode: 'imageToImage',
+    modelCode: 'local-image',
     prompt: '',
     ratio: '1024,1024',
     images: [] as string[],
@@ -85,8 +87,14 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
       const [w, h] = p.ratio.split(',')
       return {
         entryCode: p.entryCode,
-        modelCode: 'local-image',
-        params: { prompt: p.prompt, width: +w!, height: +h!, num: p.entryCode === 'textToImage' ? 4 : 1 },
+        modelCode: p.modelCode,
+        params: {
+          prompt: p.prompt,
+          width: +w!,
+          height: +h!,
+          size: ratioLabel(+w!, +h!),
+          num: p.entryCode === 'textToImage' ? 4 : 1,
+        },
         imageUrls: p.images,
       }
     }
@@ -96,7 +104,12 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
       return {
         entryCode: v.entryCode,
         modelCode: v.modelCode,
-        params: { prompt: v.prompt, ...(isAT ? {} : { resolution: v.resolution, aspectRatio: v.ratio, duration: v.duration }) },
+        params: {
+          prompt: v.prompt,
+          // size 所有场景都传（含动作迁移），与 aspectRatio 并存
+          size: v.ratio,
+          ...(isAT ? {} : { resolution: v.resolution, aspectRatio: v.ratio, duration: v.duration }),
+        },
         imageUrls: v.images,
         video: isAT ? v.video[0]?.url || '' : '',
       }
@@ -108,6 +121,7 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
     () => activeChatTab.value,
     () => currentTemplateCode.value,
     () => formData.picture.entryCode,
+    () => formData.picture.modelCode,
     () => formData.picture.ratio,
     () => formData.video.entryCode,
     () => formData.video.modelCode,
@@ -307,6 +321,13 @@ const submit = () => {
               title="选择创作类型"
               icon-category="entryCode"
               :options="entryCodeOps"
+            />
+            <ChatInputSelect
+              v-model:value="formData.picture.modelCode"
+              title="选择模型"
+              icon-category="model"
+              :options="pictureModelOps"
+              :panel-width="194"
             />
             <ChatInputSelect
               v-model:value="formData.picture.ratio"

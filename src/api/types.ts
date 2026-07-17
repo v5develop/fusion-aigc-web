@@ -48,6 +48,8 @@ export interface ICreationSubmit {
     height?: number
     num?: number
     ratio?: string
+    /** 宽高比，如 "1:1" / "9:16"。视频场景与 aspectRatio 并存 */
+    size?: string
     resolution?: string
     duration?: number
     [key: string]: any

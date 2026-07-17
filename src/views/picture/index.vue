@@ -6,7 +6,7 @@ import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import type { ICreationSubmit } from '@/api/types.ts'
-import { entryCodeOps, ratioOps } from './constants.ts'
+import { entryCodeOps, modelOps, ratioOps } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import { useInitCheckTaskStatus } from './hooks.ts'
@@ -25,8 +25,14 @@ const store = useHomeStore()
 const { global_formData } = storeToRefs(store)
 let _formData: any
 if (global_formData.value.home) {
-  const { entryCode = 'imageToImage', prompt = '', ratio = '1024,1024', images = [] } = global_formData.value.picture
-  _formData = { entryCode, prompt, ratio, images }
+  const {
+    entryCode = 'imageToImage',
+    modelCode = 'local-image',
+    prompt = '',
+    ratio = '1024,1024',
+    images = [],
+  } = global_formData.value.picture
+  _formData = { entryCode, modelCode, prompt, ratio, images }
   store.reset()
 }
 
@@ -38,6 +44,7 @@ const btnLoading = ref(false)
 const formData = reactive(
   _formData ?? {
     entryCode: 'imageToImage',
+    modelCode: 'local-image',
     prompt: '',
     ratio: '1024,1024',
     images: [],
@@ -49,17 +56,18 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
     const [w, h] = formData.ratio.split(',')
     return {
       entryCode: formData.entryCode,
-      modelCode: 'local-image',
+      modelCode: formData.modelCode,
       params: {
         prompt: formData.prompt,
         width: +w!,
         height: +h!,
+        size: utils.ratioLabel(+w!, +h!),
         num: formData.entryCode === 'textToImage' ? 4 : 1,
       },
       imageUrls: formData.images,
     }
   },
-  [() => formData.entryCode, () => formData.ratio],
+  [() => formData.entryCode, () => formData.modelCode, () => formData.ratio],
 )
 
 const pagingData = reactive({
@@ -104,11 +112,12 @@ const submit = async () => {
   const params: ICreationSubmit = {
     type: 'IMAGE',
     entryCode: formData.entryCode as ICreationSubmit['entryCode'],
-    modelCode: 'local-image',
+    modelCode: formData.modelCode,
     params: {
       prompt: formData.prompt,
       width: +wh[0]!,
       height: +wh[1]!,
+      size: utils.ratioLabel(+wh[0]!, +wh[1]!),
       num: formData.entryCode === 'textToImage' ? 4 : 1,
     },
     images: formData.images,
@@ -334,6 +343,13 @@ const generateAgainSingle = async (item: any, key: string) => {
               title="选择创作类型"
               icon-category="entryCode"
               :options="entryCodeOps"
+            />
+            <ChatInputSelect
+              v-model:value="formData.modelCode"
+              title="选择模型"
+              icon-category="model"
+              :options="modelOps"
+              :panel-width="194"
             />
             <ChatInputSelect
               v-model:value="formData.ratio"

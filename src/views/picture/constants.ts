@@ -3,6 +3,11 @@ export const entryCodeOps = [
   { label: '文生图', value: 'textToImage' },
 ]
 
+export const modelOps = [
+  { label: '本地模型', value: 'local-image' },
+  { label: 'GPT-Image-2', value: 'xiaoqi-gpt-image-2' },
+]
+
 export const ratioOps = [
   { label: '1:1', value: '1024,1024' },
   { label: '2:3', value: '832,1216' },
@@ -14,6 +19,8 @@ export const ratioOps = [
 ]
 
 export const entryCodeVal2Label: Record<string, any> = getMap(entryCodeOps)
+
+export const modelVal2Label: Record<string, any> = getMap(modelOps)
 
 export const ratioVal2Label: Record<string, any> = getMap(ratioOps)
 

@@ -12,6 +12,7 @@ interface FormData {
   home: boolean
   picture: {
     entryCode: string
+    modelCode: string
     prompt: string
     ratio: string
     images: FileItem[]
@@ -40,6 +41,7 @@ export const useHomeStore = defineStore('counter', () => {
     home: false,
     picture: {
       entryCode: 'textToImage',
+      modelCode: 'local-image',
       prompt: '',
       ratio: '1024,1024',
       images: [],

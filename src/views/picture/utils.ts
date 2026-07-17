@@ -1,4 +1,4 @@
-import { entryCodeVal2Label, ratioVal2Label } from './constants.ts'
+import { entryCodeVal2Label, modelVal2Label, ratioVal2Label } from './constants.ts'
 
 /**
  * 归一化历史记录的 inputParams 为图片 submit 入参，供「再次生成」复用。
@@ -16,14 +16,18 @@ export const buildResubmitParams = (item: any, single = false) => {
   const first = (item?.contents ?? [])[0] ?? {}
   // 结构 2 无 entryCode：图片仅两种能力，按有无输入图推断
   const entryCode = src.entryCode ?? (images.length ? 'imageToImage' : 'textToImage')
+  const width = p.width ?? first.width ?? 1024
+  const height = p.height ?? first.height ?? 1024
   return {
     type: 'IMAGE',
     entryCode,
     modelCode: src.modelCode ?? 'local-image',
     params: {
       prompt: p.prompt ?? src.prompt ?? '',
-      width: p.width ?? first.width ?? 1024,
-      height: p.height ?? first.height ?? 1024,
+      width,
+      height,
+      // 宽高比：历史无 size 时按实际宽高推导
+      size: p.size ?? ratioLabel(width, height),
       // 单张固定 1 张；整批沿用原数量，缺失则按已生成素材数兜底
       num: single ? 1 : (p.num ?? (item?.contents?.length || 1)),
     },
@@ -75,7 +79,7 @@ export const isMixedSize = (contents: any[] = []): boolean => {
 }
 
 /** 宽高 → 画幅比例标签：优先精确映射(ratioOps)，否则按 gcd 约分；无尺寸返回 ''。 */
-function ratioLabel(w?: number, h?: number): string {
+export function ratioLabel(w?: number, h?: number): string {
   if (!w || !h) return ''
   const exact = ratioVal2Label[`${w},${h}`]
   if (exact) return exact
@@ -91,7 +95,7 @@ function gcd(a: number, b: number): number {
 }
 
 /**
- * 任务元信息展示：能力名 | 画幅比例。入参为整条历史 item（含 inputParams + contents）。
+ * 任务元信息展示：能力名 | 模型 | 画幅比例。入参为整条历史 item（含 inputParams + contents）。
  * 画幅比例权威来源是实际生成的素材(content.ratio，后端已返回)，缺失才回退请求入参尺寸映射/约分。
  * 防御式取值：缺字段/未知映射不再渲染 "undefined | undefined"，仅拼接非空段。
  */
@@ -99,7 +103,9 @@ export const getMetaData = (item: any) => {
   const params = item?.inputParams ?? {}
   const content = (item?.contents ?? [])[0] ?? {}
   const entryLabel = entryCodeVal2Label[params.entryCode] ?? ''
+  // 未知 modelCode（如端上来源）不展示，避免渲染出原始码值
+  const modelLabel = modelVal2Label[params.modelCode] ?? ''
   // 画幅优先取素材 content.ratio；无则按请求尺寸精确映射(ratioOps)或 gcd 约分兜底
   const rLabel = content.ratio ?? ratioLabel(params.params?.width, params.params?.height)
-  return [entryLabel, rLabel].filter(Boolean).join(' | ')
+  return [entryLabel, modelLabel, rLabel].filter(Boolean).join(' | ')
 }
