@@ -1,0 +1,92 @@
+// 通用下拉面板样式，对齐设计稿「PC桌面端-下拉弹窗」
+// https://mastergo.com/file/189362363334838?page_id=939%3A023775&layer_id=965%3A41997
+// 下拉弹层挂载在 body 上，故为全局样式，由 main.ts 统一引入。
+// 尺寸/颜色类的令牌走 n-dropdown 的 theme-overrides（见 ChatInputSelect/dropdown.ts），
+// 这里只处理 naive 变量覆盖不到的结构性差异。
+
+.fusion-dropdown.n-dropdown {
+  border-radius: 12px;
+  box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.12);
+  // 面板 8px(padding) + 36px(标题) + 320px(8 行 × 40px) + 8px(padding)
+  max-height: 372px;
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.09);
+    border-radius: 226px;
+  }
+
+  // naive 自身的选项规则嵌套层级较深，这里需保持同等或更高的选择器权重才能覆盖
+  .n-dropdown-option .n-dropdown-option-body {
+    padding: 0 16px;
+
+    // naive 默认左右各内缩 4px，设计稿的选中/hover 底色是整行满铺
+    &::before {
+      left: 0;
+      right: 0;
+    }
+
+    // 图标与勾选都由 renderLabel 渲染进 label，naive 的前后缀槽位只会多占宽度
+    .n-dropdown-option-body__prefix,
+    .n-dropdown-option-body__suffix {
+      display: none;
+    }
+
+    &.n-dropdown-option-body--group {
+      height: 36px;
+      line-height: 36px;
+      // naive 默认 group 标题比正文小 1px，设计稿与正文同为 14px
+      font-size: 14px;
+    }
+  }
+
+  // 选项超过 8 条滚动时，让分组标题保持可见（设计稿中标题在滚动区之外）
+  .n-dropdown-option:has(> .n-dropdown-option-body--group) {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: #fff;
+  }
+}
+
+.fusion-dropdown-option--selected .n-dropdown-option-body::before {
+  background-color: #f5f6f8;
+}
+
+.fusion-dropdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fusion-dropdown-row__icon,
+.fusion-dropdown-row__check {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  width: 16px;
+  height: 16px;
+
+  svg {
+    display: block;
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.fusion-dropdown-row__label {
+  flex: 1;
+}
+
+.fusion-dropdown-row__check {
+  margin-left: auto;
+}

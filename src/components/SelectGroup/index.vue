@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import type { DropdownOption } from 'naive-ui'
+import {
+  DROPDOWN_THEME_OVERRIDES,
+  dropdownMenuProps,
+  dropdownNodeProps,
+  renderDropdownLabel,
+} from '@/utils/dropdown.ts'
 
 interface IProps {
   list: {
@@ -35,6 +41,15 @@ function onClear(field: string, opts: { label: string; value: string | number }[
   e.stopPropagation()
   data.value[field] = undefined
 }
+
+const menuProps = dropdownMenuProps()
+
+function renderLabel(field: string, option: DropdownOption) {
+  return renderDropdownLabel({
+    label: option.label as string,
+    selected: data.value[field] === option.key,
+  })
+}
 </script>
 
 <template>
@@ -44,6 +59,10 @@ function onClear(field: string, opts: { label: string; value: string | number }[
         :options="toDropdownOptions(item.options)"
         placement="bottom-start"
         trigger="click"
+        :menu-props="menuProps"
+        :node-props="dropdownNodeProps(() => data[item.field])"
+        :theme-overrides="DROPDOWN_THEME_OVERRIDES"
+        :render-label="(option: DropdownOption) => renderLabel(item.field, option)"
         @select="(key: string | number) => onSelect(item.field, key)"
       >
         <div class="trigger" :style="item.style" :class="{ placeholder: !selectedLabel(item.field, item.options) }">

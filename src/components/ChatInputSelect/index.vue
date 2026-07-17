@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { computed, watch, h } from 'vue'
+import { computed, watch } from 'vue'
 import type { DropdownOption } from 'naive-ui'
 import { getOptionIcon, type IconCategory } from './icons.ts'
+import {
+  DROPDOWN_THEME_OVERRIDES,
+  dropdownMenuProps,
+  dropdownNodeProps,
+  renderDropdownLabel,
+} from '@/utils/dropdown.ts'
 
 interface IOption {
   label: string
@@ -9,15 +15,24 @@ interface IOption {
   icon?: string
 }
 
-const { options, title, iconCategory } = defineProps<{
+const { options, title, iconCategory, panelWidth } = defineProps<{
   options: IOption[]
   title?: string
   iconCategory?: IconCategory
+  panelWidth?: number
 }>()
 const value = defineModel<string | number>('value', { required: true })
 
 const currentOption = computed(() => options.find((o) => o.value === value.value))
 const iconFor = (option: IOption) => getOptionIcon(iconCategory, option)
+
+// 设计稿中比例/时长面板为 156px，创作类型/模型/分辨率为 194px
+const menuProps = computed(() =>
+  dropdownMenuProps(
+    panelWidth ?? (iconCategory === 'ratio' || iconCategory === 'duration' ? 156 : 194),
+  ),
+)
+const nodeProps = dropdownNodeProps(() => value.value)
 
 const dropdownOptions = computed<DropdownOption[]>(() => {
   const mapped = options.map((o) => ({ label: o.label, key: o.value }))
@@ -43,27 +58,17 @@ watch(
   },
 )
 
-const CHECK_SVG =
-  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.5L6.5 11.5L12.5 4.5" stroke="#8E66F9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-
 function renderLabel(option: DropdownOption) {
   if (option.type === 'group') return option.label as string
 
   const opt = options.find((o) => o.value === option.key)
   if (!opt) return option.label as string
-  const svg = iconFor(opt)
 
-  return h(
-    'div',
-    { class: 'cdd-opt-row' },
-    [
-      svg ? h('span', { class: 'cdd-opt-icon', innerHTML: svg }) : undefined,
-      h('span', { class: 'cdd-opt-label' }, option.label as string),
-      value.value === option.key
-        ? h('span', { class: 'cdd-opt-check', innerHTML: CHECK_SVG })
-        : undefined,
-    ].filter(Boolean),
-  )
+  return renderDropdownLabel({
+    label: opt.label,
+    iconSvg: iconFor(opt),
+    selected: value.value === option.key,
+  })
 }
 </script>
 
@@ -73,6 +78,9 @@ function renderLabel(option: DropdownOption) {
     :options="dropdownOptions"
     placement="bottom-start"
     trigger="click"
+    :menu-props="menuProps"
+    :node-props="nodeProps"
+    :theme-overrides="DROPDOWN_THEME_OVERRIDES"
     :render-label="renderLabel"
     @select="(key: string | number) => (value = key)"
   >
@@ -147,45 +155,6 @@ function renderLabel(option: DropdownOption) {
     .arrow {
       flex-shrink: 0;
     }
-  }
-}
-</style>
-
-<style lang="less">
-.cdd-opt-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cdd-opt-icon {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  svg {
-    display: block;
-    width: 16px;
-    height: 16px;
-  }
-}
-
-.cdd-opt-label {
-  flex: 1;
-}
-
-.cdd-opt-check {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  margin-left: auto;
-  width: 16px;
-  height: 16px;
-  svg {
-    display: block;
-    width: 16px;
-    height: 16px;
   }
 }
 </style>
