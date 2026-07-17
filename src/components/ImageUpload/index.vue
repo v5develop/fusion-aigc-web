@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { upload } from '@/api/ossUpload.ts'
 import { useMessage } from 'naive-ui'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 interface IProps {
   type?: 'card' // 上传控件样式
@@ -35,6 +35,10 @@ const imgList = defineModel<any[]>('imgList', {
 const message = useMessage()
 const loading = ref(false)
 const uploadRef = ref<HTMLInputElement | null>(null)
+
+// 已达上传上限：此时按钮点击只会弹「最多上传N张」，没有操作意义，直接隐藏。
+// 需要换图时先删除已传图片，上传按钮会重新出现。
+const limitReached = computed(() => !!limitNumber && imgList.value.length >= limitNumber)
 
 const deleteImg = (index: number) => {
   imgList.value.splice(index, 1)
@@ -102,7 +106,7 @@ const tryClick = (url: string) => {
     <div class="main">
       <div v-if="limitNumber && topRightTips" class="limit-tips">支持多图(最多{{ limitNumber }}张)</div>
 
-      <div class="upload-btn" @click="beforeUpload">
+      <div v-if="!limitReached" class="upload-btn" @click="beforeUpload">
         <i class="icon-ic_ds_CloudUpload1"></i>
         <span>{{ btnName }}</span>
       </div>
