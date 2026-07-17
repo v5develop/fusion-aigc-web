@@ -292,7 +292,10 @@ const tryClick = (url: string) => {
       flex-shrink: 0;
     }
     > .content {
-      flex: 1;
+      /* 按内容收缩而非占满剩余宽度：排得下时右侧不留富余，左右视觉间距同为 .try-try 的 8px；
+         排不下时被压缩到可用宽度并横向滚动，右侧同样紧贴 8px 内边距 */
+      flex: 0 1 auto;
+      min-width: 0;
       height: 90%;
       display: flex;
       align-items: center;
