@@ -1,4 +1,5 @@
-import { entryCodeVal2Label, modelVal2Label, ratioVal2Label } from './constants.ts'
+import { entryCodeVal2Label, modelVal2Label } from './constants.ts'
+import { ratioLabel } from '@/utils/ratio'
 
 /**
  * 归一化历史记录的 inputParams 为图片 submit 入参，供「再次生成」复用。
@@ -16,18 +17,15 @@ export const buildResubmitParams = (item: any, single = false) => {
   const first = (item?.contents ?? [])[0] ?? {}
   // 结构 2 无 entryCode：图片仅两种能力，按有无输入图推断
   const entryCode = src.entryCode ?? (images.length ? 'imageToImage' : 'textToImage')
-  const width = p.width ?? first.width ?? 1024
-  const height = p.height ?? first.height ?? 1024
   return {
     type: 'IMAGE',
     entryCode,
     modelCode: src.modelCode ?? 'local-image',
     params: {
       prompt: p.prompt ?? src.prompt ?? '',
-      width,
-      height,
-      // 宽高比：历史无 size 时按实际宽高推导
-      size: p.size ?? ratioLabel(width, height),
+      width: p.width ?? first.width ?? 1024,
+      height: p.height ?? first.height ?? 1024,
+      // size 由请求入口按 width/height 统一推导，页面/工具层不再手动传
       // 单张固定 1 张；整批沿用原数量，缺失则按已生成素材数兜底
       num: single ? 1 : (p.num ?? (item?.contents?.length || 1)),
     },
@@ -76,22 +74,6 @@ export const isMixedSize = (contents: any[] = []): boolean => {
   const key = (c: any) => `${c.resolution ?? ''}|${c.ratio ?? ''}`
   const first = key(withSize[0])
   return withSize.some((c) => key(c) !== first)
-}
-
-/** 宽高 → 画幅比例标签：优先精确映射(ratioOps)，否则按 gcd 约分；无尺寸返回 ''。 */
-export function ratioLabel(w?: number, h?: number): string {
-  if (!w || !h) return ''
-  const exact = ratioVal2Label[`${w},${h}`]
-  if (exact) return exact
-  const g = gcd(w, h)
-  return `${w / g}:${h / g}`
-}
-
-function gcd(a: number, b: number): number {
-  while (b) {
-    ;[a, b] = [b, a % b]
-  }
-  return a
 }
 
 /**

@@ -15,7 +15,6 @@ import type { PromptSlot, FileItem } from './ChatInputBox/types'
 import { slotsToPrompt, promptDetailToSlots } from './ChatInputBox/utils'
 import { buildTargetParams } from './ChatInputBox/targetParams'
 import { entryCodeOps, modelOps as pictureModelOps, ratioOps } from '@/views/picture/constants.ts'
-import { ratioLabel } from '@/views/picture/utils.ts'
 import {
   entryCodeOps as videoEntryCodeOps,
   ratioOps as videoRatioOps,
@@ -62,20 +61,33 @@ const currentTemplateCode = ref('')
 // 电商模板路由 → 完整询价入参，用于首页 ecommerce Tab 按当前模板询基础价。
 // 需要额外 modelCode/params 的模板，按对应子页面初始默认值补齐（缺失会导致 1003 或价格不一致）
 const ECOMMERCE_QUOTE: Record<string, IQuotePreview> = {
-  '/e-commerce/product-detail': { entryCode: 'aPlusDetailPage', params: { image_types: [] } },
-  '/e-commerce/product-kit': { entryCode: 'productSetImages', params: { white: 1, scence: 1, key_points: 1, detail: 0 } },
-  '/e-commerce/product-clone': { entryCode: 'hitReplication' },
-  '/e-commerce/product-in-hand': { entryCode: 'aiGestures' },
+  '/e-commerce/product-detail': {
+    entryCode: 'aPlusDetailPage',
+    modelCode: 'local-image',
+    params: { image_types: [] },
+  },
+  '/e-commerce/product-kit': {
+    entryCode: 'productSetImages',
+    modelCode: 'local-image',
+    params: { white: 1, scence: 1, key_points: 1, detail: 0 },
+  },
+  '/e-commerce/product-clone': { entryCode: 'hitReplication', modelCode: 'local-image' },
+  '/e-commerce/product-in-hand': { entryCode: 'aiGestures', modelCode: 'local-image' },
   '/e-commerce/video-clone': { entryCode: 'hitVideoReplication', modelCode: 'local' },
   '/e-commerce/video-hot': { entryCode: 'hitVideo', modelCode: 'local' },
   '/e-commerce/model-replace': { entryCode: 'personReplacement' },
   '/e-commerce/product-replace': { entryCode: 'productReplacement' },
   '/e-commerce/change-background': { entryCode: 'backgroundSwitching' },
-  '/e-commerce/clothing-kit': { entryCode: 'wearingProductSetImages', params: { scenePhoto: [] } },
-  '/e-commerce/clothing-try': { entryCode: 'aiClothExchange' },
+  // modelCode 与 clothingKit 页面的默认值保持一致，避免首页报价与进页面后不符
+  '/e-commerce/clothing-kit': {
+    entryCode: 'wearingProductSetImages',
+    modelCode: 'local-image',
+    params: { scenePhoto: [] },
+  },
+  '/e-commerce/clothing-try': { entryCode: 'aiClothExchange', modelCode: 'local-image' },
   '/e-commerce/clothing-remove-wrinkle': { entryCode: 'removeWrinkles' },
-  '/e-commerce/merge-image': { entryCode: 'mergeClothes' },
-  '/e-commerce/try-shoe': { entryCode: 'shoeSwapping' },
+  '/e-commerce/merge-image': { entryCode: 'mergeClothes', modelCode: 'local-image' },
+  '/e-commerce/try-shoe': { entryCode: 'shoeSwapping', modelCode: 'local-image' },
 }
 
 // 提交前积分预览：按当前 Tab 镜像各自提交参数；ecommerce 按模板取 entryCode 询基础价
@@ -92,7 +104,6 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
           prompt: p.prompt,
           width: +w!,
           height: +h!,
-          size: ratioLabel(+w!, +h!),
           num: p.entryCode === 'textToImage' ? 4 : 1,
         },
         imageUrls: p.images,
@@ -106,8 +117,6 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
         modelCode: v.modelCode,
         params: {
           prompt: v.prompt,
-          // size 所有场景都传（含动作迁移），与 aspectRatio 并存
-          size: v.ratio,
           ...(isAT ? {} : { resolution: v.resolution, aspectRatio: v.ratio, duration: v.duration }),
         },
         imageUrls: v.images,

@@ -6,6 +6,8 @@ import ImageUpload from '@/components/ImageUpload/index.vue'
 import Tab from '@/components/Tab/index.vue'
 import { ageOps, aspectRatioOps, genderOps, skinOps } from '@/views/e-commerce/childPages/constants.ts'
 import SelectGroup from '@/components/SelectGroup/index.vue'
+// 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
+import { modelOps } from '@/views/picture/constants.ts'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
@@ -24,6 +26,7 @@ const formData = reactive({
   uploadPersonUrl: [], // 上传的模特
   imageUrls: [] as string[],
   aspectRatio: '1:1',
+  modelCode: 'local-image',
   userInput: '',
 })
 const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()
@@ -35,7 +38,10 @@ const promptImages = computed(() => {
   images.push(...formData.imageUrls)
   return images
 })
-const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'mergeClothes' }), [])
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
+  () => ({ entryCode: 'mergeClothes', modelCode: formData.modelCode }),
+  [() => formData.modelCode],
+)
 
 const submit = () => {
   if (loading.value) return
@@ -53,6 +59,7 @@ const submit = () => {
   const params = {
     type: 'mergeClothes',
     imageUrls: formData.imageUrls,
+    modelCode: formData.modelCode,
     params: {
       personUrl: tabValue.value === 'modelLib' ? formData.personUrl : formData.uploadPersonUrl[0],
       aspectRatio: formData.aspectRatio,
@@ -179,6 +186,13 @@ function useModelList() {
           :list="[{ field: 'aspectRatio', options: aspectRatioOps }]"
           style="margin-top: 12px"
           :col="1"
+        />
+        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
+        <SelectGroup
+          v-model:data="formData"
+          :list="[{ field: 'modelCode', options: modelOps }]"
+          :col="1"
+          style="margin-top: 8px"
         />
 
         <div class="module-title">生成要求</div>

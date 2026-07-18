@@ -5,6 +5,8 @@ import ImageUpload from '@/components/ImageUpload/index.vue'
 import Tab from '@/components/Tab/index.vue'
 import { poseOps, shoeStyleOps, genderOps } from '@/views/e-commerce/childPages/constants.ts'
 import SelectGroup from '@/components/SelectGroup/index.vue'
+// 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
+import { modelOps } from '@/views/picture/constants.ts'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
@@ -24,9 +26,13 @@ const formData = reactive({
   imageUrls: [],
   personUrl: '', // 鞋库
   uploadPersonUrl: [], // 上传的鞋
+  modelCode: 'local-image',
 })
 const { shoeFilterData, pagingData, tabValue, shoeList, scrollCallBack } = useShoeList()
-const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'shoeSwapping' }), [])
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
+  () => ({ entryCode: 'shoeSwapping', modelCode: formData.modelCode }),
+  [() => formData.modelCode],
+)
 
 const submit = () => {
   if (loading.value) return
@@ -44,6 +50,7 @@ const submit = () => {
   const params = {
     type: 'shoeSwapping',
     imageUrls: formData.imageUrls,
+    modelCode: formData.modelCode,
     params: {
       personUrl: tabValue.value === 'shoeLib' ? formData.personUrl : formData.uploadPersonUrl[0],
     },
@@ -135,6 +142,9 @@ function useShoeList() {
           >
           <span style="color: #9e9e9e; margin-top: 4px; padding: 0 20px">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>
+
+        <div class="module-title">选择模型</div>
+        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
 
         <div class="module-title">试鞋模版</div>
         <div v-loading="pagingData.loading" style="position: relative">

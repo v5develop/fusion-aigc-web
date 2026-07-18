@@ -2,6 +2,23 @@ import { post, get, ssePost } from './index.ts'
 import type { SsePostHandlers } from './index.ts'
 import * as types from './types'
 import { createSafeUuid } from '@/utils/utils'
+import { ratioLabel } from '@/utils/ratio'
+
+/**
+ * 生成/询价类请求的统一 size 注入：size 为宽高比，从 params 已有信息推导，业务层无需手动传。
+ * - 有 aspectRatio（视频/电商）→ 直接取；有 width/height（图片）→ 按比例映射
+ * - 已显式带 size 或无画幅信息（如动作迁移）→ 原样返回
+ * 返回浅拷贝，不 mutate 入参（询价 params 可能是 reactive 对象，改它会污染页面状态）
+ */
+function injectSize<T>(data: T): T {
+  const p = (data as any)?.params
+  if (!p || p.size != null) return data
+  let size: string | undefined
+  if (p.aspectRatio) size = p.aspectRatio
+  else if (p.width && p.height) size = ratioLabel(p.width, p.height)
+  if (size == null) return data
+  return { ...(data as any), params: { ...p, size } }
+}
 
 export function getSts(data: types.IGetSts) {
   const { subDir = 'uploads', visibility = 'public', ...rest } = data
@@ -29,7 +46,7 @@ export function getUserInfo() {
 }
 
 export function ecommerceSubmit(data: any, headers: any = { 'Idempotency-Key': createSafeUuid() }) {
-  return post('/api/v1/creation/ecommerce/submit', data, headers, 60000)
+  return post('/api/v1/creation/ecommerce/submit', injectSize(data), headers, 60000)
 }
 
 export function pollingTask(sessionId: string) {
@@ -89,7 +106,7 @@ export function publicTemplate(params: types.IPublicTemplate) {
 
 export function creationSubmit(data: types.ICreationSubmit, headers: any = { 'Idempotency-Key': createSafeUuid() }) {
   // 图生图等任务后端需先处理输入图，提交耗时可能超过全局 10s 超时，单独放宽
-  return post('/api/v1/creation/submit', data, headers, 60000)
+  return post('/api/v1/creation/submit', injectSize(data), headers, 60000)
 }
 
 export function publicDisplay(params: any) {
@@ -120,5 +137,5 @@ export function creationHistory(params: types.ICreationHistory) {
 }
 
 export function quotePreview(data: types.IQuotePreview) {
-  return post('/api/v1/billing/quote/preview', data)
+  return post('/api/v1/billing/quote/preview', injectSize(data))
 }

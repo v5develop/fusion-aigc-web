@@ -14,6 +14,8 @@ import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { publicTemplate } from '@/api/methods.ts'
 import { ageOps, genderOps, skinOps, sceneOps } from '@/views/e-commerce/childPages/constants.ts'
+// 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
+import { modelOps } from '@/views/picture/constants.ts'
 import { useMessage } from 'naive-ui'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
@@ -31,6 +33,7 @@ const formData = reactive({
   personUrl: '', // 模特库
   uploadPersonUrl: [], // 上传的模特
   aspectRatio: '3:4',
+  modelCode: 'local-image',
   prompt: '',
   scenePhoto: [] as string[],
 })
@@ -57,11 +60,13 @@ const { modelFilterData, pagingData, modelList, scrollCallBack } = useModelList(
 const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
   () => ({
     entryCode: 'wearingProductSetImages',
+    modelCode: formData.modelCode,
     params: {
       scenePhoto: formData.prompt ? [...formData.scenePhoto, formData.prompt] : formData.scenePhoto,
     },
   }),
-  [() => formData.scenePhoto],
+  // deep 是为 scenePhoto 数组保留的，勿删
+  [() => formData.scenePhoto, () => formData.modelCode],
   { deep: true },
 )
 
@@ -84,6 +89,7 @@ const submit = () => {
   const params = {
     type: 'wearingProductSetImages',
     imageUrls: formData.imageUrls,
+    modelCode: formData.modelCode,
     params: {
       personUrl: tabValue.value === 'modelLib' ? formData.personUrl : formData.uploadPersonUrl[0],
       aspectRatio: formData.aspectRatio,
@@ -212,6 +218,9 @@ function useModelList() {
             { label: '9:16', value: '9:16' },
           ]"
         />
+
+        <div class="module-title">选择模型</div>
+        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
 
         <div class="module-title">拍摄场景（多选）</div>
         <!--        <div class="switch-cont">-->

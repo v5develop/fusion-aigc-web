@@ -6,6 +6,8 @@ import ImageUpload from '@/components/ImageUpload/index.vue'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import { platformOps, regionOps, languageOps, aspectRatioOps, genderOps, ageOps, skinOps } from '../../constants.ts'
+// 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
+import { modelOps } from '@/views/picture/constants.ts'
 import Tab from '@/components/Tab/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
@@ -30,11 +32,15 @@ const formData = reactive({
   region: '中国',
   language: '中文',
   aspectRatio: '1:1',
+  modelCode: 'local-image',
 })
 const { handPagingData, handTabValue, handListObj, handScrollCallBack } = useHandList()
 const { modelFilterData, modelPagingData, modelList, scrollCallBack } = useModelList()
 const { bgList, bgScrollCallBack } = useBg()
-const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'aiGestures' }), [])
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
+  () => ({ entryCode: 'aiGestures', modelCode: formData.modelCode }),
+  [() => formData.modelCode],
+)
 
 const submit = () => {
   if (loading.value) return
@@ -59,6 +65,7 @@ const submit = () => {
   const params = {
     type: 'aiGestures',
     imageUrls: formData.imageUrls,
+    modelCode: formData.modelCode,
     params: {
       modelGesturesUrl: handTabValue.value === 'modelGestures' ? formData.modelGesturesUrl : '',
       gesturesUrl: handTabValue.value === 'handGestures' ? formData.gesturesUrl : '',
@@ -255,6 +262,13 @@ function useBg() {
             { field: 'language', options: languageOps },
             { field: 'aspectRatio', options: aspectRatioOps },
           ]"
+        />
+        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
+        <SelectGroup
+          v-model:data="formData"
+          :list="[{ field: 'modelCode', options: modelOps }]"
+          :col="1"
+          style="margin-top: 8px"
         />
 
         <div class="module-title">手持姿势</div>

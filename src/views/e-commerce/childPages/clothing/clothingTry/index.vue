@@ -6,6 +6,8 @@ import ImageUpload from '@/components/ImageUpload/index.vue'
 import Tab from '@/components/Tab/index.vue'
 import { ageOps, genderOps, clothStyleOps, skinOps } from '@/views/e-commerce/childPages/constants.ts'
 import SelectGroup from '@/components/SelectGroup/index.vue'
+// 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
+import { modelOps } from '@/views/picture/constants.ts'
 import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
@@ -30,6 +32,7 @@ const formData = reactive({
   poseUrl: '', // 试衣模板图
   uploadPoseUrl: [], // 上传的试衣模板图
   bgImageUrl: '', // 背景图
+  modelCode: 'local-image',
 })
 
 const store = useHomeStore()
@@ -51,7 +54,10 @@ if (global_formData.value.home) {
 const { modelFilterData, pagingData, modelList, scrollCallBack } = useModelList()
 const { poseFilterData, posePagingData, poseTabValue, poseList, poseScrollCallBack } = usePose()
 const { bgList, bgScrollCallBack } = useBg()
-const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'aiClothExchange' }), [])
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
+  () => ({ entryCode: 'aiClothExchange', modelCode: formData.modelCode }),
+  [() => formData.modelCode],
+)
 
 const submit = () => {
   if (loading.value) return
@@ -78,6 +84,7 @@ const submit = () => {
   const params = {
     type: 'aiClothExchange',
     imageUrls: formData.imageUrls,
+    modelCode: formData.modelCode,
     params: {
       personUrl: tabValue.value === 'modelLib' ? formData.personUrl : formData.uploadPersonUrl[0],
       poseUrl: poseTabValue.value === 'poseLib' ? formData.poseUrl : formData.uploadPoseUrl[0],
@@ -264,6 +271,9 @@ function useBg() {
           <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>
 
+        <div class="module-title">选择模型</div>
+        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
+
         <div class="module-title">选择模特</div>
         <div v-loading="pagingData.loading" style="position: relative">
           <Tab
@@ -303,7 +313,7 @@ function useBg() {
           </div>
         </div>
 
-        <div class="module-title">选择试衣模版</div>
+        <div class="module-title">试衣模版</div>
         <div v-loading="posePagingData.loading" style="position: relative">
           <Tab
             v-model:value="poseTabValue"

@@ -34,9 +34,7 @@ export const buildResubmitParams = (item: any) => {
     modelCode: src.modelCode ?? 'local-video',
     params: {
       prompt: p.prompt ?? src.prompt ?? '',
-      // size 所有场景都传（含动作迁移）。动作迁移的历史不含 aspectRatio，
-      // 此时实际产出素材的 first.ratio 是唯一可靠来源（与 getMetaData 同一优先级）
-      size: p.size ?? p.aspectRatio ?? p.ratio ?? first.ratio ?? '',
+      // size 由请求入口按 aspectRatio 统一推导；动作迁移无画幅、入口不注入（与首次生成一致）
       // 动作迁移由参考视频决定画幅/时长，不传比例/分辨率/时长
       ...(isActionTransfer
         ? {}

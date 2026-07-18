@@ -10,6 +10,8 @@ import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
+// 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
+import { modelOps } from '@/views/picture/constants.ts'
 import { useMessage } from 'naive-ui'
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
@@ -25,17 +27,19 @@ const formData = reactive({
   region: '中国',
   language: '中文',
   aspectRatio: '1:1',
+  modelCode: 'local-image',
   buyPoint: '',
   image_types: [],
 })
 const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
   () => ({
     entryCode: 'aPlusDetailPage',
+    modelCode: formData.modelCode,
     params: {
       image_types: formData.image_types,
     },
   }),
-  [() => formData.image_types],
+  [() => formData.image_types, () => formData.modelCode],
   { deep: true },
 )
 
@@ -57,6 +61,7 @@ const submit = () => {
   const params = {
     type: 'aPlusDetailPage',
     imageUrls: formData.imageUrls,
+    modelCode: formData.modelCode,
     params: {
       image_types: formData.image_types,
       platform: formData.platform,
@@ -97,6 +102,13 @@ const submit = () => {
             { field: 'language', options: languageOps },
             { field: 'aspectRatio', options: aspectRatioOps },
           ]"
+        />
+        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
+        <SelectGroup
+          v-model:data="formData"
+          :list="[{ field: 'modelCode', options: modelOps }]"
+          :col="1"
+          style="margin-top: 8px"
         />
 
         <div class="module-title">商品卖点&要求</div>

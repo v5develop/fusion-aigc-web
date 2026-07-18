@@ -66,8 +66,6 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
       modelCode: formData.modelCode,
       params: {
         prompt: formData.prompt,
-        // size 所有场景都传（含动作迁移），与 aspectRatio 并存
-        size: formData.ratio,
         ...(isAT ? {} : { resolution: formData.resolution, aspectRatio: formData.ratio, duration: formData.duration }),
       },
       imageUrls: formData.images,
@@ -165,8 +163,6 @@ const submit = async () => {
     modelCode: formData.modelCode,
     params: {
       prompt: formData.prompt,
-      // size 所有场景都传（含动作迁移），与 aspectRatio 并存
-      size: formData.ratio,
       // 动作迁移由参考视频决定画幅/时长，不传比例/分辨率/时长
       ...(isActionTransfer
         ? {}

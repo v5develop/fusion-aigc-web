@@ -13,6 +13,8 @@ import Sample from '../../components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { checkboxCustomImageList } from './constants.ts'
 import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
+// 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
+import { modelOps } from '@/views/picture/constants.ts'
 import type { ICheckboxCustomImageItem } from './constants.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useMessage } from 'naive-ui'
@@ -30,6 +32,7 @@ const formData = reactive({
   region: '中国',
   language: '中文',
   aspectRatio: '1:1',
+  modelCode: 'local-image',
   buyPoint: '',
   checked: ['auto'], // auto: 智能匹配（默认）， custom：自定义配置
 })
@@ -56,10 +59,11 @@ const { customData, checkboxClickHandle, sub, add } = useCheckbox()
 const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
   () => ({
     entryCode: 'productSetImages',
+    modelCode: formData.modelCode,
     params: formData.checked.includes('auto') ? defaultCustomData : customData,
   }),
   // customData 是 reactive 对象，需 deep 才能监听到内部数量变化
-  [() => formData.checked, () => customData],
+  [() => formData.checked, () => formData.modelCode, () => customData],
   { deep: true },
 )
 
@@ -78,6 +82,7 @@ const submit = () => {
   const params = {
     type: 'productSetImages',
     imageUrls: formData.imageUrls,
+    modelCode: formData.modelCode,
     params: {
       platform: formData.platform,
       region: formData.region,
@@ -145,6 +150,13 @@ function useCheckbox() {
             { field: 'language', options: languageOps },
             { field: 'aspectRatio', options: aspectRatioOps },
           ]"
+        />
+        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
+        <SelectGroup
+          v-model:data="formData"
+          :list="[{ field: 'modelCode', options: modelOps }]"
+          :col="1"
+          style="margin-top: 8px"
         />
 
         <div class="module-title">商品卖点&要求</div>

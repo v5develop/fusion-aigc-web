@@ -5,6 +5,8 @@ import Container from '@/views/e-commerce/childPages/components/Container/index.
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import ImageRequirement from './ImageRequirement/index.vue'
 import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
+// 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
+import { modelOps } from '@/views/picture/constants.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
@@ -27,12 +29,16 @@ const formData = reactive({
   region: '中国',
   language: '中文',
   aspectRatio: '1:1',
+  modelCode: 'local-image',
   prompt: '',
   level: [0], // 0 = 高度复刻，1 = 参考风格
   allStyle: '',
 })
 const refImageLimit = 5
-const { pricePoints: integral, status: quoteStatus } = useQuotePreview(() => ({ entryCode: 'hitReplication' }), [])
+const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
+  () => ({ entryCode: 'hitReplication', modelCode: formData.modelCode }),
+  [() => formData.modelCode],
+)
 
 const submit = () => {
   if (loading.value) return
@@ -47,6 +53,7 @@ const submit = () => {
   const params = {
     type: 'hitReplication',
     imageUrls: formData.imageUrls,
+    modelCode: formData.modelCode,
     params: {
       refImageUrl: formData.refImageUrl.map((item) => item.image),
       userInput: formData.refImageUrl.map((item) => item.input),
@@ -106,6 +113,13 @@ const customResultHandle = (urls: string[]) => {
             { field: 'language', options: languageOps },
             { field: 'aspectRatio', options: aspectRatioOps },
           ]"
+        />
+        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
+        <SelectGroup
+          v-model:data="formData"
+          :list="[{ field: 'modelCode', options: modelOps }]"
+          :col="1"
+          style="margin-top: 8px"
         />
 
         <div class="module-title">复刻程度</div>
