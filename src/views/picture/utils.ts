@@ -1,5 +1,6 @@
 import { entryCodeVal2Label, modelVal2Label } from './constants.ts'
 import { ratioLabel } from '@/utils/ratio'
+import { withWatermark } from '@/utils/oss'
 
 /**
  * 归一化历史记录的 inputParams 为图片 submit 入参，供「再次生成」复用。
@@ -42,7 +43,7 @@ export const download = (item: any) => {
   urls.forEach((url: string, index: number) => {
     setTimeout(() => {
       const a = document.createElement('a')
-      a.href = url
+      a.href = withWatermark(url) // 图片加水印；视频原样返回
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -52,7 +53,7 @@ export const download = (item: any) => {
 
 export const downloadSingle = (url: string) => {
   const a = document.createElement('a')
-  a.href = url
+  a.href = withWatermark(url) // 图片加水印；视频原样返回
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

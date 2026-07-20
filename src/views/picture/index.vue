@@ -16,6 +16,7 @@ import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import { downloadImage } from '@/utils/download'
+import { withWatermark } from '@/utils/oss'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import regenerateWhiteIcon from '@/assets/icons/regenerate-white.svg'
@@ -262,7 +263,7 @@ const generateAgainSingle = async (item: any, key: string) => {
                 <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
                   <n-image
                     v-if="jtem.resultUrl"
-                    :src="jtem.resultUrl"
+                    :src="withWatermark(jtem.resultUrl)"
                     alt=""
                     width="100%"
                     height="100%"

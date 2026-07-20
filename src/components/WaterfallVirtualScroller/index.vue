@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { VirtualWaterfall } from '@lhlyu/vue-virtual-waterfall'
 import useWaterfall from './index.ts'
+import { withWatermark } from '@/utils/oss'
 
 const { waterfallData } = defineProps<{
   waterfallData: {
@@ -24,7 +25,7 @@ const { waterfallOption, calcItemHeight } = useWaterfall()
     <template #default="{ item }">
       <div class="card">
 <!--        <img v-if="item.mediaType === 'image'" class="img" :src="item.url" alt="" />-->
-        <n-image v-if="item.mediaType === 'image'" :src="item.url" width="100%" height="100%" object-fit="cover"></n-image>
+        <n-image v-if="item.mediaType === 'image'" :src="withWatermark(item.url)" width="100%" height="100%" object-fit="cover"></n-image>
         <video v-else class="video" :src="item.url" controls></video>
       </div>
     </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { inject, type Ref } from 'vue'
 import { downloadImage } from '@/utils/download'
+import { withWatermark } from '@/utils/oss'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 
@@ -26,7 +27,7 @@ const onDownload = () => downloadImage(data.resultUrl)
 
 <template>
   <div class="card" :class="{ cursor: selectImgUrls }">
-    <n-image v-if="data.resultUrl" :src="data.resultUrl" alt="" width="100%" height="100%" object-fit="cover">
+    <n-image v-if="data.resultUrl" :src="withWatermark(data.resultUrl)" alt="" width="100%" height="100%" object-fit="cover">
       <template #error>
         <MediaFallback type="image" />
       </template>

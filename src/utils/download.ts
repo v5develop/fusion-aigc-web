@@ -4,6 +4,7 @@
  * 整组：优先打包 ZIP（需 fetch 到二进制），任一图片抓取失败则整体降级为逐张下载。
  */
 import JSZip from 'jszip'
+import { withWatermark } from './oss'
 
 /** 取一组任务里可下载的图片 URL（仅生成成功、有 resultUrl 的） */
 export function getDownloadableUrls(item: any): string[] {
@@ -57,13 +58,15 @@ export async function downloadImage(url: string, filename?: string): Promise<voi
   if (!url) return
   const name = filename || `AI素材_${Date.now()}.${extFromUrl(url)}`
   try {
-    const res = await fetch(url, { mode: 'cors' })
+    // 图片走水印变体；视频 URL withWatermark 会原样返回
+    const res = await fetch(withWatermark(url), { mode: 'cors' })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const objectUrl = URL.createObjectURL(await res.blob())
     triggerAnchorDownload(objectUrl, name)
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
   } catch {
-    triggerAnchorDownload(withAttachment(url, name))
+    // 先 withAttachment(内部 new URL) 再拼水印，避免水印逗号被 URL 序列化重编码
+    triggerAnchorDownload(withWatermark(withAttachment(url, name)))
   }
 }
 
@@ -72,7 +75,7 @@ async function downloadImagesSequentially(urls: string[], prefix: string): Promi
   let i = 0
   for (const url of urls) {
     i += 1
-    triggerAnchorDownload(withAttachment(url, `${prefix}_${i}.${extFromUrl(url)}`))
+    triggerAnchorDownload(withWatermark(withAttachment(url, `${prefix}_${i}.${extFromUrl(url)}`)))
     await new Promise((resolve) => setTimeout(resolve, 300))
   }
 }
@@ -93,7 +96,7 @@ export async function downloadImagesAsZip(urls: string[], zipName = 'AI素材'):
   try {
     const files = await Promise.all(
       list.map(async (url) => {
-        const res = await fetch(url, { mode: 'cors' })
+        const res = await fetch(withWatermark(url), { mode: 'cors' })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return { blob: await res.blob(), ext: extFromUrl(url) }
       }),

@@ -2,6 +2,7 @@
 import { inject, ref, watch, type Ref } from 'vue'
 import { CHECK_PATH } from '../../constants.ts'
 import MediaFallback from '@/components/MediaFallback/index.vue'
+import { withWatermark } from '@/utils/oss'
 
 const { data } = defineProps<{
   data: { id: number; resultUrl: string; status: 0 | 1 | 2 | 3; mediaType: 'image' | 'video' }
@@ -36,7 +37,7 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
     <template v-if="data.resultUrl">
       <n-image
         v-if="data.mediaType === 'image'"
-        :src="data.resultUrl"
+        :src="withWatermark(data.resultUrl)"
         alt=""
         width="100%"
         height="100%"
