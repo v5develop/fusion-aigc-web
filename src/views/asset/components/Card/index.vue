@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { inject, type Ref } from 'vue'
+import { inject, ref, watch, type Ref } from 'vue'
 import { CHECK_PATH } from '../../constants.ts'
+import MediaFallback from '@/components/MediaFallback/index.vue'
 
 const { data } = defineProps<{
   data: { id: number; resultUrl: string; status: 0 | 1 | 2 | 3; mediaType: 'image' | 'video' }
 }>()
+
+// 视频加载失败：以占位图替换。data 变化（虚拟列表复用同一实例）时重置失败态
+const videoError = ref(false)
+watch(
+  () => data.resultUrl,
+  () => (videoError.value = false),
+)
 
 // 管理模式开关 + 已选资产 id 集合（删除按 id、下载按 resultUrl，故选择以 id 为准）
 const manageMode = inject<Ref<boolean> | undefined>('assetManageMode', undefined)
@@ -33,8 +41,21 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
         width="100%"
         height="100%"
         object-fit="cover"
-      />
-      <video v-else class="video" :src="data.resultUrl" controls></video>
+      >
+        <template #error>
+          <MediaFallback type="image" />
+        </template>
+      </n-image>
+      <template v-else>
+        <video
+          v-if="!videoError"
+          class="video"
+          :src="data.resultUrl"
+          controls
+          @error="videoError = true"
+        ></video>
+        <MediaFallback v-else type="video" />
+      </template>
     </template>
     <div
       v-else

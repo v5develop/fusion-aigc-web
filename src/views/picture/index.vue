@@ -14,6 +14,7 @@ import { useQuotePreview } from '@/utils/hooks'
 import { useMessage } from 'naive-ui'
 import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
+import MediaFallback from '@/components/MediaFallback/index.vue'
 import { downloadImage } from '@/utils/download'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
@@ -266,7 +267,11 @@ const generateAgainSingle = async (item: any, key: string) => {
                     width="100%"
                     height="100%"
                     object-fit="cover"
-                  />
+                  >
+                    <template #error>
+                      <MediaFallback type="image" />
+                    </template>
+                  </n-image>
                   <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio) && utils.isMixedSize(item.contents)" class="image-meta-badge">
                     <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
                     <span v-if="jtem.ratio">{{ jtem.ratio }}</span>

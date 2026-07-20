@@ -16,6 +16,7 @@ import { download, showDownloadBtn, isFromAigcChat } from '@/views/picture/utils
 import { getMetaData, isMixedSize, buildResubmitParams } from './utils.ts'
 import { downloadImage } from '@/utils/download'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
+import MediaFallback from '@/components/MediaFallback/index.vue'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import regenerateWhiteIcon from '@/assets/icons/regenerate-white.svg'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
@@ -228,6 +229,9 @@ const generateAgain = (item: any) => {
   execute(buildResubmitParams(item))
 }
 
+// 加载失败的视频 URL 集合：失败后以占位图替换该视频
+const videoErrorSet = reactive(new Set<string>())
+
 // 单资源卡片：下载中的资源 URL 集合（用于按钮 loading 动效）
 const downloadingSet = reactive(new Set<string>())
 const onDownloadSingle = async (url: string) => {
@@ -303,7 +307,14 @@ const getSourceVideo = (inputParams: any): string => {
               <!-- 图片网格 -->
               <div class="message-group__images">
                 <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
-                  <video v-if="jtem.resultUrl" class="video" :src="jtem.resultUrl" controls />
+                  <video
+                    v-if="jtem.resultUrl && !videoErrorSet.has(jtem.resultUrl)"
+                    class="video"
+                    :src="jtem.resultUrl"
+                    controls
+                    @error="videoErrorSet.add(jtem.resultUrl)"
+                  />
+                  <MediaFallback v-else-if="jtem.resultUrl" class="video" type="video" />
                   <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio) && isMixedSize(item.contents)" class="image-meta-badge">
                     <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
                     <span v-if="jtem.ratio">{{ jtem.ratio }}</span>

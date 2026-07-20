@@ -2,6 +2,7 @@
 import { inject, type Ref } from 'vue'
 import { downloadImage } from '@/utils/download'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
+import MediaFallback from '@/components/MediaFallback/index.vue'
 
 const { data } = defineProps<{ data: { resultUrl: string; status: 0 | 1 | 2 | 3 } }>()
 
@@ -25,7 +26,11 @@ const onDownload = () => downloadImage(data.resultUrl)
 
 <template>
   <div class="card" :class="{ cursor: selectImgUrls }">
-    <n-image v-if="data.resultUrl" :src="data.resultUrl" alt="" width="100%" height="100%" object-fit="cover" />
+    <n-image v-if="data.resultUrl" :src="data.resultUrl" alt="" width="100%" height="100%" object-fit="cover">
+      <template #error>
+        <MediaFallback type="image" />
+      </template>
+    </n-image>
     <div
       v-else
       class="status-box"

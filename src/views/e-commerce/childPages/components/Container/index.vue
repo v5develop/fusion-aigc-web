@@ -13,7 +13,10 @@ const { title, submit, loading, integral, quoteStatus } = defineProps<{
 <template>
   <div class="container">
     <div class="form-container">
-      <h1 class="title">{{ title }}</h1>
+      <h1 class="title">
+        <span>{{ title }}</span>
+        <slot name="titleExtra"></slot>
+      </h1>
 
       <div class="content">
         <div class="content-scroll">
@@ -59,6 +62,9 @@ const { title, submit, loading, integral, quoteStatus } = defineProps<{
       font-weight: bold;
       color: #1f1f1f;
       margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     > .content {
       flex: 1;
