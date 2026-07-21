@@ -220,6 +220,23 @@ export interface SsePostHandlers {
 }
 
 /**
+ * 解码单条 SSE data 值。后端将正文按 JSON 字符串编码下发（带引号、`\n` 等转义），
+ * 需 JSON.parse 还原为真实文本（引号去除、转义还原）；解析失败时按纯文本原样返回，
+ * 兼容旧的纯文本格式。每条 data 都是完整一行（JSON 里换行被转义为 `\n`，不会跨行），故可逐行解析。
+ */
+function decodeSseData(raw: string): string {
+  if (raw.charCodeAt(0) === 34 /* 双引号 " */) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (typeof parsed === 'string') return parsed
+    } catch {
+      // 非完整/合法 JSON 字符串，回退纯文本
+    }
+  }
+  return raw
+}
+
+/**
  * 从完整 SSE 文本中提取拼接后的正文（与增量 onDelta 的拼接结果一致）。
  * 用于流结束时对「整段原始字节一次性解码」出的字符串做权威重解析，规避各宿主 webview
  * 增量解码（TextDecoder stream 模式）在多字节字符 chunk 边界上的丢字/乱码差异。
@@ -241,7 +258,7 @@ function parseSseDeltas(text: string): string {
     const head = line.slice(0, di)
     if (head.startsWith('event:')) ev = head.slice(6).trim()
     if (ev === 'done') break
-    if (ev === 'delta' || ev === 'message') out += line.slice(di + 5).replace(/^ /, '')
+    if (ev === 'delta' || ev === 'message') out += decodeSseData(line.slice(di + 5).replace(/^ /, ''))
   }
   return out
 }
@@ -337,7 +354,7 @@ export function ssePost(url: string, data: any, handlers: SsePostHandlers): () =
         if (curEvent === 'done') {
           finishDone()
         } else if (curEvent === 'delta' || curEvent === 'message') {
-          if (data) handlers.onDelta(data)
+          if (data) handlers.onDelta(decodeSseData(data))
         }
       }
 
