@@ -33,7 +33,7 @@ const formData = reactive({
   personUrl: '', // 模特库
   uploadPersonUrl: [], // 上传的模特
   aspectRatio: '3:4',
-  modelCode: 'local-image',
+  modelCode: 'xiaoqi-image-1.0-flash',
   prompt: '',
   scenePhoto: [] as string[],
 })

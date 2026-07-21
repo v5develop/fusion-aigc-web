@@ -41,14 +41,14 @@ export const useHomeStore = defineStore('counter', () => {
     home: false,
     picture: {
       entryCode: 'textToImage',
-      modelCode: 'local-image',
+      modelCode: 'xiaoqi-image-1.0-flash',
       prompt: '',
       ratio: '1024,1024',
       images: [],
     },
     video: {
       entryCode: 'textToVideo',
-      modelCode: 'local-video',
+      modelCode: 'xiaoqi-video-1.0-lite',
       prompt: '',
       ratio: '720,1280',
       resolution: '720p',

@@ -29,7 +29,7 @@ let _formData: any
 if (global_formData.value.home) {
   const {
     entryCode = 'imageToImage',
-    modelCode = 'local-image',
+    modelCode = 'xiaoqi-image-1.0-flash',
     prompt = '',
     ratio = '1024,1024',
     images = [],
@@ -46,7 +46,7 @@ const btnLoading = ref(false)
 const formData = reactive(
   _formData ?? {
     entryCode: 'imageToImage',
-    modelCode: 'local-image',
+    modelCode: 'xiaoqi-image-1.0-flash',
     prompt: '',
     ratio: '1024,1024',
     images: [],
@@ -353,7 +353,6 @@ const generateAgainSingle = async (item: any, key: string) => {
               title="选择模型"
               icon-category="model"
               :options="modelOps"
-              :panel-width="194"
             />
             <ChatInputSelect
               v-model:value="formData.ratio"

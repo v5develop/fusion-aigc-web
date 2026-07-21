@@ -26,7 +26,7 @@ const formData = reactive({
   uploadPersonUrl: [], // 上传的模特
   imageUrls: [] as string[],
   aspectRatio: '1:1',
-  modelCode: 'local-image',
+  modelCode: 'xiaoqi-image-1.0-flash',
   userInput: '',
 })
 const { modelFilterData, pagingData, tabValue, modelList, scrollCallBack } = useModelList()

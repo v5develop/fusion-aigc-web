@@ -29,7 +29,7 @@ let _formData: any
 if (global_formData.value.home) {
   const {
     entryCode = 'imageToVideo',
-    modelCode = 'local-video',
+    modelCode = 'xiaoqi-video-1.0-lite',
     prompt = '',
     ratio = '9:16',
     resolution = '720p',
@@ -48,7 +48,7 @@ const btnLoading = ref(false)
 const formData = reactive(
   _formData ?? {
     entryCode: 'imageToVideo',
-    modelCode: 'local-video',
+    modelCode: 'xiaoqi-video-1.0-lite',
     prompt: '',
     ratio: '9:16',
     resolution: '720p',

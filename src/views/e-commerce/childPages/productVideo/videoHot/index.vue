@@ -29,7 +29,7 @@ const formData = reactive({
   aspectRatio: '9:16',
   duration: 16,
   buyPoint: '',
-  modelCode: 'local',
+  modelCode: 'xiaoqi-video-1.0-lite',
   checked: [] as string[],
   personUrl: '',
   personUrlHs: '',

@@ -28,7 +28,7 @@ const formData = reactive({
   region: '中国',
   language: '中文',
   buyPoint: '',
-  modelCode: 'local',
+  modelCode: 'xiaoqi-video-1.0-lite',
   checked: [] as string[],
   personUrl: '',
   personUrlHs: '',

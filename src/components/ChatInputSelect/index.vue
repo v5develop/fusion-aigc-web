@@ -26,13 +26,13 @@ const currentOption = computed(() => options.find((o) => o.value === value.value
 const iconFor = (option: IOption) => getOptionIcon(iconCategory, option)
 
 // 面板宽度：设计稿中比例/时长为 156px，其余为 194px；
-// 模型下拉的文案偏长（如 Seedance2.0-fast），在设计稿基础上加宽 20px
+// 模型下拉的文案偏长（如 XiaoQi-Image-1.0-Flash），在设计稿基础上进一步加宽
 const PANEL_WIDTH: Record<IconCategory, number> = {
   ratio: 156,
   duration: 156,
   entryCode: 194,
   resolution: 194,
-  model: 214,
+  model: 260,
 }
 
 const menuProps = computed(() =>

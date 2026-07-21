@@ -31,7 +31,7 @@ export const buildResubmitParams = (item: any) => {
   return {
     type: 'VIDEO',
     entryCode,
-    modelCode: src.modelCode ?? 'local-video',
+    modelCode: src.modelCode ?? 'xiaoqi-video-1.0-lite',
     params: {
       prompt: p.prompt ?? src.prompt ?? '',
       // size 由请求入口按 aspectRatio 统一推导；动作迁移无画幅、入口不注入（与首次生成一致）

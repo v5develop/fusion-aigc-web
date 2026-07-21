@@ -4,8 +4,8 @@ export const entryCodeOps = [
 ]
 
 export const modelOps = [
-  { label: '本地模型', value: 'local-image' },
-  { label: 'GPT-Image-2', value: 'xiaoqi-gpt-image-2' },
+  { label: 'XiaoQi-Image-1.0-Flash', value: 'xiaoqi-image-1.0-flash' },
+  { label: 'XiaoQi-Image-1.0-Max', value: 'xiaoqi-image-1.0-max' },
 ]
 
 // 尺寸↔比例的单一数据源在 @/utils/ratio，这里复用（供比例下拉与 ratioVal2Label）

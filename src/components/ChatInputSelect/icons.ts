@@ -4,7 +4,6 @@ import IMG2IMG from '@/assets/icons/select/img2img.svg?raw'
 import TEXT2IMG from '@/assets/icons/select/text2img.svg?raw'
 import MODEL_LOCAL from '@/assets/icons/select/model.svg?raw'
 import MODEL_SEEDANCE from '@/assets/icons/select/model-seedance.svg?raw'
-import MODEL_GPT from '@/assets/icons/select/model-gpt.svg?raw'
 import RESOLUTION from '@/assets/icons/select/resolution.svg?raw'
 import DURATION from '@/assets/icons/select/duration.svg?raw'
 import TEXT2VIDEO from '@/assets/icons/select/video-text2video.svg?raw'
@@ -52,10 +51,19 @@ export function getOptionIcon(
       return ratioIconSvg(option.label)
     case 'duration':
       return DURATION
-    case 'model':
-      // GPT 系列 → ChatGPT 标；本地模型 → 立方体；其余云端模型(Seedance 等) → 彩色条
-      if (/gpt/i.test(String(option.value))) return MODEL_GPT
-      return /^local/i.test(String(option.value)) ? MODEL_LOCAL : MODEL_SEEDANCE
+    case 'model': {
+      // 本地/基础模型(XiaoQi image-flash / image-max / video-lite) → 立方体；
+      // 其余云端模型(Seedance 等) → 彩色条
+      const modelValue = String(option.value)
+      if (
+        /^local/i.test(modelValue) ||
+        modelValue === 'xiaoqi-image-1.0-flash' ||
+        modelValue === 'xiaoqi-image-1.0-max' ||
+        modelValue === 'xiaoqi-video-1.0-lite'
+      )
+        return MODEL_LOCAL
+      return MODEL_SEEDANCE
+    }
     case 'resolution':
       return RESOLUTION
     case 'entryCode':

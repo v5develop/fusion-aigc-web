@@ -39,9 +39,9 @@ export const bodyOps = [
   { label: '微胖', value: '微胖' },
 ]
 
-export const localModelValue = 'local'
+export const localModelValue = 'xiaoqi-video-1.0-lite'
 export const modelOps = [
-  { label: '本地模型', value: localModelValue },
+  { label: 'XiaoQi-Video-1.0-Lite', value: localModelValue },
   { label: 'Seedance-2.0', value: 'doubao-seedance-2-0-260128' },
   { label: 'Seedance-2.0-Fast', value: 'doubao-seedance-2-0-fast-260128' },
 ]

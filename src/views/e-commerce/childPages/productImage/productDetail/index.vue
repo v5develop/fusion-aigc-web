@@ -27,7 +27,7 @@ const formData = reactive({
   region: '中国',
   language: '中文',
   aspectRatio: '1:1',
-  modelCode: 'local-image',
+  modelCode: 'xiaoqi-image-1.0-flash',
   buyPoint: '',
   image_types: [],
 })

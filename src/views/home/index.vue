@@ -34,14 +34,14 @@ const activeChatTab = ref<TTabValue>('picture')
 const formData = reactive({
   picture: {
     entryCode: 'imageToImage',
-    modelCode: 'local-image',
+    modelCode: 'xiaoqi-image-1.0-flash',
     prompt: '',
     ratio: '1024,1024',
     images: [] as string[],
   },
   video: {
     entryCode: 'imageToVideo',
-    modelCode: 'local-video',
+    modelCode: 'xiaoqi-video-1.0-lite',
     prompt: '',
     ratio: '9:16',
     resolution: '720p',
@@ -63,31 +63,31 @@ const currentTemplateCode = ref('')
 const ECOMMERCE_QUOTE: Record<string, IQuotePreview> = {
   '/e-commerce/product-detail': {
     entryCode: 'aPlusDetailPage',
-    modelCode: 'local-image',
+    modelCode: 'xiaoqi-image-1.0-flash',
     params: { image_types: [] },
   },
   '/e-commerce/product-kit': {
     entryCode: 'productSetImages',
-    modelCode: 'local-image',
+    modelCode: 'xiaoqi-image-1.0-flash',
     params: { white: 1, scence: 1, key_points: 1, detail: 0 },
   },
-  '/e-commerce/product-clone': { entryCode: 'hitReplication', modelCode: 'local-image' },
-  '/e-commerce/product-in-hand': { entryCode: 'aiGestures', modelCode: 'local-image' },
-  '/e-commerce/video-clone': { entryCode: 'hitVideoReplication', modelCode: 'local' },
-  '/e-commerce/video-hot': { entryCode: 'hitVideo', modelCode: 'local' },
+  '/e-commerce/product-clone': { entryCode: 'hitReplication', modelCode: 'xiaoqi-image-1.0-flash' },
+  '/e-commerce/product-in-hand': { entryCode: 'aiGestures', modelCode: 'xiaoqi-image-1.0-flash' },
+  '/e-commerce/video-clone': { entryCode: 'hitVideoReplication', modelCode: 'xiaoqi-video-1.0-lite' },
+  '/e-commerce/video-hot': { entryCode: 'hitVideo', modelCode: 'xiaoqi-video-1.0-lite' },
   '/e-commerce/model-replace': { entryCode: 'personReplacement' },
   '/e-commerce/product-replace': { entryCode: 'productReplacement' },
   '/e-commerce/change-background': { entryCode: 'backgroundSwitching' },
   // modelCode 与 clothingKit 页面的默认值保持一致，避免首页报价与进页面后不符
   '/e-commerce/clothing-kit': {
     entryCode: 'wearingProductSetImages',
-    modelCode: 'local-image',
+    modelCode: 'xiaoqi-image-1.0-flash',
     params: { scenePhoto: [] },
   },
-  '/e-commerce/clothing-try': { entryCode: 'aiClothExchange', modelCode: 'local-image' },
+  '/e-commerce/clothing-try': { entryCode: 'aiClothExchange', modelCode: 'xiaoqi-image-1.0-flash' },
   '/e-commerce/clothing-remove-wrinkle': { entryCode: 'removeWrinkles' },
-  '/e-commerce/merge-image': { entryCode: 'mergeClothes', modelCode: 'local-image' },
-  '/e-commerce/try-shoe': { entryCode: 'shoeSwapping', modelCode: 'local-image' },
+  '/e-commerce/merge-image': { entryCode: 'mergeClothes', modelCode: 'xiaoqi-image-1.0-flash' },
+  '/e-commerce/try-shoe': { entryCode: 'shoeSwapping', modelCode: 'xiaoqi-image-1.0-flash' },
 }
 
 // 提交前积分预览：按当前 Tab 镜像各自提交参数；ecommerce 按模板取 entryCode 询基础价
@@ -336,7 +336,6 @@ const submit = () => {
               title="选择模型"
               icon-category="model"
               :options="pictureModelOps"
-              :panel-width="194"
             />
             <ChatInputSelect
               v-model:value="formData.picture.ratio"

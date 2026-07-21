@@ -21,7 +21,7 @@ export const buildResubmitParams = (item: any, single = false) => {
   return {
     type: 'IMAGE',
     entryCode,
-    modelCode: src.modelCode ?? 'local-image',
+    modelCode: src.modelCode ?? 'xiaoqi-image-1.0-flash',
     params: {
       prompt: p.prompt ?? src.prompt ?? '',
       width: p.width ?? first.width ?? 1024,

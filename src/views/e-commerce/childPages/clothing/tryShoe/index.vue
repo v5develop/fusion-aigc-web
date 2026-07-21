@@ -26,7 +26,7 @@ const formData = reactive({
   imageUrls: [],
   personUrl: '', // 鞋库
   uploadPersonUrl: [], // 上传的鞋
-  modelCode: 'local-image',
+  modelCode: 'xiaoqi-image-1.0-flash',
 })
 const { shoeFilterData, pagingData, tabValue, shoeList, scrollCallBack } = useShoeList()
 const { pricePoints: integral, status: quoteStatus } = useQuotePreview(

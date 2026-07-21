@@ -29,7 +29,7 @@ const formData = reactive({
   region: '中国',
   language: '中文',
   aspectRatio: '1:1',
-  modelCode: 'local-image',
+  modelCode: 'xiaoqi-image-1.0-flash',
   prompt: '',
   level: [0], // 0 = 高度复刻，1 = 参考风格
   allStyle: '',

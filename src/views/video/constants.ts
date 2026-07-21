@@ -2,8 +2,8 @@ import { getMap } from '@/views/picture/constants.ts'
 
 export const modelOps = [
   {
-    label: '本地模型',
-    value: 'local-video',
+    label: 'XiaoQi-Video-1.0-Lite',
+    value: 'xiaoqi-video-1.0-lite',
     resolutionOps: [
       { label: '720p', value: '720p' },
       { label: '1080p', value: '1080p' },

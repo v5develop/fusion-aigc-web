@@ -32,7 +32,7 @@ const formData = reactive({
   poseUrl: '', // 试衣模板图
   uploadPoseUrl: [], // 上传的试衣模板图
   bgImageUrl: '', // 背景图
-  modelCode: 'local-image',
+  modelCode: 'xiaoqi-image-1.0-flash',
 })
 
 const store = useHomeStore()
