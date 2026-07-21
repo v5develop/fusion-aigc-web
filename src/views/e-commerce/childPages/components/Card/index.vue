@@ -5,7 +5,9 @@ import { withWatermark } from '@/utils/oss'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 
-const { data } = defineProps<{ data: { resultUrl: string; status: 0 | 1 | 2 | 3 } }>()
+const { data } = defineProps<{
+  data: { resultUrl: string; status: 0 | 1 | 2 | 3; blocked?: boolean }
+}>()
 
 const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', undefined)
 
@@ -41,14 +43,16 @@ const onDownload = () => downloadImage(data.resultUrl)
       </template>
     </div>
 
+    <div v-if="data.blocked" class="blocked-overlay">内容已屏蔽</div>
+
     <i
-      v-if="selectImgUrls"
+      v-if="selectImgUrls && !data.blocked"
       :class="isImgChecked() ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"
       class="icon"
       @click="toggleImage"
     />
 
-    <div v-if="data.resultUrl && data.status === 2" class="download-pill" @click.stop="onDownload">
+    <div v-if="data.resultUrl && data.status === 2 && !data.blocked" class="download-pill" @click.stop="onDownload">
       <img :src="downloadSingleIcon" width="24" height="24" alt="下载" />
     </div>
   </div>
@@ -105,6 +109,20 @@ const onDownload = () => downloadImage(data.resultUrl)
       transform: rotate(360deg);
     }
   }
+  > .blocked-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 14px;
+    border-radius: 8px;
+    z-index: 3;
+    pointer-events: none;
+  }
+
   > .icon {
     font-size: 28px;
     position: absolute;

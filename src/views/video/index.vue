@@ -319,9 +319,10 @@ const getSourceVideo = (inputParams: any): string => {
                     <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
                     <span v-if="jtem.ratio">{{ jtem.ratio }}</span>
                   </div>
+                  <div v-if="jtem.blocked" class="blocked-overlay">内容已屏蔽</div>
                   <div v-if="jtem.status === 1" class="pending">处理中...</div>
                   <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
-                  <div v-if="jtem.resultUrl" class="single-actions" @click.stop>
+                  <div v-if="jtem.resultUrl && !jtem.blocked" class="single-actions" @click.stop>
                     <button
                       v-if="jtem.status === 2"
                       class="single-action-btn"
@@ -433,5 +434,19 @@ const getSourceVideo = (inputParams: any): string => {
   width: 250px;
   display: flex;
   gap: 24px;
+}
+
+.blocked-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  border-radius: inherit;
+  z-index: 3;
+  pointer-events: none;
 }
 </style>
