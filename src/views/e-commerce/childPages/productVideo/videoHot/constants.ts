@@ -53,7 +53,7 @@ export const videoList = [
 
 export const checkboxOps = [
   {
-    label: 'UGG 种草',
+    label: 'UGC 种草',
     value: 'ugc_product_seeding_video',
     desc: '用户视角真实分享体验/TikTok-Reels高转化',
   },
