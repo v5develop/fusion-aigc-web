@@ -281,6 +281,7 @@ const generateAgainSingle = async (item: any, key: string) => {
                   <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
                   <div v-if="jtem.resultUrl" class="single-actions" @click.stop>
                     <button
+                      v-if="jtem.status === 2"
                       class="single-action-btn"
                       title="下载"
                       :disabled="downloadingSet.has(jtem.resultUrl)"
@@ -316,7 +317,7 @@ const generateAgainSingle = async (item: any, key: string) => {
                   <img :src="regenerateIcon" class="action-btn__icon" width="16" height="16" alt="再次生成" />
                   <span>再次生成</span>
                 </button>
-                <button class="action-btn" @click="utils.download(item)">
+                <button v-show="utils.showDownloadBtn(item)" class="action-btn" @click="utils.download(item)">
                   <img :src="downloadAllIcon" class="action-btn__icon" width="16" height="16" alt="全部下载" />
                   <span>全部下载</span>
                 </button>

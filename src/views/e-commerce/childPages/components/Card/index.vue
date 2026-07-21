@@ -32,26 +32,12 @@ const onDownload = () => downloadImage(data.resultUrl)
         <MediaFallback type="image" />
       </template>
     </n-image>
-    <div
-      v-else
-      class="status-box"
-      :class="{
-        pending: data.status === 0,
-        processing: data.status === 1,
-        failed: data.status === 3,
-      }"
-    >
-      <template v-if="data.status === 0">
-<!--        <i class="icon-ic_ds_clock"></i>-->
-        <span>排队中</span>
-      </template>
-      <template v-else-if="data.status === 1">
-<!--        <i class="icon-ic_ds_loading"></i>-->
-        <span>处理中</span>
-      </template>
-      <template v-else-if="data.status === 3">
-<!--        <i class="icon-ic_ds_error"></i>-->
-        <span>生成失败</span>
+    <div v-else class="status-box">
+      <!-- 失败态：只展示文案；其余（排队中 0 / 处理中 1）统一为「生成中」，与设计稿一致 -->
+      <span v-if="data.status === 3" class="status-text">生成失败</span>
+      <template v-else>
+        <i class="icon-ic_ds_loading loading-icon"></i>
+        <span class="status-text">生成中</span>
       </template>
     </div>
 
@@ -62,7 +48,7 @@ const onDownload = () => downloadImage(data.resultUrl)
       @click="toggleImage"
     />
 
-    <div v-if="data.resultUrl" class="download-pill" @click.stop="onDownload">
+    <div v-if="data.resultUrl && data.status === 2" class="download-pill" @click.stop="onDownload">
       <img :src="downloadSingleIcon" width="24" height="24" alt="下载" />
     </div>
   </div>
@@ -93,41 +79,21 @@ const onDownload = () => downloadImage(data.resultUrl)
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 4px;
     border-radius: 8px;
+    background: #ffffff;
 
-    &.pending {
-      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-      color: #666;
-      i {
-        font-size: 32px;
-      }
-      span {
-        font-size: 14px;
-      }
+    .loading-icon {
+      font-size: 32px;
+      line-height: 1;
+      color: var(--main-color);
+      animation: spin 1s linear infinite;
     }
 
-    &.processing {
-      background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
-      color: #333;
-      i {
-        font-size: 32px;
-        animation: spin 1s linear infinite;
-      }
-      span {
-        font-size: 14px;
-      }
-    }
-
-    &.failed {
-      background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
-      color: #d32f2f;
-      i {
-        font-size: 32px;
-      }
-      span {
-        font-size: 14px;
-      }
+    .status-text {
+      font-size: 16px;
+      line-height: 26px;
+      color: #9e9e9e;
     }
   }
 

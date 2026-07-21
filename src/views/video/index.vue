@@ -323,6 +323,7 @@ const getSourceVideo = (inputParams: any): string => {
                   <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
                   <div v-if="jtem.resultUrl" class="single-actions" @click.stop>
                     <button
+                      v-if="jtem.status === 2"
                       class="single-action-btn"
                       title="下载"
                       :disabled="downloadingSet.has(jtem.resultUrl)"

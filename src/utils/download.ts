@@ -6,11 +6,11 @@
 import JSZip from 'jszip'
 import { withWatermark } from './oss'
 
-/** 取一组任务里可下载的图片 URL（仅生成成功、有 resultUrl 的） */
+/** 取一组任务里可下载的图片 URL（仅生成成功 status===2 且有 resultUrl 的） */
 export function getDownloadableUrls(item: any): string[] {
   return (item?.contents ?? [])
-    .map((c: any) => c?.resultUrl)
-    .filter((url: any): url is string => !!url)
+    .filter((c: any) => c?.resultUrl && c?.status === 2)
+    .map((c: any) => c.resultUrl as string)
 }
 
 /** 从 URL 推断文件扩展名，无法识别时默认 jpg */

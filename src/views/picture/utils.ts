@@ -38,7 +38,10 @@ export const buildResubmitParams = (item: any, single = false) => {
 export const isFromAigcChat = (item: any): boolean => item?.inputParams?.source === 'aigc_chat'
 
 export const download = (item: any) => {
-  const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
+  // 仅下载生成成功(status===2)的素材
+  const urls = item.contents
+    .filter((c: any) => c.resultUrl && c.status === 2)
+    .map((c: any) => c.resultUrl)
 
   urls.forEach((url: string, index: number) => {
     setTimeout(() => {
@@ -60,7 +63,8 @@ export const downloadSingle = (url: string) => {
 }
 
 export const showDownloadBtn = (item: any) => {
-  const urls = item.contents.map((item: any) => item.resultUrl).filter((resultUrl: any) => !!resultUrl)
+  // 仅当存在生成成功(status===2)的素材时才显示「全部下载」
+  const urls = item.contents.filter((c: any) => c.resultUrl && c.status === 2)
 
   return urls.length
 }
