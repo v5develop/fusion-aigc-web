@@ -57,6 +57,18 @@
     top: 0;
     z-index: 2;
     background-color: #fff;
+
+    // 标题白色背景向上延伸盖住面板顶部 8px 内边距，
+    // 否则吸顶时滚动的选项会从标题上方那条内边距缝隙透出来
+    &::before {
+      content: '';
+      position: absolute;
+      left: -4px;
+      right: -4px;
+      bottom: 100%;
+      height: 8px;
+      background-color: #fff;
+    }
   }
 }
 
