@@ -21,11 +21,12 @@ const text = computed(() => {
     case 'blocked':
       return '存在违规内容'
     case 'timeout':
-      return isVideo ? '视频还在来的路上，请重新生成' : '图片还在来的路上，请重新生成'
+      // 分两行显示（\n 配合 .text 的 white-space: pre-line）
+      return isVideo ? '视频还在来的路上\n请重新生成' : '图片还在来的路上\n请重新生成'
     case 'loadFailed':
       return isVideo ? '视频加载不出来，猫干的' : '图片已被小猫撕碎'
     default: // generateFailed
-      return isVideo ? '视频生成失败，请重新生成' : '图片生成失败，请重新生成'
+      return isVideo ? '视频生成失败\n请重新生成' : '图片生成失败\n请重新生成'
   }
 })
 </script>
@@ -63,12 +64,14 @@ const text = computed(() => {
   }
 
   .text {
-    // 14 / 200 = 7cqw
+    // 设计稿：14px / 行高 20px / #8F8F8F。14 = 200×7cqw；行高用无单位 20/14≈1.43 使其随字号缩放
     font-size: clamp(10px, 7cqw, 16px);
-    line-height: 1.6;
+    line-height: 1.43;
     color: #8f8f8f;
     text-align: center;
     padding: 0 6px;
+    // 文案中的 \n 换行生效（超时/生成失败为两行）
+    white-space: pre-line;
   }
 }
 </style>

@@ -130,6 +130,9 @@ async function handleTokenExpired(config: InternalAxiosRequestConfig): Promise<a
   return service(cfg)
 }
 
+// 业务失败(code!==0)不弹全局 toast 的接口白名单：由调用方自行降级展示（如询价预览失败显示「获取失败」）
+const SILENT_ERROR_URLS = ['/billing/quote/preview']
+
 // 响应拦截。令牌语义对齐 App 端 auth_interceptor：401/业务失效码 → 先刷新重放；403 → 直接重新登录
 service.interceptors.response.use(
   (res: AxiosResponse<ApiResponse>) => {
@@ -140,7 +143,10 @@ service.interceptors.response.use(
     }
 
     if (data.code !== 0) {
-      message.error(data.msg)
+      // 静默接口（如询价预览）业务失败不弹全局 toast，交由调用方自行降级展示
+      if (!SILENT_ERROR_URLS.some((u) => res.config.url?.includes(u))) {
+        message.error(data.msg)
+      }
       return Promise.reject(new Error(data.msg))
     }
     return data as unknown as AxiosResponse<ApiResponse<unknown>>
