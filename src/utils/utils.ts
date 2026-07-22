@@ -37,3 +37,18 @@ export function isAllTasksTerminal(tasks: any[]) {
 export function isTimeout(item: any): boolean {
   return /超时/.test(String(item?.errorMsg ?? item?.statusView?.message ?? ''))
 }
+
+/**
+ * 展示用的 contents：任务仍在生成(status 0/1)且 contents 少于请求数量(num)时，
+ * 用 { status: 1 } 占位补齐到 num 个，使每个待生成的图各显示一个加载动画；
+ * 终态则原样返回真实 contents，避免补出永不完成的幽灵卡。
+ */
+export function displayContents(item: any): any[] {
+  const contents: any[] = item?.contents ?? []
+  const generating = item?.status === 0 || item?.status === 1
+  const num = Number(item?.inputParams?.params?.num) || 1
+  if (generating && contents.length < num) {
+    return contents.concat(Array.from({ length: num - contents.length }, () => ({ status: 1 })))
+  }
+  return contents
+}

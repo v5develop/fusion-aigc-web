@@ -19,7 +19,7 @@ import GenerateLoading from '@/components/GenerateLoading/index.vue'
 import { downloadImage } from '@/utils/download'
 import { withWatermark } from '@/utils/oss'
 import { mediaAspectRatio } from '@/utils/ratio'
-import { isTimeout } from '@/utils/utils'
+import { isTimeout, displayContents } from '@/utils/utils'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import regenerateWhiteIcon from '@/assets/icons/regenerate-white.svg'
@@ -235,7 +235,7 @@ const generateAgainSingle = async (item: any, key: string) => {
         v-if="scrollerHeight > 0"
         :items="messages"
         :min-item-size="300"
-        key-field="createTime"
+        key-field="taskId"
         :style="{ height: scrollerHeight + 'px' }"
         class="scroller"
         v-observer-scroll="{
@@ -244,7 +244,17 @@ const generateAgainSingle = async (item: any, key: string) => {
         }"
       >
         <template #default="{ item, index, active }">
-          <DynamicScrollerItem :item="item" :active="active" :data-index="index">
+          <DynamicScrollerItem
+            :item="item"
+            :active="active"
+            :size-dependencies="[
+              item.inputParams?.params?.prompt,
+              item.status,
+              item.contents,
+              item.inputParams?.entryCode,
+            ]"
+            :data-index="index"
+          >
             <div class="message-group">
               <!-- 日期标题 -->
               <h2 class="message-group__date">{{ item.createTime }}</h2>
@@ -266,7 +276,7 @@ const generateAgainSingle = async (item: any, key: string) => {
               <!-- 图片网格 -->
               <div class="message-group__images">
                 <div
-                  v-for="(jtem, j) in item.contents"
+                  v-for="(jtem, j) in displayContents(item)"
                   :key="j"
                   class="message-group__image-wrap"
                   :style="{ aspectRatio: mediaAspectRatio(jtem, mediaAspectRatio(item.inputParams?.params, '253 / 348')) }"
