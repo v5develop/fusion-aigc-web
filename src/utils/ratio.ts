@@ -32,3 +32,18 @@ export function ratioLabel(w?: number, h?: number): string {
   const g = gcd(w, h)
   return `${w / g}:${h / g}`
 }
+
+/**
+ * 素材真实宽高比 → CSS aspect-ratio 值（如 "16 / 9"）。
+ * 优先用 width/height 数值，其次解析 ratio 字符串（"W:H"，兼容全角冒号），都没有则回退。
+ * 用于让展示容器按素材真实比例排布，避免裁剪/变形。
+ */
+export function mediaAspectRatio(item: any, fallback = '1 / 1'): string {
+  const w = Number(item?.width)
+  const h = Number(item?.height)
+  if (w > 0 && h > 0) return `${w} / ${h}`
+  // ratio（素材实际）/ aspectRatio（视频请求入参）均为 "W:H" 字符串，兼容全角冒号
+  const m = /^(\d+)\s*[:：]\s*(\d+)$/.exec(String(item?.ratio ?? item?.aspectRatio ?? ''))
+  if (m && +m[1]! > 0 && +m[2]! > 0) return `${m[1]} / ${m[2]}`
+  return fallback
+}

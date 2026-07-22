@@ -15,8 +15,10 @@ import { useMessage } from 'naive-ui'
 import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
+import GenerateLoading from '@/components/GenerateLoading/index.vue'
 import { downloadImage } from '@/utils/download'
 import { withWatermark } from '@/utils/oss'
+import { mediaAspectRatio } from '@/utils/ratio'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import regenerateWhiteIcon from '@/assets/icons/regenerate-white.svg'
@@ -182,6 +184,8 @@ const getData = (isReplace?: boolean) => {
           })
         }
       }
+      // 返回本次拉取是否成功，供 hook 判断是否需要重试
+      return res.code === 0
     })
     .finally(() => (pagingData.loading = false))
 }
@@ -260,7 +264,12 @@ const generateAgainSingle = async (item: any, key: string) => {
 
               <!-- 图片网格 -->
               <div class="message-group__images">
-                <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
+                <div
+                  v-for="(jtem, j) in item.contents"
+                  :key="j"
+                  class="message-group__image-wrap"
+                  :style="{ aspectRatio: mediaAspectRatio(jtem, mediaAspectRatio(item.inputParams?.params, '253 / 348')) }"
+                >
                   <n-image
                     v-if="jtem.resultUrl"
                     :src="withWatermark(jtem.resultUrl)"
@@ -270,7 +279,8 @@ const generateAgainSingle = async (item: any, key: string) => {
                     object-fit="cover"
                   >
                     <template #error>
-                      <MediaFallback type="image" />
+                      <!-- 成功图但加载失败：网络原因 -->
+                      <MediaFallback type="image" reason="loadFailed" />
                     </template>
                   </n-image>
                   <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio) && utils.isMixedSize(item.contents)" class="image-meta-badge">
@@ -278,8 +288,8 @@ const generateAgainSingle = async (item: any, key: string) => {
                     <span v-if="jtem.ratio">{{ jtem.ratio }}</span>
                   </div>
                   <div v-if="jtem.blocked" class="blocked-overlay">内容已屏蔽</div>
-                  <div v-if="jtem.status === 1" class="pending">处理中...</div>
-                  <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
+                  <GenerateLoading v-if="jtem.status === 0 || jtem.status === 1" />
+                  <MediaFallback v-else-if="jtem.status === 3" type="image" reason="generateFailed" />
                   <div v-if="jtem.resultUrl && !jtem.blocked" class="single-actions" @click.stop>
                     <button
                       v-if="jtem.status === 2"

@@ -3,11 +3,20 @@ import { computed } from 'vue'
 import imageIcon from '@/assets/icons/fallback-image.svg?raw'
 import videoIcon from '@/assets/icons/fallback-video.svg?raw'
 
-// 图片/视频加载失败占位：白底 + 裂图图标 + 文案，自适应父容器
-const { type = 'image' } = defineProps<{ type?: 'image' | 'video' }>()
+// 图片/视频失败占位：白底 + 图标 + 文案，自适应父容器
+// reason 区分两种失败场景：generateFailed=生成失败，loadFailed=网络加载失败
+const { type = 'image', reason = 'generateFailed' } = defineProps<{
+  type?: 'image' | 'video'
+  reason?: 'generateFailed' | 'loadFailed'
+}>()
 
 const icon = computed(() => (type === 'video' ? videoIcon : imageIcon))
-const text = computed(() => (type === 'video' ? '视频加载不出来，猫干的' : '图片已被小猫撕碎'))
+const text = computed(() => {
+  if (reason === 'loadFailed') {
+    return type === 'video' ? '信号迷路，视频暂时失联' : '信号迷路，图片暂时失联'
+  }
+  return type === 'video' ? '视频加载不出来，猫干的' : '图片已被小猫撕碎'
+})
 </script>
 
 <template>
@@ -21,17 +30,20 @@ const text = computed(() => (type === 'video' ? '视频加载不出来，猫干�
 .media-fallback {
   width: 100%;
   height: 100%;
+  // 作为容器查询上下文：内部图标/文字用 cqw 随卡片宽度等比缩放（基准设计稿卡片宽 200px → 图标 40px、文字 14px）
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: clamp(2px, 2cqw, 4px);
   background: #fff;
 
   .icon {
     display: inline-flex;
-    width: 40px;
-    height: 40px;
+    // 40 / 200 = 20cqw，clamp 兜底极端尺寸
+    width: clamp(20px, 20cqw, 48px);
+    height: clamp(20px, 20cqw, 48px);
     :deep(svg) {
       display: block;
       width: 100%;
@@ -40,9 +52,12 @@ const text = computed(() => (type === 'video' ? '视频加载不出来，猫干�
   }
 
   .text {
-    font-size: 14px;
-    line-height: 24px;
+    // 14 / 200 = 7cqw
+    font-size: clamp(10px, 7cqw, 16px);
+    line-height: 1.6;
     color: #8f8f8f;
+    text-align: center;
+    padding: 0 6px;
   }
 }
 </style>

@@ -4,6 +4,7 @@ import { downloadImage } from '@/utils/download'
 import { withWatermark } from '@/utils/oss'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import MediaFallback from '@/components/MediaFallback/index.vue'
+import GenerateLoading from '@/components/GenerateLoading/index.vue'
 
 const { data } = defineProps<{
   data: { resultUrl: string; status: 0 | 1 | 2 | 3; blocked?: boolean }
@@ -31,17 +32,14 @@ const onDownload = () => downloadImage(data.resultUrl)
   <div class="card" :class="{ cursor: selectImgUrls }">
     <n-image v-if="data.resultUrl" :src="withWatermark(data.resultUrl)" alt="" width="100%" height="100%" object-fit="cover">
       <template #error>
-        <MediaFallback type="image" />
+        <!-- 成功图但加载失败：网络原因 -->
+        <MediaFallback type="image" reason="loadFailed" />
       </template>
     </n-image>
-    <div v-else class="status-box">
-      <!-- 失败态：只展示文案；其余（排队中 0 / 处理中 1）统一为「生成中」，与设计稿一致 -->
-      <span v-if="data.status === 3" class="status-text">生成失败</span>
-      <template v-else>
-        <i class="icon-ic_ds_loading loading-icon"></i>
-        <span class="status-text">生成中</span>
-      </template>
-    </div>
+    <!-- 生成失败：撕碎猫占位图 -->
+    <MediaFallback v-else-if="data.status === 3" type="image" reason="generateFailed" />
+    <!-- 生成中（排队中 0 / 处理中 1）：AI 生成加载动画 -->
+    <GenerateLoading v-else />
 
     <div v-if="data.blocked" class="blocked-overlay">内容已屏蔽</div>
 
@@ -75,40 +73,6 @@ const onDownload = () => downloadImage(data.resultUrl)
     cursor: pointer;
   }
 
-  > .status-box {
-    width: 100%;
-    height: 100%;
-    min-width: 150px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    border-radius: 8px;
-    background: #ffffff;
-
-    .loading-icon {
-      font-size: 32px;
-      line-height: 1;
-      color: var(--main-color);
-      animation: spin 1s linear infinite;
-    }
-
-    .status-text {
-      font-size: 16px;
-      line-height: 26px;
-      color: #9e9e9e;
-    }
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
   > .blocked-overlay {
     position: absolute;
     inset: 0;

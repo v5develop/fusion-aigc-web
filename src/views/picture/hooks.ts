@@ -1,4 +1,4 @@
-import type { Ref } from 'vue'
+import { onScopeDispose, type Ref } from 'vue'
 import { useSessionIdStore } from '@/stores/e-commerce'
 import { useUserInfoStore } from '@/stores/userInfo'
 import { usePolling } from '@/utils/hooks/usePolling.ts'
@@ -35,6 +35,11 @@ export function useInitCheckTaskStatus(props: IProps) {
   // completing：完成副作用中的列表刷新是异步的，防止下一轮轮询重复触发
   let completing = false
   let polledSessionId = ''
+  // 组件卸载后停止一切后台重试
+  let disposed = false
+  onScopeDispose(() => (disposed = true))
+  // 提交刷新令牌：新提交使旧的重试循环失效，避免并发/陈旧刷新
+  let refreshToken = 0
 
   const { start, stop } = usePolling((sessionId) => pollingTask(sessionId!), 3000, {
     stopOnError: false,
@@ -82,13 +87,30 @@ export function useInitCheckTaskStatus(props: IProps) {
     startPolling(sessionId)
   }
 
-  const afterSubmit = async (sessionId: string) => {
-    pagingData.page = 1
-    pagingData.hasMore = true
-    pagingData.loading = false
-    await refreshData(true)
+  // 提交成功后确保 creation/history 拉取成功：失败（网络错误 / 非 0 code）则每 3s 重试，
+  // 直到成功、组件卸载、或被更新的提交取代。后台进行，不阻塞提交按钮与轮询。
+  const refreshHistoryUntilSuccess = async () => {
+    const myToken = ++refreshToken
+    for (;;) {
+      if (disposed || myToken !== refreshToken) return
+      pagingData.page = 1
+      pagingData.hasMore = true
+      pagingData.loading = false
+      try {
+        // getData 成功返回 true；非 0 code 返回 false；被分页 guard 跳过返回 undefined（视为无需重试）
+        const ok = await getData(true)
+        if (ok !== false) return
+      } catch {}
+      if (disposed || myToken !== refreshToken) return
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+    }
+  }
+
+  const afterSubmit = (sessionId: string) => {
     graceLeft = 5
     startPolling(sessionId)
+    // 后台确保 history 拉取成功（失败每 3s 重试），不阻塞提交流程
+    void refreshHistoryUntilSuccess()
   }
 
   /** 提交任务，返回是否提交成功（成功后任务进入会话，由轮询跟进） */

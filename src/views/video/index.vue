@@ -17,6 +17,8 @@ import { getMetaData, isMixedSize, buildResubmitParams } from './utils.ts'
 import { downloadImage } from '@/utils/download'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
+import GenerateLoading from '@/components/GenerateLoading/index.vue'
+import { mediaAspectRatio } from '@/utils/ratio'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import regenerateWhiteIcon from '@/assets/icons/regenerate-white.svg'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
@@ -217,6 +219,8 @@ const getData = (isReplace?: boolean) => {
           })
         }
       }
+      // 返回本次拉取是否成功，供 hook 判断是否需要重试
+      return res.code === 0
     })
     .finally(() => (pagingData.loading = false))
 }
@@ -306,7 +310,12 @@ const getSourceVideo = (inputParams: any): string => {
 
               <!-- 图片网格 -->
               <div class="message-group__images">
-                <div v-for="(jtem, j) in item.contents" :key="j" class="message-group__image-wrap">
+                <div
+                  v-for="(jtem, j) in item.contents"
+                  :key="j"
+                  class="message-group__image-wrap"
+                  :style="{ aspectRatio: mediaAspectRatio(jtem, mediaAspectRatio(item.inputParams?.params, '253 / 348')) }"
+                >
                   <video
                     v-if="jtem.resultUrl && !videoErrorSet.has(jtem.resultUrl)"
                     class="video"
@@ -314,14 +323,15 @@ const getSourceVideo = (inputParams: any): string => {
                     controls
                     @error="videoErrorSet.add(jtem.resultUrl)"
                   />
-                  <MediaFallback v-else-if="jtem.resultUrl" class="video" type="video" />
+                  <!-- 成功视频但加载失败：网络原因 -->
+                  <MediaFallback v-else-if="jtem.resultUrl" class="video" type="video" reason="loadFailed" />
                   <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio) && isMixedSize(item.contents)" class="image-meta-badge">
                     <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
                     <span v-if="jtem.ratio">{{ jtem.ratio }}</span>
                   </div>
                   <div v-if="jtem.blocked" class="blocked-overlay">内容已屏蔽</div>
-                  <div v-if="jtem.status === 1" class="pending">处理中...</div>
-                  <div v-else-if="jtem.status === 3" class="pending">{{ jtem.errorMsg }}</div>
+                  <GenerateLoading v-if="jtem.status === 0 || jtem.status === 1" />
+                  <MediaFallback v-else-if="jtem.status === 3" class="video" type="video" reason="generateFailed" />
                   <div v-if="jtem.resultUrl && !jtem.blocked" class="single-actions" @click.stop>
                     <button
                       v-if="jtem.status === 2"

@@ -3,6 +3,7 @@ import { inject, reactive, type Ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import Card from '../Card/index.vue'
 import { downloadImagesAsZip } from '@/utils/download'
+import { mediaAspectRatio } from '@/utils/ratio'
 import downloadIcon from '@/assets/icons/download-single.svg'
 import { CHECK_PATH } from '../../constants.ts'
 
@@ -81,7 +82,13 @@ const downloadGroup = async (group: any) => {
       </div>
 
       <div class="card-cont">
-        <Card class="card-item" v-for="(jtem, j) in item.assets" :key="j" :data="jtem" />
+        <Card
+          class="card-item"
+          v-for="(jtem, j) in item.assets"
+          :key="j"
+          :data="jtem"
+          :style="{ aspectRatio: mediaAspectRatio(jtem, '1 / 1') }"
+        />
       </div>
     </div>
 
@@ -171,9 +178,11 @@ const downloadGroup = async (group: any) => {
       grid-template-columns: repeat(5, 1fr);
       gap: 8px;
       font-size: 0;
+      // 各卡片按素材真实比例（内联 aspect-ratio）撑高，顶对齐避免被行高拉伸变形
+      align-items: start;
       > .card-item {
         width: 100%;
-        aspect-ratio: 1/1;
+        // aspect-ratio 由模板按素材真实比例内联下发（缺数据时回退 1/1）
       }
     }
   }
