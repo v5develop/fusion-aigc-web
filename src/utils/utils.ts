@@ -29,3 +29,11 @@ export function isAllTasksTerminal(tasks: any[]) {
   }
   return true
 }
+
+/**
+ * 失败(status===3)是否为「超时」：失败原因取 content.errorMsg（= statusView.message），含"超时"即超时。
+ * 用于区分超时占位（还在来的路上）与一般生成失败占位。
+ */
+export function isTimeout(item: any): boolean {
+  return /超时/.test(String(item?.errorMsg ?? item?.statusView?.message ?? ''))
+}

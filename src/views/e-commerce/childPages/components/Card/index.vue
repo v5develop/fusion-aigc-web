@@ -2,12 +2,13 @@
 import { inject, type Ref } from 'vue'
 import { downloadImage } from '@/utils/download'
 import { withWatermark } from '@/utils/oss'
+import { isTimeout } from '@/utils/utils'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
 
 const { data } = defineProps<{
-  data: { resultUrl: string; status: 0 | 1 | 2 | 3; blocked?: boolean }
+  data: { resultUrl: string; status: 0 | 1 | 2 | 3; blocked?: boolean; errorMsg?: string; statusView?: any }
 }>()
 
 const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', undefined)
@@ -30,18 +31,22 @@ const onDownload = () => downloadImage(data.resultUrl)
 
 <template>
   <div class="card" :class="{ cursor: selectImgUrls }">
-    <n-image v-if="data.resultUrl" :src="withWatermark(data.resultUrl)" alt="" width="100%" height="100%" object-fit="cover">
+    <!-- 违规优先：白卡占位 -->
+    <MediaFallback v-if="data.blocked" type="image" reason="blocked" />
+    <n-image v-else-if="data.resultUrl" :src="withWatermark(data.resultUrl)" alt="" width="100%" height="100%" object-fit="cover">
       <template #error>
         <!-- 成功图但加载失败：网络原因 -->
         <MediaFallback type="image" reason="loadFailed" />
       </template>
     </n-image>
-    <!-- 生成失败：撕碎猫占位图 -->
-    <MediaFallback v-else-if="data.status === 3" type="image" reason="generateFailed" />
+    <!-- 生成失败：超时/一般失败占位 -->
+    <MediaFallback
+      v-else-if="data.status === 3"
+      type="image"
+      :reason="isTimeout(data) ? 'timeout' : 'generateFailed'"
+    />
     <!-- 生成中（排队中 0 / 处理中 1）：AI 生成加载动画 -->
     <GenerateLoading v-else />
-
-    <div v-if="data.blocked" class="blocked-overlay">内容已屏蔽</div>
 
     <i
       v-if="selectImgUrls && !data.blocked"
@@ -71,20 +76,6 @@ const onDownload = () => downloadImage(data.resultUrl)
   }
   &.cursor {
     cursor: pointer;
-  }
-
-  > .blocked-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.55);
-    color: #fff;
-    font-size: 14px;
-    border-radius: 8px;
-    z-index: 3;
-    pointer-events: none;
   }
 
   > .icon {

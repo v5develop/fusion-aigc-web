@@ -2,20 +2,31 @@
 import { computed } from 'vue'
 import imageIcon from '@/assets/icons/fallback-image.svg?raw'
 import videoIcon from '@/assets/icons/fallback-video.svg?raw'
+import blockedIcon from '@/assets/icons/fallback-blocked.svg?raw'
 
 // 图片/视频失败占位：白底 + 图标 + 文案，自适应父容器
-// reason 区分两种失败场景：generateFailed=生成失败，loadFailed=网络加载失败
+// reason 区分场景：generateFailed=生成失败 timeout=超时 loadFailed=加载失败 blocked=违规
 const { type = 'image', reason = 'generateFailed' } = defineProps<{
   type?: 'image' | 'video'
-  reason?: 'generateFailed' | 'loadFailed'
+  reason?: 'generateFailed' | 'timeout' | 'loadFailed' | 'blocked'
 }>()
 
-const icon = computed(() => (type === 'video' ? videoIcon : imageIcon))
+const icon = computed(() => {
+  if (reason === 'blocked') return blockedIcon // 裂图 + 红色禁止角标
+  return type === 'video' ? videoIcon : imageIcon
+})
 const text = computed(() => {
-  if (reason === 'loadFailed') {
-    return type === 'video' ? '信号迷路，视频暂时失联' : '信号迷路，图片暂时失联'
+  const isVideo = type === 'video'
+  switch (reason) {
+    case 'blocked':
+      return '存在违规内容'
+    case 'timeout':
+      return isVideo ? '视频还在来的路上，请重新生成' : '图片还在来的路上，请重新生成'
+    case 'loadFailed':
+      return isVideo ? '视频加载不出来，猫干的' : '图片已被小猫撕碎'
+    default: // generateFailed
+      return isVideo ? '视频生成失败，请重新生成' : '图片生成失败，请重新生成'
   }
-  return type === 'video' ? '视频加载不出来，猫干的' : '图片已被小猫撕碎'
 })
 </script>
 

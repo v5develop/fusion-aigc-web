@@ -19,6 +19,7 @@ import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
 import { mediaAspectRatio } from '@/utils/ratio'
+import { isTimeout } from '@/utils/utils'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import regenerateWhiteIcon from '@/assets/icons/regenerate-white.svg'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
@@ -316,8 +317,10 @@ const getSourceVideo = (inputParams: any): string => {
                   class="message-group__image-wrap"
                   :style="{ aspectRatio: mediaAspectRatio(jtem, mediaAspectRatio(item.inputParams?.params, '253 / 348')) }"
                 >
+                  <!-- 违规优先：白卡占位 -->
+                  <MediaFallback v-if="jtem.blocked" class="video" type="video" reason="blocked" />
                   <video
-                    v-if="jtem.resultUrl && !videoErrorSet.has(jtem.resultUrl)"
+                    v-else-if="jtem.resultUrl && !videoErrorSet.has(jtem.resultUrl)"
                     class="video"
                     :src="jtem.resultUrl"
                     controls
@@ -325,13 +328,20 @@ const getSourceVideo = (inputParams: any): string => {
                   />
                   <!-- 成功视频但加载失败：网络原因 -->
                   <MediaFallback v-else-if="jtem.resultUrl" class="video" type="video" reason="loadFailed" />
-                  <div v-if="jtem.resultUrl && (jtem.resolution || jtem.ratio) && isMixedSize(item.contents)" class="image-meta-badge">
+                  <GenerateLoading v-else-if="jtem.status === 0 || jtem.status === 1" />
+                  <MediaFallback
+                    v-else-if="jtem.status === 3"
+                    class="video"
+                    type="video"
+                    :reason="isTimeout(jtem) ? 'timeout' : 'generateFailed'"
+                  />
+                  <div
+                    v-if="jtem.resultUrl && !jtem.blocked && (jtem.resolution || jtem.ratio) && isMixedSize(item.contents)"
+                    class="image-meta-badge"
+                  >
                     <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
                     <span v-if="jtem.ratio">{{ jtem.ratio }}</span>
                   </div>
-                  <div v-if="jtem.blocked" class="blocked-overlay">内容已屏蔽</div>
-                  <GenerateLoading v-if="jtem.status === 0 || jtem.status === 1" />
-                  <MediaFallback v-else-if="jtem.status === 3" class="video" type="video" reason="generateFailed" />
                   <div v-if="jtem.resultUrl && !jtem.blocked" class="single-actions" @click.stop>
                     <button
                       v-if="jtem.status === 2"
@@ -446,17 +456,4 @@ const getSourceVideo = (inputParams: any): string => {
   gap: 24px;
 }
 
-.blocked-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  font-size: 14px;
-  border-radius: inherit;
-  z-index: 3;
-  pointer-events: none;
-}
 </style>

@@ -44,7 +44,8 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
         object-fit="cover"
       >
         <template #error>
-          <MediaFallback type="image" />
+          <!-- 加载失败：网络原因 -->
+          <MediaFallback type="image" reason="loadFailed" />
         </template>
       </n-image>
       <template v-else>
@@ -55,7 +56,8 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
           controls
           @error="videoError = true"
         ></video>
-        <MediaFallback v-else type="video" />
+        <!-- 加载失败：网络原因 -->
+        <MediaFallback v-else type="video" reason="loadFailed" />
       </template>
     </template>
     <div
