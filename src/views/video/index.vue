@@ -236,17 +236,27 @@ const generateAgain = (item: any) => {
 // 加载失败的视频 URL 集合：失败后以占位图替换该视频
 const videoErrorSet = reactive(new Set<string>())
 
-// 竖视频(9:16)用 contain 居中展示两侧留空，横视频用 cover 填满容器
+const isActionTransfer = (item: any) => {
+  const ip = item?.inputParams
+  // 本站提交有 entryCode；Agent 来源无 entryCode，通过是否有参考视频判断（仅动作迁移带视频入参）
+  if (ip?.entryCode) return ip.entryCode === 'actionTransfer'
+  return !!(ip?.video || ip?.videoUrls?.length)
+}
+
+// 竖视频(9:16)检测：优先像素尺寸，其次 ratio/aspectRatio 字符串，兜底请求入参
 const isPortraitVideo = (content: any, parentItem: any) => {
   const w = Number(content?.width)
   const h = Number(content?.height)
   if (w > 0 && h > 0) return h > w
-  // 兜底解析 ratio 字符串 "W:H"：优先内容自身，其次请求入参
   const ratioStr = String(content?.ratio ?? content?.aspectRatio ?? parentItem?.inputParams?.params?.aspectRatio ?? '')
   const m = /^(\d+)\s*[:：]\s*(\d+)$/.exec(ratioStr)
   if (m && +m[1] > 0 && +m[2] > 0) return +m[2] > +m[1]
   return false
 }
+
+// 容器统一 16:9；竖视频或动作迁移用 contain 居中，横视频用 cover 填满
+const useContain = (content: any, parentItem: any) =>
+  isActionTransfer(parentItem) || isPortraitVideo(content, parentItem)
 
 // 单资源卡片：下载中的资源 URL 集合（用于按钮 loading 动效）
 const downloadingSet = reactive(new Set<string>())
@@ -343,7 +353,7 @@ const getSourceVideo = (inputParams: any): string => {
                   <video
                     v-else-if="jtem.resultUrl && !videoErrorSet.has(jtem.resultUrl)"
                     class="video"
-                    :style="isPortraitVideo(jtem, item) ? { objectFit: 'contain' } : undefined"
+                    :style="useContain(jtem, item) ? { objectFit: 'contain' } : undefined"
                     :src="jtem.resultUrl"
                     controls
                     @error="videoErrorSet.add(jtem.resultUrl)"
