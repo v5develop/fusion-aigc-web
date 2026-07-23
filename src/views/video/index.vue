@@ -14,14 +14,11 @@ import { useQuotePreview } from '@/utils/hooks'
 import { useMessage } from 'naive-ui'
 import { download, showDownloadBtn, isFromAigcChat } from '@/views/picture/utils.ts'
 import { getMetaData, isMixedSize, buildResubmitParams } from './utils.ts'
-import { downloadImage } from '@/utils/download'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
 import { isTimeout, displayContents } from '@/utils/utils'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
-import regenerateWhiteIcon from '@/assets/icons/regenerate-white.svg'
-import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import downloadAllIcon from '@/assets/icons/download-all.svg'
 
 const message = useMessage()
@@ -250,7 +247,7 @@ const isPortraitVideo = (content: any, parentItem: any) => {
   if (w > 0 && h > 0) return h > w
   const ratioStr = String(content?.ratio ?? content?.aspectRatio ?? parentItem?.inputParams?.params?.aspectRatio ?? '')
   const m = /^(\d+)\s*[:：]\s*(\d+)$/.exec(ratioStr)
-  if (m && +m[1] > 0 && +m[2] > 0) return +m[2] > +m[1]
+  if (m && +m[1]! > 0 && +m[2]! > 0) return +m[2]! > +m[1]!
   return false
 }
 
@@ -258,30 +255,6 @@ const isPortraitVideo = (content: any, parentItem: any) => {
 const useContain = (content: any, parentItem: any) =>
   isActionTransfer(parentItem) || isPortraitVideo(content, parentItem)
 
-// 单资源卡片：下载中的资源 URL 集合（用于按钮 loading 动效）
-const downloadingSet = reactive(new Set<string>())
-const onDownloadSingle = async (url: string) => {
-  if (!url || downloadingSet.has(url)) return
-  downloadingSet.add(url)
-  try {
-    await downloadImage(url)
-  } finally {
-    downloadingSet.delete(url)
-  }
-}
-
-// 单资源卡片：重新生成中的资源 key 集合（用于按钮 loading 动效）
-const regeneratingSet = reactive(new Set<string>())
-// 单个视频重新生成：沿用原任务入参（提示词/图片/视频/比例/模型）重发一次
-const generateAgainSingle = async (item: any, key: string) => {
-  if (loading.value || regeneratingSet.has(key)) return
-  regeneratingSet.add(key)
-  try {
-    await execute(buildResubmitParams(item))
-  } finally {
-    regeneratingSet.delete(key)
-  }
-}
 
 // 动作迁移的输入视频 URL；兼容早期历史数据 video 为 { url, thumbnail } 对象的情况
 const getSourceVideo = (inputParams: any): string => {
@@ -374,30 +347,6 @@ const getSourceVideo = (inputParams: any): string => {
                     <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
                     <span v-if="jtem.ratio">{{ jtem.ratio }}</span>
                   </div>
-                  <div v-if="jtem.resultUrl && !jtem.blocked" class="single-actions" @click.stop>
-                    <button
-                      v-if="jtem.status === 2"
-                      class="single-action-btn"
-                      title="下载"
-                      :disabled="downloadingSet.has(jtem.resultUrl)"
-                      @click.stop="onDownloadSingle(jtem.resultUrl)"
-                    >
-                      <span v-if="downloadingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
-                      <img v-else :src="downloadSingleIcon" width="24" height="24" alt="下载" />
-                    </button>
-                    <template v-if="!isFromAigcChat(item)">
-                      <span class="single-action-divider"></span>
-                      <button
-                        class="single-action-btn"
-                        title="重新生成"
-                        :disabled="loading || regeneratingSet.has(jtem.resultUrl)"
-                        @click.stop="generateAgainSingle(item, jtem.resultUrl)"
-                      >
-                        <span v-if="regeneratingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
-                        <img v-else :src="regenerateWhiteIcon" width="24" height="24" alt="重新生成" />
-                      </button>
-                    </template>
-                  </div>
                 </div>
               </div>
 
@@ -477,12 +426,8 @@ const getSourceVideo = (inputParams: any): string => {
 <style scoped lang="less">
 @import '../picture/index.less';
 
-// 视频卡片底部有原生 controls，单资源操作条上移避免遮挡
 .message-group__images {
   grid-template-columns: repeat(auto-fill, 480px);
-}
-.message-group__image-wrap .single-actions {
-  bottom: 48px;
 }
 
 .select-cont {

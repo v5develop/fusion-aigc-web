@@ -111,7 +111,7 @@ const generateModel = () => {
   if (btnLoading.value) return
 
   if (modelCode !== localModelValue) {
-    message.warning('只有本地模型可定制模特')
+    message.warning('只有XiaoQi-Video-1.0-Lite模型可定制模特')
     return
   }
 
