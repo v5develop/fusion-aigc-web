@@ -18,7 +18,6 @@ import { downloadImage } from '@/utils/download'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
-import { mediaAspectRatio } from '@/utils/ratio'
 import { isTimeout, displayContents } from '@/utils/utils'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import regenerateWhiteIcon from '@/assets/icons/regenerate-white.svg'
@@ -237,6 +236,18 @@ const generateAgain = (item: any) => {
 // 加载失败的视频 URL 集合：失败后以占位图替换该视频
 const videoErrorSet = reactive(new Set<string>())
 
+// 竖视频(9:16)用 contain 居中展示两侧留空，横视频用 cover 填满容器
+const isPortraitVideo = (content: any, parentItem: any) => {
+  const w = Number(content?.width)
+  const h = Number(content?.height)
+  if (w > 0 && h > 0) return h > w
+  // 兜底解析 ratio 字符串 "W:H"：优先内容自身，其次请求入参
+  const ratioStr = String(content?.ratio ?? content?.aspectRatio ?? parentItem?.inputParams?.params?.aspectRatio ?? '')
+  const m = /^(\d+)\s*[:：]\s*(\d+)$/.exec(ratioStr)
+  if (m && +m[1] > 0 && +m[2] > 0) return +m[2] > +m[1]
+  return false
+}
+
 // 单资源卡片：下载中的资源 URL 集合（用于按钮 loading 动效）
 const downloadingSet = reactive(new Set<string>())
 const onDownloadSingle = async (url: string) => {
@@ -325,13 +336,14 @@ const getSourceVideo = (inputParams: any): string => {
                   v-for="(jtem, j) in displayContents(item)"
                   :key="j"
                   class="message-group__image-wrap"
-                  :style="{ aspectRatio: mediaAspectRatio(jtem, mediaAspectRatio(item.inputParams?.params, '253 / 348')) }"
+                  :style="{ aspectRatio: '16 / 9' }"
                 >
                   <!-- 违规优先：白卡占位 -->
                   <MediaFallback v-if="jtem.blocked" class="video" type="video" reason="blocked" />
                   <video
                     v-else-if="jtem.resultUrl && !videoErrorSet.has(jtem.resultUrl)"
                     class="video"
+                    :style="isPortraitVideo(jtem, item) ? { objectFit: 'contain' } : undefined"
                     :src="jtem.resultUrl"
                     controls
                     @error="videoErrorSet.add(jtem.resultUrl)"
@@ -456,6 +468,9 @@ const getSourceVideo = (inputParams: any): string => {
 @import '../picture/index.less';
 
 // 视频卡片底部有原生 controls，单资源操作条上移避免遮挡
+.message-group__images {
+  grid-template-columns: repeat(auto-fill, 480px);
+}
 .message-group__image-wrap .single-actions {
   bottom: 48px;
 }
