@@ -117,7 +117,9 @@ export function buildTargetParams(templateCode: string, slots: PromptSlot[], ima
         scenePhoto: slots
           .filter((s) => s.type === 'select' && s.key !== 'aspectRatio' && !!s.value)
           .map((s) => s.value) as string[],
-        prompt: getPromptTail(),
+        // 穿戴套图无「自定义描述」输入框，首页不携带 prompt；
+        // 否则模板固定文案会被当作场景混入 scenePhoto
+        prompt: '',
       }
       break
     }
