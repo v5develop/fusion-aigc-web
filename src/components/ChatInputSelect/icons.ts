@@ -10,6 +10,13 @@ import TEXT2VIDEO from '@/assets/icons/select/video-text2video.svg?raw'
 import IMG2VIDEO from '@/assets/icons/select/video-img2video.svg?raw'
 import ACTION_TRANSFER from '@/assets/icons/select/video-action.svg?raw'
 import FIRST_LAST_FRAMES from '@/assets/icons/select/video-frames.svg?raw'
+import NUM_1 from '@/assets/icons/select/num-1.svg?raw'
+import NUM_2 from '@/assets/icons/select/num-2.svg?raw'
+import NUM_3 from '@/assets/icons/select/num-3.svg?raw'
+import NUM_4 from '@/assets/icons/select/num-4.svg?raw'
+
+// 生成数量图标（设计切图，MasterGo 导出）：按张数映射，1~4 张各有对应图形
+const NUM_ICONS: Record<number, string> = { 1: NUM_1, 2: NUM_2, 3: NUM_3, 4: NUM_4 }
 
 // entryCode 各选项对应设计切图（按精确 value 映射，每个创作类型有各自图标）
 const ENTRY_CODE_ICONS: Record<string, string> = {
@@ -40,22 +47,6 @@ export function ratioIconSvg(label: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="${x}" y="${y}" width="${rw}" height="${rh}" rx="1.4" stroke="#3A3A3A" stroke-width="1.2"/></svg>`
 }
 
-// 数量：叠放的「图片」卡片，层数表意生成张数（与比例图标一致的几何生成，非插画重绘，覆盖 1–4）
-export function numIconSvg(value: number | string): string {
-  const n = Math.max(1, Math.min(4, Math.round(Number(value)) || 1))
-  const size = 7
-  const step = 1.9
-  const base = 2.5
-  let rects = ''
-  // 从后往前叠放，前层填白覆盖重叠区以突出层次
-  for (let i = n - 1; i >= 0; i--) {
-    const x = base + (n - 1 - i) * step
-    const y = base + i * step
-    rects += `<rect x="${x}" y="${y}" width="${size}" height="${size}" rx="1.4" fill="#FFFFFF" stroke="#3A3A3A" stroke-width="1.2"/>`
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">${rects}</svg>`
-}
-
 export type IconCategory = 'ratio' | 'duration' | 'model' | 'resolution' | 'entryCode' | 'num'
 
 export function getOptionIcon(
@@ -66,7 +57,8 @@ export function getOptionIcon(
     case 'ratio':
       return ratioIconSvg(option.label)
     case 'num':
-      return numIconSvg(option.value)
+      // 按张数取设计切图，未知值兜底 1 张
+      return NUM_ICONS[Number(option.value)] ?? NUM_1
     case 'duration':
       return DURATION
     case 'model': {
