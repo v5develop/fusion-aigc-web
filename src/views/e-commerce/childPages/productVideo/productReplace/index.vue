@@ -13,6 +13,8 @@ const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('product-replace')
 provide('recordsData', taskList)
+// 结果为视频：卡片按视频渲染，失败/超时占位也用视频文案
+provide('recordMediaType', 'video')
 
 const message = useMessage()
 const loading = ref(false)

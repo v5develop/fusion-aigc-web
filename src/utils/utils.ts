@@ -39,6 +39,16 @@ export function isTimeout(item: any): boolean {
 }
 
 /**
+ * 依扩展名判断是否为视频地址（忽略 query/hash）。
+ * 用于结果卡片按素材真实类型选择 <img> / <video> 渲染。
+ */
+export function isVideoUrl(url?: string): boolean {
+  if (!url) return false
+  const path = String(url).split(/[?#]/)[0] ?? ''
+  return /\.(mp4|mov|webm|m4v)$/i.test(path)
+}
+
+/**
  * 展示用的 contents：任务仍在生成(status 0/1)且 contents 少于请求数量(num)时，
  * 用 { status: 1 } 占位补齐到 num 个，使每个待生成的图各显示一个加载动画；
  * 终态则原样返回真实 contents，避免补出永不完成的幽灵卡。
