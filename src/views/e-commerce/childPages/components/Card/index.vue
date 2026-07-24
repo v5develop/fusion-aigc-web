@@ -102,6 +102,9 @@ const onDownload = () => downloadImage(data.resultUrl)
 <style scoped lang="less">
 .card {
   position: relative;
+  // 同图片/视频模块的卡片：圆角由容器裁切，图片、视频、占位态统一生效
+  border-radius: 4px;
+  overflow: hidden;
   &:hover {
     > .icon,
     > .download-pill {
