@@ -93,7 +93,12 @@ const onDownload = () => downloadImage(data.resultUrl)
       @click="toggleImage"
     />
 
-    <div v-if="data.resultUrl && data.status === 2 && !data.blocked" class="download-pill" @click.stop="onDownload">
+    <!-- 单个下载仅图片有：视频同视频模块，只保留分组的「下载」按钮，避免遮挡播放控件 -->
+    <div
+      v-if="mediaType === 'image' && data.resultUrl && data.status === 2 && !data.blocked"
+      class="download-pill"
+      @click.stop="onDownload"
+    >
       <img :src="downloadSingleIcon" width="24" height="24" alt="下载" />
     </div>
   </div>
