@@ -115,8 +115,9 @@ const onDownload = () => downloadImage(data.resultUrl)
   > .video {
     width: 100%;
     height: 100%;
-    // 横视频填满 16:9 容器；竖视频由内联 style 覆盖为 contain
+    // 横视频填满 16:9 容器；竖视频由内联 style 覆盖为 contain，两侧露出的底色同图片模块
     object-fit: cover;
+    background: #e5e2ed;
   }
   &.cursor {
     cursor: pointer;

@@ -90,7 +90,7 @@ const getGroupSelectState = (group: any) => {
         </button>
       </div>
 
-      <div class="card-cont">
+      <div class="card-cont" :class="{ 'card-cont--video': groupMediaType === 'video' }">
         <Card
           class="card-item"
           v-for="jtem in item.contents"
@@ -163,6 +163,10 @@ const getGroupSelectState = (group: any) => {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
       gap: 8px;
+      // 视频组与视频模块卡片同尺寸：固定 480px 宽（配 16:9 容器即 480×270）
+      &--video {
+        grid-template-columns: repeat(auto-fill, 480px);
+      }
       font-size: 0;
       // 各卡片按素材真实比例（内联 aspect-ratio）撑高，顶对齐避免被行高拉伸变形
       align-items: start;
