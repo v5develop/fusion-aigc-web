@@ -73,7 +73,7 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
       imageUrls: formData.images,
     }
   },
-  [() => formData.entryCode, () => formData.modelCode, () => formData.ratio],
+  [() => formData.entryCode, () => formData.modelCode, () => formData.ratio, () => formData.num],
 )
 
 const pagingData = reactive({

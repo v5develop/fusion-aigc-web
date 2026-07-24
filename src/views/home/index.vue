@@ -138,6 +138,7 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
     () => formData.picture.entryCode,
     () => formData.picture.modelCode,
     () => formData.picture.ratio,
+    () => formData.picture.num,
     () => formData.video.entryCode,
     () => formData.video.modelCode,
     () => formData.video.resolution,
