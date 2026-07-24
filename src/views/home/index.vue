@@ -14,7 +14,12 @@ import ChatInputBox from './ChatInputBox/index.vue'
 import type { PromptSlot, FileItem } from './ChatInputBox/types'
 import { slotsToPrompt, promptDetailToSlots } from './ChatInputBox/utils'
 import { buildTargetParams } from './ChatInputBox/targetParams'
-import { entryCodeOps, modelOps as pictureModelOps, ratioOps } from '@/views/picture/constants.ts'
+import {
+  entryCodeOps,
+  modelOps as pictureModelOps,
+  ratioOps,
+  numOps,
+} from '@/views/picture/constants.ts'
 import {
   entryCodeOps as videoEntryCodeOps,
   ratioOps as videoRatioOps,
@@ -37,6 +42,7 @@ const formData = reactive({
     modelCode: 'xiaoqi-image-1.0-flash',
     prompt: '',
     ratio: '1024,1024',
+    num: 1,
     images: [] as string[],
   },
   video: {
@@ -104,7 +110,7 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
           prompt: p.prompt,
           width: +w!,
           height: +h!,
-          num: p.entryCode === 'textToImage' ? 4 : 1,
+          num: p.num,
         },
         imageUrls: p.images,
       }
@@ -342,6 +348,12 @@ const submit = () => {
               title="选择比例"
               icon-category="ratio"
               :options="ratioOps"
+            />
+            <ChatInputSelect
+              v-model:value="formData.picture.num"
+              title="选择数量"
+              icon-category="num"
+              :options="numOps"
             />
           </div>
           <div v-else-if="activeChatTab === 'video'" class="select-cont">

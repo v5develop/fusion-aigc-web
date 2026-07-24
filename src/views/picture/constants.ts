@@ -8,6 +8,14 @@ export const modelOps = [
   { label: 'XiaoQi-Image-1.0-Max', value: 'xiaoqi-image-1.0-max' },
 ]
 
+// 生成数量：默认一张，最多四张（输入框下方「选择数量」筛选项）
+export const numOps = [
+  { label: '1张', value: 1 },
+  { label: '2张', value: 2 },
+  { label: '3张', value: 3 },
+  { label: '4张', value: 4 },
+]
+
 // 尺寸↔比例的单一数据源在 @/utils/ratio，这里复用（供比例下拉与 ratioVal2Label）
 export { imageRatioOps as ratioOps } from '@/utils/ratio'
 import { imageRatioOps } from '@/utils/ratio'

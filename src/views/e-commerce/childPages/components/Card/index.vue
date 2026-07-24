@@ -72,6 +72,8 @@ const onDownload = () => downloadImage(data.resultUrl)
         :style="useContain ? { objectFit: 'contain' } : undefined"
         :src="data.resultUrl"
         controls
+        controlsList="nodownload"
+        disablepictureinpicture
         @error="videoError = true"
       ></video>
       <!-- 成功视频但加载失败：网络原因 -->

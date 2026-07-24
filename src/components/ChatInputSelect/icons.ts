@@ -40,7 +40,23 @@ export function ratioIconSvg(label: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="${x}" y="${y}" width="${rw}" height="${rh}" rx="1.4" stroke="#3A3A3A" stroke-width="1.2"/></svg>`
 }
 
-export type IconCategory = 'ratio' | 'duration' | 'model' | 'resolution' | 'entryCode'
+// 数量：叠放的「图片」卡片，层数表意生成张数（与比例图标一致的几何生成，非插画重绘，覆盖 1–4）
+export function numIconSvg(value: number | string): string {
+  const n = Math.max(1, Math.min(4, Math.round(Number(value)) || 1))
+  const size = 7
+  const step = 1.9
+  const base = 2.5
+  let rects = ''
+  // 从后往前叠放，前层填白覆盖重叠区以突出层次
+  for (let i = n - 1; i >= 0; i--) {
+    const x = base + (n - 1 - i) * step
+    const y = base + i * step
+    rects += `<rect x="${x}" y="${y}" width="${size}" height="${size}" rx="1.4" fill="#FFFFFF" stroke="#3A3A3A" stroke-width="1.2"/>`
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">${rects}</svg>`
+}
+
+export type IconCategory = 'ratio' | 'duration' | 'model' | 'resolution' | 'entryCode' | 'num'
 
 export function getOptionIcon(
   category: IconCategory | undefined,
@@ -49,6 +65,8 @@ export function getOptionIcon(
   switch (category) {
     case 'ratio':
       return ratioIconSvg(option.label)
+    case 'num':
+      return numIconSvg(option.value)
     case 'duration':
       return DURATION
     case 'model': {

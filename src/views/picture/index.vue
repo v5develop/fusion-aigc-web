@@ -6,7 +6,7 @@ import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import type { ICreationSubmit } from '@/api/types.ts'
-import { entryCodeOps, modelOps, ratioOps } from './constants.ts'
+import { entryCodeOps, modelOps, ratioOps, numOps } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import { useInitCheckTaskStatus } from './hooks.ts'
@@ -35,9 +35,10 @@ if (global_formData.value.home) {
     modelCode = 'xiaoqi-image-1.0-flash',
     prompt = '',
     ratio = '1024,1024',
+    num = 1,
     images = [],
   } = global_formData.value.picture
-  _formData = { entryCode, modelCode, prompt, ratio, images }
+  _formData = { entryCode, modelCode, prompt, ratio, num, images }
   store.reset()
 }
 
@@ -52,6 +53,7 @@ const formData = reactive(
     modelCode: 'xiaoqi-image-1.0-flash',
     prompt: '',
     ratio: '1024,1024',
+    num: 1,
     images: [],
   },
 )
@@ -66,7 +68,7 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
         prompt: formData.prompt,
         width: +w!,
         height: +h!,
-        num: formData.entryCode === 'textToImage' ? 4 : 1,
+        num: formData.num,
       },
       imageUrls: formData.images,
     }
@@ -121,7 +123,7 @@ const submit = async () => {
       prompt: formData.prompt,
       width: +wh[0]!,
       height: +wh[1]!,
-      num: formData.entryCode === 'textToImage' ? 4 : 1,
+      num: formData.num,
     },
     images: formData.images,
   }
@@ -390,6 +392,12 @@ const generateAgainSingle = async (item: any, key: string) => {
               title="选择比例"
               icon-category="ratio"
               :options="ratioOps"
+            />
+            <ChatInputSelect
+              v-model:value="formData.num"
+              title="选择数量"
+              icon-category="num"
+              :options="numOps"
             />
           </div>
         </template>

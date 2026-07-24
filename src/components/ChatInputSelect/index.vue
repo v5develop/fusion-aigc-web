@@ -30,6 +30,7 @@ const iconFor = (option: IOption) => getOptionIcon(iconCategory, option)
 const PANEL_WIDTH: Record<IconCategory, number> = {
   ratio: 156,
   duration: 156,
+  num: 156,
   entryCode: 194,
   resolution: 194,
   model: 260,

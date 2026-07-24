@@ -15,6 +15,7 @@ interface FormData {
     modelCode: string
     prompt: string
     ratio: string
+    num: number
     images: FileItem[]
   }
   video: {
@@ -44,6 +45,7 @@ export const useHomeStore = defineStore('counter', () => {
       modelCode: 'xiaoqi-image-1.0-flash',
       prompt: '',
       ratio: '1024,1024',
+      num: 1,
       images: [],
     },
     video: {
