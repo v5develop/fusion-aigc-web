@@ -5,7 +5,7 @@ import { withWatermark } from '@/utils/oss'
 import { isTimeout, isVideoUrl } from '@/utils/utils'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import MediaFallback from '@/components/MediaFallback/index.vue'
-import GeneratingPlaceholder from '@/components/GeneratingPlaceholder/index.vue'
+import GenerateLoading from '@/components/GenerateLoading/index.vue'
 
 const { data } = defineProps<{
   data: { resultUrl: string; status: 0 | 1 | 2 | 3; blocked?: boolean; errorMsg?: string; statusView?: any }
@@ -70,8 +70,8 @@ const onDownload = () => downloadImage(data.resultUrl)
       :type="mediaType"
       :reason="isTimeout(data) ? 'timeout' : 'generateFailed'"
     />
-    <!-- 生成中（排队中 0 / 处理中 1）：白卡 + 三点动画占位 -->
-    <GeneratingPlaceholder v-else />
+    <!-- 生成中（排队中 0 / 处理中 1）：AI 生成加载动画 -->
+    <GenerateLoading v-else />
 
     <i
       v-if="selectImgUrls && !data.blocked"
@@ -102,9 +102,8 @@ const onDownload = () => downloadImage(data.resultUrl)
   > .video {
     width: 100%;
     height: 100%;
-    // 竖视频（9:16）在 16:9 容器内居中留白，不裁剪不变形
-    object-fit: contain;
-    background: #000;
+    // 容器已按素材真实比例撑开，cover 填满且不会裁到内容（与图片 n-image 的 cover 一致）
+    object-fit: cover;
   }
   &.cursor {
     cursor: pointer;
