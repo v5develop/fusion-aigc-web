@@ -5,6 +5,7 @@ import { useMessage } from 'naive-ui'
 import { publicDisplay, promptList, promptDetail } from '@/api/methods.ts'
 import type { IPromptCard, IQuotePreview } from '@/api/types'
 import { useDebounce, useQuotePreview } from '@/utils/hooks'
+import { ossThumbnail } from '@/utils/oss.ts'
 import ImageTab from './ImageTab/index.vue'
 import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
 import { filterData1, filterData2 } from './constants.ts'
@@ -147,10 +148,9 @@ const { pricePoints, status: quoteStatus } = useQuotePreview(
   ],
 )
 
+// 预设卡片图标 60px 方格，复用统一的 OSS 缩略图（DPR 自适应，消噪）
 function getOssThumbnail(url?: string): string {
-  if (!url) return ''
-  const base = url.split('?')[0]!
-  return `${base}?x-oss-process=image/resize,w_60,h_60/format,webp`
+  return ossThumbnail(url, 60)
 }
 
 const { preData, preinstallFallbackImg, handlePreinstallClick } = usePreinstall()

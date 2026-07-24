@@ -4,6 +4,7 @@ import { publicTemplate } from '@/api/methods.ts'
 import type { FileItem } from './types'
 import { upload } from '@/api/ossUpload'
 import { useMessage } from 'naive-ui'
+import { ossThumbnail } from '@/utils/oss.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 const props = defineProps<{
@@ -227,7 +228,8 @@ function onLibScroll(e: Event) {
               :class="{ selected: selectedLib?.id === item.id }"
               @click="selectLibItem(item)"
             >
-              <img :src="item.url" alt="" />
+              <!-- 展示走缩略图消噪；选中/emit 仍用 item.url 原图（86px 方格） -->
+              <img :src="ossThumbnail(item.url, 86)" alt="" />
             </div>
           </div>
         </div>

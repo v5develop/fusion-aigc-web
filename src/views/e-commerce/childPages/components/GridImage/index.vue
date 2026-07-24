@@ -12,6 +12,10 @@ import { ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import ColorPicker from './ColorPicker/index.vue'
 import { upload } from '@/api/ossUpload.ts'
+import { ossThumbnail } from '@/utils/oss.ts'
+
+// 网格为 3 列，面板内单元格约 240px；取 260 略大保证清晰，DPR 由 ossThumbnail 内部换算
+const CELL = 260
 
 const { imgList, showColorPicker = false, presets = [], scrollCallBack } = defineProps<IProps>()
 const imageUrl = defineModel<string>('imageUrl')
@@ -95,7 +99,8 @@ const colorToPngFile = (hex: string) =>
       :key="item"
       @click="selectImg(item)"
     >
-      <img class="img" :src="item" alt="" />
+      <!-- 展示走缩略图消噪；选中/去重/提交仍用原始 item -->
+      <img class="img" :src="ossThumbnail(item, CELL)" alt="" />
     </div>
   </div>
 </template>
