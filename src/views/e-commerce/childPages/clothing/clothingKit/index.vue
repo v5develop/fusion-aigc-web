@@ -209,15 +209,7 @@ function useModelList() {
           </div>
         </div>
 
-        <div class="module-title">图片比例</div>
-        <Tab
-          v-model:value="formData.aspectRatio"
-          :tabs="[
-            { label: '3:4', value: '3:4' },
-            { label: '1:1', value: '1:1' },
-            { label: '9:16', value: '9:16' },
-          ]"
-        />
+        <!-- 「图片比例」栏已隐藏，画幅固定按 formData.aspectRatio 默认值 3:4 提交 -->
 
         <div class="module-title">选择模型</div>
         <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
