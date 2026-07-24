@@ -18,6 +18,7 @@ import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
 import { isTimeout, displayContents } from '@/utils/utils'
+import { isPortraitMedia } from '@/utils/ratio'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import downloadAllIcon from '@/assets/icons/download-all.svg'
 
@@ -240,20 +241,9 @@ const isActionTransfer = (item: any) => {
   return !!(ip?.video || ip?.videoUrls?.length)
 }
 
-// 竖视频(9:16)检测：优先像素尺寸，其次 ratio/aspectRatio 字符串，兜底请求入参
-const isPortraitVideo = (content: any, parentItem: any) => {
-  const w = Number(content?.width)
-  const h = Number(content?.height)
-  if (w > 0 && h > 0) return h > w
-  const ratioStr = String(content?.ratio ?? content?.aspectRatio ?? parentItem?.inputParams?.params?.aspectRatio ?? '')
-  const m = /^(\d+)\s*[:：]\s*(\d+)$/.exec(ratioStr)
-  if (m && +m[1]! > 0 && +m[2]! > 0) return +m[2]! > +m[1]!
-  return false
-}
-
 // 容器统一 16:9；竖视频或动作迁移用 contain 居中，横视频用 cover 填满
 const useContain = (content: any, parentItem: any) =>
-  isActionTransfer(parentItem) || isPortraitVideo(content, parentItem)
+  isActionTransfer(parentItem) || isPortraitMedia(content, parentItem?.inputParams?.params)
 
 
 // 动作迁移的输入视频 URL；兼容早期历史数据 video 为 { url, thumbnail } 对象的情况

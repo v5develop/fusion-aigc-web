@@ -38,6 +38,20 @@ export function ratioLabel(w?: number, h?: number): string {
  * 优先用 width/height 数值，其次解析 ratio 字符串（"W:H"，兼容全角冒号），都没有则回退。
  * 用于让展示容器按素材真实比例排布，避免裁剪/变形。
  */
+/**
+ * 素材是否为竖屏：优先像素尺寸，其次解析 ratio/aspectRatio 字符串（"W:H"，兼容全角冒号），
+ * 最后回退到请求入参 params.aspectRatio。用于决定视频在 16:9 容器内用 contain 还是 cover。
+ */
+export function isPortraitMedia(item: any, fallbackParams?: any): boolean {
+  const w = Number(item?.width)
+  const h = Number(item?.height)
+  if (w > 0 && h > 0) return h > w
+  const ratioStr = String(item?.ratio ?? item?.aspectRatio ?? fallbackParams?.aspectRatio ?? '')
+  const m = /^(\d+)\s*[:：]\s*(\d+)$/.exec(ratioStr)
+  if (m && +m[1]! > 0 && +m[2]! > 0) return +m[2]! > +m[1]!
+  return false
+}
+
 export function mediaAspectRatio(item: any, fallback = '1 / 1'): string {
   const w = Number(item?.width)
   const h = Number(item?.height)

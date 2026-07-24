@@ -7,10 +7,15 @@ import downloadIcon from '@/assets/icons/download-single.svg'
 
 const recordsData = inject<any[]>('recordsData')
 const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', undefined)
+// 视频页下发 'video'（失败态没有 resultUrl 时也能判定组类型）
+const groupMediaType = inject<'image' | 'video'>('recordMediaType', 'image')
 
-// 卡片比例（与图片/视频模块一致）：素材真实尺寸 → 请求入参比例 → 方形兜底
+// 卡片比例：视频组照搬视频模块，容器统一 16:9（竖视频由卡片内 contain 居中）；
+// 图片组同图片模块，取素材真实尺寸 → 请求入参比例 → 方形兜底
 const cardAspectRatio = (content: any, group: any) =>
-  mediaAspectRatio(content, mediaAspectRatio(group?.inputParams?.params, '1 / 1'))
+  groupMediaType === 'video'
+    ? '16 / 9'
+    : mediaAspectRatio(content, mediaAspectRatio(group?.inputParams?.params, '1 / 1'))
 
 // 正在打包下载的分组 taskId 集合（用于按钮 loading/禁用）
 const downloadingIds = ref<Set<string>>(new Set())
@@ -91,6 +96,7 @@ const getGroupSelectState = (group: any) => {
           v-for="jtem in item.contents"
           :key="jtem.taskId"
           :data="jtem"
+          :groupParams="item.inputParams?.params"
           :style="{ aspectRatio: cardAspectRatio(jtem, item) }"
         />
       </div>

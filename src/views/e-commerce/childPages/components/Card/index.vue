@@ -6,9 +6,12 @@ import { isTimeout, isVideoUrl } from '@/utils/utils'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
+import { isPortraitMedia } from '@/utils/ratio'
 
-const { data } = defineProps<{
+const { data, groupParams } = defineProps<{
   data: { resultUrl: string; status: 0 | 1 | 2 | 3; blocked?: boolean; errorMsg?: string; statusView?: any }
+  /** 本组任务的请求入参（inputParams.params）：素材没带尺寸时用它兜底判断画幅 */
+  groupParams?: any
 }>()
 
 const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', undefined)
@@ -18,6 +21,9 @@ const groupMediaType = inject<'image' | 'video'>('recordMediaType', 'image')
 const mediaType = computed<'image' | 'video'>(() =>
   isVideoUrl(data.resultUrl) ? 'video' : groupMediaType,
 )
+
+// 容器统一 16:9（见 RecordList）：竖视频 contain 居中留白，横视频 cover 填满
+const useContain = computed(() => isPortraitMedia(data, groupParams))
 
 // 视频加载失败：以占位图替换。data 变化（同一实例复用）时重置失败态
 const videoError = ref(false)
@@ -60,7 +66,14 @@ const onDownload = () => downloadImage(data.resultUrl)
           <MediaFallback type="image" reason="loadFailed" />
         </template>
       </n-image>
-      <video v-else-if="!videoError" class="video" :src="data.resultUrl" controls @error="videoError = true"></video>
+      <video
+        v-else-if="!videoError"
+        class="video"
+        :style="useContain ? { objectFit: 'contain' } : undefined"
+        :src="data.resultUrl"
+        controls
+        @error="videoError = true"
+      ></video>
       <!-- 成功视频但加载失败：网络原因 -->
       <MediaFallback v-else type="video" reason="loadFailed" />
     </template>
@@ -102,7 +115,7 @@ const onDownload = () => downloadImage(data.resultUrl)
   > .video {
     width: 100%;
     height: 100%;
-    // 容器已按素材真实比例撑开，cover 填满且不会裁到内容（与图片 n-image 的 cover 一致）
+    // 横视频填满 16:9 容器；竖视频由内联 style 覆盖为 contain
     object-fit: cover;
   }
   &.cursor {
