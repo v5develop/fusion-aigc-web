@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, provide, watch, reactive } from 'vue'
-import { useMessage, useDialog } from 'naive-ui'
+import { useMessage } from 'naive-ui'
 import { assetAll, assetBatchDelete } from '@/api/methods.ts'
 import { downloadImagesAsZip } from '@/utils/download'
 import { tabOps1, tabOps2 } from './constants.ts'
 import RecordList from './components/RecordList/index.vue'
 
 const message = useMessage()
-const dialog = useDialog()
 const assetRef = ref<HTMLDivElement | null>(null)
 const loading = ref(false)
 const formData = reactive({
@@ -55,26 +54,34 @@ const batchDownload = async () => {
   }
 }
 
+// 删除二次确认弹窗（自建，按设计稿：紫色渐变/浅紫胶囊按钮，naive dialog 难以还原）
+const showDeleteConfirm = ref(false)
+const deleting = ref(false)
+
 const batchDelete = () => {
+  if (!selectedIds.value.size) return message.warning('请先选择素材')
+  showDeleteConfirm.value = true
+}
+
+const confirmDelete = async () => {
+  if (deleting.value) return
   const ids = Array.from(selectedIds.value)
-  if (!ids.length) return message.warning('请先选择素材')
-  dialog.warning({
-    title: '删除确认',
-    content: `确定删除选中的 ${ids.length} 个素材吗？删除后不可恢复。`,
-    positiveText: '删除',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      const res = await assetBatchDelete({ ids })
-      if (res.code !== 0) return
-      // 本地移除已删素材，清掉空分组
-      const idSet = new Set(ids)
-      records.value = records.value
-        .map((g: any) => ({ ...g, assets: g.assets.filter((a: any) => !idSet.has(a.id)) }))
-        .filter((g: any) => g.assets.length)
-      selectedIds.value = new Set()
-      message.success('删除成功')
-    },
-  })
+  if (!ids.length) return (showDeleteConfirm.value = false)
+  deleting.value = true
+  try {
+    const res = await assetBatchDelete({ ids })
+    if (res.code !== 0) return
+    // 本地移除已删素材，清掉空分组
+    const idSet = new Set(ids)
+    records.value = records.value
+      .map((g: any) => ({ ...g, assets: g.assets.filter((a: any) => !idSet.has(a.id)) }))
+      .filter((g: any) => g.assets.length)
+    selectedIds.value = new Set()
+    message.success('删除成功')
+    showDeleteConfirm.value = false
+  } finally {
+    deleting.value = false
+  }
 }
 
 const getData = (isReplace?: boolean) => {
@@ -165,6 +172,21 @@ watch(formData, () => {
     </div>
 
     <RecordList />
+
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showDeleteConfirm" class="confirm-mask" @click.self="showDeleteConfirm = false">
+          <div class="confirm-modal">
+            <div class="confirm-title">删除确认</div>
+            <div class="confirm-text">确定删除选中的 {{ selectedIds.size }} 个素材吗？删除后不可恢复。</div>
+            <div class="confirm-footer">
+              <button class="btn-cancel" @click="showDeleteConfirm = false">取消</button>
+              <button class="btn-agree" :disabled="deleting" @click="confirmDelete">删除</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -236,5 +258,85 @@ watch(formData, () => {
       margin-bottom: 28px;
     }
   }
+}
+
+/* 删除二次确认弹窗（按设计稿：紫色渐变/浅紫胶囊按钮） */
+.confirm-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.confirm-modal {
+  width: 400px;
+  box-sizing: border-box;
+  padding: 24px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow:
+    0px 9px 28px 8px rgba(0, 0, 0, 0.05),
+    0px 6px 16px 0px rgba(0, 0, 0, 0.08),
+    0px 3px 6px -4px rgba(0, 0, 0, 0.12);
+}
+
+.confirm-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #3a3a3a; /* token: 中性色/正文文字 */
+  line-height: 26px;
+}
+
+.confirm-text {
+  margin-top: 12px;
+  font-size: 14px;
+  color: #8f8f8f; /* token: 中性色/辅助文字 */
+  line-height: 22px;
+}
+
+.confirm-footer {
+  display: flex;
+  gap: 16px;
+  margin-top: 24px;
+
+  > .btn-cancel,
+  > .btn-agree {
+    flex: 1;
+    height: 44px;
+    border: none;
+    border-radius: 999px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+
+    &:hover {
+      opacity: 0.85;
+    }
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+  }
+  > .btn-cancel {
+    background: #f0ebff; /* token: AI智慧紫/AI浅底色 */
+    color: #8e66f9; /* token: AI智慧紫/AI强调色 */
+  }
+  > .btn-agree {
+    background: linear-gradient(0deg, #bba2ff 0%, #ccbaff 99%); /* token: AI智慧紫/AI主渐变 */
+    color: #ffffff;
+  }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
