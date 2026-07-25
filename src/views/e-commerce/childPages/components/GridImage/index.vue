@@ -155,7 +155,7 @@ const colorToPngFile = (hex: string) =>
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 40px 0 24px;
+    padding: 40px 0 0;
     > .grid-empty__img {
       width: 200px;
       height: 108px;
