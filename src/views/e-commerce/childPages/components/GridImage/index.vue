@@ -29,8 +29,8 @@ const {
   loading = false,
 } = defineProps<IProps>()
 
-// 非取色器网格、加载完成后仍无数据 → 显示空状态占位
-const isEmpty = computed(() => !showColorPicker && !loading && imgList.length === 0)
+// 非取色器网格且无数据 → 进入占位容器（加载中/空态共用同一默认高度）
+const isPlaceholder = computed(() => !showColorPicker && imgList.length === 0)
 
 // 由 ratio(宽:高) 推导单元格高宽比与缩略图目标宽高；非法值兜底正方形
 const dims = computed(() => {
@@ -117,11 +117,14 @@ const colorToPngFile = (hex: string) =>
       @select-custom="onSelectCustom"
     />
 
-    <!-- 无素材空状态占位（取色器网格除外） -->
-    <div v-if="isEmpty" class="grid-empty">
-      <img class="grid-empty__img" :src="EMPTY_IMG" alt="" />
-      <div class="grid-empty__title">暂无数据</div>
-      <div class="grid-empty__desc">当前暂无数据，平台将持续补充素材</div>
+    <!-- 无数据（加载中/空态）：占位容器，保持默认高度不塌陷（取色器网格除外） -->
+    <div v-if="isPlaceholder" class="grid-placeholder">
+      <template v-if="!loading">
+        <img class="grid-placeholder__img" :src="EMPTY_IMG" alt="" />
+        <div class="grid-placeholder__title">暂无数据</div>
+        <div class="grid-placeholder__desc">当前暂无数据，平台将持续补充素材</div>
+      </template>
+      <!-- loading 时留空：高度由容器撑起，加载动画由父级 v-loading 遮罩展示 -->
     </div>
 
     <template v-else>
@@ -149,25 +152,28 @@ const colorToPngFile = (hex: string) =>
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  > .grid-empty {
+  // 占位容器高度 = 空态自然高度（40 顶距 + 108 插画 + 16 + 20 标题 + 4 + 16 副文案）
+  @placeholder-h: 204px;
+  > .grid-placeholder {
     grid-column: 1 / -1;
+    // 加载中/空态共用同一默认高度：首次请求不塌陷，父级 v-loading 动画居中于正常高度
+    min-height: @placeholder-h;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     padding: 40px 0 0;
-    > .grid-empty__img {
+    > .grid-placeholder__img {
       width: 200px;
       height: 108px;
       margin-bottom: 16px;
     }
-    > .grid-empty__title {
+    > .grid-placeholder__title {
       font-size: 14px;
       font-weight: 500;
       color: #3a3a3a; /* token: 中性色/正文文字 */
       line-height: 20px;
     }
-    > .grid-empty__desc {
+    > .grid-placeholder__desc {
       margin-top: 4px;
       font-size: 12px;
       color: #8f8f8f; /* token: 中性色/辅助文字 */
