@@ -190,6 +190,7 @@ function useModelList() {
             />
             <GridImage
               style="margin-top: 8px"
+              ratio="3:4"
               v-model:imageUrl="formData.personUrl"
               :imgList="modelList.map((item) => item.url)"
               :scrollCallBack="scrollCallBack"
