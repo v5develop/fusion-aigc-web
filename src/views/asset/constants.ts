@@ -21,6 +21,6 @@ export const tabOps2 = [
   { label: 'AI穿搭套图', value: 'wearingProductSetImages' },
   { label: 'AI试衣', value: 'aiClothExchange' },
   { label: '服装去皱', value: 'removeWrinkles' },
-  { label: '搭配图', value: 'mergeClothes' },
+  { label: '搭配融图', value: 'mergeClothes' },
   { label: 'AI试鞋', value: 'shoeSwapping' },
 ]
