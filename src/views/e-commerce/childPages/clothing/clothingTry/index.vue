@@ -300,6 +300,7 @@ function useBg() {
               v-model:imageUrl="formData.personUrl"
               :imgList="modelList.map((item) => item.url)"
               :scrollCallBack="scrollCallBack"
+              :loading="pagingData.loading"
             />
           </div>
 
@@ -336,6 +337,7 @@ function useBg() {
               v-model:imageUrl="formData.poseUrl"
               :imgList="poseList.map((item) => item.url)"
               :scrollCallBack="poseScrollCallBack"
+              :loading="posePagingData.loading"
             />
           </div>
 

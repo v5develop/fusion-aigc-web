@@ -173,6 +173,7 @@ function useShoeList() {
               v-model:imageUrl="formData.personUrl"
               :imgList="shoeList.map((item) => item.url)"
               :scrollCallBack="scrollCallBack"
+              :loading="pagingData.loading"
             />
           </div>
 

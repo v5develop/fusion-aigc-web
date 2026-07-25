@@ -5,6 +5,7 @@ export interface IProps {
   presets?: string[] // 颜色场景弹框的 20 个预制背景图 URL
   scrollCallBack?: () => void
   ratio?: string // 单元格宽:高，如 '3:4'；默认 '1:1' 正方形
+  loading?: boolean // 加载中：避免请求返回前误显示空状态
 }
 </script>
 
@@ -14,6 +15,7 @@ import { useMessage } from 'naive-ui'
 import ColorPicker from './ColorPicker/index.vue'
 import { upload } from '@/api/ossUpload.ts'
 import { ossThumbnail } from '@/utils/oss.ts'
+import EMPTY_IMG from '@/assets/icons/empty-material.svg'
 
 // 网格为 3 列，面板内单元格约 240px；取 260 略大保证清晰，DPR 由 ossThumbnail 内部换算
 const CELL = 260
@@ -24,7 +26,11 @@ const {
   presets = [],
   scrollCallBack,
   ratio = '1:1',
+  loading = false,
 } = defineProps<IProps>()
+
+// 非取色器网格、加载完成后仍无数据 → 显示空状态占位
+const isEmpty = computed(() => !showColorPicker && !loading && imgList.length === 0)
 
 // 由 ratio(宽:高) 推导单元格高宽比与缩略图目标宽高；非法值兜底正方形
 const dims = computed(() => {
@@ -111,17 +117,26 @@ const colorToPngFile = (hex: string) =>
       @select-custom="onSelectCustom"
     />
 
-    <div
-      class="item"
-      :class="imageUrl === item ? 'active' : ''"
-      :style="{ paddingBottom: dims.paddingBottom }"
-      v-for="item in imgList"
-      :key="item"
-      @click="selectImg(item)"
-    >
-      <!-- 展示走缩略图消噪；选中/去重/提交仍用原始 item -->
-      <img class="img" :src="ossThumbnail(item, dims.cellW, dims.cellH)" alt="" />
+    <!-- 无素材空状态占位（取色器网格除外） -->
+    <div v-if="isEmpty" class="grid-empty">
+      <img class="grid-empty__img" :src="EMPTY_IMG" alt="" />
+      <div class="grid-empty__title">暂无数据</div>
+      <div class="grid-empty__desc">当前暂无数据，平台将持续补充素材</div>
     </div>
+
+    <template v-else>
+      <div
+        class="item"
+        :class="imageUrl === item ? 'active' : ''"
+        :style="{ paddingBottom: dims.paddingBottom }"
+        v-for="item in imgList"
+        :key="item"
+        @click="selectImg(item)"
+      >
+        <!-- 展示走缩略图消噪；选中/去重/提交仍用原始 item -->
+        <img class="img" :src="ossThumbnail(item, dims.cellW, dims.cellH)" alt="" />
+      </div>
+    </template>
   </div>
 </template>
 
@@ -134,6 +149,31 @@ const colorToPngFile = (hex: string) =>
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+  > .grid-empty {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 0;
+    > .grid-empty__img {
+      width: 200px;
+      height: 108px;
+      margin-bottom: 16px;
+    }
+    > .grid-empty__title {
+      font-size: 14px;
+      font-weight: 500;
+      color: #3a3a3a; /* token: 中性色/正文文字 */
+      line-height: 20px;
+    }
+    > .grid-empty__desc {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #8f8f8f; /* token: 中性色/辅助文字 */
+      line-height: 16px;
+    }
+  }
   > .item {
     // 用 padding-bottom 百分比撑出目标比例，不依赖 aspect-ratio
     // （旧内核不支持、部分 Chromium 在非整数缩放下行高传播有 bug，会导致图片叠加）

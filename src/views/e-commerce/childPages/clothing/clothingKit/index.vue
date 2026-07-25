@@ -194,6 +194,7 @@ function useModelList() {
               v-model:imageUrl="formData.personUrl"
               :imgList="modelList.map((item) => item.url)"
               :scrollCallBack="scrollCallBack"
+              :loading="pagingData.loading"
             />
           </div>
 
