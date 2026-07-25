@@ -332,6 +332,7 @@ function useBg() {
             />
             <GridImage
               style="margin-top: 8px"
+              ratio="3:4"
               v-model:imageUrl="formData.poseUrl"
               :imgList="poseList.map((item) => item.url)"
               :scrollCallBack="poseScrollCallBack"

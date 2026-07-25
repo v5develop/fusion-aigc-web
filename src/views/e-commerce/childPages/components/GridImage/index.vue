@@ -4,11 +4,12 @@ export interface IProps {
   showColorPicker?: boolean
   presets?: string[] // 颜色场景弹框的 20 个预制背景图 URL
   scrollCallBack?: () => void
+  ratio?: string // 单元格宽:高，如 '3:4'；默认 '1:1' 正方形
 }
 </script>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import ColorPicker from './ColorPicker/index.vue'
 import { upload } from '@/api/ossUpload.ts'
@@ -17,7 +18,25 @@ import { ossThumbnail } from '@/utils/oss.ts'
 // 网格为 3 列，面板内单元格约 240px；取 260 略大保证清晰，DPR 由 ossThumbnail 内部换算
 const CELL = 260
 
-const { imgList, showColorPicker = false, presets = [], scrollCallBack } = defineProps<IProps>()
+const {
+  imgList,
+  showColorPicker = false,
+  presets = [],
+  scrollCallBack,
+  ratio = '1:1',
+} = defineProps<IProps>()
+
+// 由 ratio(宽:高) 推导单元格高宽比与缩略图目标宽高；非法值兜底正方形
+const dims = computed(() => {
+  const [rw, rh] = ratio.split(':').map(Number)
+  const w = rw && rw > 0 ? rw : 1
+  const h = rh && rh > 0 ? rh : 1
+  return {
+    paddingBottom: `${(h / w) * 100}%`,
+    cellW: CELL,
+    cellH: Math.round((CELL * h) / w),
+  }
+})
 const imageUrl = defineModel<string>('imageUrl')
 
 const message = useMessage()
@@ -95,12 +114,13 @@ const colorToPngFile = (hex: string) =>
     <div
       class="item"
       :class="imageUrl === item ? 'active' : ''"
+      :style="{ paddingBottom: dims.paddingBottom }"
       v-for="item in imgList"
       :key="item"
       @click="selectImg(item)"
     >
       <!-- 展示走缩略图消噪；选中/去重/提交仍用原始 item -->
-      <img class="img" :src="ossThumbnail(item, CELL)" alt="" />
+      <img class="img" :src="ossThumbnail(item, dims.cellW, dims.cellH)" alt="" />
     </div>
   </div>
 </template>
@@ -115,11 +135,11 @@ const colorToPngFile = (hex: string) =>
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   > .item {
-    // 用 padding-bottom 百分比撑出正方形，不依赖 aspect-ratio
+    // 用 padding-bottom 百分比撑出目标比例，不依赖 aspect-ratio
     // （旧内核不支持、部分 Chromium 在非整数缩放下行高传播有 bug，会导致图片叠加）
+    // 具体比例由内联 style 动态设置（默认 1:1 → 100%）
     position: relative;
     height: 0;
-    padding-bottom: 100%;
     background: #f5f6f8;
     border-radius: 8px;
     border: 2px solid transparent;
