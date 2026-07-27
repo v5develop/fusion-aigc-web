@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import { upload } from '@/api/ossUpload.ts'
+import { ACCEPT_IMAGE, ACCEPT_VIDEO } from '@/utils/utils'
 
 interface IProps {
   type?: 'image' | 'video'
@@ -18,7 +19,7 @@ const uploadRef = ref<HTMLInputElement | null>(null)
 const expand = ref(false)
 const loading = ref(false)
 
-const acceptType = computed(() => (type === 'video' ? 'video/*' : 'image/*'))
+const acceptType = computed(() => (type === 'video' ? ACCEPT_VIDEO : ACCEPT_IMAGE))
 
 const getPreviewSrc = (item: any) => {
   if (type === 'video') return item.thumbnail

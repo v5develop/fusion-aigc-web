@@ -5,6 +5,7 @@ import type { FileItem } from './types'
 import { upload } from '@/api/ossUpload'
 import { useMessage } from 'naive-ui'
 import { ossThumbnail } from '@/utils/oss.ts'
+import { ACCEPT_IMAGE } from '@/utils/utils'
 
 const show = defineModel<boolean>('show', { required: true })
 const props = defineProps<{
@@ -202,7 +203,7 @@ function onLibScroll(e: Event) {
           <input
             ref="fileInputRef"
             type="file"
-            accept="image/*"
+            :accept="ACCEPT_IMAGE"
             multiple
             style="display: none"
             @change="onFileChange"

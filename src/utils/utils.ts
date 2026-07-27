@@ -1,3 +1,11 @@
+/**
+ * 图片/视频文件选择器的 accept 值。
+ * 不使用 `image/*`：Windows Chrome 会把它展开成 *.tif;*.pjp;*.apng 等一长串
+ * 冷门格式，文件选择器筛选项显示混乱。这里显式列出实际支持的格式与扩展名。
+ */
+export const ACCEPT_IMAGE = '.jpg,.jpeg,.png,.webp,.bmp,image/jpeg,image/png,image/webp,image/bmp'
+export const ACCEPT_VIDEO = '.mp4,.mov,.webm,.m4v,video/mp4,video/quicktime,video/webm'
+
 export function createSafeUuid() {
   try {
     const cryptoObj = globalThis.crypto

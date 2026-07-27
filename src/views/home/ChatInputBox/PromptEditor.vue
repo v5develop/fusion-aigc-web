@@ -7,6 +7,7 @@ import { buildSelectHTML, showDropdown, closeAllDropdowns } from './slots/select
 import { buildUploadHTML, updateUploadBlockDOM, type UploadIdentity } from './slots/upload'
 import ModelImageModal from './ModelImageModal.vue'
 import { upload } from '@/api/ossUpload'
+import { ACCEPT_IMAGE } from '@/utils/utils'
 
 declare global {
   interface Window {
@@ -436,7 +437,7 @@ watch(
     @beforeinput="onBeforeInput"
     @click="onClick"
   ></div>
-  <input ref="fileInputRef" type="file" accept="image/*" multiple style="display: none" @change="onFileChange" />
+  <input ref="fileInputRef" type="file" :accept="ACCEPT_IMAGE" multiple style="display: none" @change="onFileChange" />
   <ModelImageModal
     v-model:show="showModelModal"
     :module-code="modelModalModuleCode"

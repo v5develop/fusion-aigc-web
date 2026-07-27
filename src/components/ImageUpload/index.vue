@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { upload } from '@/api/ossUpload.ts'
+import { ACCEPT_IMAGE } from '@/utils/utils'
 import { useMessage } from 'naive-ui'
 import { computed, ref } from 'vue'
 
@@ -99,7 +100,7 @@ const tryClick = (url: string) => {
   <input
     ref="uploadRef"
     type="file"
-    accept="image/*"
+    :accept="ACCEPT_IMAGE"
     :multiple="multiple"
     id="file-upload"
     @change="handleUpload"

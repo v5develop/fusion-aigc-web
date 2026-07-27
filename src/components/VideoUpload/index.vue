@@ -8,6 +8,7 @@ export interface IVideoItem {
 
 <script setup lang="ts">
 import { upload } from '@/api/ossUpload.ts'
+import { ACCEPT_VIDEO } from '@/utils/utils'
 import { useMessage } from 'naive-ui'
 import { ref, watch, onMounted } from 'vue'
 
@@ -203,7 +204,7 @@ onMounted(async () => {
       <input
         ref="uploadRef"
         type="file"
-        accept="video/*"
+        :accept="ACCEPT_VIDEO"
         :multiple="multiple"
         id="video-upload"
         @change="handleUpload"
