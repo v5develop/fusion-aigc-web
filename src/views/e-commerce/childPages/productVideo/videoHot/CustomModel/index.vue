@@ -8,6 +8,7 @@ import {
   faceRecognitionStatusQuery,
 } from '@/api/methods.ts'
 import { usePolling } from '@/utils/hooks/usePolling.ts'
+import { useUserInfoStore } from '@/stores/userInfo.ts'
 import {
   ageOps,
   appearanceOps,
@@ -45,6 +46,7 @@ watch(personUrl, () => {
 })
 
 const message = useMessage()
+const { updateUserInfo } = useUserInfoStore()
 const modelPollingType = computed(() => {
   // 本地模型
   if (modelCode == localModelValue) return 'customizedModel'
@@ -83,15 +85,25 @@ const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
   onError() {
     btnLoading.value = false
     localStorage.removeItem('modelTaskId')
+    updateUserInfo()
   },
   autoStop(res) {
     if (res.code === 0) {
+      // status: 2=成功 3=失败 4=取消，终态都要刷新积分（失败/取消可能退费）
       if (res.data.status === 2) {
         message.success('达人生成成功')
         localStorage.removeItem('modelTaskId')
         btnLoading.value = false
         modelTabValue.value = 'myModel'
         resetData()
+        updateUserInfo()
+        return true
+      }
+      if (res.data.status === 3 || res.data.status === 4) {
+        message.error(res.data.statusView?.message || res.data.errorMsg || '达人生成失败')
+        localStorage.removeItem('modelTaskId')
+        btnLoading.value = false
+        updateUserInfo()
         return true
       }
     }
@@ -123,6 +135,8 @@ const generateModel = () => {
   ecommerceSubmit(params)
     .then((res) => {
       if (res.code === 0) {
+        // 提交即扣费，立即刷新积分余额
+        updateUserInfo()
         // 开始轮询，生成完清除localStorage的modelTaskId
         const modelTaskId = res.data.taskId
         localStorage.setItem('modelTaskId', modelTaskId)

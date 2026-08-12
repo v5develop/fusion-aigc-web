@@ -69,6 +69,8 @@ export function useInitCheckTaskStatus(type: string) {
     ecommerceSubmit(params)
       .then((res) => {
         if (res.code === 0) {
+          // 提交即扣费，立即刷新积分余额
+          updateUserInfo()
           // 开始轮询
           graceLeft = 5
           awaitingCompletion = true

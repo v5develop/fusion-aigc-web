@@ -127,12 +127,16 @@ export function useInitCheckTaskStatus(props: IProps) {
         return false
       }
 
+      // 提交即扣费，立即刷新积分余额
+      updateUserInfo()
       await afterSubmit(params.sessionId)
       return true
     } catch (e: any) {
       // 提交请求超时/断网时后端可能已创建任务，sessionId 已持久化，兜底发起轮询；
       // 若任务确实未创建，宽限轮数耗尽后完成副作用会复位 loading 并轮换会话
       if (e?.code === 'ECONNABORTED' || e?.message === 'Network Error') {
+        // 任务可能已创建，同样刷新一次积分余额
+        updateUserInfo()
         await afterSubmit(params.sessionId)
         return true
       }
