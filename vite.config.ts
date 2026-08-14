@@ -54,13 +54,13 @@ export default defineConfig(({ mode }) => {
       host: true,
       proxy: {
         '/api': {
-          target: env.FUSION_API_PROXY || 'http://192.168.0.3:18080',
+          target: env.FUSION_API_PROXY || 'http://t81-aigc.pengqiwl.com.cn',
           changeOrigin: true,
         },
-        '/union-api': {
-          target: env.UNION_API_PROXY || 'https://uniontest.pengqiwl.com',
+        '/union': {
+          target: env.UNION_API_PROXY || 'http://t81-xxlm.pengqiwl.com.cn',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/union-api/, ''),
+          rewrite: (path) => path.replace(/^\/union/, ''),
         },
       },
     },
