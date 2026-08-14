@@ -1,38 +1,48 @@
 import { getMap } from '@/views/picture/constants.ts'
+import { videoModelOpsFor } from '@/utils/modelCatalog'
 
-export const modelOps = [
-  {
-    label: 'XiaoQi-Video-1.0-Lite',
-    value: 'xiaoqi-video-1.0-lite',
-    resolutionOps: [
-      { label: '720p', value: '720p' },
-      { label: '1080p', value: '1080p' },
-    ],
-  },
-  {
-    label: 'Seedance-2.0',
-    value: 'doubao-seedance-2-0-260128',
-    resolutionOps: [
-      { label: '480p', value: '480p' },
-      { label: '720p', value: '720p' },
-      { label: '1080p', value: '1080p' },
-    ],
-  },
-  {
-    label: 'Seedance-2.0-Fast',
-    value: 'doubao-seedance-2-0-fast-260128',
-    resolutionOps: [
-      { label: '480p', value: '480p' },
-      { label: '720p', value: '720p' },
-    ],
-  },
-]
+// 生视频模型下拉（含各模型自己的分辨率档）：与生图同源，由服务端下发，后台停用即不出现。
+export { videoModelOps as modelOps } from '@/utils/modelCatalog'
 
+/**
+ * 各场景可选模型按 <b>服务端下发的 entry_codes</b> 过滤，前端不维护「哪个场景支持哪些模型」的名单。
+ *
+ * <p>支持与否的真相在计费档位里：能不能提交的判据就是这个模型在该场景有没有 BILLED 档位，
+ * 用同一份数据回答「能不能选」才不会出现「能选、提交才报无法匹配计费档位」。
+ * 举两个自动生效的例子：动作迁移只配了本地视频模型的档；xiaoqi-video-1.0-mini（task_type 51）
+ * 契约里没有参考素材字段，只配了文生视频档，于是它只会出现在文生视频下拉里。
+ *
+ * <p>用 getter 而非模块加载时求值：模型表是异步填充的，直接取值会永远拿到空数组。
+ */
 export const entryCodeOps = [
-  { label: '文生视频', value: 'textToVideo', modelOps },
-  { label: '图生视频', value: 'imageToVideo', modelOps },
-  { label: '动作迁移', value: 'actionTransfer', modelOps: modelOps.slice(0, 1) },
-  { label: '首尾帧视频', value: 'firstLastFrames', modelOps },
+  {
+    label: '文生视频',
+    value: 'textToVideo',
+    get modelOps() {
+      return videoModelOpsFor('textToVideo')
+    },
+  },
+  {
+    label: '图生视频',
+    value: 'imageToVideo',
+    get modelOps() {
+      return videoModelOpsFor('imageToVideo')
+    },
+  },
+  {
+    label: '动作迁移',
+    value: 'actionTransfer',
+    get modelOps() {
+      return videoModelOpsFor('actionTransfer')
+    },
+  },
+  {
+    label: '首尾帧视频',
+    value: 'firstLastFrames',
+    get modelOps() {
+      return videoModelOpsFor('firstLastFrames')
+    },
+  },
 ]
 
 export const ratioOps = [
@@ -74,11 +84,10 @@ export const config: Record<string, any> = {
   },
 }
 
-
-
 export const entryCodeVal2Label: Record<string, any> = getMap(entryCodeOps)
 
-export const modelVal2Label: Record<string, any> = getMap(modelOps)
+// 与生图同一份 code → name 映射（模型表异步加载，静态快照会永远为空）
+export { modelCodeToLabel as modelVal2Label } from '@/utils/modelCatalog'
 
 export const ratioVal2Label: Record<string, any> = getMap(ratioOps)
 

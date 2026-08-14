@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import ChatInputBox from '@/views/home/ChatInputBox/index.vue'
@@ -59,29 +59,62 @@ const formData = reactive(
   },
 )
 
-// 提交前积分预览：镜像提交参数，切换入口/模型/比例/分辨率/时长时防抖重询
-const { pricePoints, status: quoteStatus } = useQuotePreview(
-  () => {
-    const isAT = formData.entryCode === 'actionTransfer'
-    return {
-      entryCode: formData.entryCode,
-      modelCode: formData.modelCode,
-      params: {
-        prompt: formData.prompt,
-        ...(isAT ? {} : { resolution: formData.resolution, aspectRatio: formData.ratio, duration: formData.duration }),
-      },
-      imageUrls: formData.images,
-      video: isAT ? formData.video[0]?.url || '' : '',
-    }
-  },
-  [
-    () => formData.entryCode,
-    () => formData.modelCode,
-    () => formData.resolution,
-    () => formData.duration,
-    () => formData.ratio,
-  ],
+/**
+ * 比例/分辨率/时长按<b>当前模型</b>取值，不用全局静态表。
+ *
+ * <p>各模型支持的档位不同：xiaoqi-video-1.0-mini（task_type 51）只支持 5 秒，而静态表列的是
+ * 4~15 秒——用户选 10 秒会在<b>扣费之后</b>于生成阶段失败，还要走退款。
+ * 服务端没下发该模型的档位（旧数据没刷 aigcOptions）时回退静态表，不至于把下拉变空。
+ */
+const currentModel = computed(() => modelOps.find((m) => m.value === formData.modelCode))
+const modelRatioOps = computed(() => (currentModel.value?.ratioOps?.length ? currentModel.value.ratioOps : ratioOps))
+const modelResolutionOps = computed(() => currentModel.value?.resolutionOps ?? [])
+const modelDurationOps = computed(() =>
+  currentModel.value?.durationOps?.length ? currentModel.value.durationOps : durationOps,
 )
+
+/**
+ * 换模型后把已选档位纠正到新模型支持的范围。
+ * <p>不纠正的话，从 lite(10s) 切到 mini(仅 5s) 时下拉里已经没有 10s 这一项，但 formData 还留着它——
+ * 界面看不出异常，提交下去必失败。
+ * <p>监听 currentModel 而非 modelCode：模型表是异步加载的，首屏那会儿它还是 undefined，
+ * 只盯 modelCode 就漏掉「加载完成」这一次，初始默认值不会被纠正。
+ */
+watch(currentModel, () => {
+  const ratio = modelRatioOps.value[0]
+  if (ratio && !modelRatioOps.value.some((o) => o.value === formData.ratio)) {
+    formData.ratio = ratio.value
+  }
+  const resolution = modelResolutionOps.value[0]
+  if (resolution && !modelResolutionOps.value.some((o) => o.value === formData.resolution)) {
+    formData.resolution = resolution.value
+  }
+  const duration = modelDurationOps.value[0]
+  if (duration && !modelDurationOps.value.some((o) => o.value === formData.duration)) {
+    formData.duration = duration.value
+  }
+})
+
+// 提交前积分预览：镜像提交参数，切换入口/模型/比例/分辨率/时长时防抖重询
+const { pricePoints, status: quoteStatus } = useQuotePreview(() => {
+  const isAT = formData.entryCode === 'actionTransfer'
+  return {
+    entryCode: formData.entryCode,
+    modelCode: formData.modelCode,
+    params: {
+      prompt: formData.prompt,
+      ...(isAT ? {} : { resolution: formData.resolution, aspectRatio: formData.ratio, duration: formData.duration }),
+    },
+    imageUrls: formData.images,
+    video: isAT ? formData.video[0]?.url || '' : '',
+  }
+}, [
+  () => formData.entryCode,
+  () => formData.modelCode,
+  () => formData.resolution,
+  () => formData.duration,
+  () => formData.ratio,
+])
 
 // 切换生成模式时校验已选图片：超出新模式上限只保留前面的，文生视频不需要图片则清空
 watch(
@@ -259,7 +292,6 @@ const isActionTransfer = (item: any) => {
 const useContain = (content: any, parentItem: any) =>
   isActionTransfer(parentItem) || isPortraitMedia(content, parentItem?.inputParams?.params)
 
-
 // 动作迁移的输入视频 URL；兼容早期历史数据 video 为 { url, thumbnail } 对象的情况
 const getSourceVideo = (inputParams: any): string => {
   if (inputParams.entryCode !== 'actionTransfer') return ''
@@ -345,7 +377,9 @@ const getSourceVideo = (inputParams: any): string => {
                     :reason="isTimeout(jtem) ? 'timeout' : 'generateFailed'"
                   />
                   <div
-                    v-if="jtem.resultUrl && !jtem.blocked && (jtem.resolution || jtem.ratio) && isMixedSize(item.contents)"
+                    v-if="
+                      jtem.resultUrl && !jtem.blocked && (jtem.resolution || jtem.ratio) && isMixedSize(item.contents)
+                    "
                     class="image-meta-badge"
                   >
                     <span v-if="jtem.resolution">{{ jtem.resolution }}</span>
@@ -411,18 +445,23 @@ const getSourceVideo = (inputParams: any): string => {
             />
             <!-- 动作迁移由参考视频决定画幅/时长，无需选择比例/分辨率/时长 -->
             <template v-if="formData.entryCode !== 'actionTransfer'">
-              <ChatInputSelect v-model:value="formData.ratio" title="选择比例" icon-category="ratio" :options="ratioOps" />
+              <ChatInputSelect
+                v-model:value="formData.ratio"
+                title="选择比例"
+                icon-category="ratio"
+                :options="modelRatioOps"
+              />
               <ChatInputSelect
                 v-model:value="formData.resolution"
                 title="选择分辨率"
                 icon-category="resolution"
-                :options="modelOps.find((item) => item.value === formData.modelCode)?.resolutionOps!"
+                :options="modelResolutionOps"
               />
               <ChatInputSelect
                 v-model:value="formData.duration"
                 title="选择时长"
                 icon-category="duration"
-                :options="durationOps"
+                :options="modelDurationOps"
               />
             </template>
           </div>
@@ -444,5 +483,4 @@ const getSourceVideo = (inputParams: any): string => {
   display: flex;
   gap: 24px;
 }
-
 </style>

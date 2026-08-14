@@ -39,9 +39,9 @@ export const bodyOps = [
   { label: '微胖', value: '微胖' },
 ]
 
+/** 本地视频模型编码：时长档等分支逻辑按它判断，不是展示用的下拉项。 */
 export const localModelValue = 'xiaoqi-video-1.0-lite'
-export const modelOps = [
-  { label: 'XiaoQi-Video-1.0-Lite', value: localModelValue },
-  { label: 'Seedance-2.0', value: 'doubao-seedance-2-0-260128' },
-  { label: 'Seedance-2.0-Fast', value: 'doubao-seedance-2-0-fast-260128' },
-]
+
+// 模型下拉由服务端下发（后台停用即不出现），并按场景过滤 —— 没配档位的模型不显示，
+// 否则选中后会静默回落到该场景的默认档：用别的模型出片、按别的模型计费。
+export { videoModelOpsFor } from '@/utils/modelCatalog'

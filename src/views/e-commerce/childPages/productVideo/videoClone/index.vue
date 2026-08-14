@@ -6,7 +6,7 @@ import ImageUpload from '@/components/ImageUpload/index.vue'
 import VideoUpload, { type IVideoItem } from '@/components/VideoUpload/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import { regionOps, languageOps } from '@/views/e-commerce/childPages/constants.ts'
-import { modelOps } from '../constants.ts'
+import { videoModelOpsFor } from '../constants.ts'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
@@ -62,11 +62,17 @@ const submit = () => {
   }
   execute(params, loading)
 }
-
 </script>
 
 <template>
-  <Container class="commerce" title="视频复刻" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container
+    class="commerce"
+    title="视频复刻"
+    :submit="submit"
+    :loading="loading"
+    :integral="integral"
+    :quote-status="quoteStatus"
+  >
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -117,7 +123,11 @@ const submit = () => {
 
         <!--        外面的模型只能选自己上传的达人，本地模型不做限制-->
         <div class="module-title">选择模型</div>
-        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
+        <SelectGroup
+          v-model:data="formData"
+          :list="[{ field: 'modelCode', options: videoModelOpsFor('hitVideoReplication') }]"
+          :col="1"
+        />
 
         <CustomModel
           v-model:personUrl="formData.personUrl"
@@ -132,11 +142,7 @@ const submit = () => {
         <div class="right-content-title">生成结果</div>
         <RecordList />
       </div>
-      <Sample
-        v-else
-        title="视频复刻"
-        :rightDesc="`导入热门参考视频，复刻运镜色调，低成本快速制作同款风格带货视频。`"
-      >
+      <Sample v-else title="视频复刻" :rightDesc="`导入热门参考视频，复刻运镜色调，低成本快速制作同款风格带货视频。`">
         <div class="video-cont">
           <div class="item">
             <div class="origin-video">

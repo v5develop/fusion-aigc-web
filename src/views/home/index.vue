@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { publicDisplay, promptList, promptDetail } from '@/api/methods.ts'
@@ -15,12 +15,7 @@ import ChatInputBox from './ChatInputBox/index.vue'
 import type { PromptSlot, FileItem } from './ChatInputBox/types'
 import { slotsToPrompt, promptDetailToSlots } from './ChatInputBox/utils'
 import { buildTargetParams } from './ChatInputBox/targetParams'
-import {
-  entryCodeOps,
-  modelOps as pictureModelOps,
-  ratioOps,
-  numOps,
-} from '@/views/picture/constants.ts'
+import { entryCodeOps, modelOps as pictureModelOps, ratioOps, numOps } from '@/views/picture/constants.ts'
 import {
   entryCodeOps as videoEntryCodeOps,
   ratioOps as videoRatioOps,
@@ -61,6 +56,37 @@ const formData = reactive({
     images: [] as FileItem[],
   },
 })
+/**
+ * 视频的比例/分辨率/时长按<b>当前模型</b>取值，不用全局静态表——各模型支持的档位本就不同
+ * （如 xiaoqi-video-1.0-mini 支持 1:1，静态比例表没有）。与 /video 页同一套口径。
+ * 服务端没下发该模型的档位（旧数据没刷 aigcOptions）时回退静态表，不至于把下拉变空。
+ */
+const currentVideoModel = computed(() => modelOps.find((m) => m.value === formData.video.modelCode))
+const videoModelRatioOps = computed(() =>
+  currentVideoModel.value?.ratioOps?.length ? currentVideoModel.value.ratioOps : videoRatioOps,
+)
+const videoModelResolutionOps = computed(() => currentVideoModel.value?.resolutionOps ?? [])
+const videoModelDurationOps = computed(() =>
+  currentVideoModel.value?.durationOps?.length ? currentVideoModel.value.durationOps : durationOps,
+)
+
+// 换模型（或模型表异步加载完成）后，把已选档位纠正到新模型支持的范围：
+// 下拉里已经没有这一项、formData 却还留着，界面看不出异常，提交下去必失败。
+watch(currentVideoModel, () => {
+  const ratio = videoModelRatioOps.value[0]
+  if (ratio && !videoModelRatioOps.value.some((o) => o.value === formData.video.ratio)) {
+    formData.video.ratio = ratio.value
+  }
+  const resolution = videoModelResolutionOps.value[0]
+  if (resolution && !videoModelResolutionOps.value.some((o) => o.value === formData.video.resolution)) {
+    formData.video.resolution = resolution.value
+  }
+  const duration = videoModelDurationOps.value[0]
+  if (duration && !videoModelDurationOps.value.some((o) => o.value === formData.video.duration)) {
+    formData.video.duration = duration.value
+  }
+})
+
 const homeRef = ref<HTMLDivElement | null>(null)
 
 const currentTemplateCode = ref('')
@@ -98,55 +124,52 @@ const ECOMMERCE_QUOTE: Record<string, IQuotePreview> = {
 }
 
 // 提交前积分预览：按当前 Tab 镜像各自提交参数；ecommerce 按模板取 entryCode 询基础价
-const { pricePoints, status: quoteStatus } = useQuotePreview(
-  () => {
-    const tab = activeChatTab.value
-    if (tab === 'picture') {
-      const p = formData.picture
-      const [w, h] = p.ratio.split(',')
-      return {
-        entryCode: p.entryCode,
-        modelCode: p.modelCode,
-        params: {
-          prompt: p.prompt,
-          width: +w!,
-          height: +h!,
-          num: p.num,
-        },
-        imageUrls: p.images,
-      }
+const { pricePoints, status: quoteStatus } = useQuotePreview(() => {
+  const tab = activeChatTab.value
+  if (tab === 'picture') {
+    const p = formData.picture
+    const [w, h] = p.ratio.split(',')
+    return {
+      entryCode: p.entryCode,
+      modelCode: p.modelCode,
+      params: {
+        prompt: p.prompt,
+        width: +w!,
+        height: +h!,
+        num: p.num,
+      },
+      imageUrls: p.images,
     }
-    if (tab === 'video') {
-      const v = formData.video
-      const isAT = v.entryCode === 'actionTransfer'
-      return {
-        entryCode: v.entryCode,
-        modelCode: v.modelCode,
-        params: {
-          prompt: v.prompt,
-          ...(isAT ? {} : { resolution: v.resolution, aspectRatio: v.ratio, duration: v.duration }),
-        },
-        imageUrls: v.images,
-        video: isAT ? v.video[0]?.url || '' : '',
-      }
+  }
+  if (tab === 'video') {
+    const v = formData.video
+    const isAT = v.entryCode === 'actionTransfer'
+    return {
+      entryCode: v.entryCode,
+      modelCode: v.modelCode,
+      params: {
+        prompt: v.prompt,
+        ...(isAT ? {} : { resolution: v.resolution, aspectRatio: v.ratio, duration: v.duration }),
+      },
+      imageUrls: v.images,
+      video: isAT ? v.video[0]?.url || '' : '',
     }
-    // ecommerce：按当前模板路由取完整询价入参（含默认 modelCode/params），未知模板 → null（兜底「限免」）
-    return ECOMMERCE_QUOTE[currentTemplateCode.value] ?? null
-  },
-  [
-    () => activeChatTab.value,
-    () => currentTemplateCode.value,
-    () => formData.picture.entryCode,
-    () => formData.picture.modelCode,
-    () => formData.picture.ratio,
-    () => formData.picture.num,
-    () => formData.video.entryCode,
-    () => formData.video.modelCode,
-    () => formData.video.resolution,
-    () => formData.video.duration,
-    () => formData.video.ratio,
-  ],
-)
+  }
+  // ecommerce：按当前模板路由取完整询价入参（含默认 modelCode/params），未知模板 → null（兜底「限免」）
+  return ECOMMERCE_QUOTE[currentTemplateCode.value] ?? null
+}, [
+  () => activeChatTab.value,
+  () => currentTemplateCode.value,
+  () => formData.picture.entryCode,
+  () => formData.picture.modelCode,
+  () => formData.picture.ratio,
+  () => formData.picture.num,
+  () => formData.video.entryCode,
+  () => formData.video.modelCode,
+  () => formData.video.resolution,
+  () => formData.video.duration,
+  () => formData.video.ratio,
+])
 
 // 预设卡片图标 60px 方格，复用统一的 OSS 缩略图（DPR 自适应，消噪）
 function getOssThumbnail(url?: string): string {
@@ -376,19 +399,19 @@ const submit = () => {
                 v-model:value="formData.video.ratio"
                 title="选择比例"
                 icon-category="ratio"
-                :options="videoRatioOps"
+                :options="videoModelRatioOps"
               />
               <ChatInputSelect
                 v-model:value="formData.video.resolution"
                 title="选择分辨率"
                 icon-category="resolution"
-                :options="modelOps.find((item) => item.value === formData.video.modelCode)?.resolutionOps!"
+                :options="videoModelResolutionOps"
               />
               <ChatInputSelect
                 v-model:value="formData.video.duration"
                 title="选择时长"
                 icon-category="duration"
-                :options="durationOps"
+                :options="videoModelDurationOps"
               />
             </template>
           </div>
@@ -430,4 +453,3 @@ const submit = () => {
   gap: 24px;
 }
 </style>
-

@@ -139,3 +139,11 @@ export function creationHistory(params: types.ICreationHistory) {
 export function quotePreview(data: types.IQuotePreview) {
   return post('/api/v1/billing/quote/preview', injectSize(data))
 }
+
+/**
+ * 可用模型选项（后台启用的模型；后台停用即不下发）。
+ * 服务端字段为下划线风格（aspect_ratios 等），映射在 @/utils/modelCatalog。
+ */
+export function aigcModelOptions(mediaType: 'image' | 'video') {
+  return get<types.IAigcModelOptions>('/api/v1/aigc/model-options', { mediaType })
+}

@@ -62,16 +62,11 @@ export function getOptionIcon(
     case 'duration':
       return DURATION
     case 'model': {
-      // 本地/基础模型(XiaoQi image-flash / image-max / video-lite) → 立方体；
-      // 其余云端模型(Seedance 等) → 彩色条
+      // 自家 XiaoQi 全系(image flash/mini/plus/max、video lite)与 local* → 立方体；
+      // 其余（Seedance、豆包加工厂等第三方）→ 彩色条。
+      // 用前缀而非逐个枚举：XiaoQi 每加一档就漏改一次枚举，图标会静默变成第三方样式。
       const modelValue = String(option.value)
-      if (
-        /^local/i.test(modelValue) ||
-        modelValue === 'xiaoqi-image-1.0-flash' ||
-        modelValue === 'xiaoqi-image-1.0-max' ||
-        modelValue === 'xiaoqi-video-1.0-lite'
-      )
-        return MODEL_LOCAL
+      if (/^local/i.test(modelValue) || /^xiaoqi-/i.test(modelValue)) return MODEL_LOCAL
       return MODEL_SEEDANCE
     }
     case 'resolution':

@@ -6,7 +6,7 @@ import ImageUpload from '@/components/ImageUpload/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import { regionOps, languageOps, aspectRatioVideoOps } from '@/views/e-commerce/childPages/constants.ts'
-import { localDurationOps, modelOps, seedanceDurationOps } from '../constants.ts'
+import { localDurationOps, videoModelOpsFor, seedanceDurationOps } from '../constants.ts'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
@@ -81,11 +81,17 @@ const submit = () => {
   }
   execute(params, loading)
 }
-
 </script>
 
 <template>
-  <Container class="commerce" title="爆款视频" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container
+    class="commerce"
+    title="爆款视频"
+    :submit="submit"
+    :loading="loading"
+    :integral="integral"
+    :quote-status="quoteStatus"
+  >
     <template #default>
       <div class="default-content">
         <div class="module-title">商品图</div>
@@ -114,7 +120,11 @@ const submit = () => {
 
         <!--        外面的模型只能选自己上传的达人，本地模型不做限制-->
         <div class="module-title">选择模型</div>
-        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
+        <SelectGroup
+          v-model:data="formData"
+          :list="[{ field: 'modelCode', options: videoModelOpsFor('hitVideo') }]"
+          :col="1"
+        />
 
         <CustomModel
           v-model:personUrl="formData.personUrl"

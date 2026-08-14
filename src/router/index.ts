@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { login, unionTokenLogin } from '@/api/methods.ts'
+import { ensureModelCatalog } from '@/utils/modelCatalog'
 import eCommerceRouter from './e-commerce'
 
 const hasBridge = !!(window as any).ThirdServiceBridge
@@ -51,6 +52,14 @@ router.beforeEach(async (to) => {
   // 检查 localStorage 中是否有 token
   const token = localStorage.getItem('fusion_accessToken')
 
+  // 已登录即预热模型目录（模块内做了单飞与失败重试，重复导航不会重复请求）。
+  // 不 await：模型列表只影响下拉渲染，让它挡住导航等于把首屏卡在一个非关键请求上。
+  if (token) {
+    void ensureModelCatalog().catch(() => {
+      // 忽略：失败不缓存，下次导航会重试；期间下拉为空而非展示不可用模型
+    })
+  }
+
   // 如果没有 token，进行模拟登录
   if (!token) {
     const unionToken = getUrlQuery('unionToken')
@@ -85,6 +94,11 @@ router.beforeEach(async (to) => {
     } catch {
       // 忽略：token 缺失时后续请求会走 401 → 刷新/登出 流程
     }
+    // 静默登录刚拿到 token：这次导航开头那道预热被 !token 跳过了，补一次，
+    // 否则首屏落在生成页时模型下拉是空的，要等用户再切一次路由才填上。
+    if (localStorage.getItem('fusion_accessToken')) {
+      void ensureModelCatalog().catch(() => {})
+    }
   }
 })
 
@@ -99,6 +113,5 @@ function getUrlQuery(key: string): string | null {
   const searchStr = hash.slice(hash.indexOf('?'))
   return new URLSearchParams(searchStr).get(key)
 }
-
 
 export default router

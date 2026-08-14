@@ -1,4 +1,3 @@
-
 export interface ApiResponse<T = any> {
   code: number
   msg: string
@@ -129,4 +128,32 @@ export interface IPromptDetail extends IPromptCard {
   /** 带 {{key}} 占位符的模板串 */
   content?: string | null
   slots?: IPromptSlotDef[] | null
+}
+
+/** 模型选项里的一个可选值（比例/分辨率/时长），selected 为服务端给的默认项 */
+export interface IAigcOptionChoice {
+  value: string | number
+  selected: boolean
+}
+
+/** 单个可用模型（GET /api/v1/aigc/model-options） */
+export interface IAigcModelOption {
+  code: string
+  name: string
+  selected: boolean
+  /** 该模型配了计费档位的创作场景，前端据此过滤各场景的模型下拉 */
+  entry_codes?: string[]
+  /** 图片一次生成张数；视频为 undefined */
+  num?: number
+  aspect_ratios?: IAigcOptionChoice[]
+  /** 仅视频 */
+  resolutions?: IAigcOptionChoice[]
+  /** 仅视频 */
+  durations?: IAigcOptionChoice[]
+}
+
+/** 可用模型选项响应 */
+export interface IAigcModelOptions {
+  media_type: string
+  models: IAigcModelOption[]
 }
