@@ -16,7 +16,7 @@ import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
-import { downloadImage } from '@/utils/download'
+import { downloadImage, downloadImagesToDirectory, getDownloadableUrls } from '@/utils/download'
 import { withWatermark } from '@/utils/oss'
 import { mediaAspectRatio } from '@/utils/ratio'
 import { isTimeout, displayContents } from '@/utils/utils'
@@ -213,6 +213,19 @@ const onDownloadSingle = async (url: string) => {
   }
 }
 
+// 整组下载中的任务 id 集合（多张逐个写盘耗时较长，防重复点击）
+const downloadingAllSet = reactive(new Set<string>())
+const onDownloadAll = async (item: any) => {
+  const key = item?.taskId
+  if (!key || downloadingAllSet.has(key)) return
+  downloadingAllSet.add(key)
+  try {
+    await downloadImagesToDirectory(getDownloadableUrls(item))
+  } finally {
+    downloadingAllSet.delete(key)
+  }
+}
+
 // 单资源卡片：重新生成中的资源 key 集合（用于按钮 loading 动效）
 const regeneratingSet = reactive(new Set<string>())
 // 单张重新生成：沿用原任务入参（提示词/图片/比例/模型），仅生成 1 张
@@ -349,7 +362,12 @@ const generateAgainSingle = async (item: any, key: string) => {
                   <img :src="regenerateIcon" class="action-btn__icon" width="16" height="16" alt="再次生成" />
                   <span>再次生成</span>
                 </button>
-                <button v-show="utils.showDownloadBtn(item)" class="action-btn" @click="utils.download(item)">
+                <button
+                  v-show="utils.showDownloadBtn(item)"
+                  class="action-btn"
+                  :disabled="downloadingAllSet.has(item.taskId)"
+                  @click="onDownloadAll(item)"
+                >
                   <img :src="downloadAllIcon" class="action-btn__icon" width="16" height="16" alt="全部下载" />
                   <span>全部下载</span>
                 </button>

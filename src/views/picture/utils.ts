@@ -1,6 +1,5 @@
 import { entryCodeVal2Label, modelVal2Label } from './constants.ts'
 import { ratioLabel } from '@/utils/ratio'
-import { withWatermark } from '@/utils/oss'
 
 /**
  * 归一化历史记录的 inputParams 为图片 submit 入参，供「再次生成」复用。
@@ -36,31 +35,6 @@ export const buildResubmitParams = (item: any, single = false) => {
 
 /** 记录是否来自 aigc_chat（端上/agent 来源）：这类素材隐藏「重新生成/再次生成」入口 */
 export const isFromAigcChat = (item: any): boolean => item?.inputParams?.source === 'aigc_chat'
-
-export const download = (item: any) => {
-  // 仅下载生成成功(status===2)的素材
-  const urls = item.contents
-    .filter((c: any) => c.resultUrl && c.status === 2)
-    .map((c: any) => c.resultUrl)
-
-  urls.forEach((url: string, index: number) => {
-    setTimeout(() => {
-      const a = document.createElement('a')
-      a.href = withWatermark(url) // 图片加水印；视频原样返回
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-    }, index * 150) // 每张间隔150ms，足够浏览器响应
-  })
-}
-
-export const downloadSingle = (url: string) => {
-  const a = document.createElement('a')
-  a.href = withWatermark(url) // 图片加水印；视频原样返回
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-}
 
 export const showDownloadBtn = (item: any) => {
   // 仅当存在生成成功(status===2)的素材时才显示「全部下载」
