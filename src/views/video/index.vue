@@ -359,11 +359,15 @@ const getSourceVideo = (inputParams: any): string => {
                 >
                   <!-- 违规优先：白卡占位 -->
                   <MediaFallback v-if="jtem.blocked" class="video" type="video" reason="blocked" />
+                  <!-- poster：后端异步抽帧生成的封面。为空时不设 poster，浏览器退回首帧——
+                       刚出片的几十秒内封面还没补上，属正常，不是错误态 -->
                   <video
                     v-else-if="jtem.resultUrl && !videoErrorSet.has(jtem.resultUrl)"
                     class="video"
                     :style="useContain(jtem, item) ? { objectFit: 'contain' } : undefined"
                     :src="jtem.resultUrl"
+                    :poster="jtem.coverUrl || undefined"
+                    preload="metadata"
                     controls
                     @error="videoErrorSet.add(jtem.resultUrl)"
                   />

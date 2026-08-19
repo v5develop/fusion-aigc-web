@@ -1,12 +1,31 @@
 <script setup lang="ts">
-import { inject, ref, watch, type Ref } from 'vue'
+import { computed, inject, ref, watch, type Ref } from 'vue'
 import { CHECK_PATH } from '../../constants.ts'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import { withWatermark } from '@/utils/oss'
 
 const { data } = defineProps<{
-  data: { id: number; resultUrl: string; status: 0 | 1 | 2 | 3; mediaType: 'image' | 'video' }
+  data: {
+    id: number
+    resultUrl: string
+    status: 0 | 1 | 2 | 3
+    mediaType: 'image' | 'video'
+    /** 视频封面。由后端异步抽帧生成后回填，尚未回填时可能缺省或等于 resultUrl（见 videoPoster） */
+    coverUrl?: string
+  }
 }>()
+
+/**
+ * 视频 poster。
+ *
+ * coverUrl 等于 resultUrl 时必须当作「没有封面」：素材建库时该字段就是按 resultUrl 赋的
+ * （对图片正确——图自己就是封面；对视频则是把 mp4 地址当成了封面），真封面要等后端
+ * 异步抽帧后回填。不排掉这个值的话，浏览器会拿 mp4 当图片加载，poster 位置直接裂图，
+ * 比不设 poster 还糟。
+ */
+const videoPoster = computed(() =>
+  data.coverUrl && data.coverUrl !== data.resultUrl ? data.coverUrl : undefined,
+)
 
 // 视频加载失败：以占位图替换。data 变化（虚拟列表复用同一实例）时重置失败态
 const videoError = ref(false)
@@ -49,10 +68,14 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
         </template>
       </n-image>
       <template v-else>
+        <!-- poster：素材的 coverUrl。视频素材建库时该字段曾被赋成视频地址本身，
+             现由后端封面任务回填为真封面；尚未回填时不设 poster，退回浏览器首帧 -->
         <video
           v-if="!videoError"
           class="video"
           :src="data.resultUrl"
+          :poster="videoPoster"
+          preload="metadata"
           controls
           @error="videoError = true"
         ></video>
