@@ -13,7 +13,7 @@ import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
 import { useQuotePreview } from '@/utils/hooks'
 import { useMessage } from 'naive-ui'
 import { showDownloadBtn, isFromAigcChat } from '@/views/picture/utils.ts'
-import { downloadImagesToDirectory, getDownloadableUrls } from '@/utils/download'
+import { downloadImagesAsZip, getDownloadableUrls, zipNameOf } from '@/utils/download'
 import { getMetaData, isMixedSize, buildResubmitParams } from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
@@ -232,14 +232,14 @@ const generateAgain = (item: any) => {
   execute(buildResubmitParams(item))
 }
 
-// 整组下载中的任务 id 集合（多个视频逐个写盘耗时较长，防重复点击）
+// 整组下载中的任务 id 集合（打包需先抓全部视频，耗时较长，防重复点击）
 const downloadingAllSet = reactive(new Set<string>())
 const onDownloadAll = async (item: any) => {
   const key = item?.taskId
   if (!key || downloadingAllSet.has(key)) return
   downloadingAllSet.add(key)
   try {
-    await downloadImagesToDirectory(getDownloadableUrls(item))
+    await downloadImagesAsZip(getDownloadableUrls(item), zipNameOf(item))
   } finally {
     downloadingAllSet.delete(key)
   }

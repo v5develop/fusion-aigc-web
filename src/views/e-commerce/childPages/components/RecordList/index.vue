@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject, ref, type Ref } from 'vue'
 import Card from '../Card/index.vue'
-import { getDownloadableUrls, downloadImagesAsZip } from '@/utils/download'
+import { getDownloadableUrls, downloadImagesAsZip, zipNameOf } from '@/utils/download'
 import { mediaAspectRatio } from '@/utils/ratio'
 import downloadIcon from '@/assets/icons/download-single.svg'
 
@@ -19,14 +19,6 @@ const cardAspectRatio = (content: any, group: any) =>
 
 // 正在打包下载的分组 taskId 集合（用于按钮 loading/禁用）
 const downloadingIds = ref<Set<string>>(new Set())
-
-// 下载文件名：AI素材_<创建时间>，非法字符替换为下划线
-const zipNameOf = (item: any) => {
-  const t = String(item?.createTime ?? '')
-    .replace(/[\\/:*?"<>|\s]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-  return t ? `AI素材_${t}` : 'AI素材'
-}
 
 // 整组下载：打包该组全部生成成功的图片
 const onGroupDownload = async (item: any) => {

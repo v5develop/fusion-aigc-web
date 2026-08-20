@@ -16,7 +16,7 @@ import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
-import { downloadImage, downloadImagesToDirectory, getDownloadableUrls } from '@/utils/download'
+import { downloadImage, downloadImagesAsZip, getDownloadableUrls, zipNameOf } from '@/utils/download'
 import { withWatermark } from '@/utils/oss'
 import { mediaAspectRatio } from '@/utils/ratio'
 import { isTimeout, displayContents } from '@/utils/utils'
@@ -213,14 +213,14 @@ const onDownloadSingle = async (url: string) => {
   }
 }
 
-// 整组下载中的任务 id 集合（多张逐个写盘耗时较长，防重复点击）
+// 整组下载中的任务 id 集合（打包需先抓全部图片，耗时较长，防重复点击）
 const downloadingAllSet = reactive(new Set<string>())
 const onDownloadAll = async (item: any) => {
   const key = item?.taskId
   if (!key || downloadingAllSet.has(key)) return
   downloadingAllSet.add(key)
   try {
-    await downloadImagesToDirectory(getDownloadableUrls(item))
+    await downloadImagesAsZip(getDownloadableUrls(item), zipNameOf(item))
   } finally {
     downloadingAllSet.delete(key)
   }

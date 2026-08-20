@@ -1,10 +1,13 @@
 /**
  * 图片下载工具：解决跨域 OSS 图片直接用 <a href> 会在页面打开而非下载的问题。
- * 单图：fetch→blob→<a download>，跨域失败时降级为 OSS response-content-disposition 强制下载。
- * 整组两种形态：
- *  - 打包 ZIP（downloadImagesAsZip）
- *  - 选一次文件夹后逐张写入（downloadImagesToDirectory）
- * 二者失败时都降级为逐张 attachment 下载，保证任何浏览器都能下到文件。
+ * 单图：fetch→blob→<a download>，抓取失败时裸链打开由用户手动另存。
+ * 整组：打包成一个 ZIP 后触发下载，用户只需在「另存为」里选一次位置；
+ * 抓取失败则降级为逐张下载。
+ *
+ * 不要改用 File System Access 的 showDirectoryPicker（选文件夹后逐张写入）：
+ * 试过，它要求安全上下文（http + 内网 IP 直接不可用），且受浏览器目录黑名单和
+ * macOS 系统权限限制，实测桌面/下载目录都可能被拒。ZIP 走的是浏览器原生下载栈，
+ * 无这些限制，是唯一能在所有环境「只选一次位置」的方案。
  */
 import JSZip from 'jszip'
 import { withWatermark } from './oss'
@@ -27,20 +30,12 @@ function extFromUrl(url: string): string {
   }
 }
 
-/** 给 OSS URL 追加强制下载参数（服务端驱动，不依赖 CORS 的兜底方案） */
-function withAttachment(url: string, filename?: string): string {
-  try {
-    const u = new URL(url)
-    // filename* 用 RFC 5987 编码，非 ASCII 文件名（中文）经 OSS 回传后浏览器才能正确解码
-    u.searchParams.set(
-      'response-content-disposition',
-      filename ? `attachment;filename*=UTF-8''${encodeURIComponent(filename)}` : 'attachment',
-    )
-    return u.toString()
-  } catch {
-    return url
-  }
-}
+/**
+ * 注意：不要再用 response-content-disposition 做「服务端强制下载」兜底。
+ * 素材 bucket 是公共读、匿名访问，OSS 对匿名请求禁止覆盖响应头，
+ * 加了该参数会直接返回 InvalidRequest 错误 XML（0017-00000901）而不是文件。
+ * 因此所有下载一律走 fetch→blob，抓不到时只能裸链打开让用户手动另存。
+ */
 
 /** 通过隐藏 <a> 触发一次下载 */
 function triggerAnchorDownload(href: string, filename?: string) {
@@ -54,8 +49,9 @@ function triggerAnchorDownload(href: string, filename?: string) {
 }
 
 /**
- * 下载单张图片。优先 fetch→blob（可控文件名、强制下载）；
- * 跨域 / 网络失败时降级为 OSS response-content-disposition 强制下载。
+ * 下载单张图片：fetch→blob→<a download>，可控文件名且强制下载。
+ * 抓取失败（OSS 未开 CORS / 网络异常）时只能裸链打开，由用户手动另存 ——
+ * 不能再拼 response-content-disposition，见上方说明。
  */
 export async function downloadImage(url: string, filename?: string): Promise<void> {
   if (!url) return
@@ -68,76 +64,30 @@ export async function downloadImage(url: string, filename?: string): Promise<voi
     triggerAnchorDownload(objectUrl, name)
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
   } catch {
-    // 先 withAttachment(内部 new URL) 再拼水印，避免水印逗号被 URL 序列化重编码
-    triggerAnchorDownload(withWatermark(withAttachment(url, name)))
+    // 跨域时 a.download 会被忽略，退化为新开页展示，用户可右键另存
+    triggerAnchorDownload(withWatermark(url), name)
   }
 }
 
-/** 逐张下载（整组兜底方案）：用服务端强制下载，间隔触发避免被浏览器拦截 */
+/** 逐张下载（整组兜底方案）：复用单图下载，间隔触发避免被浏览器拦截 */
 async function downloadImagesSequentially(urls: string[], prefix: string): Promise<void> {
   let i = 0
   for (const url of urls) {
     i += 1
-    triggerAnchorDownload(withWatermark(withAttachment(url, `${prefix}_${i}.${extFromUrl(url)}`)))
+    await downloadImage(url, `${prefix}_${i}.${extFromUrl(url)}`)
     await new Promise((resolve) => setTimeout(resolve, 300))
   }
 }
 
-/** 目录选择器（File System Access API）：仅 Chrome/Edge 且安全上下文可用，其余环境返回 null */
-type DirectoryPicker = (opts?: {
-  mode?: 'read' | 'readwrite'
-  id?: string
-  startIn?: string
-}) => Promise<any>
-function getDirectoryPicker(): DirectoryPicker | null {
-  const picker = (globalThis as any).showDirectoryPicker
-  if (typeof picker !== 'function' || !globalThis.isSecureContext) return null
-  return picker.bind(globalThis) as DirectoryPicker
-}
-
 /**
- * 整组下载到同一文件夹：只弹一次「选择文件夹」，随后逐张写入该目录（不打包）。
- * 不论几张都弹目录选择（含只有一张时），保证「全部下载」行为恒定，
- * 不受浏览器「下载前询问保存位置」设置影响。
- * 依赖 File System Access API；浏览器不支持 / 拒绝授权 / 跨域抓取失败 →
- * 降级为逐张 attachment 下载（那条路径每张各弹一次另存为）。
+ * 整组素材的 ZIP 文件名：按任务创建时间区分，清洗掉文件名非法字符。
+ * 缺 createTime 时退回固定名。
  */
-export async function downloadImagesToDirectory(urls: string[], prefix = 'AI素材'): Promise<void> {
-  const list = urls.filter(Boolean)
-  if (!list.length) return
-
-  const pickDirectory = getDirectoryPicker()
-  if (pickDirectory) {
-    let dir: any = null
-    try {
-      // 必须在用户手势的同步调用栈里先弹目录选择：任何 await 之后再调都会因手势失效而抛错
-      dir = await pickDirectory({ mode: 'readwrite', id: 'aigc-download', startIn: 'downloads' })
-    } catch (err: any) {
-      // 用户主动取消 → 静默结束，不能降级（否则「取消」反而触发了逐张下载）
-      if (err?.name === 'AbortError') return
-    }
-    if (dir) {
-      try {
-        let i = 0
-        for (const url of list) {
-          i += 1
-          // 图片走水印变体；视频 URL withWatermark 会原样返回
-          const res = await fetch(withWatermark(url), { mode: 'cors' })
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          const handle = await dir.getFileHandle(`${prefix}_${i}.${extFromUrl(url)}`, {
-            create: true,
-          })
-          const writable = await handle.createWritable()
-          await writable.write(await res.blob())
-          await writable.close()
-        }
-        return
-      } catch {
-        // 无写入权限 / OSS 未开 CORS / 写盘失败 → 走通用降级（已写入的几张会被重复下载，可接受）
-      }
-    }
-  }
-  await downloadImagesSequentially(list, prefix)
+export function zipNameOf(item: any): string {
+  const t = String(item?.createTime ?? '')
+    .replace(/[\\/:*?"<>|\s]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return t ? `AI素材_${t}` : 'AI素材'
 }
 
 /**
