@@ -2,7 +2,7 @@
 import { ref, provide, watch, reactive } from 'vue'
 import { useMessage } from 'naive-ui'
 import { assetAll, assetBatchDelete } from '@/api/methods.ts'
-import { downloadImagesAsZip } from '@/utils/download'
+import { downloadImagesAsZip, zipNameByNow } from '@/utils/download'
 import { tabOps1, tabOps2 } from './constants.ts'
 import RecordList from './components/RecordList/index.vue'
 
@@ -48,7 +48,8 @@ const batchDownload = async () => {
   if (batchDownloading.value) return
   batchDownloading.value = true
   try {
-    await downloadImagesAsZip(urls)
+    // 跨分组勾选，没有单一任务时间可依据 → 按下载时刻命名，多次下载不重名
+    await downloadImagesAsZip(urls, zipNameByNow())
   } finally {
     batchDownloading.value = false
   }

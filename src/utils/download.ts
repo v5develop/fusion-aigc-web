@@ -79,23 +79,35 @@ async function downloadImagesSequentially(urls: string[], prefix: string): Promi
   }
 }
 
+/** 按当前时刻生成压缩包名：AI素材_2026-08-20_14-30-25。无任务时间可依据时用，避免多次下载重名 */
+export function zipNameByNow(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  const date = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  return `AI素材_${date}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`
+}
+
 /**
- * 整组素材的 ZIP 文件名：按任务创建时间区分，清洗掉文件名非法字符。
- * 缺 createTime 时退回固定名。
+ * 整组素材的 ZIP 文件名：按任务时间区分，清洗掉文件名非法字符。
+ * createTime 是创作历史的字段，taskTime 是资产分组的字段；都缺时退回当前时刻。
  */
 export function zipNameOf(item: any): string {
-  const t = String(item?.createTime ?? '')
+  const t = String(item?.createTime ?? item?.taskTime ?? '')
     .replace(/[\\/:*?"<>|\s]+/g, '_')
     .replace(/^_+|_+$/g, '')
-  return t ? `AI素材_${t}` : 'AI素材'
+  return t ? `AI素材_${t}` : zipNameByNow()
 }
 
 /**
  * 整组下载：优先把多张图片打包成一个 ZIP。
  * 任一图片跨域抓取失败（OSS 未开 CORS 等）→ 整体降级为逐张下载，保证始终能下。
  * 只有一张时直接下载单图，不打包。
+ * zipName 默认按调用时刻生成（默认参数每次调用才求值），漏传也不会重名互相覆盖。
  */
-export async function downloadImagesAsZip(urls: string[], zipName = 'AI素材'): Promise<void> {
+export async function downloadImagesAsZip(
+  urls: string[],
+  zipName = zipNameByNow(),
+): Promise<void> {
   const list = urls.filter(Boolean)
   if (!list.length) return
   if (list.length === 1) {

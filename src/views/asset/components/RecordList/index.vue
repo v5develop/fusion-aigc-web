@@ -2,7 +2,7 @@
 import { inject, reactive, type Ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import Card from '../Card/index.vue'
-import { downloadImagesAsZip } from '@/utils/download'
+import { downloadImagesAsZip, zipNameOf } from '@/utils/download'
 import { mediaAspectRatio } from '@/utils/ratio'
 import downloadIcon from '@/assets/icons/download-single.svg'
 import { CHECK_PATH } from '../../constants.ts'
@@ -46,7 +46,7 @@ const downloadGroup = async (group: any) => {
   if (!urls.length) return message.warning('该组暂无可下载素材')
   downloadingKeys.add(key)
   try {
-    await downloadImagesAsZip(urls)
+    await downloadImagesAsZip(urls, zipNameOf(group))
   } finally {
     downloadingKeys.delete(key)
   }
