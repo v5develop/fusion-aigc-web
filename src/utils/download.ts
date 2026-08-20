@@ -11,7 +11,14 @@
  */
 import JSZip from 'jszip'
 
-/** 取一组任务里可下载的图片 URL（仅生成成功 status===2 且有 resultUrl 的） */
+/**
+ * 取一组任务里可下载的 URL（仅生成成功 status===2 且有 resultUrl 的）。
+ *
+ * ⚠️ 必须取 resultUrl，不能取 watermarkUrl。
+ * 后端下发两个字段：watermarkUrl 是【展示用】（有水印版则为水印版，否则与 resultUrl 同值），
+ * resultUrl 才是原件。改成 watermarkUrl 的话，视频水印一开启用户下到的就是带水印的文件，
+ * 而且因为关闭时两者同值，本地关着开关测不出问题——线上开了才炸。
+ */
 export function getDownloadableUrls(item: any): string[] {
   return (item?.contents ?? [])
     .filter((c: any) => c?.resultUrl && c?.status === 2)

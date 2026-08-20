@@ -359,13 +359,16 @@ const getSourceVideo = (inputParams: any): string => {
                 >
                   <!-- 违规优先：白卡占位 -->
                   <MediaFallback v-if="jtem.blocked" class="video" type="video" reason="blocked" />
-                  <!-- poster：后端异步抽帧生成的封面。为空时不设 poster，浏览器退回首帧——
+                  <!-- 展示用 watermarkUrl、下载用 resultUrl，即「展示带水印、下载给原件」。
+                       watermarkUrl 恒有值：后端在无水印版本时已回落到 resultUrl，故无需判空。
+                       水印开关关闭时两者同值，本处代码开关两态通用。
+                       poster 为后端异步抽帧的封面，为空时不设、浏览器退回首帧——
                        刚出片的几十秒内封面还没补上，属正常，不是错误态 -->
                   <video
                     v-else-if="jtem.resultUrl && !videoErrorSet.has(jtem.resultUrl)"
                     class="video"
                     :style="useContain(jtem, item) ? { objectFit: 'contain' } : undefined"
-                    :src="jtem.resultUrl"
+                    :src="jtem.watermarkUrl || jtem.resultUrl"
                     :poster="jtem.coverUrl || undefined"
                     preload="metadata"
                     controls
