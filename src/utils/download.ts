@@ -10,7 +10,6 @@
  * 无这些限制，是唯一能在所有环境「只选一次位置」的方案。
  */
 import JSZip from 'jszip'
-import { withWatermark } from './oss'
 
 /** 取一组任务里可下载的图片 URL（仅生成成功 status===2 且有 resultUrl 的） */
 export function getDownloadableUrls(item: any): string[] {
@@ -57,15 +56,16 @@ export async function downloadImage(url: string, filename?: string): Promise<voi
   if (!url) return
   const name = filename || `AI素材_${Date.now()}.${extFromUrl(url)}`
   try {
-    // 图片走水印变体；视频 URL withWatermark 会原样返回
-    const res = await fetch(withWatermark(url), { mode: 'cors' })
+    // 下载走【原图】：水印只加在展示上，下载给无水印原件。
+    // 拼 x-oss-process 会让 OSS 返回带水印的变体，用户拿到的文件就洗不掉了。
+    const res = await fetch(url, { mode: 'cors' })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const objectUrl = URL.createObjectURL(await res.blob())
     triggerAnchorDownload(objectUrl, name)
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
   } catch {
     // 跨域时 a.download 会被忽略，退化为新开页展示，用户可右键另存
-    triggerAnchorDownload(withWatermark(url), name)
+    triggerAnchorDownload(url, name)
   }
 }
 
@@ -118,7 +118,8 @@ export async function downloadImagesAsZip(
   try {
     const files = await Promise.all(
       list.map(async (url) => {
-        const res = await fetch(withWatermark(url), { mode: 'cors' })
+        // 同 downloadImage：打包下载同样给无水印原图
+        const res = await fetch(url, { mode: 'cors' })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return { blob: await res.blob(), ext: extFromUrl(url) }
       }),

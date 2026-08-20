@@ -18,6 +18,13 @@ export function isVideoUrl(url?: string): boolean {
 /**
  * 给 OSS 图片 URL 追加水印处理参数。空 URL 或视频 URL 原样返回。
  * 用字符串拼接而非 URLSearchParams，避免参数里的逗号/斜杠被编码成 %2C/%2F。
+ *
+ * ⚠️ 只用于【展示】，绝不能用在下载路径上。
+ * 产品口径是「展示有水印、下载给原件」：拼上本参数后 OSS 返回的是带水印的变体，
+ * 用户下到本地的文件就洗不掉了。download.ts 里所有抓取一律用原始 url。
+ *
+ * 另需知道：这层水印本就拦不住人——原图 URL 公有桶可直连，删掉 ?x-oss-process= 即是原图。
+ * 它的作用是默认展示态带标识，不是版权保护。真要防护得让原图进私有桶、下载走签名接口鉴权。
  */
 export function withWatermark(url?: string): string {
   if (!url || isVideoUrl(url)) return url ?? ''
