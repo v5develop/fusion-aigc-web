@@ -88,7 +88,6 @@ const getGroupSelectState = (group: any) => {
           v-for="jtem in item.contents"
           :key="jtem.taskId"
           :data="jtem"
-          :groupParams="item.inputParams?.params"
           :style="{ aspectRatio: cardAspectRatio(jtem, item) }"
         />
       </div>

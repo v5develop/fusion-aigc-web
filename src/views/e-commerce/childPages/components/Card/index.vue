@@ -6,12 +6,9 @@ import { isTimeout, isVideoUrl } from '@/utils/utils'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
-import { isPortraitMedia } from '@/utils/ratio'
 
-const { data, groupParams } = defineProps<{
+const { data } = defineProps<{
   data: { resultUrl: string; status: 0 | 1 | 2 | 3; blocked?: boolean; errorMsg?: string; statusView?: any }
-  /** 本组任务的请求入参（inputParams.params）：素材没带尺寸时用它兜底判断画幅 */
-  groupParams?: any
 }>()
 
 const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', undefined)
@@ -21,9 +18,6 @@ const groupMediaType = inject<'image' | 'video'>('recordMediaType', 'image')
 const mediaType = computed<'image' | 'video'>(() =>
   isVideoUrl(data.resultUrl) ? 'video' : groupMediaType,
 )
-
-// 容器统一 16:9（见 RecordList）：竖视频 contain 居中留白，横视频 cover 填满
-const useContain = computed(() => isPortraitMedia(data, groupParams))
 
 // 视频加载失败：以占位图替换。data 变化（同一实例复用）时重置失败态
 const videoError = ref(false)
@@ -69,7 +63,6 @@ const onDownload = () => downloadImage(data.resultUrl)
       <video
         v-else-if="!videoError"
         class="video"
-        :style="useContain ? { objectFit: 'contain' } : undefined"
         :src="data.resultUrl"
         controls
         controlsList="nodownload"
@@ -125,8 +118,10 @@ const onDownload = () => downloadImage(data.resultUrl)
   > .video {
     width: 100%;
     height: 100%;
-    // 横视频填满 16:9 容器；竖视频由内联 style 覆盖为 contain，两侧露出的底色同图片模块
-    object-fit: cover;
+    // 容器固定 16:9（见 RecordList），此时 contain 即「高度撑满、宽度自适应」：
+    // 16:9 横视频满铺（与 cover 渲染一致），9:16 等更高的素材左右留白居中，底色同图片模块。
+    // 不做 cover/contain 切换——cover 只会裁掉非 16:9 素材，没有任何场景优于 contain。
+    object-fit: contain;
     background: #e5e2ed;
   }
   &.cursor {
