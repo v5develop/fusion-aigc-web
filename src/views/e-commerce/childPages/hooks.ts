@@ -1,5 +1,6 @@
 import { computed, type Ref, ref } from 'vue'
 import { useSessionIdStore } from '@/stores/e-commerce'
+import { useEcTabsStore } from '@/stores/e-commerce/tabs'
 import { usePolling } from '@/utils/hooks/usePolling.ts'
 import { pollingTask } from '@/api/methods.ts'
 import { ecommerceSubmit } from '@/api/methods.ts'
@@ -10,6 +11,8 @@ import { isAllTasksTerminal } from '@/utils/utils'
 export function useInitCheckTaskStatus(type: string) {
   const { updateUserInfo } = useUserInfoStore()
   const { useSessionId } = useSessionIdStore()
+  // type 与路由 name/组件 name 同名，直接拿来当标签条上「进行中」小圆点的键
+  const { setRunning } = useEcTabsStore()
   const { getSessionId, clearSessionId } = useSessionId(type)
 
   // AIGC 生成速度无法保证，页面打开期间轮询持续进行：错误不停止（stopOnError: false）、
@@ -28,6 +31,7 @@ export function useInitCheckTaskStatus(type: string) {
       if (!isAllTasksTerminal(tasks)) {
         graceLeft = 0
         awaitingCompletion = true
+        setRunning(type, true)
         return false
       }
 
@@ -35,6 +39,8 @@ export function useInitCheckTaskStatus(type: string) {
         graceLeft--
         return false
       }
+
+      setRunning(type, false)
 
       if (awaitingCompletion) {
         // 本批任务全部到终态：轮换会话并刷新积分（每批只进入一次），轮询继续
@@ -74,6 +80,8 @@ export function useInitCheckTaskStatus(type: string) {
           // 开始轮询
           graceLeft = 5
           awaitingCompletion = true
+          // 提交即点亮标签上的小圆点，不必等第一轮轮询回来
+          setRunning(type, true)
           startPolling(params.sessionId)
           showList.value = true
         }

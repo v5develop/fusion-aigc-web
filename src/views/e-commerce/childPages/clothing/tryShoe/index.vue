@@ -15,6 +15,10 @@ import { publicTemplate } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useQuotePreview } from '@/utils/hooks'
 
+// keep-alive 按组件 name 命中缓存。子页文件名全是 index.vue，Vue 推断出的 name 会全部撞车，必须显式声明；
+// 这里刻意与路由 name 同名，标签条的 include 项直接用路由 name 即可
+defineOptions({ name: 'try-shoe' })
+
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('try-shoe')
@@ -209,7 +213,7 @@ function useShoeList() {
 @import '../../common.less';
 
 .commerce {
-  height: 100vh;
+  height: calc(100vh - @ec-tab-bar-height);
   .default-content {
     > .switch-cont {
       height: 52px;

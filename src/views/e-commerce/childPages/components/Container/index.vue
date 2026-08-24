@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { onDeactivated, useTemplateRef } from 'vue'
+
 const { title, submit, loading, integral, quoteStatus } = defineProps<{
   title: string
   submit: () => void
@@ -8,10 +10,19 @@ const { title, submit, loading, integral, quoteStatus } = defineProps<{
   /** 询价状态：loading 转圈、error 显示「获取失败」 */
   quoteStatus?: 'loading' | 'success' | 'error'
 }>()
+
+const rootRef = useTemplateRef<HTMLElement>('root')
+
+// 被 keep-alive 缓存的标签切走后组件不卸载，正在播的视频会继续出声。
+// deactivated 会向整棵子树传播，Container 包住了全部 14 个功能页的内容，在这一处收口即可
+onDeactivated(() => {
+  rootRef.value?.querySelectorAll('video').forEach((video) => video.pause())
+})
+
 </script>
 
 <template>
-  <div class="container">
+  <div class="container" ref="root">
     <div class="form-container">
       <h1 class="title">
         <span>{{ title }}</span>

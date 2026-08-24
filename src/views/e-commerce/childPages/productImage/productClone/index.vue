@@ -14,6 +14,10 @@ import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
 import { useMessage } from 'naive-ui'
 
+// keep-alive 按组件 name 命中缓存。子页文件名全是 index.vue，Vue 推断出的 name 会全部撞车，必须显式声明；
+// 这里刻意与路由 name 同名，标签条的 include 项直接用路由 name 即可
+defineOptions({ name: 'product-clone' })
+
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('product-clone')
@@ -161,7 +165,7 @@ const customResultHandle = (urls: string[]) => {
 @import '../../common.less';
 
 .commerce {
-  height: 100vh;
+  height: calc(100vh - @ec-tab-bar-height);
   .default-content {
     .textarea {
       width: 100%;
