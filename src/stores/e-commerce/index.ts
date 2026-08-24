@@ -42,5 +42,31 @@ export const useSessionIdStore = defineStore('useSessionIdStore', () => {
     return { getSessionId, clearSessionId }
   }
 
-  return { useSessionId }
+  /**
+   * 清掉无主的电商标签会话，防止 localStorage 里越积越多。
+   *
+   * 只动含 '#' 的键 —— 那是电商标签的实例键格式（`<类目>#<标签id>`）。
+   * 图片模块（views/picture/hooks.ts）用的是同一份 sessionIdMap，键是裸的 'picture'，
+   * 少了这道前置条件会把它的会话一起清掉。
+   */
+  function pruneSessionIds(validKeys: Set<string>) {
+    try {
+      const raw = localStorage.getItem('sessionIdMap')
+      if (raw) sessionIdMap.value = { ...JSON.parse(raw), ...sessionIdMap.value }
+    } catch {}
+
+    let changed = false
+    for (const key of Object.keys(sessionIdMap.value)) {
+      if (!key.includes('#') || validKeys.has(key)) continue
+      delete sessionIdMap.value[key]
+      changed = true
+    }
+
+    if (!changed) return
+    try {
+      localStorage.setItem('sessionIdMap', JSON.stringify(sessionIdMap.value))
+    } catch {}
+  }
+
+  return { useSessionId, pruneSessionIds }
 })

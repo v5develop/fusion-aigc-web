@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { useEcTabsStore } from '@/stores/e-commerce/tabs'
 
 const { data, title } = defineProps<{ data: any; title: string }>()
 
 const router = useRouter()
+const tabsStore = useEcTabsStore()
 
+// 点卡片总是新开一个标签：每次发一个新实例 id 带进 URL，同类目因此可以并存多个。
+// 标签本身仍由 layout 的路由监听建出来，这里只负责发号
 function goChildPages(item: any) {
-  router.push({ name: item.pathName })
+  router.push({ name: item.pathName, query: { tab: tabsStore.nextTabId() } })
 }
 </script>
 

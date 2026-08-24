@@ -2,21 +2,31 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { useEcTabsStore } from '@/stores/e-commerce/tabs'
+import { sessionKeyOf, tabLabel, useEcTabsStore } from '@/stores/e-commerce/tabs'
+import { useSessionIdStore } from '@/stores/e-commerce'
 
 const route = useRoute()
 const router = useRouter()
 const tabsStore = useEcTabsStore()
+const sessionIdStore = useSessionIdStore()
 const { tabs, runningMap } = storeToRefs(tabsStore)
 
 // 首页不在 tabs 里（它不进缓存也不可关闭），标签条上单独渲染为固定首项
 const isHomeActive = computed(() => route.name === 'e-commerce')
 
-const close = (name: string) => {
-  const next = tabsStore.closeTab(name)
+// 同类目可以多开，光比 name 不够，还要比实例 id
+const isActive = (id: string) => route.query.tab === id
+
+const go = (id: string, name: string) => router.push({ name, query: { tab: id } })
+
+const close = (tab: { id: string; name: string }) => {
+  const next = tabsStore.closeTab(tab.id)
+  // 显式关闭视为丢弃这批生成结果：连它的会话记录一起清掉，否则 localStorage 只增不减
+  sessionIdStore.pruneSessionIds(new Set(tabs.value.map(sessionKeyOf)))
+
   // 关的不是当前标签就不用动路由，停在原地
-  if (route.name !== name) return
-  router.push(next ? { name: next.name } : { name: 'e-commerce' })
+  if (!isActive(tab.id)) return
+  router.push(next ? { name: next.name, query: { tab: next.id } } : { name: 'e-commerce' })
 }
 </script>
 
@@ -28,15 +38,15 @@ const close = (name: string) => {
 
     <div
       v-for="tab in tabs"
-      :key="tab.name"
+      :key="tab.id"
       class="tab closable"
-      :class="{ active: route.name === tab.name }"
-      @click="router.push({ name: tab.name })"
+      :class="{ active: isActive(tab.id) }"
+      @click="go(tab.id, tab.name)"
     >
       <!-- 后台标签仍在轮询，用小圆点把「还在跑」透出来，这是多标签的主要价值 -->
-      <i v-if="runningMap[tab.name]" class="running-dot"></i>
-      <span class="label">{{ tab.title }}</span>
-      <span class="close-btn" @click.stop="close(tab.name)">&times;</span>
+      <i v-if="runningMap[tab.id]" class="running-dot"></i>
+      <span class="label">{{ tabLabel(tab) }}</span>
+      <span class="close-btn" @click.stop="close(tab)">&times;</span>
     </div>
   </div>
 </template>

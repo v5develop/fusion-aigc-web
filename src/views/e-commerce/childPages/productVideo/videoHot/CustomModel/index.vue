@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   assetAll,
   ecommerceSubmit,
@@ -23,7 +23,7 @@ import SelectGroup from '@/components/SelectGroup/index.vue'
 import ImagePopover from '@/components/ImagePopover/index.vue'
 import CustomModelNotice from '@/components/CustomModelNotice/index.vue'
 import { modelNoticeObj } from '@/components/CustomModelNotice/useData.ts'
-import { onBeforeRouteLeave } from 'vue-router'
+import { registerOverlayCloser } from '@/utils/overlayGuard'
 import { useMessage } from 'naive-ui'
 
 const { modelCode } = defineProps<{
@@ -214,15 +214,16 @@ const windowOpen = () => window.open(faceAuthDialog.qrCode, '_blank')
 
 // 人脸认证弹窗和使用须知弹窗都是 Teleport 到 body 的，不在 keep-alive 的缓存子树里。
 // 标签切走后本组件不卸载，遮罩会一直盖在新标签上并吃掉全部点击，只能刷新页面才能恢复。
-// 必须赶在失活「之前」关：Vue 3.5 的 KeepAlive 会暂停失活子树的渲染 effect，
-// 等失活之后再改状态，DOM 就不会再更新了；还要等离场过渡走完，否则遮罩会停在过渡中间。
-onBeforeRouteLeave(async () => {
-  if (!faceAuthDialog.show && !modelNoticeObj.value.show) return
-  faceAuthDialog.show = false
-  modelNoticeObj.value.show = false
-  await nextTick()
-  await new Promise((resolve) => setTimeout(resolve, 350))
-})
+// 关闭时机和等待过渡的理由见 utils/overlayGuard.ts
+onUnmounted(
+  registerOverlayCloser(async () => {
+    if (!faceAuthDialog.show && !modelNoticeObj.value.show) return
+    faceAuthDialog.show = false
+    modelNoticeObj.value.show = false
+    await nextTick()
+    await new Promise((resolve) => setTimeout(resolve, 350))
+  }),
+)
 
 const customBeforeUpload = () => {
   if (!modelNoticeObj.value.customModelNoticeConfirmed) {

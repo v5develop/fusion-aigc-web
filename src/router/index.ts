@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { login, unionTokenLogin } from '@/api/methods.ts'
 import { ensureModelCatalog } from '@/utils/modelCatalog'
+import { closeAllOverlays } from '@/utils/overlayGuard'
 import eCommerceRouter from './e-commerce'
 
 const hasBridge = !!(window as any).ThirdServiceBridge
@@ -45,6 +46,13 @@ const router = createRouter({
       ],
     },
   ],
+})
+
+// 导航前先关掉 Teleport 在 body 上的遮罩浮层。
+// 挂全局而不是组件级 onBeforeRouteLeave：同类目多开后两个标签互切是同一条 record，
+// 离开守卫不触发，遮罩会残留下来盖住新标签。详见 utils/overlayGuard.ts
+router.beforeEach(async () => {
+  await closeAllOverlays()
 })
 
 // 路由守卫：登录验证

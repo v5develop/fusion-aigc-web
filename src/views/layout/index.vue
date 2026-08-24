@@ -1,27 +1,52 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import Navigation from '@/views/layout/Navigation/index.vue'
 import ECommerceTabs from '@/views/e-commerce/Tabs/index.vue'
-import { useEcTabsStore } from '@/stores/e-commerce/tabs'
+import { sessionKeyOf, useEcTabsStore } from '@/stores/e-commerce/tabs'
+import { useSessionIdStore } from '@/stores/e-commerce'
 
 const route = useRoute()
+const router = useRouter()
 const tabsStore = useEcTabsStore()
-const { cachedNames } = storeToRefs(tabsStore)
+const { cachedNames, tabs } = storeToRefs(tabsStore)
 
 const isECommerce = computed(() => route.path.startsWith('/e-commerce'))
+// 电商首页不进标签、不进缓存
+const isFunctionPage = computed(() => isECommerce.value && route.name !== 'e-commerce')
+
+// 标签列表是持久化的，但 sessionIdMap 里可能还留着上次关标签/异常退出时没清掉的会话。
+// 开机对一次账，只保留还有主的
+useSessionIdStore().pruneSessionIds(new Set(tabs.value.map(sessionKeyOf)))
+
+// keep-alive 的缓存键。KeepAlive 的缓存 map 以 vnode.key 为键（没有 key 才回退到组件类型），
+// 所以同一个功能页组件靠不同的 key 就能缓存多个独立实例 —— 这是同类目多开的支点。
+// 非电商页保持 undefined，行为与改造前一致
+const cacheKey = computed(() =>
+  isFunctionPage.value && route.query.tab ? `${String(route.name)}#${route.query.tab}` : undefined,
+)
 
 // 标签由路由驱动而非点击驱动：卡片点击、URL 直达（刷新/容器初始地址）、浏览器前进后退
-// 全都自动开出标签，入口代码一行都不用改
+// 全都自动开出标签。
+// 盯 fullPath 而不是 name —— 同类目切标签时 name 不变，只有 query.tab 变，盯 name 会漏掉
 watch(
-  () => route.name,
-  (name) => {
-    if (!isECommerce.value || !name || name === 'e-commerce') return
+  () => route.fullPath,
+  () => {
+    if (!isFunctionPage.value) return
+
+    const tabId = route.query.tab
+    // URL 上没有实例 id（直达/刷新/历史记录）：补一个再走。
+    // isFunctionPage 之外的路径不会进来，这里的 replace 补完 id 就不会再次命中，不会自循环
+    if (!tabId) {
+      router.replace({ name: route.name!, query: { ...route.query, tab: tabsStore.nextTabId() } })
+      return
+    }
+
     tabsStore.openTab({
-      name: String(name),
-      title: (route.meta?.title as string) ?? String(name),
-      path: route.path,
+      id: String(tabId),
+      name: String(route.name),
+      title: (route.meta?.title as string) ?? String(route.name),
     })
   },
   { immediate: true },
@@ -42,7 +67,7 @@ watch(
            其它模块页面不进缓存，行为与改造前一致 -->
       <RouterView v-slot="{ Component }">
         <keep-alive :include="cachedNames">
-          <component :is="Component" />
+          <component :is="Component" :key="cacheKey" />
         </keep-alive>
       </RouterView>
     </div>
