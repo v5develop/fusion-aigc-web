@@ -18,7 +18,7 @@ import type { ChangeBackgroundParams } from '@/views/home/ChatInputBox/targetPar
 
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
-const { taskList, showList, execute } = useInitCheckTaskStatus('clothing-remove-wrinkle')
+const { taskList, showList, execute } = useInitCheckTaskStatus('change-background')
 provide('recordsData', taskList)
 
 const message = useMessage()
