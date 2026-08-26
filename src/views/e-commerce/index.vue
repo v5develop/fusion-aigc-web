@@ -84,13 +84,15 @@ const chuandaitu_data = ref([
     pathName: 'clothing-remove-wrinkle',
     url: 'https://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/clothing-remove-wrinkle.png',
   },
-  {
-    title: '搭配融图',
-    desc: '单品融合搭配，直观展示整套穿搭',
-    bgColor: '#E7D2D2',
-    pathName: 'merge-image',
-    url: 'https://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/merge-image.png',
-  },
+  // 搭配融图入口暂时隐藏。只摘掉这张卡片，路由、页面、资产库的筛选项都留着 ——
+  // 直达 URL 和已经开着的标签仍然可用，恢复时把这段放开即可
+  // {
+  //   title: '搭配融图',
+  //   desc: '单品融合搭配，直观展示整套穿搭',
+  //   bgColor: '#E7D2D2',
+  //   pathName: 'merge-image',
+  //   url: 'https://aigc-base-img.oss-cn-hangzhou.aliyuncs.com/fusion-aigc-web/e-commerce/merge-image.png',
+  // },
   {
     title: 'AI试鞋',
     desc: '鞋子上脚实拍，快速生成穿鞋效果图',
