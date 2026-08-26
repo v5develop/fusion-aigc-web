@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
+import { ref, reactive, watch, onMounted, onUnmounted, useTemplateRef, nextTick } from 'vue'
 import { creationHistory } from '@/api/methods.ts'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
@@ -11,6 +11,7 @@ import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import { useInitCheckTaskStatus } from './hooks.ts'
 import { useQuotePreview } from '@/utils/hooks'
+import { useEntryCodeFromQuery } from '@/utils/hooks/useEntryCodeFromQuery'
 import { useMessage } from 'naive-ui'
 import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
@@ -47,9 +48,14 @@ const loading = ref(false)
 // 发送按钮 loading：仅在提交请求期间为 true，提交成功即恢复，生成进度看历史列表。
 // 与 loading 解耦，避免后端某张子图卡在处理中时把发送按钮永久锁死（且刷新也无法恢复）。
 const btnLoading = ref(false)
+// 容器深链指定的创作场景。放在 _formData 之后消费：首页带入是「用户上一秒刚做的选择」，
+// 而 query 是进场地址——站内跳转（router.push({ name: 'picture' })）本来就不带 query，
+// 两条路径天然互斥，写死优先级只是防以后首页加了 query 两边打架。
+const { entryCode: queryEntryCode, syncToUrl } = useEntryCodeFromQuery(entryCodeOps)
+
 const formData = reactive(
   _formData ?? {
-    entryCode: 'imageToImage',
+    entryCode: queryEntryCode ?? 'imageToImage',
     modelCode: 'xiaoqi-image-1.0-flash',
     prompt: '',
     ratio: '1024,1024',
@@ -57,6 +63,10 @@ const formData = reactive(
     images: [],
   },
 )
+// 页内切换场景后同步地址栏，让刷新／容器重载能落回同一个场景。
+// 单向：URL 只在 setup 读一次，不再回写表单，否则两边互相触发成回环。
+watch(() => formData.entryCode, syncToUrl)
+
 // 提交前积分预览：镜像提交参数，切换入口/比例时防抖重询
 const { pricePoints, status: quoteStatus } = useQuotePreview(
   () => {
