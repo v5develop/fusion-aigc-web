@@ -11,6 +11,8 @@ import type { ICreationSubmit } from '@/api/types.ts'
 import { creationHistory } from '@/api/methods.ts'
 import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
 import { useQuotePreview } from '@/utils/hooks'
+import { useEntryCodeFromQuery } from '@/utils/hooks/useEntryCodeFromQuery'
+import { videoModelOpsFor } from '@/utils/modelCatalog'
 import { useMessage } from 'naive-ui'
 import { showDownloadBtn, isFromAigcChat } from '@/views/picture/utils.ts'
 import { downloadImagesAsZip, getDownloadableUrls, zipNameOf } from '@/utils/download'
@@ -46,9 +48,14 @@ if (global_formData.value.home) {
 const loading = ref(false)
 // 发送按钮 loading：仅在提交请求期间为 true，提交成功即恢复，生成进度看历史列表
 const btnLoading = ref(false)
+// 容器深链指定的创作场景。放在 _formData 之后消费：首页带入是「用户上一秒刚做的选择」，
+// 而 query 是进场地址——站内跳转（router.push({ name: 'video' })）本来就不带 query，
+// 两条路径天然互斥，写死优先级只是防以后首页加了 query 两边打架。
+const { entryCode: queryEntryCode, syncToUrl } = useEntryCodeFromQuery(entryCodeOps)
+
 const formData = reactive(
   _formData ?? {
-    entryCode: 'imageToVideo',
+    entryCode: queryEntryCode ?? 'imageToVideo',
     modelCode: 'xiaoqi-video-1.0-lite',
     prompt: '',
     ratio: '9:16',
@@ -57,6 +64,38 @@ const formData = reactive(
     images: [],
     video: [],
   },
+)
+
+// 页内切换场景后同步地址栏，让刷新／容器重载能落回同一个场景。
+// 单向：URL 只在 setup 读一次，不再回写表单，否则两边互相触发成回环。
+watch(() => formData.entryCode, syncToUrl)
+
+/** 当前场景可选的模型（服务端 entry_codes 过滤）。抽成 computed 是因为下面的对齐 watch 要盯它。 */
+const entryModelOps = computed(() => videoModelOpsFor(formData.entryCode))
+
+/**
+ * 把 modelCode 纠正到当前场景的合法模型。
+ *
+ * <p>模型下拉按 entryCode 过滤，modelCode 却是另一份独立状态：深链 ?entryCode=actionTransfer
+ * 进来、或用户手切创作类型时，modelCode 还留着上一个场景的值——下拉看起来是空的，
+ * 而询价和提交都会以「无法匹配计费档位」失败。
+ *
+ * <p>盯 entryModelOps 而非 entryCode：模型表是异步加载的，首屏这会儿还是空数组，
+ * 只盯 entryCode 会漏掉「加载完成」这一次，深链带进来的错配就永远纠正不了。
+ *
+ * <p>声明位置必须在下面 currentModel 那个 watch 之前：同一 flush 内 watcher 按创建顺序
+ * 执行，这样档位校验读到的才是对齐后的模型。
+ */
+watch(
+  entryModelOps,
+  (ops) => {
+    // 模型表未就绪（或该场景确实没配模型）时保持原值：清空会让下拉和已选双双为空，比留个旧值更糟
+    if (!ops.length) return
+    // 已经合法就不动，别覆盖用户／首页带入的选择
+    if (ops.some((m) => m.value === formData.modelCode)) return
+    formData.modelCode = ops[0]!.value
+  },
+  { immediate: true },
 )
 
 /**
@@ -79,21 +118,28 @@ const modelDurationOps = computed(() =>
  * 界面看不出异常，提交下去必失败。
  * <p>监听 currentModel 而非 modelCode：模型表是异步加载的，首屏那会儿它还是 undefined，
  * 只盯 modelCode 就漏掉「加载完成」这一次，初始默认值不会被纠正。
+ * <p>immediate：模型表已加载完再进本页时（站内二次导航），以及上面那个对齐 watch 在
+ * setup 阶段就把 modelCode 换掉时，currentModel 在本 watcher 建立前就已是新值，
+ * 不 immediate 就永远不校验初始档位——会漏出「模型换了但时长还是 4s，而该模型只支持 5s」。
  */
-watch(currentModel, () => {
-  const ratio = modelRatioOps.value[0]
-  if (ratio && !modelRatioOps.value.some((o) => o.value === formData.ratio)) {
-    formData.ratio = ratio.value
-  }
-  const resolution = modelResolutionOps.value[0]
-  if (resolution && !modelResolutionOps.value.some((o) => o.value === formData.resolution)) {
-    formData.resolution = resolution.value
-  }
-  const duration = modelDurationOps.value[0]
-  if (duration && !modelDurationOps.value.some((o) => o.value === formData.duration)) {
-    formData.duration = duration.value
-  }
-})
+watch(
+  currentModel,
+  () => {
+    const ratio = modelRatioOps.value[0]
+    if (ratio && !modelRatioOps.value.some((o) => o.value === formData.ratio)) {
+      formData.ratio = ratio.value
+    }
+    const resolution = modelResolutionOps.value[0]
+    if (resolution && !modelResolutionOps.value.some((o) => o.value === formData.resolution)) {
+      formData.resolution = resolution.value
+    }
+    const duration = modelDurationOps.value[0]
+    if (duration && !modelDurationOps.value.some((o) => o.value === formData.duration)) {
+      formData.duration = duration.value
+    }
+  },
+  { immediate: true },
+)
 
 // 提交前积分预览：镜像提交参数，切换入口/模型/比例/分辨率/时长时防抖重询
 const { pricePoints, status: quoteStatus } = useQuotePreview(() => {
@@ -448,7 +494,7 @@ const getSourceVideo = (inputParams: any): string => {
               v-model:value="formData.modelCode"
               title="选择模型"
               icon-category="model"
-              :options="entryCodeOps.find((item) => item.value === formData.entryCode)?.modelOps!"
+              :options="entryModelOps"
             />
             <!-- 动作迁移由参考视频决定画幅/时长，无需选择比例/分辨率/时长 -->
             <template v-if="formData.entryCode !== 'actionTransfer'">
