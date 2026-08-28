@@ -59,7 +59,7 @@ const modelPollingType = computed(() => {
 const switchValue = ref(false)
 const modelData = reactive({
   images: [] as any[],
-  sex: null,
+  gender: null,
   age: null,
   appearance: null,
   body: null,
@@ -265,7 +265,7 @@ watch([switchValue, modelPollingType], () => {
         v-model:data="modelData"
         :list="[
           {
-            field: 'sex',
+            field: 'gender',
             options: genderOps,
             placeholder: '性别',
           },
