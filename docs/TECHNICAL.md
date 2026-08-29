@@ -683,8 +683,35 @@ function useModelList() {
 
 ### 14.1 宿主应用桥接
 
-通过 `window.ThirdServiceBridge` 对象与宿主应用通信：
-- `refreshUnionToken()`：请求宿主应用刷新 unionToken
+通过 `window.ThirdServiceBridge` 对象与宿主应用通信。桥只在**桌面端宿主**内存在，浏览器直开与移动端宿主里整个对象都是 `undefined`；且各方法是分批加上去的（旧版桌面端只有 `refreshUnionToken`），故调用点一律走可选链。类型声明见 `src/types/bridge.d.ts`。
+
+| 方法 | 用途 |
+|------|------|
+| `refreshUnionToken()` | 请求宿主应用刷新 unionToken |
+| `onDeviceNotice(cb)` | 订阅设备侧提示，返回退订函数（**可能是 undefined**，退订前判空） |
+| `requestDoubaoRelogin()` | 请求宿主还原并聚焦主窗、弹出豆包登录框。无参无返回，重复调用无害 |
+
+#### 设备侧提示（onDeviceNotice）
+
+站点发起的生成可能被派回**本机豆包**执行。失败的真实原因（掉登录 / 额度用完 / 豆包繁忙）只有桌面端知道——走服务端往返只能拿到 401/5xx。故桌面端把失败翻成用户友好文案后经桥直推，站点负责展示。
+
+载荷 `DeviceNotice`：
+
+| 字段 | 说明 |
+|------|------|
+| `source` | 提示来源，当前恒 `'doubao'`。未知 source 也照常展示 `message` |
+| `kind` | `need-login` / `quota-exhausted` / `busy` / `timeout` / `failed`。**词表会增长，未知 kind 兜底展示** |
+| `message` | 用户友好文案，**原样展示**，不改写、不拼接错误码 |
+| `ts` | 产生时刻（epoch ms） |
+
+站点侧实现：`src/components/DeviceNoticeHost/index.ts`（挂在 `App.vue` 的 `<n-message-provider>` 内）。`kind` 只用于决定 message 的颜色与停留时长；`need-login` 用 `duration: 0` 常驻并内嵌「去登录」按钮（naive 的 message 没有 action 槽，走 `content` 渲染函数），点击调 `requestDoubaoRelogin()`。
+
+两条边界：
+
+1. **不做前端去重/节流**——桌面端已按 kind 做 60s 节流，再加一层只会互相干扰。唯一的例外是 `need-login`：它是 `duration: 0` 的常驻提示，屏幕上已经挂着一条时**直接丢弃新的**，否则挂机久了会攒出一叠红条。
+
+   注意是「拦住不建」而不是「先 destroy 再建」：naive 的 `MessageReactive.destroy()` 走 `messageRefs[key]?.hide()`，而那个 ref 要等渲染刷新才登记，**同一 tick 内建完就销毁是静默 no-op**（实测连推三条会叠三条）。代价是常驻期间若宿主换了文案，用户看到的仍是旧那条——掉登录文案基本固定，且可操作的部分（「去登录」按钮）一样，可接受。
+2. **本通道与 `src/api/index.ts` 的 401/业务错误提示互补，都不能省**——本通道只覆盖「派到本机的供给失败」，服务端错误覆盖其余一切。
 
 ### 14.2 阿里云 OSS
 
