@@ -18,6 +18,7 @@ coverage
 .vscode/*
 !.vscode/extensions.json
 !.vscode/launch.json
+!.vscode/tasks.json
 .idea
 *.suo
 *.ntvs*

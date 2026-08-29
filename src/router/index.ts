@@ -1,5 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { login, unionTokenLogin } from '@/api/methods.ts'
+import { unionTokenLogin } from '@/api/methods.ts'
 import { ensureModelCatalog } from '@/utils/modelCatalog'
 import { closeAllOverlays } from '@/utils/overlayGuard'
 import eCommerceRouter from './e-commerce'
@@ -77,10 +77,8 @@ router.beforeEach(async (to) => {
     })
   }
 
-  // 如果没有 token，进行模拟登录
+  // 如果没有 token，进行静默登录
   if (!token) {
-    const baseURL = import.meta.env.VITE_FUSION_API_BASE ?? ''
-
     // 独立运行时（不在 APP 容器内），跳转登录页
     if (!(window as any).ThirdServiceBridge) {
       if (to.name !== 'login') {
@@ -91,22 +89,11 @@ router.beforeEach(async (to) => {
 
     // 静默登录失败不阻断导航（拦截器已提示），放行后由请求层的 401 刷新流程接管
     try {
-      if (!!baseURL) {
-        const unionToken = await resolveUnionToken()
-        // 两个来源都空就别发这一枪：必然 401，白等一个来回。直接放行，
-        // 由请求层的刷新流程接管（它会再问一次桥，那时可能已经就绪）
-        if (unionToken) {
-          const res = await unionTokenLogin({ token: unionToken })
-          if (res.code === 0) {
-            localStorage.setItem('fusion_accessToken', res.data.accessToken)
-            localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
-          }
-        }
-      } else {
-        const res = await login({
-          username: 'adad',
-          password: 'admin123',
-        })
+      const unionToken = await resolveUnionToken()
+      // 两个来源都空就别发这一枪：必然 401，白等一个来回。直接放行，
+      // 由请求层的刷新流程接管（它会再问一次桥，那时可能已经就绪）
+      if (unionToken) {
+        const res = await unionTokenLogin({ token: unionToken })
         if (res.code === 0) {
           localStorage.setItem('fusion_accessToken', res.data.accessToken)
           localStorage.setItem('fusion_refreshToken', res.data.refreshToken)

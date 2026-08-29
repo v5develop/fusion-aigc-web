@@ -1,0 +1,62 @@
+{
+  "version": "2.0.0",
+  // launch.json 的 preLaunchTask 按 label 匹配任务。
+  //
+  // 不能靠 VS Code 自动探测的 npm 脚本任务：那些的 label 带前缀（"npm: dev:prod"），
+  // 裸写 "dev:prod" 匹配不上，启动调试会直接报 Could not find the task。
+  //
+  // 更要紧的是 isBackground——preLaunchTask 默认要等任务「退出」才拉起浏览器，
+  // 而 vite 是常驻进程永远不退出，调试会话会一直卡在 preLaunchTask 上。
+  // 配了 background matcher 后，Vite 打出 ready / Local 那行就算启动完成、放行调试器。
+  "tasks": [
+    {
+      "label": "dev",
+      "type": "shell",
+      "command": "pnpm dev",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "fileLocation": "relative",
+        // vite 的输出不是编译诊断，这里只是占位让 background matcher 能挂上
+        "pattern": {
+          "regexp": "^\\s*(.*)$",
+          "file": 1,
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*VITE.*",
+          "endsPattern": ".*(ready in|Local:).*"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "dev:prod",
+      "type": "shell",
+      "command": "pnpm dev:prod",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "fileLocation": "relative",
+        "pattern": {
+          "regexp": "^\\s*(.*)$",
+          "file": 1,
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*VITE.*",
+          "endsPattern": ".*(ready in|Local:).*"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    }
+  ]
+}

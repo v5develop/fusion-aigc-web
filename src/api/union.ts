@@ -1,11 +1,7 @@
 import axios from 'axios'
 
-const getUnionBaseURL = (): string => {
-  return import.meta.env.VITE_UNION_API_BASE || '/union'
-}
-
 const unionApi = axios.create({
-  baseURL: getUnionBaseURL(),
+  baseURL: import.meta.env.VITE_UNION_API_BASE,
   timeout: 10000,
 })
 

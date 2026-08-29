@@ -29,22 +29,28 @@ See [Vite Configuration Reference](https://vite.dev/config/).
 pnpm install
 ```
 
-### 开发环境（本地调试）
+工程只有**测试**和**生产**两套环境，无 Vite proxy，本地调试与构建产物直连同一批域名。
+
+| 环境 | mode | AIGC 后台 | 联盟后台 |
+|------|------|-----------|----------|
+| 测试 | test | `http://t81-aigc.pengqiwl.com.cn` | `http://t81-xxlm-app.pengqiwl.com.cn` |
+| 生产 | production | `https://aigc.pengqiwl.com` | `https://xxlm-app.pengqiwl.com` |
+
+### 本地调试
 
 | 命令 | 说明 |
 |------|------|
-| `pnpm dev` | 开发模式，热更新，API 代理到生产 `https://aigc.pengqiwl.com` |
-| `pnpm dev:test` | 开发模式，热更新，API 指向测试 `https://aigc-test.pengqiwl.com` |
-| `pnpm dev:prod` | 开发模式，热更新，API 代理到生产 + Union 测试 |
+| `pnpm dev` | 热更新，直连测试后台（日常开发用这个） |
+| `pnpm dev:prod` | 热更新，直连生产后台 |
 
-### 生产环境（打包构建）
+### 打包构建
 
-| 命令 | 对应 Vite 命令 | 模式 | API 目标 |
-|------|---------------|------|----------|
-| `pnpm build` | `vite build` | production（默认） | `https://aigc.pengqiwl.com` |
-| `pnpm build:test` | `vite build --mode test` | test | `https://aigc-test.pengqiwl.com` |
+| 命令 | mode | 目标 |
+|------|------|------|
+| `pnpm build:test` | test | 测试后台 |
+| `pnpm build` | production | 生产后台 |
 
-产物统一输出到 `dist/` 目录。
+产物统一输出到 `dist/` 目录。详见 [构建与调试指南](./docs/build-debug.md)。
 
 ### Lint with [ESLint](https://eslint.org/)
 
