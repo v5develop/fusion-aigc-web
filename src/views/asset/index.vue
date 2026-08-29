@@ -146,7 +146,14 @@ const getData = (isReplace?: boolean) => {
     })
     .finally(() => (loading.value = false))
 }
-getData()
+// 先取分类：默认选中的一级来自后端，拿不到就无从筛起。
+// 设上 formData.category 会触发下面的 watch 去拉第一页，所以这里不另外调 getData，
+// 否则首屏会打两次请求。
+loadFilters().then(() => {
+  // 分类接口失败或返回空时兜底拉一次不带分类的列表，否则整页空白、
+  // 用户会以为素材没了——而实际上只是分类没取到
+  if (!formData.category) getData(true)
+})
 
 // 切一级清二级：二级 code 属于上一个一级，带过去会筛出空列表
 watch(
@@ -159,7 +166,8 @@ watch(formData, () => {
   pagingData.page = 1
   pagingData.hasMore = true
   selectedIds.value = new Set() // 切换分类清空已选
-  assetRef.value!.scrollTop = 0
+  // 这次触发可能发生在挂载之前（分类是异步取的），用 ! 断言会直接抛
+  if (assetRef.value) assetRef.value.scrollTop = 0
   getData(true)
 })
 </script>
