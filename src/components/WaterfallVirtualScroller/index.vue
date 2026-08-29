@@ -117,14 +117,22 @@ const { waterfallOption, calcItemHeight } = useWaterfall()
 }*/
 .entry-btn {
   position: absolute;
-  left: 8px;
-  bottom: 8px;
-  padding: 4px 10px;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0;
   border: none;
-  border-radius: 12px;
-  font-size: 12px;
+  border-radius: 8px;
+  font-family: 'PingFang SC', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
   color: #fff;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.8);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s;
