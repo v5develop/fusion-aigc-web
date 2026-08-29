@@ -11,6 +11,15 @@ import type { VNodeChild } from 'vue'
  * 站点没法翻译成有意义的文案。故桌面端把失败翻好后经 `window.ThirdServiceBridge.onDeviceNotice`
  * 直推过来，这里负责用全站一致的 message 展示。
  *
+ * <p>掉登录是一个<b>回环</b>，不是一次性提示：
+ * <pre>
+ * 宿主 → 站点  need-login   站点挂常驻条
+ * 站点 → 宿主  requestDoubaoRelogin()   宿主聚焦主窗、弹重登弹窗
+ * （用户在桌面端走完短信重登）
+ * 宿主 → 站点  recovered    站点自动关掉常驻条
+ * </pre>
+ * 所以点完「去登录」不能就地把条关了——那一步只是打开了弹窗，用户完全可能又把它关掉。
+ *
  * <p>本通道与 `src/api/index.ts` 里的 401/业务错误 toast <b>互补，不是替代</b>：
  * 本通道只覆盖「派到本机的供给失败」，其余一切仍由请求层兜底，两边都不能省。
  *
@@ -47,8 +56,11 @@ export default defineComponent({
     /**
      * 当前那条常驻的掉登录提示，非空即代表屏幕上正挂着一条。
      *
-     * <p>need-login 是 duration:0 的常驻提示（要留住「去登录」按钮给用户点），而桌面端按 kind 做的是
-     * 60s 节流、不是只推一次——不拦一道的话，挂机久了会攒出一叠一模一样的红条。
+     * <p>need-login 用 duration:0 常驻：用户要切到桌面端走短信重登，短 toast 根本来不及看，
+     * 且得留住「去登录」按钮给他点。按契约它<b>一直挂到收到 recovered 或用户手动关闭</b>。
+     *
+     * <p>这个句柄同时是「已经挂着一条了」的判据：桌面端按 kind 做的是 60s 节流、不是只推一次，
+     * 不拦一道的话，挂机久了会攒出一叠一模一样的红条。
      */
     let loginNotice: MessageReactive | null = null
 
@@ -59,8 +71,23 @@ export default defineComponent({
 
     function onRelogin() {
       window.ThirdServiceBridge?.requestDoubaoRelogin?.()
-      // 桌面端会把主窗提到前台弹登录框，站点这边再留个常驻红条没有意义
+      // 刻意不在这里关横幅：契约要求「保持展示直到收到 recovered 或用户手动关闭」。
+      // 点了按钮不等于登录成功——用户可能在桌面端把重登弹窗又关掉了，
+      // 那时横幅还在才有退路（再点一次）。登录真的成功了，宿主会推 recovered 来关它
+    }
+
+    /**
+     * 登录已恢复：关掉那条常驻的掉登录提示。
+     *
+     * <p>契约保证 recovered 只在本会话此前推过 need-login 时出现，且不参与 60s 节流
+     * （由「是否有悬置的 need-login」门控，一次失效期至多一条）。没有可关的就整条忽略——
+     * 用户从没见过掉登录提示，突然蹦一句「已重新登录」只会莫名其妙。
+     */
+    function handleRecovered(notice: DeviceNotice) {
+      if (!loginNotice) return
       destroyLoginNotice()
+      // message 可选展示为成功 toast：确实关掉了横幅才弹，给这次回环一个收尾
+      if (notice.message) message.success(notice.message, { duration: 3000, closable: true })
     }
 
     /** 掉登录：常驻 + 可关闭，文案后跟一个「去登录」。naive 的 message 没有 action 槽，只能走 content 渲染函数 */
@@ -107,8 +134,17 @@ export default defineComponent({
     }
 
     function handleNotice(notice: DeviceNotice) {
-      // 不信任宿主传来的形状：没文案就没什么可展示的
-      if (!notice?.message) return
+      if (!notice) return
+
+      // recovered 的正事是关横幅、不是展示文案，故排在文案判空之前：
+      // 宿主哪怕推来一条空文案，那条常驻红条也必须关掉
+      if (notice.kind === 'recovered') {
+        handleRecovered(notice)
+        return
+      }
+
+      // 其余提示不信任宿主传来的形状：没文案就没什么可展示的
+      if (!notice.message) return
 
       if (notice.kind === 'need-login') {
         showNeedLogin(notice)

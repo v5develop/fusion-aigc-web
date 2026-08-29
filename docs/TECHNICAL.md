@@ -700,18 +700,42 @@ function useModelList() {
 | 字段 | 说明 |
 |------|------|
 | `source` | 提示来源，当前恒 `'doubao'`。未知 source 也照常展示 `message` |
-| `kind` | `need-login` / `quota-exhausted` / `busy` / `timeout` / `failed`。**词表会增长，未知 kind 兜底展示** |
+| `kind` | 见下表。**词表会增长，未知 kind 兜底按普通提示展示** |
 | `message` | 用户友好文案，**原样展示**，不改写、不拼接错误码 |
 | `ts` | 产生时刻（epoch ms） |
 
-站点侧实现：`src/components/DeviceNoticeHost/index.ts`（挂在 `App.vue` 的 `<n-message-provider>` 内）。`kind` 只用于决定 message 的颜色与停留时长；`need-login` 用 `duration: 0` 常驻并内嵌「去登录」按钮（naive 的 message 没有 action 槽，走 `content` 渲染函数），点击调 `requestDoubaoRelogin()`。
+kind 词表与站点行为：
 
-两条边界：
+| kind | 含义 | 站点行为 |
+|------|------|----------|
+| `need-login` | 豆包登录失效 | `duration: 0` **常驻**可关闭，内嵌「去登录」调 `requestDoubaoRelogin()`。挂到收到 `recovered` 或用户手动关闭为止 |
+| `recovered` | 用户在桌面端重登成功 | **关掉在展示的 `need-login`**，并把 message 作为 success toast 短暂展示（3s）。没有可关的就整条忽略 |
+| `quota-exhausted` | 当日免费额度用完 | warning，5s |
+| `busy` / `timeout` | 豆包繁忙 / 生成超时 | warning，4s |
+| `failed` / 未知 kind | 其它失败 | error，4s |
+
+站点侧实现：`src/components/DeviceNoticeHost/index.ts`（挂在 `App.vue` 的 `<n-message-provider>` 内）。「去登录」按钮走 `content` 渲染函数——naive 的 message 没有 action 槽。
+
+**掉登录是一个回环，不是一次性提示**：
+
+```
+宿主 → 站点  need-login                站点挂常驻条
+站点 → 宿主  requestDoubaoRelogin()    宿主聚焦主窗、弹重登弹窗
+（用户在桌面端走完短信重登）
+宿主 → 站点  recovered                 站点自动关掉常驻条
+```
+
+所以点完「去登录」**不能就地把条关了**：那一步只是打开了弹窗，用户完全可能又把它关掉；条还在才有退路（再点一次）。登录真的成功了，宿主会推 `recovered` 来关。
+
+`recovered` 的处理排在「文案判空」之前——它的正事是关横幅、不是展示文案，宿主哪怕推来空文案也必须把那条常驻红条关掉。
+
+三条边界：
 
 1. **不做前端去重/节流**——桌面端已按 kind 做 60s 节流，再加一层只会互相干扰。唯一的例外是 `need-login`：它是 `duration: 0` 的常驻提示，屏幕上已经挂着一条时**直接丢弃新的**，否则挂机久了会攒出一叠红条。
 
    注意是「拦住不建」而不是「先 destroy 再建」：naive 的 `MessageReactive.destroy()` 走 `messageRefs[key]?.hide()`，而那个 ref 要等渲染刷新才登记，**同一 tick 内建完就销毁是静默 no-op**（实测连推三条会叠三条）。代价是常驻期间若宿主换了文案，用户看到的仍是旧那条——掉登录文案基本固定，且可操作的部分（「去登录」按钮）一样，可接受。
-2. **本通道与 `src/api/index.ts` 的 401/业务错误提示互补，都不能省**——本通道只覆盖「派到本机的供给失败」，服务端错误覆盖其余一切。
+2. **`recovered` 不参与节流**，由宿主侧「是否有悬置的 need-login」门控，一次失效期至多一条。站点这边再用本地句柄门控一次：没有可关的横幅就忽略——用户从没见过掉登录提示，突然蹦一句「已重新登录」只会莫名其妙。
+3. **本通道与 `src/api/index.ts` 的 401/业务错误提示互补，都不能省**——本通道只覆盖「派到本机的供给失败」，服务端错误覆盖其余一切。
 
 ### 14.2 阿里云 OSS
 

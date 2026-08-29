@@ -18,10 +18,12 @@ interface DeviceNotice {
   /** 提示来源，当前恒 'doubao'。未来会扩展，未知 source 也照常展示 message */
   source: 'doubao' | (string & {})
   /**
-   * 分类，仅用于决定展示样式（颜色/停留时长），<b>不参与文案拼接</b>。
-   * 词表会增长，未知 kind 按普通提示兜底展示
+   * 分类，决定展示形态，<b>不参与文案拼接</b>。词表会增长，未知 kind 按普通提示兜底展示。
+   *
+   * <p>`need-login` 是常驻提示（用户去桌面端重登要时间，短 toast 会来不及看），
+   * `recovered` 是它的收尾信号（用户重登成功），其余都是普通短提示。
    */
-  kind: 'need-login' | 'quota-exhausted' | 'busy' | 'timeout' | 'failed' | (string & {})
+  kind: 'need-login' | 'recovered' | 'quota-exhausted' | 'busy' | 'timeout' | 'failed' | (string & {})
   /** 用户友好文案，直接展示——已是完整句子，不要改写或拼接错误码 */
   message: string
   /** 产生时刻（epoch ms） */
