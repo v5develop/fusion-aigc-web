@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, provide, watch, reactive } from 'vue'
+import { ref, provide, watch, reactive, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import { assetAll, assetBatchDelete, assetCategories, assetAspectRatios } from '@/api/methods.ts'
 import type * as types from '@/api/types'
@@ -40,8 +40,11 @@ const loadFilters = async () => {
   ])
   if (cat?.code === 0) {
     categories.value = cat.data ?? []
-    // 默认选中第一个一级，而不是写死 'ecommerce'——分类由运营配，写死的值可能已经不存在了
-    if (!formData.category && categories.value.length) formData.category = categories.value[0].categoryCode
+    // 默认选中第一个一级，而不是写死 'ecommerce'——分类由运营配，写死的值可能已经不存在了。
+    // 用 ?.  而不是 length 判空：tsconfig 开了 noUncheckedIndexedAccess，
+    // 下标访问的返回值一律带 undefined，length>0 这个前提编译器并不认
+    const first = categories.value[0]?.categoryCode
+    if (!formData.category && first) formData.category = first
   }
   if (ratio?.code === 0) aspectRatios.value = ratio.data ?? []
 }
