@@ -13,8 +13,8 @@ const { waterfallData } = defineProps<{
     mediaType?: string
     /** 出自哪个创作入口；可能为空 */
     entryCode?: string | null
-    /** 该端创作页路由；为空时按 mediaType 回退通用创作页 */
-    route?: string | null
+    /** 提交口与创作页路由；entryCode 为空时整个对象为 null */
+    route?: { submitPath: string; targetRoute: string | null } | null
   }[]
 }>()
 
@@ -27,8 +27,12 @@ const router = useRouter()
  * 配漏一条很正常；藏掉的表现是「这个功能的入口凭空消失」，比跳到通用页难查得多。
  * 两个都为空才没得跳（纯展示内容），此时不显示按钮。
  */
-function entryTarget(item: { entryCode?: string | null; route?: string | null; mediaType?: string }) {
-  if (item.route) return item.route
+function entryTarget(item: {
+  entryCode?: string | null
+  route?: { targetRoute: string | null } | null
+  mediaType?: string
+}) {
+  if (item.route?.targetRoute) return item.route.targetRoute
   if (!item.entryCode) return null
   // 通用创作页只有图片/视频两个，按媒体形态分；query 名与 useEntryCodeFromQuery 约定一致
   const base = item.mediaType === 'video' ? '/video' : '/picture'
