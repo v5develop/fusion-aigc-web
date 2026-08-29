@@ -9,7 +9,7 @@ const { message } = createDiscreteApi(['message'])
 const refreshTokenApi = '/api/v1/auth/refresh'
 const unionTokenLoginApi = '/api/v1/auth/union-token-login'
 
-const baseURL = import.meta.env.VITE_FUSION_API_BASE ?? ''
+const baseURL = import.meta.env.VITE_FUSION_API_BASE
 const service = axios.create({
   baseURL,
   timeout: 10000,

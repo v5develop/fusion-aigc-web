@@ -4,18 +4,10 @@
     {
       "type": "chrome",
       "request": "launch",
-      "name": "调试 (开发)",
-      "url": "http://localhost:5173",
-      "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "dev"
-    },
-    {
-      "type": "chrome",
-      "request": "launch",
       "name": "调试 (测试)",
       "url": "http://localhost:5173",
       "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "dev:test"
+      "preLaunchTask": "dev"
     },
     {
       "type": "chrome",

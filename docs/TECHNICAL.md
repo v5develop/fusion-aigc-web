@@ -41,15 +41,9 @@ plugins: [
 **路径别名：**
 - `@` → `./src`
 
-**开发代理：**
-```typescript
-proxy: {
-  '/api': {
-    target: 'http://192.168.0.3:18080',  // 后端开发服务器
-    changeOrigin: true,
-  }
-}
-```
+**开发代理：** 无。后端已对任意 Origin 开放 CORS，dev 与构建产物一律直连域名（见 16.2）。
+
+**环境变量校验：** `vite.config.ts` 在启动/构建时断言 `VITE_FUSION_API_BASE`、`VITE_UNION_API_BASE` 非空，漏配当场失败而非留到运行时。
 
 **Less 配置：**
 - 启用 JavaScript 支持（`javascriptEnabled: true`）
@@ -152,14 +146,16 @@ fusion-aigc-web/
 ### 4.1 Axios 实例配置
 
 ```typescript
+const baseURL = import.meta.env.VITE_FUSION_API_BASE
 const service = axios.create({
-  baseURL: import.meta.env.PROD ? 'https://aigc.pengqiwl.com' : '',
+  baseURL,
   timeout: 10000,
 })
 ```
 
-- 生产环境直接请求后端域名
-- 开发环境通过 Vite proxy 代理到内网后端（`/api` → `http://192.168.0.3:18080`）
+- 基地址由 mode 决定（`.env.test` / `.env.production`），dev 与构建产物走同一条链路
+- 后端已对任意 Origin 开放 CORS，因此一律直连域名，工程内没有 Vite proxy
+- 联盟侧独立实例见 `src/api/union.ts`，基地址取 `VITE_UNION_API_BASE`
 
 ### 4.2 请求拦截器
 
@@ -769,17 +765,24 @@ kind 词表与站点行为：
 
 | 变量 | 用途 |
 |------|------|
-| `VITE_OSS_ASSET_URL` | OSS 静态资源 CDN 前缀 |
-| `import.meta.env.PROD` | 是否生产环境 |
+| `VITE_FUSION_API_BASE` | AIGC 后台地址 |
+| `VITE_UNION_API_BASE` | 联盟后台地址 |
+| `VITE_OSS_ASSET_URL` | OSS 静态资源 CDN 前缀（公共 `.env`，必须 https） |
+| `import.meta.env.PROD` | 是否生产构建 |
 | `import.meta.env.BASE_URL` | 应用基础路径 |
+
+三个变量的类型声明在 `env.d.ts`，`vite.config.ts` 会在构建期校验前两个非空。
 
 ### 16.2 环境差异
 
-| 项目 | 开发环境 | 生产环境 |
+| 项目 | 测试环境 | 生产环境 |
 |------|----------|----------|
-| API 基地址 | 空（走 Vite proxy） | `https://aigc.pengqiwl.com` |
-| 登录方式 | 硬编码账号自动登录 | unionToken 从 URL 获取 |
-| 代理目标 | `http://192.168.0.3:18080` | 直连 |
+| mode | `test` | `production` |
+| AIGC 后台 | `http://t81-aigc.pengqiwl.com.cn` | `https://aigc.pengqiwl.com` |
+| 联盟后台 | `http://t81-xxlm-app.pengqiwl.com.cn` | `https://xxlm-app.pengqiwl.com` |
+| 登录方式 | 容器内 unionToken 静默登录，独立运行走验证码登录页 | 同左 |
+
+详见 [构建与调试指南](./build-debug.md)。
 
 ---
 
