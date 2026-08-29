@@ -2,48 +2,68 @@
 import { VirtualWaterfall } from '@lhlyu/vue-virtual-waterfall'
 import { useRouter } from 'vue-router'
 import useWaterfall from './index.ts'
+import { canMakeSameStyle, createRouteOf } from '@/utils/sameStyle'
 
-const { waterfallData } = defineProps<{
-  waterfallData: {
-    /** 已是水印图（推荐流对外只出水印图），不要再叠一次 withWatermark */
-    url: string
-    /** 0 表示未知：探测失败或存量数据还没补到，由瀑布流按默认比例占位 */
-    width: number
-    height: number
-    mediaType?: string
-    /** 出自哪个创作入口；可能为空 */
-    entryCode?: string | null
-    /** 该端创作页路由；为空时按 mediaType 回退通用创作页 */
-    route?: string | null
-  }[]
+interface IFeedCard {
+  /** 已是水印图（推荐流对外只出水印图），不要再叠一次 withWatermark */
+  url: string
+  /** 0 表示未知：探测失败或存量数据还没补到，由瀑布流按默认比例占位 */
+  width: number
+  height: number
+  mediaType?: string
+  /** 做同款时原样回传这两个 */
+  sourceType?: string
+  dataId?: number | string
+  /** false 时不要展示做同款入口，点了会报错 */
+  sameStyle?: boolean
+  /** 出自哪个创作入口；可能为空 */
+  entryCode?: string | null
+  /** 该端创作页路由；为空时按 mediaType 回退通用创作页 */
+  route?: string | null
+}
+
+const { waterfallData } = defineProps<{ waterfallData: IFeedCard[] }>()
+const emit = defineEmits<{
+  /** 拿到素材真实宽高，交给上层攒批写回 item 触发重排 */
+  resolve: [item: IFeedCard, width: number, height: number]
 }>()
 
 const router = useRouter()
 
 /**
- * 去创作：优先用后端下发的 route，没有就回退通用创作页并带上 entryCode。
- *
- * <b>不因为 route 为空就把按钮藏掉</b>——路由是运营按 (entryCode, platform) 配的，
- * 配漏一条很正常；藏掉的表现是「这个功能的入口凭空消失」，比跳到通用页难查得多。
- * 两个都为空才没得跳（纯展示内容），此时不显示按钮。
+ * 这条路径本站真的注册过吗。没有 catch-all 路由，未注册时 matched 为空数组。
+ * <p>后端 route 是运营手填的，不验一下就跳，配错的表现是白屏。
  */
-function entryTarget(item: { entryCode?: string | null; route?: string | null; mediaType?: string }) {
-  if (item.route) return item.route
-  if (!item.entryCode) return null
-  // 通用创作页只有图片/视频两个，按媒体形态分；query 名与 useEntryCodeFromQuery 约定一致
-  const base = item.mediaType === 'video' ? '/video' : '/picture'
-  return `${base}?entryCode=${encodeURIComponent(item.entryCode)}`
+const isKnownPath = (path: string) => router.resolve(path).matched.length > 0
+
+/** 去哪个创作页：本地 entryCode 表优先，后端 route 兜底（详见 utils/sameStyle） */
+function entryTarget(item: IFeedCard) {
+  return createRouteOf(item, isKnownPath)
 }
 
-function goCreate(item: Parameters<typeof entryTarget>[0]) {
+/** 露不露做同款：后端说支持、场景本期覆盖得到，且确实有地方可跳 */
+function canSameStyle(item: IFeedCard) {
+  return canMakeSameStyle(item) && !!entryTarget(item) && item.dataId != null && !!item.sourceType
+}
+
+/**
+ * 做同款：只把作品 id 带过去，配方由目标页自己拉。
+ * <p>URL 短、可刷新、可直达；把整份配方塞进 query 既要转义又会超长。
+ */
+function goSameStyle(item: IFeedCard) {
   const target = entryTarget(item)
   if (!target) return
-  // App scheme（如 app://xxx）不能交给 vue-router，它只认站内路径
-  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) {
-    window.location.href = target
-    return
-  }
-  router.push(target)
+  // 在目标已有的 query 上追加，不覆盖（后端 route 可能自带参数）
+  const [path, search = ''] = target.split('?')
+  const query = new URLSearchParams(search)
+  query.set('sameStyleSource', String(item.sourceType))
+  query.set('sameStyleId', String(item.dataId))
+  router.push(`${path}?${query.toString()}`)
+}
+
+const onImgLoad = (item: IFeedCard, e: Event) => {
+  const el = e.target as HTMLImageElement
+  if (el.naturalWidth > 0 && el.naturalHeight > 0) emit('resolve', item, el.naturalWidth, el.naturalHeight)
 }
 
 const { waterfallOption, calcItemHeight } = useWaterfall()
@@ -66,15 +86,19 @@ const { waterfallOption, calcItemHeight } = useWaterfall()
           真要播放走详情态的 urls。是不是视频看 mediaType，不看 URL 后缀：
           签名地址没有可比后缀。
         -->
-        <n-image :src="item.url" width="100%" height="100%" object-fit="cover"></n-image>
+        <n-image
+          :src="item.url"
+          width="100%"
+          height="100%"
+          object-fit="cover"
+          :img-props="{ onLoad: (e: Event) => onImgLoad(item, e) }"
+        ></n-image>
         <i v-if="item.mediaType === 'video'" class="play-badge"></i>
         <!--
           不做成整卡点击：n-image 自己要吃点击来开预览，抢了它就没法看大图了。
           用一个悬停才出现的按钮，两种交互各归各的。
         -->
-        <button v-if="entryTarget(item)" class="entry-btn" @click.stop="goCreate(item)">
-          去创作
-        </button>
+        <button v-if="canSameStyle(item)" class="entry-btn" @click.stop="goSameStyle(item)">做同款</button>
       </div>
     </template>
   </VirtualWaterfall>

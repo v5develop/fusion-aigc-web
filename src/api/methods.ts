@@ -129,6 +129,11 @@ export function displayCategories(platform: 'APP' | 'PC') {
   return get('/api/v1/asset/public/display/categories', { platform })
 }
 
+/** 取做同款配方。只回填、不提交、不扣费；dataId 必须来自推荐流条目，否则后端按 404 处理 */
+export function sameStyleRecipe(params: types.ISameStyleParams) {
+  return get<types.ISameStyleRecipe>('/api/v1/asset/public/same-style', params)
+}
+
 /** 素材库聚合分类（两级）。别硬编码分类——运营改归属后前端不用发版 */
 export function assetCategories() {
   return get('/api/v1/asset/categories')

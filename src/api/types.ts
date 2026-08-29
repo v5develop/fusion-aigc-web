@@ -236,3 +236,56 @@ export interface IAigcModelOptions {
   media_type: string
   models: IAigcModelOption[]
 }
+
+/** 做同款配方入参（GET /api/v1/asset/public/same-style） */
+export interface ISameStyleParams {
+  sourceType: string
+  /** 推荐流条目的 dataId 原样回传。后端是 int64，前端只当字符串用，不参与运算 */
+  dataId: string
+  platform: 'APP' | 'PC'
+}
+
+/** 原始提交体快照，结构随创作入口而异 */
+export type ISameStyleRawRequest = Record<string, any>
+
+/**
+ * 做同款配方（v2.0 三段结构）。
+ * <p>只回填、不提交、不扣费；计费与审核仍由所选提交链路处理。
+ */
+export interface ISameStyleRecipe {
+  source: {
+    sourceType?: string
+    dataId?: number | string
+    /** CONFIGURED | DERIVED_FROM_TASK，仅展示/埋点 */
+    recipeOrigin?: string
+    title?: string | null
+    /** 判媒体形态只认它，别拿 type 猜 */
+    mediaType?: 'image' | 'video'
+  }
+  original: {
+    /** 原作输入快照，含原作者上传的素材地址；仅用于展示/回填，不可直接重提 */
+    request: ISameStyleRawRequest
+    result?: {
+      coverUrl?: string
+      /** 与产物顺序对齐，未生成水印的位置为 null */
+      watermarkUrls?: (string | null)[]
+    }
+  }
+  submit: {
+    /** 待提交请求，原作者媒体与 sessionId 已被后端清空 */
+    request: ISameStyleRawRequest
+    form: {
+      /** 字段路径 → 数量，键是原请求里的路径（images / params.materials …） */
+      requiredInputs?: Record<string, number>
+      /** 空数组 = 不限制 */
+      editableFields?: string[]
+      tips?: string
+    }
+    route: {
+      /** 提交地址不可硬编码：模板/电商/本地生活各有各的入口 */
+      submitPath?: string
+      /** 后台「创作入口路由」表配的目标页，未配时为 null */
+      targetRoute?: string | null
+    }
+  }
+}

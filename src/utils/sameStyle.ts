@@ -1,16 +1,21 @@
 import type { ISameStyleRawRequest } from '@/api/types'
 
 /**
- * 做同款支持的创作场景 → 承载它的页面路径。
+ * entryCode → 承载它的创作页。<b>做同款跳转以这张表为准。</b>
  *
- * <p>本期只做四个通用创作码。电商那 15 个入口的提交体是另一套协议（素材键是
- * imageUrls/videoUrl、参数袋结构也不同），填不进 /picture、/video 的表单，
- * 要按入口逐个建模，属于独立一期。
+ * <p>后端也会按 (entryCode, platform) 下发一个 route，但那是运营在后台手填的，
+ * 填错、漏配、把 APP 的 scheme 配到 PC 行上都发生过，而它错了的表现是用户点进去
+ * 跳到一个空白页或跳不动——出了问题也怪不到运营头上，前端得自己站得住。
  *
- * <p>刻意不读后端下发的 {@code submit.route.targetRoute}：后台那张创作入口路由表
- * 上线时是空的，targetRoute 恒为 null；而本期入口就四个，路由前端自己最清楚。
+ * <p>这张表能作为权威，是因为回显代码就写在这两个页面里：<code>useSameStyleRecipe</code>
+ * 挂在 /picture 和 /video 上，各自的 entryCodeOps 白名单也只认自己那几个码。
+ * route 指到别的地方，回显必然出不来——这不是「可能不一致」，是确定错。
+ *
+ * <p>本期只有这四个通用创作码。电商那 15 个入口的提交体是另一套协议（素材键是
+ * imageUrls/videoUrl、参数袋结构也不同），填不进这两页的表单，要按入口逐个建模。
+ * 将来要扩，路径对照见 docs/container-entry-links.md 的附录表。
  */
-export const SAME_STYLE_ENTRY_ROUTE: Record<string, '/picture' | '/video'> = {
+export const ENTRY_ROUTE: Record<string, string> = {
   textToImage: '/picture',
   imageToImage: '/picture',
   textToVideo: '/video',
@@ -21,11 +26,53 @@ export const SAME_STYLE_ENTRY_ROUTE: Record<string, '/picture' | '/video'> = {
 export const SAME_STYLE_SUBMIT_PATH = '/api/v1/creation/submit'
 
 /** 该作品能不能做同款：后端说支持，且它的创作场景本期覆盖得到 */
-export function canMakeSameStyle(item: { sameStyle?: boolean; entryCode?: string }): boolean {
+export function canMakeSameStyle(item: { sameStyle?: boolean; entryCode?: string | null }): boolean {
   if (!item.sameStyle) return false
-  // 后端补 entryCode 之前先放行，由目标页拉到配方后校验并提示；补上后这里自动收敛
+  // entryCode 缺失（运营手灌、没关联来源任务）时先放行，由目标页拉到配方后校验并提示
   if (!item.entryCode) return true
-  return !!SAME_STYLE_ENTRY_ROUTE[item.entryCode]
+  return !!ENTRY_ROUTE[item.entryCode]
+}
+
+/**
+ * 后端下发的 route 能不能用。三道闸，任一不过就当它没给。
+ *
+ * @param isKnownPath 交给调用方用 router.resolve 判「这条路径本站真的注册过」
+ */
+function usableRemoteRoute(raw: string | null | undefined, isKnownPath: (path: string) => boolean): string {
+  const route = typeof raw === 'string' ? raw.trim() : ''
+  if (!route) return ''
+  // 带协议的一律不认：PC 是 web，出现 app:// 说明这行是配给 APP 端的，
+  // 交给 window.location 只会跳到一个打不开的地址；https:// 则是站外，更不能带着登录态过去
+  if (/^[a-z][a-z0-9+.-]*:/i.test(route)) return ''
+  if (!route.startsWith('/')) return ''
+  return isKnownPath(route.split('?')[0]!) ? route : ''
+}
+
+/**
+ * 做同款该跳哪里。<b>本地表优先，后端 route 只在本地表认不出该场景时兜底。</b>
+ *
+ * <p>两边都有且指向同一个页面时用后端那条——它可能带了额外 query（如具体子标签）。
+ * 指向不同页面则以本地为准并打一条 warn：那是后台配置漂了，静默纠正会让它一直漂下去。
+ *
+ * @returns 目标路径（可能带 query），没有可跳的地方时返回空串
+ */
+export function createRouteOf(
+  item: { entryCode?: string | null; route?: string | null },
+  isKnownPath: (path: string) => boolean,
+): string {
+  const local = item.entryCode ? ENTRY_ROUTE[item.entryCode] : ''
+  const remote = usableRemoteRoute(item.route, isKnownPath)
+
+  if (!local) return remote
+  if (!remote) return `${local}?entryCode=${encodeURIComponent(item.entryCode!)}`
+
+  if (remote.split('?')[0] !== local) {
+    console.warn(
+      `[sameStyle] 后端下发的 route 与本地表不一致，按本地表跳：entryCode=${item.entryCode}，route=${item.route}，本地=${local}`,
+    )
+    return `${local}?entryCode=${encodeURIComponent(item.entryCode!)}`
+  }
+  return remote
 }
 
 /**
