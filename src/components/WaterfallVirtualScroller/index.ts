@@ -21,7 +21,11 @@ const useWaterfall = () => {
     onlyImage: false, // 是否只展示图片，这是自定义加的一个属性
     topPreloadScreenCount: 0,
     bottomPreloadScreenCount: 0,
-    virtual: true,
+    // 该库的虚拟窗口按瀑布流「直接父元素」的 clientHeight 计算，而首页真正的
+    // 滚动容器是父元素的外层 .home。首轮布局时父元素还没被瀑布流高度撑开，库只会
+    // 判定第一行可见；直到用户滚动触发重新测量，后续行才出现。这里关闭虚拟裁剪，
+    // 让当前分页中的卡片首屏一次排完整；数据仍由首页的触底分页按需加载。
+    virtual: false,
     // 必须关掉：开着的话追加下一页时，库会把已排好的前缀整段复用、不再调 calcItemHeight，
     // 那些 item 的 width/height 也就此不再被依赖收集——晚到的真实宽高（图片 onload、
     // 视频元数据）写回去既触发不了重排、就算重排也会读缓存，卡片永远停在占位比例上。
