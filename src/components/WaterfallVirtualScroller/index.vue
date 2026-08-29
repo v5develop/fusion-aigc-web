@@ -2,6 +2,7 @@
 import { VirtualWaterfall } from '@lhlyu/vue-virtual-waterfall'
 import { useRouter } from 'vue-router'
 import useWaterfall from './index.ts'
+import type { IFeedRoute } from '@/api/types'
 import { canMakeSameStyle, createRouteOf } from '@/utils/sameStyle'
 
 interface IFeedCard {
@@ -18,8 +19,8 @@ interface IFeedCard {
   sameStyle?: boolean
   /** 出自哪个创作入口；可能为空 */
   entryCode?: string | null
-  /** 该端创作页路由；为空时按 mediaType 回退通用创作页 */
-  route?: string | null
+  /** 提交口与创作页路由；entryCode 为空时整个对象为 null */
+  route?: IFeedRoute | null
 }
 
 const { waterfallData } = defineProps<{ waterfallData: IFeedCard[] }>()
@@ -32,11 +33,11 @@ const router = useRouter()
 
 /**
  * 这条路径本站真的注册过吗。没有 catch-all 路由，未注册时 matched 为空数组。
- * <p>后端 route 是运营手填的，不验一下就跳，配错的表现是白屏。
+ * <p>后端 targetRoute 是运营手填的，不验一下就跳，配错的表现是白屏。
  */
 const isKnownPath = (path: string) => router.resolve(path).matched.length > 0
 
-/** 去哪个创作页：本地 entryCode 表优先，后端 route 兜底（详见 utils/sameStyle） */
+/** 去哪个创作页：本地 entryCode 表优先，后端 targetRoute 兜底（详见 utils/sameStyle） */
 function entryTarget(item: IFeedCard) {
   return createRouteOf(item, isKnownPath)
 }
@@ -53,7 +54,7 @@ function canSameStyle(item: IFeedCard) {
 function goSameStyle(item: IFeedCard) {
   const target = entryTarget(item)
   if (!target) return
-  // 在目标已有的 query 上追加，不覆盖（后端 route 可能自带参数）
+  // 在目标已有的 query 上追加，不覆盖（后端 targetRoute 可能自带参数）
   const [path, search = ''] = target.split('?')
   const query = new URLSearchParams(search)
   query.set('sameStyleSource', String(item.sourceType))

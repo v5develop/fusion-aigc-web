@@ -89,11 +89,25 @@ export interface IFeedItem {
    */
   entryCode: string | null
   /**
-   * 该端的创作页路由。**可能为 null** —— 入口未配路由，或压根没有 entryCode。
+   * 提交口与创作页路由。**entryCode 为 null 时整个对象为 null**。
+   * 结构与 /public/same-style 的 submit.route 一致，可共用一套解析。
+   */
+  route: IFeedRoute | null
+}
+
+export interface IFeedRoute {
+  /**
+   * 恒为统一提交入口 /api/v1/creation/submit。
+   * 推荐流只知道 entryCode、不解析配方；要按原请求形态匹配的提交路径
+   * （模板/电商/本地生活各有各的口）得调 same-style。
+   */
+  submitPath: string
+  /**
+   * 该端创作页路由。**可能为 null** —— 该入口没配路由。
    * 为空时回退通用创作页并带上 entryCode，**不要把入口藏掉**：
    * 藏掉的话运营配漏一条路由，表现是入口凭空消失，很难被发现。
    */
-  route: string | null
+  targetRoute: string | null
 }
 
 export interface IAssetBatchDelete {

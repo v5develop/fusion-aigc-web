@@ -34,7 +34,7 @@ export function canMakeSameStyle(item: { sameStyle?: boolean; entryCode?: string
 }
 
 /**
- * 后端下发的 route 能不能用。三道闸，任一不过就当它没给。
+ * 后端下发的 targetRoute 能不能用。三道闸，任一不过就当它没给。
  *
  * @param isKnownPath 交给调用方用 router.resolve 判「这条路径本站真的注册过」
  */
@@ -49,26 +49,29 @@ function usableRemoteRoute(raw: string | null | undefined, isKnownPath: (path: s
 }
 
 /**
- * 做同款该跳哪里。<b>本地表优先，后端 route 只在本地表认不出该场景时兜底。</b>
+ * 做同款该跳哪里。<b>本地表优先，后端 targetRoute 只在本地表认不出该场景时兜底。</b>
  *
  * <p>两边都有且指向同一个页面时用后端那条——它可能带了额外 query（如具体子标签）。
  * 指向不同页面则以本地为准并打一条 warn：那是后台配置漂了，静默纠正会让它一直漂下去。
  *
+ * <p>入参的 route 与 /public/same-style 的 submit.route 同构，两边共用这一套解析。
+ *
  * @returns 目标路径（可能带 query），没有可跳的地方时返回空串
  */
 export function createRouteOf(
-  item: { entryCode?: string | null; route?: string | null },
+  item: { entryCode?: string | null; route?: { targetRoute?: string | null } | null },
   isKnownPath: (path: string) => boolean,
 ): string {
   const local = item.entryCode ? ENTRY_ROUTE[item.entryCode] : ''
-  const remote = usableRemoteRoute(item.route, isKnownPath)
+  const remote = usableRemoteRoute(item.route?.targetRoute, isKnownPath)
 
   if (!local) return remote
   if (!remote) return `${local}?entryCode=${encodeURIComponent(item.entryCode!)}`
 
   if (remote.split('?')[0] !== local) {
     console.warn(
-      `[sameStyle] 后端下发的 route 与本地表不一致，按本地表跳：entryCode=${item.entryCode}，route=${item.route}，本地=${local}`,
+      `[sameStyle] 后端下发的 targetRoute 与本地表不一致，按本地表跳：` +
+        `entryCode=${item.entryCode}，targetRoute=${item.route?.targetRoute}，本地=${local}`,
     )
     return `${local}?entryCode=${encodeURIComponent(item.entryCode!)}`
   }
