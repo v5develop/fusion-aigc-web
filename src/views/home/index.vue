@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { publicDisplay, displayCategories, promptList, promptDetail } from '@/api/methods.ts'
@@ -213,7 +213,7 @@ function usePreinstall() {
   return { preData, preinstallFallbackImg, handlePreinstallClick }
 }
 
-const { imageTab, waterfallData, getList, filterData1, filterData2 } = useWaterfall()
+const { imageTab, waterfallData, getList, filterData1, filterData2, resolveRatio } = useWaterfall()
 
 // 切一级必须清二级：二级 id 属于上一个一级，带过去会筛出空列表
 watch(
@@ -234,6 +234,11 @@ function useWaterfall() {
     value2: '',
   })
   const waterfallData = ref<any>([])
+  // 去重键用 sourceType|dataId 而不是推荐记录 id：失效条目在装配阶段被剔除，
+  // 分页边界会漂移，同一条内容可能出现在相邻两页
+  const seen = new Set<string>()
+  // 切分类后在途的旧响应不能落进新列表
+  let reqVersion = 0
 
   // 分类树由后端下发，前端不硬编码：运营调分类立刻生效，不用等发版
   const categories = ref<types.IDisplayCategory[]>([])
@@ -259,11 +264,12 @@ function useWaterfall() {
   }
   loadCategories()
 
-  const getList = (isReplace?: boolean) => {
+  const getList = () => {
     if (!pagingData.hasMore) return
 
     if (pagingData.loading) return
     pagingData.loading = true
+    const my = reqVersion
 
     const params: types.IPublicDisplay = {
       // 必传，后端刻意不给默认值——两端推荐位不同，静默串端比报错难查
@@ -275,13 +281,20 @@ function useWaterfall() {
     }
     publicDisplay(params)
       .then((res) => {
+        // 切分类后回来的旧响应，丢弃
+        if (my !== reqVersion) return
         if (res.code === 0) {
           const list: types.IFeedItem[] = res.data.list ?? []
           pagingData.page++
 
-          const mapped = list.map(toWaterfallItem)
-          if (isReplace) waterfallData.value = mapped
-          else waterfallData.value.push(...mapped)
+          for (const item of list) {
+            // 缺封面或缺 dataId 的脏数据直接丢，且不占去重位
+            if (!item?.coverUrl || item.dataId == null) continue
+            const key = `${item.sourceType}|${item.dataId}`
+            if (seen.has(key)) continue
+            seen.add(key)
+            waterfallData.value.push(toWaterfallItem(item))
+          }
 
           // 以「返回空列表」判到底，不能用 length < pageSize：
           // 源失效的条目（素材下架、作品被删/被屏蔽）在装配阶段被剔除，
@@ -289,21 +302,52 @@ function useWaterfall() {
           if (!list.length) pagingData.hasMore = false
         }
       })
-      .finally(() => (pagingData.loading = false))
+      .finally(() => {
+        if (my === reqVersion) pagingData.loading = false
+      })
   }
   getList()
 
   useDebounce({
     data: imageTab,
     callback: () => {
+      // reqVersion++ 让在途响应作废，同时把 loading 复位：
+      // 不复位的话上面那句 `if (loading) return` 会把这次换分类的请求整个吞掉，
+      // 列表就停在上一个分类的数据上，且没有任何重试时机
+      reqVersion++
       pagingData.page = 1
       pagingData.hasMore = true
-      getList(true)
+      pagingData.loading = false
+      seen.clear()
+      waterfallData.value = []
+      getList()
     },
     delay: 0,
   })
 
-  return { imageTab, waterfallData, getList, filterData1, filterData2 }
+  // ---- 未知宽高的回报与重排 ----
+  // 一屏十几张未知比例的图会各回调一次，逐次写回就是十几次全列表重排，故攒批
+  const pendingRatios = new Map<any, [number, number]>()
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+  const flushRatios = () => {
+    flushTimer = null
+    for (const [item, [w, h]] of pendingRatios) {
+      item.width = w
+      item.height = h
+    }
+    pendingRatios.clear()
+  }
+  const resolveRatio = (item: any, width: number, height: number) => {
+    if (!(width > 0 && height > 0)) return
+    if (Number(item.width) > 0 && Number(item.height) > 0) return
+    pendingRatios.set(item, [width, height])
+    flushTimer ??= setTimeout(flushRatios, 80)
+  }
+  onUnmounted(() => {
+    if (flushTimer) clearTimeout(flushTimer)
+  })
+
+  return { imageTab, waterfallData, getList, filterData1, filterData2, resolveRatio }
 }
 
 /**
@@ -492,7 +536,7 @@ const submit = () => {
         <ImageTab v-if="filterData2.length" class="tab2" v-model="imageTab.value2" :data="filterData2" />
       </div>
 
-      <WaterfallVirtualScroller :waterfallData="waterfallData" />
+      <WaterfallVirtualScroller :waterfallData="waterfallData" @resolve="resolveRatio" />
 
       <div class="scroll-to-top" v-show="showBackToTop" @click="backTop">
         <i class="icon-ic_home_jump1"></i>
