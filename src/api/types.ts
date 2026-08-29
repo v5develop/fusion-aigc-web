@@ -83,6 +83,17 @@ export interface IFeedItem {
   categoryL2Id: number | null
   /** false 时不要展示「做同款」入口，点了会报错 */
   sameStyle: boolean
+  /**
+   * 出自哪个创作入口。可能为 null（运营手灌的素材没配同款配方、也没关联来源任务）。
+   * route 为空时用它跳通用创作页：/picture?entryCode=xxx
+   */
+  entryCode: string | null
+  /**
+   * 该端的创作页路由。**可能为 null** —— 入口未配路由，或压根没有 entryCode。
+   * 为空时回退通用创作页并带上 entryCode，**不要把入口藏掉**：
+   * 藏掉的话运营配漏一条路由，表现是入口凭空消失，很难被发现。
+   */
+  route: string | null
 }
 
 export interface IAssetBatchDelete {
