@@ -75,7 +75,8 @@ export const config: Record<string, any> = {
   actionTransfer: {
     imageLimit: 1,
     videoLimit: 1,
-    videoDuration: 10,
+    videoDuration: 20,
+    videoSize: 20,
     promptDisabled: true,
     promptPlaceholder: '上传图片，上传参考的动作视频即可生成',
   },

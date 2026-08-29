@@ -14,6 +14,8 @@ interface IProps {
   videoLimit?: number
   /** 视频时长上限（秒） */
   videoDuration?: number
+  /** 视频体积上限（MB） */
+  videoSize?: number
   /** 禁用提示词输入（如动作迁移模式无需提示词） */
   promptDisabled?: boolean
   promptPlaceholder?: string
@@ -33,7 +35,8 @@ const {
   showVideoUpload,
   imageLimit = 5,
   videoLimit = 1,
-  videoDuration = 10,
+  videoDuration = 20,
+  videoSize = 20,
   promptDisabled = false,
   promptPlaceholder = '和我聊聊，你想要什么设计。',
   mode = 'default',
@@ -135,6 +138,7 @@ const handlePaste = (e: ClipboardEvent) => {
             type="video"
             :limitNumber="videoLimit"
             :limitDuration="videoDuration"
+            :limitSize="videoSize"
             label="视频"
           />
         </div>

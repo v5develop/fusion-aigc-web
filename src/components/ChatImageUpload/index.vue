@@ -8,10 +8,18 @@ interface IProps {
   type?: 'image' | 'video'
   limitNumber?: number
   limitDuration?: number // 视频时长限制（秒）
+  limitSize?: number // 视频体积限制（MB）
   multiple?: boolean
   label?: string
 }
-const { type = 'image', limitNumber, limitDuration = 10, multiple = false, label } = defineProps<IProps>()
+const {
+  type = 'image',
+  limitNumber,
+  limitDuration = 20,
+  limitSize = 20,
+  multiple = false,
+  label,
+} = defineProps<IProps>()
 const fileList = defineModel<any[]>('fileList', { required: true })
 
 const message = useMessage()
@@ -113,17 +121,27 @@ const handleUpload = async (e: Event) => {
   const mimePrefix = type === 'video' ? 'video/' : 'image/'
   const label = type === 'video' ? '视频' : '图片'
 
+  // 校验不通过要顺手清空 input，否则用户再次选同一个文件不触发 change，看起来像点了没反应
+  const reject = (tip: string) => {
+    uploadRef.value!.value = ''
+    message.warning(tip)
+  }
+
   for (const file of fileArray) {
     if (!file.type.startsWith(mimePrefix)) {
-      return message.warning(`${file.name} 不是有效的${label}`)
+      return reject(`${file.name} 不是有效的${label}`)
     }
   }
 
   if (type === 'video') {
     for (const file of fileArray) {
+      // 先判体积（同步、零成本），再判时长（要异步读 video 元数据）
+      if (file.size > limitSize * 1024 * 1024) {
+        return reject(`视频大小不能超过${limitSize}MB`)
+      }
       const duration = await getVideoDuration(file)
       if (duration > limitDuration) {
-        return message.warning(`视频时长不能超过${limitDuration}秒`)
+        return reject(`视频时长不能超过${limitDuration}秒`)
       }
     }
   }
