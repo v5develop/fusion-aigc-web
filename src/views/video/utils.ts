@@ -1,4 +1,17 @@
-import { entryCodeVal2Label, modelVal2Label, ratioVal2Label, durationVal2Label } from './constants.ts'
+import { nextTick } from 'vue'
+import {
+  entryCodeVal2Label,
+  modelVal2Label,
+  ratioVal2Label,
+  durationVal2Label,
+  ratioOps,
+  durationOps,
+  modelOps,
+  config,
+} from './constants.ts'
+import { ensureModelCatalog, videoModelOpsFor } from '@/utils/modelCatalog'
+import { originalImagesOf, promptOf } from '@/utils/sameStyle'
+import type { ISameStyleRecipe } from '@/api/types'
 
 /**
  * 素材尺寸是否不一致：同一任务多产出的 (resolution,ratio) 有多种取值时为 true。
@@ -69,4 +82,60 @@ export const getMetaData = (item: any) => {
     durationVal2Label[p.duration] ?? (p.duration != null ? `${p.duration}s` : undefined),
   ]
   return segs.filter((s) => s != null && s !== '').join(' | ')
+}
+
+const inOps = (list: { value: any }[] | undefined, v: any) => !!list?.some((o) => o.value === v)
+
+/**
+ * 把做同款配方回填进视频页表单。
+ *
+ * <p>顺序是有讲究的：页面上挂着两条会反向改写表单的 watch——「场景 → 模型」「模型 → 档位」，
+ * 另有一条切场景时清空/截断 images 的。配方是异步到的，那会儿它们早跑过一轮，
+ * 一次性平铺赋值会被它们按旧模型的可选集覆盖掉，所以中间必须让出一个 tick。
+ *
+ * @param formData  页面表单（就地改）
+ * @param recipe    /asset/public/same-style 返回的三段配方
+ * @param entryCode 已过白名单校验的创作场景
+ */
+export const applySameStyleRecipe = async (
+  formData: any,
+  recipe: ISameStyleRecipe,
+  entryCode: string,
+  isCurrent: () => boolean = () => true,
+) => {
+  const req = recipe.submit?.request ?? {}
+  const p = req.params ?? {}
+
+  formData.entryCode = entryCode
+  formData.prompt = promptOf(req)
+
+  // 模型表是异步的，首屏是空数组；在空表上判「不合法」会把合法模型也误伤
+  await ensureModelCatalog().catch(() => {})
+  // 让出过控制权，期间可能已经切到另一条配方
+  if (!isCurrent()) return
+  const ops = videoModelOpsFor(entryCode)
+  // 不合法就别写，留给页面那条对齐 watch 回退到该场景的首个模型
+  if (typeof req.modelCode === 'string' && ops.some((m) => m.value === req.modelCode)) {
+    formData.modelCode = req.modelCode
+  }
+
+  // 等上述 watch 各跑一轮（模型对齐、档位纠正、切场景清图）再写档位与素材
+  await nextTick()
+  if (!isCurrent()) return
+
+  const model = modelOps.find((m) => m.value === formData.modelCode)
+  const ratio = String(p.aspectRatio ?? p.ratio ?? '')
+  if (inOps(model?.ratioOps?.length ? model.ratioOps : ratioOps, ratio)) formData.ratio = ratio
+  const resolution = String(p.resolution ?? '')
+  if (inOps(model?.resolutionOps, resolution)) formData.resolution = resolution
+  const duration = Number(p.duration)
+  if (inOps(model?.durationOps?.length ? model.durationOps : durationOps, duration)) formData.duration = duration
+
+  // submit.request 里的用户素材已被后端清空（隐私红线），原作输入图只在 original.request 里。
+  // 产品口径是直接回填原作图、允许用户删改或原样提交，与 App 端一致。
+  // 只有收图的场景才回填：文生视频的上传区是隐藏的（页面也会在切场景时清空 images），
+  // 这里再塞回去，用户看不见也删不掉，却会一路带进询价与提交。
+  // 注意不能拿 config.imageLimit 当判据——textToVideo 身上还留着一个没用的 imageLimit: 5。
+  const limit = entryCode === 'textToVideo' ? 0 : (config[entryCode]?.imageLimit ?? 0)
+  formData.images = limit ? originalImagesOf(recipe.original?.request).slice(0, limit) : []
 }

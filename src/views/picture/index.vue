@@ -12,6 +12,7 @@ import { storeToRefs } from 'pinia'
 import { useInitCheckTaskStatus } from './hooks.ts'
 import { useQuotePreview } from '@/utils/hooks'
 import { useEntryCodeFromQuery } from '@/utils/hooks/useEntryCodeFromQuery'
+import { useSameStyleRecipe } from '@/utils/hooks/useSameStyleRecipe'
 import { useMessage } from 'naive-ui'
 import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
@@ -66,6 +67,12 @@ const formData = reactive(
 // 页内切换场景后同步地址栏，让刷新／容器重载能落回同一个场景。
 // 单向：URL 只在 setup 读一次，不再回写表单，否则两边互相触发成回环。
 watch(() => formData.entryCode, syncToUrl)
+
+// 做同款：地址栏带 sameStyleId 时拉配方回填表单。配方是异步到的，天然晚于
+// 首页带入(pinia)与深链(query)，优先级最高，直接覆盖即可。
+useSameStyleRecipe(entryCodeOps, (recipe, entryCode, isCurrent) =>
+  utils.applySameStyleRecipe(formData, recipe, entryCode, isCurrent),
+)
 
 // 提交前积分预览：镜像提交参数，切换入口/比例时防抖重询
 const { pricePoints, status: quoteStatus } = useQuotePreview(

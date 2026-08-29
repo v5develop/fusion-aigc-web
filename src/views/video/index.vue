@@ -16,7 +16,8 @@ import { videoModelOpsFor } from '@/utils/modelCatalog'
 import { useMessage } from 'naive-ui'
 import { showDownloadBtn, isFromAigcChat } from '@/views/picture/utils.ts'
 import { downloadImagesAsZip, getDownloadableUrls, zipNameOf } from '@/utils/download'
-import { getMetaData, isMixedSize, buildResubmitParams } from './utils.ts'
+import { getMetaData, isMixedSize, buildResubmitParams, applySameStyleRecipe } from './utils.ts'
+import { useSameStyleRecipe } from '@/utils/hooks/useSameStyleRecipe'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
@@ -179,6 +180,13 @@ watch(
       formData.images = formData.images.slice(0, limit)
     }
   },
+)
+
+// 做同款：地址栏带 sameStyleId 时拉配方回填表单。配方是异步到的，天然晚于
+// 首页带入(pinia)与深链(query)，优先级最高，直接覆盖即可。
+// 声明在上面几条 watch 之后：回填要让它们先各跑一轮再写档位与素材（见 utils 里的说明）。
+useSameStyleRecipe(entryCodeOps, (recipe, entryCode, isCurrent) =>
+  applySameStyleRecipe(formData, recipe, entryCode, isCurrent),
 )
 
 const pagingData = reactive({

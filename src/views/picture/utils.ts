@@ -1,5 +1,11 @@
-import { entryCodeVal2Label, modelVal2Label } from './constants.ts'
-import { ratioLabel } from '@/utils/ratio'
+import { entryCodeVal2Label, modelVal2Label, numOps } from './constants.ts'
+import { imageRatioOps, ratioLabel } from '@/utils/ratio'
+import { ensureModelCatalog, imageModelOps } from '@/utils/modelCatalog'
+import { originalImagesOf, promptOf } from '@/utils/sameStyle'
+import type { ISameStyleRecipe } from '@/api/types'
+
+/** 图片页输入图上限，与模板里 ChatInputBox 的 :imageLimit 保持一致 */
+const IMAGE_LIMIT = 3
 
 /**
  * 归一化历史记录的 inputParams 为图片 submit 入参，供「再次生成」复用。
@@ -69,4 +75,64 @@ export const getMetaData = (item: any) => {
   // 画幅优先取素材 content.ratio；无则按请求尺寸精确映射(ratioOps)或 gcd 约分兜底
   const rLabel = content.ratio ?? ratioLabel(params.params?.width, params.params?.height)
   return [entryLabel, modelLabel, rLabel].filter(Boolean).join(' | ')
+}
+
+/**
+ * 后端配方的画幅 → 页面 ratio（"宽,高" 像素串）。
+ * 图片页存的是像素串而不是比例串，所以要反查 imageRatioOps；查不到就不回填、
+ * 让页面停在自己的默认值，别把非标准尺寸写进下拉。
+ */
+const pickImageRatio = (p: any): string => {
+  const w = Number(p?.width)
+  const h = Number(p?.height)
+  if (w > 0 && h > 0) {
+    const exact = imageRatioOps.find((o) => o.value === `${w},${h}`)
+    if (exact) return exact.value
+    const byLabel = imageRatioOps.find((o) => o.label === ratioLabel(w, h))
+    if (byLabel) return byLabel.value
+  }
+  const bySize = imageRatioOps.find((o) => o.label === String(p?.size ?? p?.ratio ?? ''))
+  return bySize?.value ?? ''
+}
+
+/**
+ * 把做同款配方回填进图片页表单。
+ * @param formData  页面表单（就地改）
+ * @param recipe    /asset/public/same-style 返回的三段配方
+ * @param entryCode 已过白名单校验的创作场景
+ */
+export const applySameStyleRecipe = async (
+  formData: any,
+  recipe: ISameStyleRecipe,
+  entryCode: string,
+  isCurrent: () => boolean = () => true,
+) => {
+  const req = recipe.submit?.request ?? {}
+  const p = req.params ?? {}
+
+  formData.entryCode = entryCode
+  formData.prompt = promptOf(req)
+
+  // 模型表是异步的，首屏是空数组；在空表上判「不合法」会把合法模型也误伤
+  await ensureModelCatalog().catch(() => {})
+  // 让出过控制权，期间可能已经切到另一条配方
+  if (!isCurrent()) return
+  // 图片模型下拉没有按场景过滤，且 ChatInputSelect 的自纠 watch 对 imageModelOps
+  // （就地 splice 的同一个 reactive 引用，getter 恒等）不触发。后台已停用的模型回显进来，
+  // UI 会显示「请选择」、询价与提交则报「无法匹配计费档位」，只能自己校验一次。
+  if (typeof req.modelCode === 'string' && imageModelOps.some((m) => m.value === req.modelCode)) {
+    formData.modelCode = req.modelCode
+  }
+
+  const ratio = pickImageRatio(p)
+  if (ratio) formData.ratio = ratio
+
+  const num = Number(p.num)
+  if (numOps.some((o) => o.value === num)) formData.num = num
+
+  // submit.request 里的用户素材已被后端清空（隐私红线），原作输入图只在 original.request 里。
+  // 产品口径是直接回填原作图、允许用户删改或原样提交，与 App 端一致。
+  // 只有收图的场景才回填：文生图的上传区是隐藏的，塞了图用户看不见也删不掉，却会一路带进询价与提交。
+  formData.images =
+    entryCode === 'imageToImage' ? originalImagesOf(recipe.original?.request).slice(0, IMAGE_LIMIT) : []
 }

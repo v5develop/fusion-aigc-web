@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, provide, watch, reactive } from 'vue'
+import { ref, provide, watch, reactive, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import { assetAll, assetBatchDelete, assetCategories, assetAspectRatios } from '@/api/methods.ts'
 import type * as types from '@/api/types'
@@ -41,7 +41,7 @@ const loadFilters = async () => {
   if (cat?.code === 0) {
     categories.value = cat.data ?? []
     // 默认选中第一个一级，而不是写死 'ecommerce'——分类由运营配，写死的值可能已经不存在了
-    if (!formData.category && categories.value.length) formData.category = categories.value[0].categoryCode
+    if (!formData.category && categories.value[0]) formData.category = categories.value[0].categoryCode
   }
   if (ratio?.code === 0) aspectRatios.value = ratio.data ?? []
 }
