@@ -109,8 +109,34 @@ export function creationSubmit(data: types.ICreationSubmit, headers: any = { 'Id
   return post('/api/v1/creation/submit', injectSize(data), headers, 60000)
 }
 
-export function publicDisplay(params: any) {
+/**
+ * 灵感广场推荐流。
+ *
+ * platform 必传——两端推荐位不一样，后端刻意不给默认值，不传直接 400。
+ * 老的 type / category / hot 参数已作废，改用分类树节点 id（categoryL1Id / categoryL2Id）。
+ */
+export function publicDisplay(params: types.IPublicDisplay) {
   return get('/api/v1/asset/public/display', params)
+}
+
+/**
+ * 灵感广场分类树（两级）。顶层是顶部 Tab，children 是 Tab 内子筛选（可能为空数组）。
+ *
+ * 传 platform 让后端只返回本端与 BOTH 的分类：不筛的话 PC 会显示只配给 APP 的 Tab，
+ * 点进去推荐流按 platform 查是空的，看着像没数据。
+ */
+export function displayCategories(platform: 'APP' | 'PC') {
+  return get('/api/v1/asset/public/display/categories', { platform })
+}
+
+/** 素材库聚合分类（两级）。别硬编码分类——运营改归属后前端不用发版 */
+export function assetCategories() {
+  return get('/api/v1/asset/categories')
+}
+
+/** 素材库可选画面比例。别硬编码：比例集跟后端归一化规则走，各写一份必然漂移 */
+export function assetAspectRatios() {
+  return get('/api/v1/asset/aspect-ratios')
 }
 
 export function optimizePrompt(params: types.IOptimizePrompt) {

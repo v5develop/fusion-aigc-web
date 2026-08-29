@@ -1,18 +1,50 @@
 <script setup lang="ts">
 import { ref, provide, watch, reactive } from 'vue'
 import { useMessage } from 'naive-ui'
-import { assetAll, assetBatchDelete } from '@/api/methods.ts'
+import { assetAll, assetBatchDelete, assetCategories, assetAspectRatios } from '@/api/methods.ts'
+import type * as types from '@/api/types'
 import { downloadImagesAsZip, zipNameByNow } from '@/utils/download'
-import { tabOps1, tabOps2 } from './constants.ts'
 import RecordList from './components/RecordList/index.vue'
 
 const message = useMessage()
 const assetRef = ref<HTMLDivElement | null>(null)
 const loading = ref(false)
+/**
+ * 分类不再硬编码。原先二级是写死的 14 个电商入口，运营新增一个入口就得改前端发版，
+ * 而后端的聚合分类允许把「底层两个模型、用户眼里一件事」的入口并成一个 chip。
+ *
+ * category 存一级 categoryCode，assetCategory 存实际下发给后端的那一级：
+ * 选中二级就传二级的 code，只选一级就传一级的 code（后端自动展开成其二级之并）。
+ */
+const categories = ref<types.IAssetCategory[]>([])
+const aspectRatios = ref<string[]>([])
 const formData = reactive({
-  category: 'ecommerce',
-  type: 'productSetImages', // 默认AI商品套图
+  category: '',
+  subCategory: '',
+  aspectRatio: '',
 })
+
+const tabOps1 = computed(() => categories.value.map((c) => ({ label: c.categoryName, value: c.categoryCode })))
+
+const tabOps2 = computed(() => {
+  const root = categories.value.find((c) => c.categoryCode === formData.category)
+  const children = root?.children ?? []
+  if (!children.length) return []
+  return [{ label: '全部', value: '' }, ...children.map((c) => ({ label: c.categoryName, value: c.categoryCode }))]
+})
+
+const loadFilters = async () => {
+  const [cat, ratio] = await Promise.all([
+    assetCategories().catch(() => null),
+    assetAspectRatios().catch(() => null),
+  ])
+  if (cat?.code === 0) {
+    categories.value = cat.data ?? []
+    // 默认选中第一个一级，而不是写死 'ecommerce'——分类由运营配，写死的值可能已经不存在了
+    if (!formData.category && categories.value.length) formData.category = categories.value[0].categoryCode
+  }
+  if (ratio?.code === 0) aspectRatios.value = ratio.data ?? []
+}
 const pagingData = reactive({
   page: 1,
   pageSize: 9,
@@ -91,10 +123,13 @@ const getData = (isReplace?: boolean) => {
   if (loading.value) return
   loading.value = true
 
-  const params = {
-    category: formData.category,
-    type: formData.category === 'ecommerce' ? formData.type : '',
-    ...pagingData,
+  const params: types.IAssetAll = {
+    // 选到哪一级就传哪一级的 code：只选一级时后端自动展开成其二级之并，
+    // 前端不用自己拼 entryCodes——运营改归属立刻生效，不用等发版
+    assetCategory: formData.subCategory || formData.category,
+    ...(formData.aspectRatio ? { aspectRatio: formData.aspectRatio } : {}),
+    page: pagingData.page,
+    pageSize: pagingData.pageSize,
   }
   assetAll(params)
     .then((res) => {
@@ -113,7 +148,14 @@ const getData = (isReplace?: boolean) => {
 }
 getData()
 
+// 切一级清二级：二级 code 属于上一个一级，带过去会筛出空列表
+watch(
+  () => formData.category,
+  () => (formData.subCategory = ''),
+)
+
 watch(formData, () => {
+  if (!formData.category) return // 分类还没加载完，别用空条件打一次无意义的请求
   pagingData.page = 1
   pagingData.hasMore = true
   selectedIds.value = new Set() // 切换分类清空已选
@@ -138,7 +180,7 @@ watch(formData, () => {
             class="item"
             :class="formData.category === item.value ? 'active' : ''"
             v-for="item in tabOps1"
-            :key="item.label"
+            :key="item.value"
             @click="formData.category = item.value"
           >
             {{ item.label }}
@@ -159,15 +201,34 @@ watch(formData, () => {
         </div>
       </div>
 
-      <div v-if="formData.category === 'ecommerce'" class="tab-lv1 tab-lv2">
+      <div v-if="tabOps2.length" class="tab-lv1 tab-lv2">
         <span
           class="item"
-          :class="formData.type === item.value ? 'active' : ''"
+          :class="formData.subCategory === item.value ? 'active' : ''"
           v-for="item in tabOps2"
-          :key="item.label"
-          @click="formData.type = item.value"
+          :key="item.value"
+          @click="formData.subCategory = item.value"
         >
           {{ item.label }}
+        </span>
+      </div>
+
+      <div v-if="aspectRatios.length" class="tab-lv1 tab-lv2">
+        <span
+          class="item"
+          :class="formData.aspectRatio === '' ? 'active' : ''"
+          @click="formData.aspectRatio = ''"
+        >
+          全部比例
+        </span>
+        <span
+          class="item"
+          :class="formData.aspectRatio === r ? 'active' : ''"
+          v-for="r in aspectRatios"
+          :key="r"
+          @click="formData.aspectRatio = r"
+        >
+          {{ r }}
         </span>
       </div>
     </div>

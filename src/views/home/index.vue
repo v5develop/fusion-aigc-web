@@ -2,13 +2,16 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
-import { publicDisplay, promptList, promptDetail } from '@/api/methods.ts'
+import { publicDisplay, displayCategories, promptList, promptDetail } from '@/api/methods.ts'
 import type { IPromptCard, IQuotePreview } from '@/api/types'
+import type * as types from '@/api/types'
+
+/** 本项目是 PC 端。推荐流与分类都按端隔离，两处必须用同一个值 */
+const PLATFORM = 'PC' as const
 import { useDebounce, useQuotePreview } from '@/utils/hooks'
 import { ossThumbnail } from '@/utils/oss.ts'
 import ImageTab from './ImageTab/index.vue'
 import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
-import { filterData1, filterData2 } from './constants.ts'
 import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
 import ChatTab, { type TTabValue } from './ChatTab/index.vue'
 import ChatInputBox from './ChatInputBox/index.vue'
@@ -210,7 +213,13 @@ function usePreinstall() {
   return { preData, preinstallFallbackImg, handlePreinstallClick }
 }
 
-const { imageTab, waterfallData, getList } = useWaterfall()
+const { imageTab, waterfallData, getList, filterData1, filterData2 } = useWaterfall()
+
+// 切一级必须清二级：二级 id 属于上一个一级，带过去会筛出空列表
+watch(
+  () => imageTab.value1,
+  () => (imageTab.value2 = ''),
+)
 function useWaterfall() {
   const pagingData = reactive({
     page: 1,
@@ -218,11 +227,37 @@ function useWaterfall() {
     loading: false,
     hasMore: true,
   })
+  // '' = 不筛（一级即「发现」，二级即「全部」）。值存分类节点 id 的字符串形式，
+  // 因为 Tab 组件按 value 全等比较，混用 number/string 会选不中
   const imageTab = reactive({
     value1: '',
-    value2: 'hot',
+    value2: '',
   })
   const waterfallData = ref<any>([])
+
+  // 分类树由后端下发，前端不硬编码：运营调分类立刻生效，不用等发版
+  const categories = ref<types.IDisplayCategory[]>([])
+
+  const filterData1 = computed(() => [
+    { label: '发现', value: '' },
+    ...categories.value.map((c) => ({ label: c.categoryName, value: String(c.id) })),
+  ])
+
+  const filterData2 = computed(() => {
+    const root = categories.value.find((c) => String(c.id) === imageTab.value1)
+    const children = root?.children ?? []
+    // 二级为空时整行不展示，而不是留一个只有「全部」的空 Tab 行
+    if (!children.length) return []
+    return [{ label: '全部', value: '' }, ...children.map((c) => ({ label: c.categoryName, value: String(c.id) }))]
+  })
+
+  const loadCategories = async () => {
+    // 传 platform：APP 与 PC 的分类可以不一样，不筛的话这里会显示只配给 APP 的 Tab，
+    // 点进去推荐流按 platform 查是空的，看着像没数据
+    const res = await displayCategories(PLATFORM).catch(() => null)
+    if (res?.code === 0) categories.value = res.data ?? []
+  }
+  loadCategories()
 
   const getList = (isReplace?: boolean) => {
     if (!pagingData.hasMore) return
@@ -230,24 +265,28 @@ function useWaterfall() {
     if (pagingData.loading) return
     pagingData.loading = true
 
-    const params = {
+    const params: types.IPublicDisplay = {
+      // 必传，后端刻意不给默认值——两端推荐位不同，静默串端比报错难查
+      platform: PLATFORM,
       page: pagingData.page,
       pageSize: pagingData.pageSize,
-      type: imageTab.value1,
-      category: imageTab.value2 === 'hot' ? '' : imageTab.value2,
-      hot: imageTab.value2 === 'hot',
+      ...(imageTab.value1 ? { categoryL1Id: Number(imageTab.value1) } : {}),
+      ...(imageTab.value2 ? { categoryL2Id: Number(imageTab.value2) } : {}),
     }
     publicDisplay(params)
       .then((res) => {
         if (res.code === 0) {
+          const list: types.IFeedItem[] = res.data.list ?? []
           pagingData.page++
 
-          if (isReplace) waterfallData.value = res.data.list
-          else waterfallData.value.push(...res.data.list)
+          const mapped = list.map(toWaterfallItem)
+          if (isReplace) waterfallData.value = mapped
+          else waterfallData.value.push(...mapped)
 
-          if (res.data.list.length < pagingData.pageSize) {
-            pagingData.hasMore = false
-          }
+          // 以「返回空列表」判到底，不能用 length < pageSize：
+          // 源失效的条目（素材下架、作品被删/被屏蔽）在装配阶段被剔除，
+          // 所以正常翻页也经常不满一页，按不满判会提前停在半路
+          if (!list.length) pagingData.hasMore = false
         }
       })
       .finally(() => (pagingData.loading = false))
@@ -264,7 +303,24 @@ function useWaterfall() {
     delay: 0,
   })
 
-  return { imageTab, waterfallData, getList }
+  return { imageTab, waterfallData, getList, filterData1, filterData2 }
+}
+
+/**
+ * 推荐流条目 → 瀑布流条目。
+ *
+ * urls 已经是水印图（后端对外只出水印图），**不要再叠一次 withWatermark**，
+ * 否则同一张图上会有两层水印。
+ * width/height 为 0 表示未知，交给瀑布流按默认比例占位、onload 后校正。
+ */
+function toWaterfallItem(item: types.IFeedItem) {
+  return {
+    ...item,
+    // 列表位只展示首图/封面；多图幻灯片在详情态用 urls
+    url: item.coverUrl || item.urls?.[0] || '',
+    width: item.width || 0,
+    height: item.height || 0,
+  }
 }
 
 const backTop = () => {
@@ -433,7 +489,7 @@ const submit = () => {
 
       <div class="tab-content">
         <ImageTab v-model="imageTab.value1" :data="filterData1" />
-        <ImageTab class="tab2" v-model="imageTab.value2" :data="filterData2" />
+        <ImageTab v-if="filterData2.length" class="tab2" v-model="imageTab.value2" :data="filterData2" />
       </div>
 
       <WaterfallVirtualScroller :waterfallData="waterfallData" />

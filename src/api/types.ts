@@ -14,7 +14,75 @@ export interface IGetSts {
 }
 
 export interface IAssetAll {
-  type: string // customizedmodel:本地local上传, realpersonmodel:豆包验证库
+  type?: string // 二级细类型（电商 entryCode），或 customizedModel/realPersonModel
+  category?: 'image' | 'video' | 'ecommerce' // 一级大类
+  /** 聚合分类编码，取自 /asset/categories。选到哪一级就传哪一级的 categoryCode */
+  assetCategory?: string
+  /** 画面比例，取自 /asset/aspect-ratios。别硬编码这个列表 */
+  aspectRatio?: string
+  /** 快捷时间。按自然周期切：week = 本周一零点起，不是过去 7 天 */
+  timeRange?: 'today' | 'week' | 'month' | 'all'
+  startTime?: string
+  endTime?: string
+  sortBy?: 'latest' | 'earliest'
+  keyword?: string
+  page?: number
+  pageSize?: number
+}
+
+/** 素材库聚合分类（两级）。二级节点的 children 恒为空数组 */
+export interface IAssetCategory {
+  /** 「其他」是后端合成的虚拟分类，id 恒为 null —— 渲染 key 请用 categoryCode */
+  id: number | null
+  categoryCode: string
+  categoryName: string
+  sortOrder?: number
+  /** 仅供调试/埋点。筛选传 categoryCode，别拿它自己拼 */
+  entryCodes?: string[]
+  children?: IAssetCategory[]
+}
+
+/** 灵感广场分类树（两级），节点 id 即推荐流的 categoryL1Id / categoryL2Id */
+export interface IDisplayCategory {
+  id: number
+  categoryCode: string
+  categoryName: string
+  level: number
+  sortOrder?: number
+  /** APP / PC / BOTH */
+  platform?: string
+  children?: IDisplayCategory[]
+}
+
+/** 推荐流入参。platform 必传，不传后端直接 400 */
+export interface IPublicDisplay {
+  platform: 'APP' | 'PC'
+  categoryL1Id?: number
+  categoryL2Id?: number
+  page?: number
+  pageSize?: number
+}
+
+/** 推荐流条目 */
+export interface IFeedItem {
+  id: number
+  /** CREATION_TASK 用户创作 | DISPLAY_ASSET 运营灵感素材 */
+  sourceType: string
+  /** 做同款时原样回传这个 */
+  dataId: number
+  title: string | null
+  mediaType: 'image' | 'video'
+  /** 列表缩略图；视频给的是封面帧，可直接当 img src */
+  coverUrl: string
+  /** 已是水印图，多张按顺序做幻灯片。不要再叠一次水印 */
+  urls: string[]
+  /** 0 = 未知，前端必须兜底 */
+  width: number
+  height: number
+  categoryL1Id: number | null
+  categoryL2Id: number | null
+  /** false 时不要展示「做同款」入口，点了会报错 */
+  sameStyle: boolean
 }
 
 export interface IAssetBatchDelete {
