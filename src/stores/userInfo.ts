@@ -54,5 +54,15 @@ export const useUserInfoStore = defineStore('useUserInfoStore', () => {
   }
   fetchUserInfo()
 
-  return { userInfo, updateUserInfo }
+  /**
+   * 清掉内存里的用户信息。
+   *
+   * <p>容器内登出走的是整页 reload，用不上这个；但独立运行时 logoutToLogin 只是
+   * `location.hash = '#/login'`，页面不重载——不清的话旧账号的积分和头像会一直挂在导航栏上。
+   */
+  const reset = () => {
+    userInfo.value = undefined
+  }
+
+  return { userInfo, updateUserInfo, reset }
 })

@@ -2,8 +2,9 @@ import axios from 'axios'
 import type { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
 import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
-import { getUserInfo } from '@/api/methods.ts'
 import { refreshToken, getAuthToken } from '@/api/union'
+import { adoptSession, isAccountVerified, markAccountVerified, saveTokens } from '@/utils/authSession'
+import { resolveUnionToken } from '@/utils/unionBridge'
 
 const { message } = createDiscreteApi(['message'])
 const refreshTokenApi = '/api/v1/auth/refresh'
@@ -15,20 +16,23 @@ const service = axios.create({
   timeout: 10000,
 })
 
-function saveTokens(data: { accessToken: string; refreshToken: string }) {
-  localStorage.setItem('fusion_accessToken', data.accessToken)
-  localStorage.setItem('fusion_refreshToken', data.refreshToken)
-}
-
-// 刷新链路内的 fusion 接口一律用裸 axios（不走 service 拦截器）：
-// 结构性避免「刷新接口的响应再次触发刷新」的重入死锁，也不依赖拦截器改写后的响应形状
-async function unionTokenLoginRaw(token: string): Promise<string> {
+/**
+ * 用 unionToken 换 fusion token 并接管会话（含换号检测）。
+ *
+ * <p>一律用裸 axios、不走 service 拦截器，理由有两条：
+ * 一是结构性避免「刷新接口的响应再次触发刷新」的重入死锁；
+ * 二是<b>不能带上 Authorization 头</b> —— 冷启动校验时本地那份 token 可能已属于上一个账号
+ * 且已过期，带着它请求会被拦截器判成令牌失效，凭空拽出一条刷新链。
+ *
+ * @returns 新的 accessToken；换到的是<b>另一个账号</b>时 switched 为 true
+ */
+export async function exchangeUnionToken(token: string): Promise<{ accessToken: string; switched: boolean }> {
   const { data: body } = await axios.post<ApiResponse>(baseURL + unionTokenLoginApi, { token }, { timeout: 10000 })
   if (body?.code !== 0 || !body.data?.accessToken) {
     throw new Error(`union-token-login failed: code=${body?.code}`)
   }
-  saveTokens(body.data)
-  return body.data.accessToken
+  const switched = adoptSession(body.data)
+  return { accessToken: body.data.accessToken as string, switched }
 }
 
 // fusion refresh 失败后的兜底：用联盟侧凭证换新的 fusion token。
@@ -36,10 +40,19 @@ async function unionTokenLoginRaw(token: string): Promise<string> {
 async function refreshViaUnion(): Promise<string> {
   const bridge = (window as any).ThirdServiceBridge
 
-  // 容器内：走桥接刷新
+  // 容器内：走桥接刷新（桥优先、URL 兜底，带超时——桥不回调会挂死整条单航班）
   if (bridge?.refreshUnionToken) {
-    const token = await bridge.refreshUnionToken()
-    return unionTokenLoginRaw(token)
+    const token = await resolveUnionToken()
+    if (!token) throw new Error('no union token from bridge or url')
+    const { accessToken, switched } = await exchangeUnionToken(token)
+    // 这份 token 是宿主此刻给的，账号已经对上，后续刷新不必再优先绕联盟侧
+    markAccountVerified()
+    // 运行期换到了另一个账号：内存里的 store、正在跑的轮询全是旧账号的，
+    // 局部清理收不干净，直接整页重载让一切从新 token 重建
+    if (switched) {
+      window.location.reload()
+    }
+    return accessToken
   }
 
   // 独立运行：用联盟 refreshToken 刷新
@@ -48,10 +61,13 @@ async function refreshViaUnion(): Promise<string> {
     throw new Error('no union refresh token')
   }
   const newUnion = await refreshToken(unionRefresh)
+  const authRes = await getAuthToken(newUnion.token)
+  const { accessToken } = await exchangeUnionToken(authRes.tempToken)
+  // 联盟侧凭证落在 exchangeUnionToken <b>之后</b>：它换到别的账号时会清空 localStorage，
+  // 先写就会被一起清掉
   localStorage.setItem('union_token', newUnion.token)
   localStorage.setItem('union_refreshToken', newUnion.refreshToken)
-  const authRes = await getAuthToken(newUnion.token)
-  return unionTokenLoginRaw(authRes.tempToken)
+  return accessToken
 }
 
 // 单航班：失效瞬间多个请求同时失败时只刷新一次，各请求 await 同一个 promise 后自行重放
@@ -60,6 +76,18 @@ let refreshPromise: Promise<string> | null = null
 function doRefresh(): Promise<string> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
+      // 容器内、且本次加载没能用宿主当前身份核验过（冷启动那一枪桥超时或接口失败）：
+      // 先问联盟侧。fusion refresh 只会给「本地缓存的那个账号」续期——宿主此刻若已换人，
+      // 后端认下旧账号的 refreshToken，就把旧账号一路续下去，新账号永远进不来。
+      // 只在未核验的会话里付这份代价（多一次桥调用 + 一次请求），正常会话完全不走这里
+      if ((window as any).ThirdServiceBridge && !isAccountVerified()) {
+        try {
+          return await refreshViaUnion()
+        } catch {
+          // 桥仍未就绪：退回 fusion refresh，至少让当前账号能继续用，别把人卡死在这
+        }
+      }
+
       try {
         const rt = localStorage.getItem('fusion_refreshToken')
         if (!rt) throw new Error('no fusion refresh token')
@@ -75,15 +103,6 @@ function doRefresh(): Promise<string> {
     })().finally(() => {
       refreshPromise = null
     })
-    // 刷新成功后异步补拉用户信息（头像缓存），不阻塞请求重放、失败忽略
-    refreshPromise
-      .then(async () => {
-        const { code, data } = await getUserInfo()
-        if (code === 0) {
-          localStorage.setItem('userInfo', JSON.stringify({ avatar: data.avatar }))
-        }
-      })
-      .catch(() => {})
   }
   return refreshPromise
 }
@@ -168,6 +187,13 @@ function logoutToLogin() {
   if (loggingOut) return // 并发失败的多个请求只登出一次、只弹一次
   loggingOut = true
   message.error('登录已过期，请重新登录')
+
+  // 只清凭证，<b>不动业务缓存、也不动 fusion_identity</b>。
+  //
+  // 登出不等于换人：同一个人令牌过期后重新登进来，电商标签和会话记录该原样在。
+  // 「要不要清缓存」这个决策唯一收敛在 authSession 的指纹比对上——下次冷启动拿新 token
+  // 的身份跟留下来的 fusion_identity 一比，同人就留、换人才清，比「登出即清」精确得多。
+  // 指纹留着正是为了那次比对：清了它就等于把唯一的判据丢了，换号也比不出来
   localStorage.removeItem('fusion_accessToken')
   localStorage.removeItem('fusion_refreshToken')
   localStorage.removeItem('union_token')
@@ -175,6 +201,12 @@ function logoutToLogin() {
 
   const bridge = (window as any).ThirdServiceBridge
   if (!bridge) {
+    // hash 跳转不重载页面，内存里的用户信息得手动清，否则旧账号的积分/头像会一直挂在导航栏。
+    // 用动态 import 而不是顶层 import：stores/userInfo → api/methods → api/index 是一条环，
+    // 静态引入会把它闭合成循环依赖
+    void import('@/stores/userInfo')
+      .then(({ useUserInfoStore }) => useUserInfoStore().reset())
+      .catch(() => {})
     window.location.hash = '#/login'
     // hash 跳转不重载页面，复位门闩以便下次会话过期仍能登出
     setTimeout(() => {
@@ -183,7 +215,7 @@ function logoutToLogin() {
     return
   }
 
-  // 容器内没有注册 /login 路由：清 token 后整页重载，让路由守卫用 URL 上的 unionToken 重新静默登录。
+  // 容器内没有注册 /login 路由：清 token 后整页重载，让路由守卫重新向桥要 unionToken 静默登录。
   // 若 unionToken 也已失效会再次走到这里，用 sessionStorage 时间戳挡住 30s 内的重复 reload 防死循环
   const lastReloadAt = Number(sessionStorage.getItem('fusion_logout_reload_at') || 0)
   if (Date.now() - lastReloadAt < 30_000) {

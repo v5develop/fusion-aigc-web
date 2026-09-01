@@ -3,6 +3,7 @@ import { ref, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { unionTokenLogin } from '@/api/methods'
 import { sendSms, smsLogin, reportDevice, getAuthToken } from '@/api/union'
+import { adoptSession } from '@/utils/authSession'
 
 const router = useRouter()
 
@@ -60,17 +61,30 @@ async function handleLogin() {
   try {
     await reportDevice()
     const smsRes = await smsLogin({ phone: phone.value, code: code.value })
-    localStorage.setItem('union_token', smsRes.token)
-    localStorage.setItem('union_refreshToken', smsRes.refreshToken)
     const authRes = await getAuthToken(smsRes.token)
     const unionToken = authRes.tempToken
 
     const fusionRes = await unionTokenLogin({ token: unionToken })
     if (fusionRes.code === 0) {
-      localStorage.setItem('fusion_accessToken', fusionRes.data.accessToken)
-      localStorage.setItem('fusion_refreshToken', fusionRes.data.refreshToken)
-      const redirect = router.currentRoute.value.query.redirect as string
-      router.replace(redirect || '/')
+      // 走 adoptSession 而不是手写 setItem：换个手机号登录同样要清掉上一个账号的
+      // 电商标签与会话缓存，这台机器上换号的语义和容器里换号是一样的
+      const switched = adoptSession(fusionRes.data)
+      // 联盟侧凭证必须落在 adoptSession <b>之后</b>：换号时它会按白名单清空 localStorage，
+      // 先写就会被一起清掉，独立运行时的刷新链路（refreshViaUnion）随即失去 union_refreshToken
+      localStorage.setItem('union_token', smsRes.token)
+      localStorage.setItem('union_refreshToken', smsRes.refreshToken)
+      const redirect = (router.currentRoute.value.query.redirect as string) || '/'
+
+      if (switched) {
+        // 换号必须整页重载，router.replace 不够。独立运行时是靠 `location.hash = '#/login'`
+        // 跳到这个页面的（见 api/index.ts 的 logoutToLogin），页面从没重载过，
+        // pinia 里上一个账号的 store 全都活着——只清 localStorage 的话，
+        // useEcTabsStore 那个 deep watch 会把内存里的旧标签原样再写回去
+        window.location.hash = '#' + redirect
+        window.location.reload()
+        return
+      }
+      router.replace(redirect)
     } else {
       errorMessage.value = fusionRes.msg || '登录失败'
     }

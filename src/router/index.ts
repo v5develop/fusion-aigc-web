@@ -1,19 +1,12 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { unionTokenLogin } from '@/api/methods.ts'
 import { ensureModelCatalog } from '@/utils/modelCatalog'
 import { closeAllOverlays } from '@/utils/overlayGuard'
+import { resolveUnionToken } from '@/utils/unionBridge'
+import { exchangeUnionToken } from '@/api'
+import { markAccountVerified } from '@/utils/authSession'
 import eCommerceRouter from './e-commerce'
 
 const hasBridge = !!(window as any).ThirdServiceBridge
-
-/** 问桥要 token 的等待上限。超了就走 URL 兜底，绝不让导航一直挂着 */
-const BRIDGE_TOKEN_TIMEOUT = 3000
-
-/** 桥卡死过一次就别再问：否则此后<b>每次</b>无 token 的导航都要白等一轮超时 */
-let bridgeTokenGaveUp = false
-
-/** 区分「桥超时」与「桥自己抛错」，两者的后续策略不同 */
-const BRIDGE_TIMEOUT_MARK = 'bridge timeout'
 
 const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -66,6 +59,12 @@ router.beforeEach(async () => {
 
 // 路由守卫：登录验证
 router.beforeEach(async (to) => {
+  // 容器内冷启动：无条件用宿主<b>当前</b>的 unionToken 重换一次 fusion token。
+  // 不能沿用改造前的「本地没 token 才登录」——本地那份可能属于宿主上一个账号，
+  // 而它「还没过期」恰恰是最坏的情况：不校验就一路用旧账号跑下去，
+  // 积分、素材、电商标签全是别人的，直到 token 自然过期才可能被发现
+  await ensureBootAuth()
+
   // 检查 localStorage 中是否有 token
   const token = localStorage.getItem('fusion_accessToken')
 
@@ -75,86 +74,61 @@ router.beforeEach(async (to) => {
     void ensureModelCatalog().catch(() => {
       // 忽略：失败不缓存，下次导航会重试；期间下拉为空而非展示不可用模型
     })
+    return
   }
 
-  // 如果没有 token，进行静默登录
-  if (!token) {
-    // 独立运行时（不在 APP 容器内），跳转登录页
-    if (!(window as any).ThirdServiceBridge) {
-      if (to.name !== 'login') {
-        return { name: 'login', query: { redirect: to.fullPath } }
-      }
-      return
+  // 没有 token 且不在容器内：跳登录页走短信登录
+  if (!hasBridge) {
+    if (to.name !== 'login') {
+      return { name: 'login', query: { redirect: to.fullPath } }
     }
-
-    // 静默登录失败不阻断导航（拦截器已提示），放行后由请求层的 401 刷新流程接管
-    try {
-      const unionToken = await resolveUnionToken()
-      // 两个来源都空就别发这一枪：必然 401，白等一个来回。直接放行，
-      // 由请求层的刷新流程接管（它会再问一次桥，那时可能已经就绪）
-      if (unionToken) {
-        const res = await unionTokenLogin({ token: unionToken })
-        if (res.code === 0) {
-          localStorage.setItem('fusion_accessToken', res.data.accessToken)
-          localStorage.setItem('fusion_refreshToken', res.data.refreshToken)
-        }
-      }
-    } catch {
-      // 忽略：token 缺失时后续请求会走 401 → 刷新/登出 流程
-    }
-    // 静默登录刚拿到 token：这次导航开头那道预热被 !token 跳过了，补一次，
-    // 否则首屏落在生成页时模型下拉是空的，要等用户再切一次路由才填上。
-    if (localStorage.getItem('fusion_accessToken')) {
-      void ensureModelCatalog().catch(() => {})
-    }
+    return
   }
+  // 容器内走到这里说明 ensureBootAuth 没换到 token（桥超时 + URL 也没有、或接口失败）。
+  // 不阻断导航：放行后由请求层的 401 刷新流程接管，它会再问一次桥，那时可能已经就绪
 })
 
 /**
- * 容器内取 unionToken：<b>优先问桥，URL 兜底</b>。
+ * 本次页面加载是否已经做过换号校验。
  *
- * <p>桥才是「当前有效」的那份：URL 上的 unionToken 是容器打开页面那一刻拼进去的，
- * 页面在后台搁久了、或容器复用同一个 WebView 再次进来时它已经过期，
- * 拿它登录必失败，要绕一圈 401 → 桥刷新 才恢复——首屏白等一个来回。
- *
- * <p>超时不是防慢、是防<b>不回调</b>：桥后面是原生实现，一旦它不 resolve，
- * 守卫里的 await 会把这次导航永久挂起，整个首屏白屏，比登录失败严重得多。
- * 超时就退回 URL 那条老路。
+ * <p>只做一次就够，前提是<b>宿主每次进 AIGC 都整页重新加载页面</b>（带新 unionToken 的 URL）。
+ * 若宿主哪天改成复用 WebView、不重载就换账号，这里必须补一套
+ * visibilitychange / focus 的运行期检测，否则换号又会检测不到。
  */
-async function resolveUnionToken(): Promise<string | null> {
-  const bridge = (window as any).ThirdServiceBridge
-  if (bridge?.refreshUnionToken && !bridgeTokenGaveUp) {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      const token = await Promise.race([
-        Promise.resolve(bridge.refreshUnionToken()),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(BRIDGE_TIMEOUT_MARK)), BRIDGE_TOKEN_TIMEOUT)
-        }),
-      ])
-      if (token) return token as string
-    } catch (e) {
-      // 只有<b>超时</b>才放弃后续尝试：那说明桥根本不回调，再问多少次都是白等一轮。
-      // 桥自己 reject 属于这一次的失败（token 过期、宿主临时拒绝），下次仍值得问
-      if ((e as Error)?.message === BRIDGE_TIMEOUT_MARK) bridgeTokenGaveUp = true
-    } finally {
-      // 桥先返回时把定时器撤掉，别让它空转到超时点
-      clearTimeout(timer)
-    }
-  }
-  return getUrlQuery('unionToken')
-}
+let bootAuthChecked = false
 
-function getUrlQuery(key: string): string | null {
-  // history模式：参数在location.search
-  if (window.location.search) {
-    return new URLSearchParams(window.location.search).get(key)
+/**
+ * 容器内冷启动的换号校验：拿宿主当前的 unionToken 重换 fusion token，指纹变了就清掉旧账号缓存。
+ *
+ * <p><b>必须 await、必须在 beforeEach 里做</b>，这是正确性要求不是保守：
+ * 清 localStorage 得赶在任何人读它之前。全部路由组件都是懒加载，动态 import 发生在守卫跑完
+ * 之后的导航解析阶段，所以此刻 `useEcTabsStore` / `useSessionIdStore` / `useUserInfoStore`
+ * 都还没实例化，`CustomModelNotice/useData.ts` 那个模块顶层的 getItem 也还没求值。
+ * 一旦挪到 beforeResolve 或组件内部，就会变成「清了 localStorage 但内存里还是旧账号」。
+ */
+async function ensureBootAuth() {
+  if (!hasBridge || bootAuthChecked) return
+  bootAuthChecked = true
+
+  const unionToken = await resolveUnionToken()
+  // 两个来源都空就别发这一枪：必然 401，白等一个来回
+  if (!unionToken) return
+
+  try {
+    // 用裸请求版而不是 methods 里那个走拦截器的 unionTokenLogin：本地那份 token 可能
+    // 已属于上一个账号且过期，带着它请求会被拦截器判成令牌失效，凭空拽出一条刷新链。
+    // 它内部完成「判换人 → 清旧账号缓存 → 落 token → 记指纹」的完整时序
+    const { switched } = await exchangeUnionToken(unionToken)
+    // 本地 token 已确定属于宿主当前账号。没走到这一行（桥超时、接口失败）时标记保持 false，
+    // 请求层的刷新链路会据此改走联盟侧，不再拿可能属于旧账号的 refreshToken 去续期
+    markAccountVerified()
+    if (switched) {
+      console.info('[auth] 检测到宿主已换账号，已清空上一个账号的本地缓存')
+    }
+  } catch {
+    // 换取失败（接口 5xx、断网）：保留现有 token 放行，交给请求层 401 兜底。
+    // 绝不能因为这一枪失败就清 token —— 那等于把一次网络抖动变成强制登出
   }
-  // hash模式：参数在#内
-  const hash = window.location.hash
-  if (!hash.includes('?')) return null
-  const searchStr = hash.slice(hash.indexOf('?'))
-  return new URLSearchParams(searchStr).get(key)
 }
 
 export default router
