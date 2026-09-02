@@ -109,7 +109,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <n-modal v-model:show="show">
+  <!--
+    transform-origin 必须显式给 center：n-modal 默认是 'mouse'，会从上一次鼠标点击的位置
+    缩放展开。本框是被「提交失败」这件事触发的，而不是被某个按钮直接打开的——
+    从页面角落的「立即生成」按钮飞到屏幕中央，看着像动画错位
+  -->
+  <n-modal v-model:show="show" transform-origin="center">
     <div class="billing-guide">
       <img class="icon" :src="warnIcon" alt="" width="60" height="60" />
 
