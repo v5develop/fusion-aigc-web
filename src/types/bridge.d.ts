@@ -49,4 +49,6 @@ interface Window {
   ThirdServiceBridge?: ThirdServiceBridge
   /** 仅 dev 构建存在：本地不起桌面端也能模拟一条设备侧提示，见 DeviceNoticeHost */
   __emitDeviceNotice?: (notice: DeviceNotice) => void
+  /** 仅 dev 构建存在：不用真造一次余额不足的提交也能试引导弹框，见 BillingGuideHost */
+  __emitBillingBlock?: (code: number) => void
 }

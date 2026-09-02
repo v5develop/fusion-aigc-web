@@ -5,6 +5,7 @@ import { createDiscreteApi } from 'naive-ui'
 import { refreshToken, getAuthToken } from '@/api/union'
 import { adoptSession, isAccountVerified, markAccountVerified, saveTokens } from '@/utils/authSession'
 import { resolveUnionToken } from '@/utils/unionBridge'
+import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billingGuide'
 
 const { message } = createDiscreteApi(['message'])
 const refreshTokenApi = '/api/v1/auth/refresh'
@@ -152,6 +153,20 @@ async function handleTokenExpired(config: InternalAxiosRequestConfig): Promise<a
 // 业务失败(code!==0)不弹全局 toast 的接口白名单：由调用方自行降级展示（如询价预览失败显示「获取失败」）
 const SILENT_ERROR_URLS = ['/billing/quote/preview']
 
+// 走「引导购买」弹框而非 toast 的接口白名单：前端在用的全部创作提交口。
+// 限定到提交口而不是全局认 code：3003 在后端还被复用在预扣冻结、退点等内部环节上，
+// 不限定的话某个无关接口偶然回一个 3003，用户就会莫名其妙看到一个充值弹框
+const BILLING_GUARD_URLS = [
+  '/creation/submit',
+  '/creation/ecommerce/submit',
+  '/creation/face-recognition/submit',
+]
+
+function isBillingBlock(body: ApiResponse, url?: string): boolean {
+  if (!BILLING_BLOCK_CODES.has(body.code)) return false
+  return BILLING_GUARD_URLS.some((u) => url?.includes(u))
+}
+
 // 响应拦截。令牌语义对齐 App 端 auth_interceptor：401/业务失效码 → 先刷新重放；403 → 直接重新登录
 service.interceptors.response.use(
   (res: AxiosResponse<ApiResponse>) => {
@@ -162,8 +177,13 @@ service.interceptors.response.use(
     }
 
     if (data.code !== 0) {
-      // 静默接口（如询价预览）业务失败不弹全局 toast，交由调用方自行降级展示
-      if (!SILENT_ERROR_URLS.some((u) => res.config.url?.includes(u))) {
+      if (isBillingBlock(data, res.config.url)) {
+        // 点数不足/权益到期：交给 BillingGuideHost 弹带购买入口的引导框。
+        // 这里刻意不 toast 后端 msg —— 一是它是内部定位串（带 modelId/entryCode），
+        // 二是弹框已经把话说清楚了，再叠一条 toast 只是噪音
+        emitBillingBlock(data.code)
+      } else if (!SILENT_ERROR_URLS.some((u) => res.config.url?.includes(u))) {
+        // 静默接口（如询价预览）业务失败不弹全局 toast，交由调用方自行降级展示
         message.error(data.msg)
       }
       return Promise.reject(new Error(data.msg))

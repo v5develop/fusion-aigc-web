@@ -12,6 +12,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    BillingGuideHost: typeof import('./src/components/BillingGuideHost/index.vue')['default']
     ChatImageUpload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
     ChatInputSelect: typeof import('./src/components/ChatInputSelect/index.vue')['default']
     CheckboxGroup: typeof import('./src/components/CheckboxGroup/index.vue')['default']
@@ -46,6 +47,7 @@ declare module 'vue' {
 
 // For TSX support
 declare global {
+  const BillingGuideHost: typeof import('./src/components/BillingGuideHost/index.vue')['default']
   const ChatImageUpload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
   const ChatInputSelect: typeof import('./src/components/ChatInputSelect/index.vue')['default']
   const CheckboxGroup: typeof import('./src/components/CheckboxGroup/index.vue')['default']
