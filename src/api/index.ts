@@ -360,6 +360,32 @@ export function patch<T = any>(url: string, data: any, headers?: any): Promise<A
   })
 }
 
+/**
+ * 带 fusion token 的裸 fetch（给 axios 收不了的流式接口用，如智能体 SSE）。
+ *
+ * <p>与 axios 实例同一个 baseURL 与 Bearer 注入；正在刷新时先等刷新结束。
+ * 只在 HTTP 401 时刷新后重放一次 —— 401 说明请求没被受理，重放不会重复执行；
+ * 其它失败一律原样交回调用方，<b>不做任何自动重试</b>（计费接口结果未知时不能重放）。
+ */
+export async function authorizedFetch(url: string, init: RequestInit): Promise<Response> {
+  const doFetch = () => {
+    const token = localStorage.getItem('fusion_accessToken')
+    const headers = new Headers(init.headers)
+    if (token) headers.set('Authorization', 'Bearer ' + token)
+    return fetch(baseURL + url, { ...init, headers })
+  }
+  if (refreshPromise) await refreshPromise.catch(() => {})
+  const resp = await doFetch()
+  if (resp.status !== 401) return resp
+  try {
+    await doRefresh()
+  } catch (err) {
+    logoutToLogin()
+    throw err
+  }
+  return doFetch()
+}
+
 export interface SsePostHandlers {
   onDelta: (delta: string) => void
   /**
