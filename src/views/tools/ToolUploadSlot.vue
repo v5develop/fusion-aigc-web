@@ -8,9 +8,9 @@ import { computed, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { upload } from '@/api/ossUpload.ts'
 import { toApiError } from '@/api/index.ts'
-import type { ToolUpload } from './schemas'
+import type { UploadSpec } from './schemas'
 
-const props = defineProps<{ spec: ToolUpload; id: string; disabled?: boolean }>()
+const props = defineProps<{ spec: UploadSpec; id: string; disabled?: boolean }>()
 const urls = defineModel<string[]>({ required: true })
 
 const message = useMessage()

@@ -9,6 +9,7 @@ import localLifeRouter from './local-life'
 import toolsRouter from './tools'
 import assetLibraryRouter from './asset-library'
 import studioRouter from './studio'
+import workflowRouter from './workflow'
 
 const hasBridge = !!(window as any).ThirdServiceBridge
 
@@ -48,6 +49,7 @@ const router = createRouter({
         ...toolsRouter,
         ...assetLibraryRouter,
         ...studioRouter,
+        ...workflowRouter,
         {
           path: '/plaza',
           name: 'plaza',

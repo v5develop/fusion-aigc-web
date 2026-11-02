@@ -34,6 +34,12 @@ export interface ToolUpload {
   verified: boolean
 }
 
+/** 上传槽位组件（ToolUploadSlot）只看的那几项；工作流页（views/workflow）复用同一个组件 */
+export type UploadSpec = Pick<
+  ToolUpload,
+  'label' | 'kind' | 'max' | 'required' | 'maxBytes' | 'accept' | 'minDuration' | 'maxDuration'
+>
+
 export type FieldType =
   | 'chips'
   | 'select'
