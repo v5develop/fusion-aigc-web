@@ -92,7 +92,11 @@ function doRefresh(): Promise<string> {
       try {
         const rt = localStorage.getItem('fusion_refreshToken')
         if (!rt) throw new Error('no fusion refresh token')
-        const { data: body } = await axios.post<ApiResponse>(baseURL + refreshTokenApi, { refreshToken: rt }, { timeout: 10000 })
+        const { data: body } = await axios.post<ApiResponse>(
+          baseURL + refreshTokenApi,
+          { refreshToken: rt },
+          { timeout: 10000 },
+        )
         if (body?.code !== 0 || !body.data?.accessToken) {
           throw new Error(`fusion refresh failed: code=${body?.code}`)
         }
@@ -115,6 +119,59 @@ service.interceptors.request.use((config) => {
   return config
 })
 
+/**
+ * 结构化的请求失败：调用方可按 `code` / `reason` 分支（契约要求优先认 `reason`）。
+ *
+ * <p>`message` 仍是后端 msg（或原错误文案），只读 `error.message` 的老调用方不受影响。
+ * 没有业务码时（网络失败、无信封的 HTTP 错误）`code` 为 -1。
+ */
+export class ApiError extends Error {
+  /** 业务码；没有业务码时为 -1 */
+  readonly code: number
+  /** 后端错误常量名，如 INSUFFICIENT_POINTS；旧接口可能不带 */
+  readonly reason?: string
+  /** 走 HTTP 错误分支时的状态码（业务失败一律 HTTP 200，不填） */
+  readonly httpStatus?: number
+  /** 传输层失败（超时 / 断网 / 中断，没拿到响应）：请求是否已被服务端处理未知 */
+  readonly isNetwork: boolean
+
+  constructor(message: string, init: { code: number; reason?: string; httpStatus?: number; isNetwork?: boolean }) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = init.code
+    this.reason = init.reason
+    this.httpStatus = init.httpStatus
+    this.isNetwork = init.isNetwork ?? false
+  }
+}
+
+function fromBody(body: ApiResponse | undefined, fallbackMsg: string, httpStatus?: number): ApiError {
+  const b = body as (ApiResponse & { reason?: unknown }) | undefined
+  const code = typeof b?.code === 'number' && b.code !== 0 ? b.code : -1
+  return new ApiError(code !== -1 && b?.msg ? b.msg : fallbackMsg, {
+    code,
+    reason: code !== -1 && typeof b?.reason === 'string' ? b.reason : undefined,
+    httpStatus,
+  })
+}
+
+/**
+ * 把任意请求失败归一成 ApiError；无法识别的（非请求层抛出的）返回 null。
+ *
+ * <p>HTTP 错误分支为兼容老调用方仍 reject 原 AxiosError（有地方认 `err.code === 'ECONNABORTED'`、
+ * `err.response.status`、`err.isAxiosError`），需要结构化信息时用本函数转换。
+ */
+export function toApiError(err: unknown): ApiError | null {
+  if (err instanceof ApiError) return err
+  if (axios.isAxiosError(err)) {
+    const res = err.response as AxiosResponse<ApiResponse> | undefined
+    if (!res) return new ApiError(err.message, { code: -1, isNetwork: true })
+    return fromBody(res.data, err.message, res.status)
+  }
+  if (axios.isCancel(err)) return new ApiError('canceled', { code: -1, isNetwork: true })
+  return null
+}
+
 const TOKEN_EXPIRED_CODES = new Set([2001, 2002, 2003])
 // msg 关键词兜底：后端存在白名单外的失效码（表现为只弹"令牌失效"不刷新）。
 // 窄匹配（须同时含「令牌/token」与「失效/过期/无效」）压低误伤普通业务错误的概率；
@@ -133,11 +190,14 @@ function isTokenInvalid(body: ApiResponse | undefined): boolean {
 }
 
 // 令牌失效统一处理：单航班刷新成功后重放原请求；重放后仍失效、或刷新链路彻底失败才登出
-async function handleTokenExpired(config: InternalAxiosRequestConfig): Promise<any> {
+async function handleTokenExpired(config: InternalAxiosRequestConfig, httpStatus?: number): Promise<any> {
   const cfg = config as InternalAxiosRequestConfig & { _retried?: boolean }
   if (cfg._retried) {
     logoutToLogin()
-    return Promise.reject(new Error('token still invalid after refresh'))
+    // 重放后仍被鉴权拒绝：原请求没有被执行，对调用方是确定的 2001
+    return Promise.reject(
+      new ApiError('token still invalid after refresh', { code: 2001, reason: 'UNAUTHORIZED', httpStatus }),
+    )
   }
   cfg._retried = true
   try {
@@ -160,6 +220,10 @@ const BILLING_GUARD_URLS = [
   '/creation/submit',
   '/creation/ecommerce/submit',
   '/creation/face-recognition/submit',
+  // 商拍工作室（Go /api/v1/studio）三个提交口：点数不足同样走引导购买弹框
+  '/studio/tryon/submit',
+  '/studio/pose/submit',
+  '/studio/image-generate/submit',
 ]
 
 function isBillingBlock(body: ApiResponse, url?: string): boolean {
@@ -186,18 +250,19 @@ service.interceptors.response.use(
         // 静默接口（如询价预览）业务失败不弹全局 toast，交由调用方自行降级展示
         message.error(data.msg)
       }
-      return Promise.reject(new Error(data.msg))
+      return Promise.reject(fromBody(data, data.msg))
     }
     return data as unknown as AxiosResponse<ApiResponse<unknown>>
   },
   (error: AxiosError<ApiResponse>) => {
     const { response, config } = error || {}
     if (response?.status === 401 && config) {
-      return handleTokenExpired(config)
+      return handleTokenExpired(config, 401)
     }
     if (response?.status === 403) {
       logoutToLogin()
     }
+    // 刻意 reject 原 AxiosError（老调用方认它的 code/response/isAxiosError），结构化信息用 toApiError 取
     return Promise.reject(error)
   },
 )
@@ -224,9 +289,7 @@ function logoutToLogin() {
     // hash 跳转不重载页面，内存里的用户信息得手动清，否则旧账号的积分/头像会一直挂在导航栏。
     // 用动态 import 而不是顶层 import：stores/userInfo → api/methods → api/index 是一条环，
     // 静态引入会把它闭合成循环依赖
-    void import('@/stores/userInfo')
-      .then(({ useUserInfoStore }) => useUserInfoStore().reset())
-      .catch(() => {})
+    void import('@/stores/userInfo').then(({ useUserInfoStore }) => useUserInfoStore().reset()).catch(() => {})
     window.location.hash = '#/login'
     // hash 跳转不重载页面，复位门闩以便下次会话过期仍能登出
     setTimeout(() => {
@@ -262,6 +325,33 @@ export function get<T = any>(url: string, params?: any, headers?: any): Promise<
     method: 'get',
     url,
     params,
+    headers,
+  })
+}
+
+export function put<T = any>(url: string, data: any, headers?: any, timeout?: number): Promise<ApiResponse<T>> {
+  return service({
+    method: 'put',
+    url,
+    data,
+    headers,
+    ...(timeout ? { timeout } : {}),
+  })
+}
+
+export function del<T = any>(url: string, params?: any): Promise<ApiResponse<T>> {
+  return service({
+    method: 'delete',
+    url,
+    params,
+  })
+}
+
+export function patch<T = any>(url: string, data: any, headers?: any): Promise<ApiResponse<T>> {
+  return service({
+    method: 'patch',
+    url,
+    data,
     headers,
   })
 }
