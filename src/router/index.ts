@@ -5,6 +5,10 @@ import { resolveUnionToken } from '@/utils/unionBridge'
 import { exchangeUnionToken } from '@/api'
 import { markAccountVerified } from '@/utils/authSession'
 import eCommerceRouter from './e-commerce'
+import localLifeRouter from './local-life'
+import toolsRouter from './tools'
+import assetLibraryRouter from './asset-library'
+import studioRouter from './studio'
 
 const hasBridge = !!(window as any).ThirdServiceBridge
 
@@ -40,6 +44,10 @@ const router = createRouter({
           component: () => import('@/views/video/index.vue'),
         },
         ...eCommerceRouter,
+        ...localLifeRouter,
+        ...toolsRouter,
+        ...assetLibraryRouter,
+        ...studioRouter,
         {
           path: '/asset',
           name: 'asset',

@@ -1,6 +1,7 @@
 import './assets/base.css'
 import './assets/iconfont/iconfont.css'
 import './assets/dropdown.less'
+import 'virtual:uno.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'

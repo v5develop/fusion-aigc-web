@@ -117,6 +117,43 @@ https://{BASE_URL}/#/e-commerce/product-kit?unionToken=xxx
 
 ---
 
+## 5. 本地生活
+
+左侧导航「本地生活」下的功能矩阵，路由为普通直达（**不需要 entryCode，也不带 `?tab=`**）。入口页 `/#/local-life`。
+
+| 功能 | 链接 | 说明 |
+|---|---|---|
+| AI文案 | `https://{BASE_URL}/#/local-life/copywriting` | AI帮写 / 爆款仿写 / 自主撰写 |
+| 店铺档案 | `https://{BASE_URL}/#/local-life/shop-profile` | 文案、笔记、视频共用的店铺信息底座 |
+| AI数字人 | `https://{BASE_URL}/#/local-life/digital-human` | 形象 + 音色 + 配音内容 → 口播视频 |
+| 图文笔记 | `https://{BASE_URL}/#/local-life/note` | 构思 → 规划确认 → 出图 |
+| AI海报 | `https://{BASE_URL}/#/local-life/poster` | 模板化营销海报 |
+| AI长图 | `https://{BASE_URL}/#/local-life/long-image` | 分段引导长图 |
+| 数字人口播 | `https://{BASE_URL}/#/local-life/voiceover` | 一段文案 + 一张脸 → 播报视频 |
+| 动作迁移 | `https://{BASE_URL}/#/local-life/action-transfer` | 动作视频肢体迁移给指定人物 |
+| 探店视频 | `https://{BASE_URL}/#/local-life/explore-shop` | 两步：分镜剧本确认 → 出片 |
+| 带货短剧 | `https://{BASE_URL}/#/local-life/short-drama` | 两步：剧情确认 → 出片 |
+| 爆款视频复刻 | `https://{BASE_URL}/#/local-life/video-remake` | 上传/链接解析原片 → 复刻 |
+
+> 这组功能走 Go 网关 `/api/v1/local-life`，与 Java 后端共用同一套登录态；生成任务在服务端有记录，刷新页面后列表轮询自动恢复，无需额外参数。
+
+---
+
+## 6. 商拍工作室 / 工具页（Go 网关）
+
+| 功能 | 链接 | 说明 |
+|---|---|---|
+| 商拍换装 | `https://{BASE_URL}/#/studio/tryon` | 模特 × 服装整批提交，批次拆任务 |
+| 姿态复刻 | `https://{BASE_URL}/#/studio/pose` | 人物图 + 姿势图批量复刻 |
+| 图片生成 | `https://{BASE_URL}/#/studio/imagegen` | 提示词 / 参考图批量出图 |
+| 提示词库 | `https://{BASE_URL}/#/prompt-library` | 官方提示词复制使用，我的可维护 |
+| 资产库增强 | `https://{BASE_URL}/#/asset-library` | 分类 / 标签 / 收藏 / 版本 / 相关资产 |
+| 画布 | `https://{BASE_URL}/#/canvas` | 画布管理与运行历史（节点编辑器规划中） |
+
+> studio 的上传走 Go 网关预签名直传（/api/v1/local-life/upload/presign），与电商页的 Java STS 通道互不影响；studio 提交为批次-任务模型，历史在服务端，刷新自动恢复轮询。
+
+---
+
 ## 附录：电商功能对应的 entryCode
 
 链接上不需要传，但计费、资产筛选等接口会用到这套码值，排查问题时可对照。

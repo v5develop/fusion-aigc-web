@@ -59,9 +59,26 @@ useDebounce(reactiveObj, callback, 300)
 ```
 
 ### 样式规范
-- 全局变量定义在 src/assets/variables.less
-- 页面级样式使用独立 .less 文件
-- 组件样式使用 `<style scoped lang="less">`
+- **本地生活模块（src/views/local-life）及之后的新功能使用 UnoCSS**（uno.config.ts：presetUno + ll-* shortcuts），复杂选择器仍可落 `<style scoped lang="less">`
+- **配色对齐小岐AI 官方「新锤子风 · 藤紫」设计系统**（参考包：小岐AI-5181-s1.1 `foundation/sx-scoped.css`）：藤紫主色 #875f9a（渐变 top #8a639f / bottom #7a548c / press #5f3f6f）、中性 ink #1f2329 / ink-2 #4b5563 / muted #5f6673、语义色 danger #b4433e / success #34795a / warning #94651f（一律 soft 底 + 深字）、轻拟物材质（1px 细描边 + 短投影 + 内凹按压）。局部 naive-ui 主题见 `src/views/local-life/theme.ts`
+- 老页面保持亮紫 #8e66f9 与独立 less：全局变量定义在 src/assets/variables.less，页面级样式使用独立 .less 文件，组件样式使用 `<style scoped lang="less">`
+- ⚠️ UnoCSS 已 blocklist 内置 `container` utility——老代码大量用 `.container` 做布局类名，不能放开
+- ⚠️ 不要新建与 UnoCSS 内置 utility 撞名的全局类（如 `container`、`grid`）
+- ⚠️ 全局 App.vue themeOverrides 的 `common.baseColor: 'red'` 会把彩色按钮文字推导成红色——藤紫按钮必须显式覆盖 naive Button 的 textColor*（见 theme.ts）
+
+## 本地生活模块（src/views/local-life）
+
+对接 Go 网关 `/api/v1/local-life`（fusion_aigc_go），API 封装在 src/api/localLife.ts（snake_case 字段原样收发）。
+入口页 /local-life + 11 个功能页（AI文案 / 店铺档案 / AI数字人 / 图文笔记 / AI海报 / AI长图 / 数字人口播 / 动作迁移 / 探店视频 / 带货短剧 / 爆款视频复刻）。
+关键约定：提交生成带 `Idempotency-Key`；首次生成前走 useAgreement 约定弹窗；列表用 useLLList（有在跑任务自动轮询、跑完刷积分）；详情轮询用 usePollingWhile。
+
+## Go 后端其余模块（同为藤紫设计体系）
+
+- **商拍工作室 src/views/studio**（/api/v1/studio，api-studio.md）：商拍换装 / 姿态复刻 / 图片生成，批次-任务模型，历史游标分页 + 批次轮询（2s，终态 4–7）；批次 payload 可回填「重新编辑」。上传走 src/api/goUpload.ts：Java 直传 `/api/v1/storage/direct`（presign → PUT → confirm，visibility=public）；studio 与资产库只接受白名单内的公有桶地址（运维配置 STUDIO_INPUT_URL_PREFIXES）
+- **提示词库 src/views/prompt-library**（/api/v1/prompt-library）：官方电商/官方通用/我的 三页签，我的支持 CRUD
+- **资产库增强 src/views/asset-library**（/api/v1/asset-library）：分类条/来源/类型/收藏/标签筛选 + 批量打标签 + 详情（版本/相关资产/生成结果）
+- **画布管理 src/views/canvas**（/api/v1/canvas）：画布列表 / 从模板创建 / 重命名 / 另存为 / 删除 / 运行历史；节点编辑器未做
+- 左侧导航（src/views/layout/Navigation）含 9 项 + 分组线；无 iconfont 的入口用内联 SVG path
 
 ### 文件命名
 - 组件目录使用 PascalCase，入口文件为 index.vue/index.ts
