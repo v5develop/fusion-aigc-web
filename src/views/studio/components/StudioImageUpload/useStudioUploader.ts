@@ -27,8 +27,9 @@ export function useStudioUploader() {
     let picked = files.filter((f) => f.type.startsWith('image/'))
     if (picked.length < files.length) message.warning('已跳过非图片文件')
     if (picked.length > room) {
+      const extra = picked.length - room
       picked = picked.slice(0, room)
-      message.warning(`最多还能添加 ${room} 张（上限 ${max} 张），多选的其余 ${files.length - room} 张未添加`)
+      message.warning(`最多还能添加 ${room} 张（上限 ${max} 张），多选的其余 ${extra} 张未添加`)
     }
     if (!picked.length) return
 

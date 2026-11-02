@@ -4,7 +4,9 @@
  *
  * <p>整批提交：N 位模特 × 每位 count_per_model 张，服务端拆任务。
  * 页面只收素材：单品（互斥）、服装图（分件 / 整套两种模式）、模特图、
- * 逐件长度 / 袖长、面料、补充说明与生图参数；切图与提示词反推都在服务端。
+ * 逐件面料 / 长度 / 袖长（没填显示「按图」）、补充说明与生图参数；切图与提示词反推都在服务端。
+ * 面料逐件填，提交时拼成契约的「上衣：真丝；鞋子：皮革」一段（fabric 字段不变）。
+ * 「一套合影 / 分别上传」只在选了 2 件以上时出现；取消单品不删图，选回来图、参数都还在。
  *
  * <p>上传为 s1.1「白边浮片」叠片（StudioImageUpload）：服装图 / 模特图两块同排、中间切口；
  * 分件模式下点服装图叠片打开服装图弹窗（GarmentAngleDialog），每件 6 个固定角度格，点哪格进哪格。
@@ -45,7 +47,6 @@ const message = useMessage()
 const selected = ref<string[]>([])
 const form = reactive({
   set_mode: 'two',
-  fabric: '',
   prompt: '',
   model: '通用',
   resolution: '1k',
@@ -62,23 +63,34 @@ const lookImages = ref<string[]>([])
 const modelImages = ref<string[]>([])
 const lengths = reactive<Record<string, string>>({})
 const sleeves = reactive<Record<string, string>>({})
+/** 逐件面料（按单品 key）；提交时拼成「上衣：真丝；鞋子：皮革」 */
+const fabrics = reactive<Record<string, string>>({})
 
 const selectedItems = computed(() =>
   selected.value.map((key) => OUTFIT_MAP[key]).filter((i): i is StudioOutfitItem => !!i),
 )
-/** 有长度 / 袖长参数可选的单品 */
-const paramItems = computed(() => selectedItems.value.filter((i) => i.length.length || i.sleeve.length))
+/** 参数行下拉：第一项「按图」= 不填（空串），其余为该单品的档位 */
+function pickOptions(values: string[]) {
+  return [{ label: '按图', value: '' }, ...values.map((v) => ({ label: v, value: v }))]
+}
 
 const setModeTabs = [
-  { key: 'two', label: '分件上传' },
-  { key: 'one', label: '整套合影' },
+  { key: 'one', label: '一套合影' },
+  { key: 'two', label: '分别上传' },
 ] as const
+/** 选了 2 件以上才有「一套合影 / 分别上传」可选；不到 2 件按分别上传（合影图保留，切回还在） */
+const showSetMode = computed(() => selected.value.length >= 2)
+watch(showSetMode, (on) => {
+  if (!on && form.set_mode === 'one') form.set_mode = 'two'
+})
 
 /** 选 / 取消单品：互斥的先取消，最多 3 件 */
 function toggleItem(key: string) {
   const at = selected.value.indexOf(key)
   if (at >= 0) {
+    // 图、参数都不删：只是这次不参与，选回来还在
     selected.value.splice(at, 1)
+    message.info(`已移除 ${OUTFIT_MAP[key]?.label ?? key}，图还留着`)
     return
   }
   const clash = (OUTFIT_CONFLICTS[key] ?? []).filter((k) => selected.value.includes(k))
@@ -91,6 +103,10 @@ function toggleItem(key: string) {
   garmentByItem[key] = garmentByItem[key] ?? []
   if (clash.length) {
     message.info(`已取消冲突的${clash.map((k) => OUTFIT_MAP[k]?.label ?? k).join('、')}`)
+  }
+  // 回填的图让合计超过上限：图照样留着，提示先删，提交条同步拦住
+  if (garmentTotal.value > MAX_GARMENT_IMAGES) {
+    message.warning(`服装图合计最多 ${MAX_GARMENT_IMAGES} 张，要换先删一张`)
   }
 }
 
@@ -114,6 +130,8 @@ watch(
 )
 
 const garmentTotal = computed(() => selected.value.reduce((n, key) => n + (garmentByItem[key]?.length ?? 0), 0))
+/** 合计超额（只会出现在取消单品后又选回、旧图回填时）：分别上传模式下拦提交 */
+const garmentOver = computed(() => form.set_mode === 'two' && garmentTotal.value > MAX_GARMENT_IMAGES)
 
 // 每件最多 6 张、合计 9 张的约束在 GarmentAngleDialog 里按 max-per-group / max-total 执行
 
@@ -207,7 +225,16 @@ const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
 
 /** 幂等重试：失败缓存 key 进「重试生成」态；表单任意字段变化换新 key */
 const idem = useIdempotentSubmit()
-idem.bindForm(form, selected, garmentByItem, angleByUrl, lookImages, modelImages, lengths, sleeves)
+idem.bindForm(form, selected, garmentByItem, angleByUrl, lookImages, modelImages, lengths, sleeves, fabrics)
+
+/** 逐件面料拼成契约格式：「上衣：真丝；鞋子：皮革」，空的不写 */
+const fabricText = computed(() =>
+  selected.value
+    .map((key) => ({ key, value: (fabrics[key] ?? '').trim() }))
+    .filter((row) => row.value)
+    .map((row) => `${OUTFIT_MAP[row.key]?.label ?? row.key}：${row.value}`)
+    .join('；'),
+)
 
 const taskCount = computed(() => modelImages.value.length * form.count_per_model)
 const submitText = computed(() => (taskCount.value ? `开始换装（${taskCount.value} 张）` : '开始换装'))
@@ -223,6 +250,7 @@ const disabledReason = computed(() => {
   } else {
     const missing = selected.value.filter((key) => !garmentByItem[key]?.length)
     if (missing.length) return `还没传服装图：${missing.map((key) => OUTFIT_MAP[key]?.label ?? key).join('、')}`
+    if (garmentOver.value) return `服装图合计最多 ${MAX_GARMENT_IMAGES} 张，要换先删一张`
   }
   if (!modelImages.value.length) return '上传 1–9 张模特图，每张一位模特'
   return ''
@@ -239,6 +267,7 @@ async function submit() {
     if (missing.length) {
       return message.warning(`还没传服装图：${missing.map((key) => OUTFIT_MAP[key]?.label ?? key).join('、')}`)
     }
+    if (garmentOver.value) return message.warning(`服装图合计最多 ${MAX_GARMENT_IMAGES} 张，要换先删一张`)
   }
   if (!modelImages.value.length) return message.warning('请上传 1–9 张模特图，每张一位模特')
 
@@ -272,7 +301,7 @@ async function submit() {
     resolution: form.resolution || undefined,
     aspect_ratio: form.aspect_ratio || undefined,
     prompt: form.prompt.trim() || undefined,
-    fabric: form.fabric.trim() || undefined,
+    fabric: fabricText.value || undefined,
     ...(Object.keys(lengthsOut).length ? { lengths: lengthsOut } : {}),
     ...(Object.keys(sleevesOut).length ? { sleeves: sleevesOut } : {}),
   }
@@ -310,6 +339,7 @@ function onReedit(payload: Record<string, unknown>) {
   Object.keys(angleByUrl).forEach((k) => delete angleByUrl[k])
   Object.keys(lengths).forEach((k) => delete lengths[k])
   Object.keys(sleeves).forEach((k) => delete sleeves[k])
+  Object.keys(fabrics).forEach((k) => delete fabrics[k])
   lookImages.value = []
   modelImages.value = []
 
@@ -342,6 +372,15 @@ function onReedit(payload: Record<string, unknown>) {
     // 快照是整套模式却没有整套图（异常 / 旧数据）：退回分件模式，别让提交被拦
     form.set_mode = 'two'
   }
+  const onlyKey = items[0]
+  if (form.set_mode === 'one' && items.length < 2 && onlyKey) {
+    // 不到 2 件页面不提供「一套合影」：合影图挂到这一件的正面，按分别上传回填
+    form.set_mode = 'two'
+    for (const url of lookImages.value) {
+      if (!angleByUrl[url]) angleByUrl[url] = 'front'
+      if (!garmentByItem[onlyKey]?.includes(url)) garmentByItem[onlyKey]?.push(url)
+    }
+  }
 
   modelImages.value = (Array.isArray(p.model_image_urls) ? p.model_image_urls : []).filter((u): u is string => !!u)
 
@@ -351,7 +390,20 @@ function onReedit(payload: Record<string, unknown>) {
     const slv = p.sleeves?.[key]
     if (typeof slv === 'string' && slv) sleeves[key] = slv
   }
-  form.fabric = typeof p.fabric === 'string' ? p.fabric : ''
+  // 面料按「单品：值」拆回逐件；认不出单品的片段并到第一件，不静默丢字
+  const unmatched: string[] = []
+  for (const part of (typeof p.fabric === 'string' ? p.fabric : '').split(/[；;]/)) {
+    const seg = part.trim()
+    if (!seg) continue
+    const m = /^([^：:]+)[：:](.*)$/.exec(seg)
+    const key = m ? items.find((k) => OUTFIT_MAP[k]?.label === m[1]!.trim()) : undefined
+    if (key && m) fabrics[key] = [fabrics[key], m[2]!.trim()].filter(Boolean).join('；')
+    else unmatched.push(seg)
+  }
+  const firstKey = items[0]
+  if (unmatched.length && firstKey) {
+    fabrics[firstKey] = [fabrics[firstKey], ...unmatched].filter(Boolean).join('；')
+  }
   form.prompt = typeof p.prompt === 'string' ? p.prompt : ''
   form.model = MODEL_OPTIONS.some((o) => o.value === p.model) ? (p.model as string) : '通用'
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
@@ -382,8 +434,8 @@ function onReedit(payload: Record<string, unknown>) {
         </div>
       </div>
 
-      <!-- 成套方式 -->
-      <div class="mb-16px">
+      <!-- 成套方式：选了 2 件以上才出现 -->
+      <div v-if="showSetMode" class="mb-16px">
         <div class="ll-section-title flex items-baseline gap-6px">成套方式</div>
         <div class="flex gap-8px flex-wrap">
           <span
@@ -396,7 +448,7 @@ function onReedit(payload: Record<string, unknown>) {
           >
         </div>
         <div class="mt-6px text-11px text-placeholder">
-          分件 = 每件单品单独传图；整套 = 传一张全套服装合影，系统自动切分
+          分别上传 = 每件单品单独传图；一套合影 = 传一张全套服装合影，系统自动切分
         </div>
       </div>
 
@@ -431,7 +483,14 @@ function onReedit(payload: Record<string, unknown>) {
             @remove="(url: string) => removeGarment(url)"
             @clear="clearGarments"
           />
-          <StudioImageUpload v-model="modelImages" :max="MAX_MODEL_IMAGES" label="模特图" cloud />
+          <StudioImageUpload
+            v-model="modelImages"
+            :max="MAX_MODEL_IMAGES"
+            :panel-min="4"
+            panel-fill
+            label="模特图"
+            cloud
+          />
         </div>
         <div class="mt-8px text-11px leading-16px text-placeholder">
           {{
@@ -439,7 +498,7 @@ function onReedit(payload: Record<string, unknown>) {
               ? selectedItems.length
                 ? '点服装图按角度上传，每件最多 6 张；模特图每张一位模特'
                 : '先在上方选择单品，再点服装图上传；模特图每张一位模特'
-              : '整套 = 一张全套服装合影，系统自动切分；模特图每张一位模特'
+              : '一套合影 = 一张全套服装合影，系统自动切分；模特图每张一位模特'
           }}
         </div>
       </div>
@@ -450,49 +509,97 @@ function onReedit(payload: Record<string, unknown>) {
         <n-select v-model:value="form.count_per_model" size="small" :options="COUNT_OPTIONS" />
       </div>
 
-      <!-- 各单品参数 -->
-      <div v-if="paramItems.length" class="mb-16px">
+      <!-- 各单品参数：按件一行（32 缩略图 + 面料 + 长度 / 袖长）；鞋子 / 配饰 / 文胸 / 内裤只有面料；没填显示「按图」 -->
+      <div v-if="selectedItems.length" class="mb-16px">
         <div class="ll-section-title flex items-baseline gap-6px">
-          各单品参数<span class="text-11px text-placeholder font-400">选填</span>
+          各单品参数<span class="text-11px text-placeholder font-400">选填，没填按图</span>
         </div>
-        <div v-for="item in paramItems" :key="item.key" class="flex gap-8px items-center mb-8px">
-          <span class="shrink-0 w-44px text-12px text-ink-2">{{ item.label }}</span>
-          <n-select
-            v-if="item.length.length"
-            class="flex-1 min-w-0"
-            :value="lengths[item.key] || null"
-            size="small"
-            clearable
-            :options="item.length.map((v) => ({ label: v, value: v }))"
-            placeholder="长度"
-            @update:value="(v: string | null) => (lengths[item.key] = v ?? '')"
-          />
-          <n-select
-            v-if="item.sleeve.length"
-            class="flex-1 min-w-0"
-            :value="sleeves[item.key] || null"
-            size="small"
-            clearable
-            :options="item.sleeve.map((v) => ({ label: v, value: v }))"
-            placeholder="袖长"
-            @update:value="(v: string | null) => (sleeves[item.key] = v ?? '')"
-          />
+        <div class="flex flex-col gap-8px">
+          <div v-for="item in selectedItems" :key="item.key" class="flex items-center gap-8px min-w-0">
+            <span
+              class="shrink-0 block w-32px h-32px box-border overflow-hidden border border-solid border-line rounded-4px bg-surface3"
+            >
+              <img
+                v-if="garmentByItem[item.key]?.[0]"
+                class="block w-full h-full object-cover"
+                :src="garmentByItem[item.key]?.[0]"
+                alt=""
+              />
+            </span>
+            <span class="shrink-0 w-36px text-11px text-ink-2">{{ item.label }}</span>
+            <input
+              v-model="fabrics[item.key]"
+              class="flex-[1_1_0] min-w-0 h-30px box-border px-9px border border-solid border-line rounded-6px bg-white text-11px text-ink-2 outline-none shadow-[inset_0_1px_2px_rgba(31,35,41,0.09)] placeholder:text-placeholder focus:border-violet"
+              :maxlength="3000"
+              placeholder="面料（选填）"
+              :aria-label="`${item.label}面料`"
+            />
+            <n-popselect
+              v-if="item.length.length"
+              :value="lengths[item.key] ?? ''"
+              :options="pickOptions(item.length)"
+              trigger="click"
+              size="small"
+              scrollable
+              @update:value="(v: string) => (lengths[item.key] = v ?? '')"
+            >
+              <button
+                type="button"
+                class="flex-[1.15_1_0] min-w-0 flex items-center gap-5px h-30px box-border pl-8px pr-6px border border-solid border-line rounded-6px bg-white text-11px text-ink-2 cursor-pointer shadow-[inset_0_1px_2px_rgba(31,35,41,0.09)] hover:border-violet-line focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2"
+                :aria-label="`${item.label}长度：${lengths[item.key] || '按图'}`"
+                aria-haspopup="listbox"
+              >
+                <span class="shrink-0 text-10px text-placeholder">长度</span>
+                <b
+                  class="flex-1 min-w-0 overflow-hidden text-left text-11px font-400 whitespace-nowrap text-ellipsis"
+                  >{{ lengths[item.key] || '按图' }}</b
+                >
+                <svg
+                  class="shrink-0 w-10px h-10px text-placeholder"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  aria-hidden="true"
+                >
+                  <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </n-popselect>
+            <n-popselect
+              v-if="item.sleeve.length"
+              :value="sleeves[item.key] ?? ''"
+              :options="pickOptions(item.sleeve)"
+              trigger="click"
+              size="small"
+              scrollable
+              @update:value="(v: string) => (sleeves[item.key] = v ?? '')"
+            >
+              <button
+                type="button"
+                class="flex-[1.15_1_0] min-w-0 flex items-center gap-5px h-30px box-border pl-8px pr-6px border border-solid border-line rounded-6px bg-white text-11px text-ink-2 cursor-pointer shadow-[inset_0_1px_2px_rgba(31,35,41,0.09)] hover:border-violet-line focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2"
+                :aria-label="`${item.label}袖长：${sleeves[item.key] || '按图'}`"
+                aria-haspopup="listbox"
+              >
+                <span class="shrink-0 text-10px text-placeholder">袖长</span>
+                <b
+                  class="flex-1 min-w-0 overflow-hidden text-left text-11px font-400 whitespace-nowrap text-ellipsis"
+                  >{{ sleeves[item.key] || '按图' }}</b
+                >
+                <svg
+                  class="shrink-0 w-10px h-10px text-placeholder"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  aria-hidden="true"
+                >
+                  <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </n-popselect>
+          </div>
         </div>
-      </div>
-
-      <!-- 面料 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">
-          面料<span class="text-11px text-placeholder font-400">选填，按件写</span>
-        </div>
-        <n-input
-          v-model:value="form.fabric"
-          type="textarea"
-          :rows="2"
-          :maxlength="3000"
-          show-count
-          placeholder="上衣：真丝；鞋子：皮革"
-        />
       </div>
 
       <!-- 补充说明 -->

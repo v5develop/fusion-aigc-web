@@ -4,7 +4,8 @@
  *
  * <p>一张人物图锁定身份 / 服装 / 场景，1–9 张姿势参考图各出一个任务。
  * 补充说明拆两处：全局说明放 global_prompt，单张动作说明按姿势下标进 pose_prompts。
- * 两块入口为 s1.1 白边浮片叠片（StudioImageUpload），同排、中间切口。
+ * 服务端按姿势拆任务，每张的提示词 = 全局补充 + 本张补充（换行拼，空的不写）；姿态没有「生成张数」。
+ * 两块入口为 s1.1 白边浮片叠片（StudioImageUpload），同排、中间切口；姿势满 9 张只拦点击 / 拖入，悬停照常摊开。
  */
 import { computed, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
@@ -14,6 +15,7 @@ import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.v
 import StudioImageUpload from '../components/StudioImageUpload/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
+import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
 import { useIdempotentSubmit } from '../hooks.ts'
 import { MAX_POSE_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
 
@@ -43,6 +45,13 @@ const posePrompts = computed(() => {
   })
   return out
 })
+
+/** 逐张补充那一行删图：图和它的说明一起删 */
+function removePose(url: string) {
+  const at = poseImages.value.indexOf(url)
+  if (at >= 0) poseImages.value.splice(at, 1)
+  delete poseNotes[url]
+}
 
 // ---------------- 提交 ----------------
 
@@ -141,7 +150,7 @@ function onReedit(payload: Record<string, unknown>) {
         </div>
         <div class="flex items-start gap-16px">
           <StudioImageUpload v-model="sourceImages" :max="1" :multiple="false" label="人物图" hint="1 张" cloud />
-          <StudioImageUpload v-model="poseImages" :max="MAX_POSE_IMAGES" label="姿势图" cloud />
+          <StudioImageUpload v-model="poseImages" :max="MAX_POSE_IMAGES" panel-fill label="姿势图" cloud />
         </div>
         <div class="mt-8px text-11px leading-16px text-placeholder">
           人物图锁定身份 / 服装 / 场景；姿势图只取动作与表情
@@ -153,20 +162,40 @@ function onReedit(payload: Record<string, unknown>) {
         <div class="ll-section-title flex items-baseline gap-6px">
           逐张动作说明<span class="text-11px text-placeholder font-400">选填，对应每张姿势图</span>
         </div>
-        <div v-for="(url, i) in poseImages" :key="url" class="flex gap-8px items-center mb-8px">
-          <img
-            class="shrink-0 block w-32px h-32px border border-solid border-line rounded-4px object-cover"
-            :src="url"
-            alt=""
-          />
-          <span class="shrink-0 w-40px text-11px text-ink-2">姿势{{ i + 1 }}</span>
-          <n-input
-            v-model:value="poseNotes[url]"
-            class="flex-1 min-w-0"
-            size="small"
-            :maxlength="3000"
-            placeholder="这张的动作补充（选填）"
-          />
+        <!-- 两列：每格 32 缩略图 + 30 高 / 11px 单行输入；缩略图右上角悬停出删除 -->
+        <div class="grid grid-cols-2 gap-x-12px gap-y-8px items-start mt-5px">
+          <div v-for="(url, i) in poseImages" :key="url" class="group relative flex items-center gap-8px min-w-0">
+            <span
+              class="shrink-0 block w-32px h-32px box-border overflow-hidden border border-solid border-line rounded-4px bg-surface3"
+            >
+              <img class="block w-full h-full object-cover" :src="url" :alt="`姿势${i + 1}`" />
+            </span>
+            <StudioMedBtn
+              :label="`删除姿势${i + 1}`"
+              class="top-[-9px] left-21px z-2 opacity-0 pointer-events-none transition-opacity duration-120 group-hover:(opacity-100 pointer-events-auto) group-focus-within:(opacity-100 pointer-events-auto) motion-reduce:transition-none"
+              @click="removePose(url)"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
+              </svg>
+            </StudioMedBtn>
+            <input
+              v-model="poseNotes[url]"
+              type="text"
+              class="flex-[1_1_0] w-0 min-w-0 h-30px box-border px-10px border border-solid border-line rounded-6px bg-white text-11px leading-18px text-ink outline-none shadow-[inset_0_1px_2px_rgba(31,35,41,0.09)] placeholder:text-placeholder focus:border-violet"
+              :maxlength="3000"
+              placeholder="这张的动作补充（选填）"
+              :aria-label="`姿势${i + 1}：动作补充`"
+            />
+          </div>
         </div>
       </div>
 

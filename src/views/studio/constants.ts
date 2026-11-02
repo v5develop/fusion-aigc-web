@@ -37,15 +37,30 @@ export interface StudioOutfitItem {
 
 /** 单品 1–3 件；length / sleeve 为该单品可选的长度 / 袖长档（空数组 = 无此参数） */
 export const OUTFIT_ITEMS: StudioOutfitItem[] = [
-  { key: 'top', label: '上衣', length: ['及腰', '及胯', '遮臀', '长款'], sleeve: ['无袖', '短袖', '五分袖', '七分袖', '长袖'] },
+  {
+    key: 'top',
+    label: '上衣',
+    length: ['及腰', '及胯', '遮臀', '长款'],
+    sleeve: ['无袖', '短袖', '五分袖', '七分袖', '长袖'],
+  },
   {
     key: 'bottom',
     label: '下装',
     length: ['短裤', '五分裤', '七分裤', '九分裤', '长裤', '短裙', '中裙', '长裙'],
     sleeve: [],
   },
-  { key: 'dress', label: '连衣裙', length: ['膝上', '及膝', '小腿中部', '及踝', '及地'], sleeve: ['无袖', '短袖', '五分袖', '七分袖', '长袖'] },
-  { key: 'outer', label: '外套', length: ['短款', '中长', '长款'], sleeve: ['无袖', '短袖', '五分袖', '七分袖', '长袖'] },
+  {
+    key: 'dress',
+    label: '连衣裙',
+    length: ['膝上', '及膝', '小腿中部', '及踝', '及地'],
+    sleeve: ['无袖', '短袖', '五分袖', '七分袖', '长袖'],
+  },
+  {
+    key: 'outer',
+    label: '外套',
+    length: ['短款', '中长', '长款'],
+    sleeve: ['无袖', '短袖', '五分袖', '七分袖', '长袖'],
+  },
   { key: 'shoes', label: '鞋子', length: [], sleeve: [] },
   { key: 'accessory', label: '配饰', length: [], sleeve: [] },
   { key: 'bra', label: '文胸', length: [], sleeve: [] },
@@ -153,10 +168,10 @@ export const KIND_LABEL: Record<StudioKind, string> = {
   imagegen: '图片生成',
 }
 
-/** 任务备注行：商拍=模特 N · 第 M 张；姿态=姿势 N；图片生成=第 N 张 */
+/** 任务备注行：商拍=模特 N · 第 M 张；姿态=「姿态复刻 · 姿势 N」（s1.1 E6）；图片生成=第 N 张 */
 export function taskCaption(task: StudioTask) {
   if (task.kind === 'tryon') return `模特${task.model_index + 1} · 第${task.shot_index + 1}张`
-  if (task.kind === 'pose') return `姿势${task.pose_index + 1}`
+  if (task.kind === 'pose') return `姿态复刻 · 姿势 ${task.pose_index + 1}`
   return `第${task.shot_index + 1}张`
 }
 

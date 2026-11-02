@@ -9,6 +9,8 @@
  * - 空态是同一张白边浮片：图标 18 + 文案 9/13；
  * - 右上角删除钮（清空这一组）跟着叠片走；右下角外沿 -12/-12 是云钮（在调用方传 cloud / onCloud 时出现）；
  * - 下方悬停面板（12 高透明桥 + 180ms 接力）：大图预览（contain，不撑卡）+ 3 列逐张删除。
+ *   panelMin：张数到这个数才出面板（商拍模特 4 位起），不到时只摊开，逐张删除钮落在每张片子右下角；
+ *   panelFill：面板从本块左缘拉到同排右缘（s1.1 姿势 / 模特面板「左缘压切口、右缘到卡右缘」）。
  * 同排多个入口（父容器 flex gap-16px）之间自动画「切口」细线。
  * 入口外面还包了一层（如工具页 ToolUploadSlot）时，同排容器打 `data-plate-row`，摊开压缩按整排量。
  *
@@ -34,6 +36,8 @@ const {
   tagOf,
   onCloud,
   name = '',
+  panelMin = 1,
+  panelFill = false,
 } = defineProps<{
   /** 上限张数（1–9 由调用方按契约传入） */
   max?: number
@@ -56,6 +60,10 @@ const {
   onCloud?: () => void
   /** 无障碍名称里的图片名；不传用 label（label 为空时兜底「图片」）。单角色页不显示说明时用它 */
   name?: string
+  /** 至少几张才出悬停面板；不到时只摊开，片子上直接逐张删 */
+  panelMin?: number
+  /** 面板宽度拉到同排右缘（左缘对齐本块） */
+  panelFill?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -115,6 +123,11 @@ function measure() {
   step.value = gaps ? Math.min(63, Math.max(8, (room - PLATE_W) / gaps)) : 63
   // 面板默认左对齐入口，放不下就往左挪，右缘不越过同排容器
   const rootRect = root.getBoundingClientRect()
+  if (panelFill) {
+    panelWidth.value = Math.max(PANEL_W, parentRect.right - rootRect.left)
+    panelLeft.value = Math.min(0, parentRect.right - rootRect.left - panelWidth.value)
+    return
+  }
   panelWidth.value = Math.min(PANEL_W, parentRect.width)
   panelLeft.value = Math.min(0, parentRect.right - rootRect.left - panelWidth.value)
 }
@@ -155,7 +168,17 @@ onBeforeUnmount(clearLeave)
 const entryWidth = computed(() => `${PLATE_W + (n.value - 1) * (expanded.value ? step.value : STACK)}px`)
 const plateGap = computed(() => `${(expanded.value ? step.value : STACK) - PLATE_W}px`)
 const delLeft = computed(() => `${PLATE_W + (n.value - 1) * (expanded.value ? step.value : STACK) - 8}px`)
-const panelOpen = computed(() => expanded.value && count.value > 0)
+const panelOpen = computed(() => expanded.value && count.value > 0 && count.value >= panelMin)
+/** 不出面板时（张数 < panelMin）片子上的逐张删除钮：片内右下角 3/3，跟着摊开走 */
+const plateDels = computed(() =>
+  count.value && count.value < panelMin && !disabled
+    ? plates.value.map((url, i) => ({
+        url,
+        index: count.value - plates.value.length + i,
+        left: `${i * (expanded.value ? step.value : STACK) + PLATE_W - 23}px`,
+      }))
+    : [],
+)
 
 // ---------------- 增删 ----------------
 
@@ -238,9 +261,20 @@ function onFiles(event: Event) {
 }
 
 function onDrop(event: DragEvent) {
-  if (picker || disabled || uploading.value) return
+  if (disabled || uploading.value) return
   const files = [...(event.dataTransfer?.files ?? [])]
-  if (files.length) void addFiles(files)
+  if (!files.length) return
+  // picker 模式由页面的弹窗按自己的规则入组：拖进来就打开弹窗，不静默丢
+  if (picker) {
+    emit('pick')
+    return
+  }
+  // 满额拖入与点入口同一句提示，不发上传
+  if (full.value) {
+    message.warning(`满了，最多 ${max} 张；要换先删一张`)
+    return
+  }
+  void addFiles(files)
 }
 
 const entryLabel = computed(() => {
@@ -371,6 +405,29 @@ const seamCls = [
             stroke-linejoin="round"
             transform="translate(0 -0.5)"
           />
+        </svg>
+      </StudioMedBtn>
+
+      <!-- 不出面板时：逐张删除钮落在每张片子右下角，摊开时才可点 -->
+      <StudioMedBtn
+        v-for="d in plateDels"
+        :key="d.url"
+        :label="`删除第 ${d.index + 1} 张${label}`"
+        class="top-77px z-13 transition-[left,opacity] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none"
+        :class="expanded ? '' : 'opacity-0 pointer-events-none'"
+        :style="{ left: d.left }"
+        @click.stop="removeAt(d.index)"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
         </svg>
       </StudioMedBtn>
 
