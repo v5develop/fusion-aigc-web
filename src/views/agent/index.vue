@@ -141,12 +141,6 @@ function pickSkill(id: string) {
   idem.invalidate()
 }
 
-function clearSkill() {
-  if (!selectedSkillId.value) return
-  selectedSkillId.value = ''
-  idem.invalidate()
-}
-
 const selectedSkill = computed(() => skills.value.find((s) => s.agentSkillId === selectedSkillId.value))
 const skillOptions = computed(() =>
   skills.value.map((s) => ({ key: s.agentSkillId, label: [s.title, versionLabel(s)].filter(Boolean).join(' ') })),
@@ -957,27 +951,6 @@ onUnmounted(() => controller?.abort())
                     <path :d="ICON.sparkle" />
                   </svg>
                   {{ selectedSkill.title }}
-                  <button
-                    type="button"
-                    :aria-label="`移除技能 ${selectedSkill.title}`"
-                    :disabled="streaming"
-                    :class="[
-                      'grid h-16px w-16px place-items-center rounded-999px border-none bg-transparent p-0 text-violet-ink cursor-pointer hover:bg-violet-soft-2 disabled:cursor-not-allowed',
-                      FOCUS,
-                    ]"
-                    @click="clearSkill"
-                  >
-                    <svg
-                      class="h-10px w-10px"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.4"
-                      aria-hidden="true"
-                    >
-                      <path :d="ICON.x" />
-                    </svg>
-                  </button>
                 </span>
               </div>
               <n-input
