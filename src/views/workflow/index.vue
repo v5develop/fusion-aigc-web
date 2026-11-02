@@ -9,7 +9,7 @@
  */
 import { computed, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { useMessage } from 'naive-ui'
+import { NSelect, useMessage, type SelectProps } from 'naive-ui'
 import { toApiError } from '@/api/index.ts'
 import {
   submitWorkflow,
@@ -251,6 +251,24 @@ const STATUS: Record<string, { text: string; cls: string }> = {
 const statusOf = (s: string) => STATUS[s] ?? { text: s || '未知', cls: 'll-chip-warning' }
 const formatTime = (v?: string | null) => (v ? v.replace('T', ' ').slice(0, 16) : '')
 
+/** 下拉与同面板输入框对齐：圆角 6px、字号 13px、边框 line-strong、聚焦 violet */
+const selectThemeOverrides: NonNullable<SelectProps['themeOverrides']> = {
+  peers: {
+    InternalSelection: {
+      borderRadius: '6px',
+      fontSizeMedium: '13px',
+      heightMedium: '34px',
+      border: '1px solid #d9dde2',
+      borderHover: '1px solid #875F9A',
+      borderActive: '1px solid #875F9A',
+      borderFocus: '1px solid #875F9A',
+      boxShadowActive: '0 0 0 2px rgba(135,95,154,0.18)',
+      boxShadowFocus: '0 0 0 2px rgba(135,95,154,0.18)',
+      caretColor: '#875F9A',
+    },
+  },
+}
+
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 const inputCls =
   'w-full box-border rounded-6px border border-solid border-line-strong bg-white px-10px py-7px text-13px text-ink ' +
@@ -349,9 +367,15 @@ const inputCls =
                 {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
               </label>
             </div>
-            <select :id="`wf-field-${f.key}`" v-model="values[f.key]" :class="inputCls">
-              <option v-for="opt in f.options" :key="opt" :value="opt">{{ opt }}</option>
-            </select>
+            <n-select
+              :id="`wf-field-${f.key}`"
+              v-model:value="values[f.key]"
+              class="w-full"
+              size="medium"
+              :disabled="submitting"
+              :options="(f.options ?? []).map((opt) => ({ label: String(opt), value: opt }))"
+              :theme-overrides="selectThemeOverrides"
+            />
           </div>
 
           <div v-else-if="f.type === 'number'">
