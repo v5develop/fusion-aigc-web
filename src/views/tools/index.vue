@@ -425,8 +425,8 @@ const inputCls =
                 ]"
               >
                 <span
-                  class="flex-none grid place-items-center w-30px h-30px rounded-6px bg-violet-soft text-violet-ink"
-                  :class="e.route ? '' : 'opacity-60'"
+                  class="flex-none grid place-items-center w-30px h-30px rounded-6px bg-violet-soft"
+                  :class="e.route ? 'text-violet-ink' : 'text-muted opacity-60'"
                   aria-hidden="true"
                 >
                   <svg

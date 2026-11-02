@@ -31,9 +31,12 @@ type Spec = [id: string, name: string, tagline: string]
 
 const byId = new Map<string, ToolItem>(tools.map((t) => [t.id, t]))
 
+/** 即将开放条目没有注册表图标，借用「图片生成」的通用图标占位，保持图标框一致 */
+const PLACEHOLDER_ICON = byId.get('image-generate')?.icon
+
 function entry([id, name, tagline]: Spec): CatalogEntry {
   const t = byId.get(id)
-  return { id, name: t?.name ?? name, tagline, route: t?.route, icon: t?.icon }
+  return { id, name: t?.name ?? name, tagline, route: t?.route, icon: t?.icon ?? PLACEHOLDER_ICON }
 }
 
 const group = (label: string, specs: Spec[]): CatalogGroup => ({ label, entries: specs.map(entry) })
