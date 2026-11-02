@@ -9,6 +9,18 @@ import EditorIcon from '../EditorIcon.vue'
 import { canvasUploadMedia } from '@/api/canvasHome.ts'
 import { editorMessage, useCanvasEditor } from '../useCanvasEditor.ts'
 import type { CanvasNodeData } from '../types.ts'
+import { portClass } from '../ports.ts'
+import {
+  CHECKER_BG,
+  FOCUS_RING,
+  NODE_CARD,
+  NODE_CARD_SELECTED,
+  NODE_HEAD,
+  NODE_TITLE,
+  type QuickAddKind,
+} from '../ui.ts'
+import NodeMenu from '../NodeMenu.vue'
+import NodeQuickAdd from '../NodeQuickAdd.vue'
 
 const props = defineProps<{
   id: string
@@ -16,7 +28,7 @@ const props = defineProps<{
   selected?: boolean
 }>()
 
-const emit = defineEmits<{ remove: [] }>()
+const emit = defineEmits<{ remove: []; quickAdd: [kind: QuickAddKind] }>()
 
 const store = useCanvasEditor()
 const fileRef = ref<HTMLInputElement | null>(null)
@@ -24,6 +36,24 @@ const uploading = ref(false)
 
 const isResult = computed(() => props.data.kind === 'result')
 const width = computed(() => props.data.width ?? 240)
+
+/**
+ * 图片区高度（原型 CanvasImageNode：默认 240×200，body 内边距 12；图片加载后按原图比例撑开，
+ * 媒体高度上限 520）。原型把比例写回快照，这里只做本地显示计算，不改快照。
+ */
+const naturalRatio = ref(0)
+const mediaHeight = computed(() => {
+  const inner = width.value - 24
+  if (props.data.image && naturalRatio.value > 0) {
+    return Math.round(Math.min(520, Math.max(100, inner / naturalRatio.value)))
+  }
+  return Math.max(100, (props.data.height ?? 200) - 36 - 24)
+})
+
+function onImageLoad(event: Event) {
+  const img = event.target as HTMLImageElement
+  if (img.naturalWidth && img.naturalHeight) naturalRatio.value = img.naturalWidth / img.naturalHeight
+}
 
 function pick() {
   fileRef.value?.click()
@@ -47,45 +77,61 @@ async function onFile(event: Event) {
 </script>
 
 <template>
-  <div class="ll-card group relative text-12px text-ink" :class="{ 'is-selected': selected, '!border-violet !shadow-[0_0_0_2px_rgba(135,95,154,0.18),0_10px_18px_-10px_rgba(31,35,41,0.22)]': selected }" :style="{ width: `${width}px` }">
-    <header class="flex h-34px items-center gap-8px pl-12px pr-10px border-b border-line-soft rounded-t-10px">
-      <span class="shrink-0 w-8px h-8px rounded-full bg-[#38bdf8]" />
-      <span class="overflow-hidden flex-1 text-13px font-600 text-ellipsis whitespace-nowrap">{{ data.title || '图片' }}</span>
-      <span class="shrink-0 px-6px py-1px rounded-4px bg-violet-soft text-violet-ink text-10px leading-16px">{{ isResult ? '结果图' : '参考图' }}</span>
-      <button v-if="!isResult" type="button" class="absolute -top-9px -right-9px z-3 grid w-20px h-20px p-0 place-items-center border border-line rounded-full bg-white text-muted text-12px leading-none cursor-pointer opacity-0 transition-opacity duration-120 group-hover:opacity-100 hover:border-danger-line hover:bg-danger-soft hover:text-danger" title="删除节点" @click.stop="emit('remove')">×</button>
+  <div
+    :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
+    :style="{ width: `${width}px` }"
+  >
+    <header :class="NODE_HEAD">
+      <span class="flex-1" :class="NODE_TITLE">{{ data.title || '图片' }}</span>
+      <span
+        v-if="isResult"
+        class="shrink-0 px-6px py-1px border border-solid border-violet-line rounded-3px bg-violet-soft text-violet-ink text-11px font-600 leading-16px"
+        >结果图</span
+      >
+      <NodeMenu :title="data.title || '图片'" :removable="!isResult" @remove="emit('remove')" />
     </header>
-    <div class="px-10px pt-8px pb-10px">
-      <div class="grid w-full place-items-center overflow-hidden rounded-8px border border-line-soft [background:repeating-conic-gradient(#f3f4f5_0%,#f3f4f5_25%,transparent_0%,transparent_50%)_0_0/14px_14px,#f7f8f9]" :style="{ height: `${Math.max(120, width * 0.85)}px` }">
-        <img v-if="data.image" :src="data.image" :alt="data.title" draggable="false" class="block w-full max-h-240px object-contain" />
+    <div class="p-12px rounded-b-8px bg-surface3">
+      <div class="grid w-full place-items-center overflow-hidden rounded-4px" :style="{ height: `${mediaHeight}px` }">
+        <img
+          v-if="data.image"
+          :src="data.image"
+          :alt="data.title"
+          draggable="false"
+          class="block w-full h-full object-contain"
+          @load="onImageLoad"
+        />
         <button
           v-else-if="!isResult"
           type="button"
-          class="flex flex-col items-center gap-6px w-full px-0 py-22px border-none bg-transparent text-placeholder text-11px hover:text-violet-ink cursor-pointer nodrag"
+          class="flex flex-col w-full h-full items-center justify-center gap-8px p-0 border border-dashed border-line-strong rounded-6px bg-surface2 text-placeholder text-11px cursor-pointer hover:text-violet-ink nodrag"
+          :class="FOCUS_RING"
           :disabled="uploading"
+          title="上传图片"
           @click.stop="pick"
         >
           <EditorIcon name="image" :size="22" />
           <span>{{ uploading ? '上传中…' : '上传图片' }}</span>
         </button>
-        <span v-else class="flex flex-col items-center gap-6px w-full px-0 py-22px border-none bg-transparent text-placeholder text-11px hover:text-violet-ink cursor-default">
+        <span
+          v-else
+          class="flex flex-col w-full h-full items-center justify-center gap-8px rounded-6px text-placeholder text-11px"
+          :class="CHECKER_BG"
+        >
           <EditorIcon name="image" :size="22" />
           <span>连一条图片输入</span>
         </span>
       </div>
-      <input ref="fileRef" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="nodrag" hidden @change="onFile" />
+      <input
+        ref="fileRef"
+        type="file"
+        accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+        class="nodrag"
+        hidden
+        @change="onFile"
+      />
     </div>
-    <Handle
-      v-if="isResult"
-      id="image-in"
-      type="target"
-      :position="Position.Left"
-      class="ed-port ed-port--image"
-    />
-    <Handle id="image" type="source" :position="Position.Right" class="ed-port ed-port--image" />
+    <NodeQuickAdd :kinds="['image-model', 'video-model', 'tool']" @pick="emit('quickAdd', $event)" />
+    <Handle v-if="isResult" id="image-in" type="target" :position="Position.Left" :class="portClass('image')" />
+    <Handle id="image" type="source" :position="Position.Right" :class="portClass('image')" />
   </div>
 </template>
-
-<style scoped lang="less">
-// Handle 是 Vue Flow 组件，自带 .vue-flow__handle 样式，端口样式留在 Less 以保证优先级
-@import '../node-base.less';
-</style>

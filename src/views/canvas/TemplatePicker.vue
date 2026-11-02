@@ -7,10 +7,11 @@ import { ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { canvasFromTemplate, canvasTemplates } from '@/api/canvasHome.ts'
 import type { ICanvasTemplate } from '@/api/canvasHome.ts'
+import { toApiError } from '@/api/index.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 
-const emit = defineEmits<{ created: [] }>()
+const emit = defineEmits<{ created: [id: string] }>()
 
 const message = useMessage()
 
@@ -40,13 +41,21 @@ watch(scope, () => {
   void loadTemplates()
 })
 
+// 切页签快速来回时，慢回包不能把当前页签的列表覆盖掉
+let loadSeq = 0
+
 async function loadTemplates() {
+  const cur = ++loadSeq
   loading.value = true
   try {
     const res = await canvasTemplates(scope.value)
+    if (cur !== loadSeq) return
     templates.value = res.data?.items ?? []
+  } catch {
+    // 业务失败拦截器已 toast；网络失败在这里兜底
+    if (cur === loadSeq) templates.value = []
   } finally {
-    loading.value = false
+    if (cur === loadSeq) loading.value = false
   }
 }
 
@@ -55,13 +64,15 @@ async function create() {
   if (!selected.value) return message.warning('请先选择一个模板')
   creating.value = true
   try {
-    await canvasFromTemplate({
+    const res = await canvasFromTemplate({
       template_id: selected.value.id,
       title: title.value.trim() || undefined,
     })
     message.success('画布已创建')
     show.value = false
-    emit('created')
+    emit('created', res.data?.id ?? '')
+  } catch (err) {
+    if ((toApiError(err)?.code ?? -1) === -1) message.error('创建失败，请检查网络后重试')
   } finally {
     creating.value = false
   }
@@ -83,10 +94,18 @@ async function create() {
             {{ s.label }}
           </span>
         </div>
-        <n-input v-model:value="title" :maxlength="100" placeholder="画布标题，选填，留空用模板标题" style="width: 260px" />
+        <n-input
+          v-model:value="title"
+          :maxlength="100"
+          placeholder="画布标题，选填，留空用模板标题"
+          style="width: 260px"
+        />
       </div>
 
-      <div class="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-12px max-h-420px overflow-auto min-h-160px" v-loading="loading">
+      <div
+        class="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-12px max-h-420px overflow-auto min-h-160px"
+        v-loading="loading"
+      >
         <div
           v-for="t in templates"
           :key="t.id"
@@ -99,14 +118,24 @@ async function create() {
             <div v-else class="h-full flex items-center justify-center text-13px text-violet-ink">模板</div>
           </div>
           <div class="px-12px pt-10px pb-12px">
-            <div class="text-13px font-600 text-ink mb-4px overflow-hidden text-ellipsis whitespace-nowrap">{{ t.title }}</div>
-            <div class="text-12px text-muted leading-18px mb-6px overflow-hidden min-h-36px [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">{{ t.description }}</div>
+            <div class="text-13px font-600 text-ink mb-4px overflow-hidden text-ellipsis whitespace-nowrap">
+              {{ t.title }}
+            </div>
+            <div
+              class="text-12px text-muted leading-18px mb-6px overflow-hidden min-h-36px [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+            >
+              {{ t.description }}
+            </div>
             <div class="text-11px text-placeholder">{{ t.node_count }} 个节点 · {{ t.edge_count }} 条连线</div>
           </div>
-          <span v-if="selected?.id === t.id" class="ll-chip ll-chip-running absolute top-8px right-8px !bg-white">已选择</span>
+          <span v-if="selected?.id === t.id" class="ll-chip ll-chip-running absolute top-8px right-8px !bg-white"
+            >已选择</span
+          >
         </div>
 
-        <div v-if="!loading && !templates.length" class="ll-empty col-span-full bg-white rounded-12px py-50px">这个范围下暂无模板</div>
+        <div v-if="!loading && !templates.length" class="ll-empty col-span-full bg-white rounded-12px py-50px">
+          这个范围下暂无模板
+        </div>
       </div>
     </div>
 

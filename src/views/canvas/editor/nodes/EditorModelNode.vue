@@ -4,12 +4,29 @@
  * 端口：prompt（1 条，新线替换旧线）+ image（视频模型为 image1/image2 首尾帧）；
  * 输出 image-out；候选通过参数面板 / 缩略图选择（select-candidate 写回服务端）。
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import EditorIcon from '../EditorIcon.vue'
 import RunErrorNotice from '../RunErrorNotice.vue'
 import { useCanvasEditor } from '../useCanvasEditor.ts'
 import type { CanvasNodeData } from '../types.ts'
+import { portClass, portLabelClass } from '../ports.ts'
+import { normalizeHandle } from '../graph.ts'
+import {
+  CHECKER_BG,
+  FOCUS_RING,
+  NODE_BADGE,
+  NODE_CARD,
+  NODE_CARD_SELECTED,
+  NODE_HEAD,
+  NODE_ICON_BTN,
+  NODE_RUN_BTN,
+  NODE_TITLE,
+  PORT_COUNT,
+  type QuickAddKind,
+} from '../ui.ts'
+import NodeMenu from '../NodeMenu.vue'
+import NodeQuickAdd from '../NodeQuickAdd.vue'
 
 const props = defineProps<{
   id: string
@@ -17,29 +34,45 @@ const props = defineProps<{
   selected?: boolean
 }>()
 
-const emit = defineEmits<{ remove: [] }>()
+const emit = defineEmits<{ remove: []; quickAdd: [kind: QuickAddKind] }>()
 
 const store = useCanvasEditor()
 
 const isVideo = computed(() => props.data.kind === 'video')
 const isRunning = computed(() => props.data.status === 'running' || props.data.status === 'queued')
-const width = computed(() => props.data.width ?? (isVideo.value ? 340 : 320))
+const width = computed(() => props.data.width ?? (isVideo.value ? 338 : 318))
 const candidates = computed(() => props.data.candidates ?? [])
 const selectedIdx = computed(() => props.data.selectedCandidate ?? 0)
 
-const summary = computed(() => {
-  const parts: string[] = []
-  if (props.data.model) parts.push(props.data.model)
-  if (isVideo.value) {
-    if (props.data.duration) parts.push(props.data.duration)
-    if (props.data.size) parts.push(props.data.size)
-  } else if (props.data.size) {
-    parts.push(props.data.size)
+/** 头部副标题：模型名（与标题相同时不重复，同原型） */
+const modelLine = computed(() => (props.data.model && props.data.model !== props.data.title ? props.data.model : ''))
+
+/** 参考图计数徽标：连到 image 口的线数（原型 .wf-model-node__ref-count） */
+const imageRefCount = computed(
+  () =>
+    store.edges.value.filter((edge) => edge.target === props.id && normalizeHandle(edge.targetHandle) === 'image')
+      .length,
+)
+
+/**
+ * 结果区高度（原型默认 318×364 / 视频 338×350，结果区 = 节点高 − 头 36 − 内边距 18；
+ * 出图后按原图比例，媒体高度上限 540）。只做本地显示计算，不写回快照。
+ */
+const naturalRatio = ref(0)
+const mediaHeight = computed(() => {
+  const inner = width.value - 20
+  if ((props.data.image || props.data.video) && naturalRatio.value > 0) {
+    return Math.round(Math.min(540, Math.max(120, inner / naturalRatio.value)))
   }
-  if (props.data.ratio) parts.push(props.data.ratio)
-  if (!isVideo.value && (props.data.count ?? 1) > 1) parts.push(`${props.data.count}张`)
-  return parts.join(' · ')
+  return Math.max(120, (props.data.height ?? (isVideo.value ? 350 : 364)) - 36 - 18)
 })
+
+function onMediaLoad(event: Event) {
+  const el = event.target as HTMLImageElement | HTMLVideoElement
+  const w = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth
+  const h = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight
+  if (w && h) naturalRatio.value = w / h
+}
 
 const partial = computed(() => {
   const requested = props.data.requestedCount ?? 0
@@ -53,101 +86,102 @@ function onSelectCandidate(index: number) {
 
 <template>
   <div
-    class="ll-card group relative text-12px text-ink"
-    :class="{
-      'is-selected': selected,
-      '!border-violet !shadow-[0_0_0_2px_rgba(135,95,154,0.18),0_10px_18px_-10px_rgba(31,35,41,0.22)]': selected,
-    }"
+    :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
     :style="{ width: `${width}px` }"
   >
-    <header class="flex h-34px items-center gap-8px pl-12px pr-10px border-b border-line-soft rounded-t-10px">
-      <span class="shrink-0 w-8px h-8px rounded-full" :class="isVideo ? 'bg-[#f472b6]' : 'bg-[#875f9a]'" />
-      <span class="overflow-hidden flex-1 text-13px font-600 text-ellipsis whitespace-nowrap">{{
-        data.title || '生成节点'
-      }}</span>
-      <span
-        v-if="data.badge"
-        class="shrink-0 px-6px py-1px rounded-4px bg-violet-soft text-violet-ink text-10px leading-16px"
-        >{{ data.badge }}</span
-      >
-      <button
-        type="button"
-        class="grid shrink-0 w-22px h-22px p-0 place-items-center border border-violet-line rounded-6px bg-violet-soft text-violet-ink cursor-pointer hover:border-violet hover:text-violet-press"
-        :class="{ '!bg-#ede3f2 !border-violet-line': isRunning }"
-        :title="isRunning ? '取消执行' : '执行此节点'"
-        @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
-      >
-        <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
-      </button>
-      <button
-        type="button"
-        class="absolute -top-9px -right-9px z-3 grid w-20px h-20px p-0 place-items-center border border-line rounded-full bg-white text-muted text-12px leading-none cursor-pointer opacity-0 transition-opacity duration-120 group-hover:opacity-100 hover:border-danger-line hover:bg-danger-soft hover:text-danger"
-        title="删除节点"
-        @click.stop="emit('remove')"
-      >
-        ×
-      </button>
+    <header :class="NODE_HEAD">
+      <span class="shrink-0 w-8px h-8px rounded-full" :class="isVideo ? 'bg-danger' : 'bg-success'" />
+      <div class="flex flex-1 min-w-0 flex-col leading-[1.15]">
+        <span :class="NODE_TITLE">{{ data.title || '生成节点' }}</span>
+        <small
+          v-if="modelLine"
+          class="block overflow-hidden text-muted text-11px font-500 leading-14px text-ellipsis whitespace-nowrap"
+          >{{ modelLine }}</small
+        >
+      </div>
+      <span v-if="data.badge" :class="NODE_BADGE">{{ data.badge }}</span>
+      <div class="flex shrink-0 items-center gap-2px">
+        <button
+          type="button"
+          :class="NODE_RUN_BTN"
+          :title="isRunning ? '取消执行' : '执行此节点'"
+          :aria-label="isRunning ? `取消执行 ${data.title}` : `执行 ${data.title}`"
+          @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
+        >
+          <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
+        </button>
+        <button
+          type="button"
+          :class="NODE_ICON_BTN"
+          title="设置"
+          :aria-label="`${data.title} 参数设置`"
+          @click.stop="store.selectNode(id)"
+        >
+          <EditorIcon name="settings" :size="14" />
+        </button>
+        <NodeMenu :title="data.title || '生成节点'" @remove="emit('remove')" />
+      </div>
     </header>
 
     <div class="px-10px pt-8px pb-10px">
-      <div class="flex items-center justify-between gap-8px mb-6px text-ink-2 text-11px">
-        <span>{{ summary || '未选择模型' }}</span>
-        <span v-if="data.inputOnly" class="shrink-0 text-warning">参考素材 · 不执行</span>
-      </div>
+      <div v-if="data.inputOnly" class="mb-6px text-warning text-11px">参考素材 · 不执行</div>
 
       <div
-        v-if="isVideo && data.video"
-        class="grid w-full place-items-center overflow-hidden rounded-8px border border-line-soft [background:repeating-conic-gradient(#f3f4f5_0%,#f3f4f5_25%,transparent_0%,transparent_50%)_0_0/14px_14px,#f7f8f9] min-h-120px"
+        class="relative grid w-full place-items-center overflow-hidden rounded-6px"
+        :class="CHECKER_BG"
+        :style="{ height: `${mediaHeight}px` }"
       >
         <video
+          v-if="isVideo && data.video"
           :src="data.video"
           controls
           preload="metadata"
-          class="block w-full max-h-240px object-contain nodrag nowheel"
+          class="block w-full h-full rounded-6px bg-black object-contain nodrag nowheel"
+          @loadedmetadata="onMediaLoad"
         />
-      </div>
-      <div
-        v-else-if="data.image"
-        class="grid w-full place-items-center overflow-hidden rounded-8px border border-line-soft [background:repeating-conic-gradient(#f3f4f5_0%,#f3f4f5_25%,transparent_0%,transparent_50%)_0_0/14px_14px,#f7f8f9] min-h-120px"
-      >
-        <img :src="data.image" :alt="data.title" draggable="false" class="block w-full max-h-240px object-contain" />
-      </div>
-      <div
-        v-else
-        class="flex flex-col items-center gap-6px justify-center border border-dashed border-line rounded-8px text-placeholder text-11px bg-surface2 min-h-110px"
-      >
-        <EditorIcon :name="isVideo ? 'video' : 'image'" :size="20" />
-        <span>{{ isRunning ? '等待生成…' : '尚无结果' }}</span>
+        <img
+          v-else-if="data.image"
+          :src="data.image"
+          :alt="data.title"
+          draggable="false"
+          class="block w-full h-full object-contain"
+          @load="onMediaLoad"
+        />
+        <div v-else class="flex flex-col items-center justify-center gap-8px text-placeholder text-11px">
+          <span class="grid w-40px h-40px place-items-center border border-solid border-line rounded-full text-ink-2">
+            <EditorIcon :name="isVideo ? 'video' : 'play'" :size="18" />
+          </span>
+          <span>{{ isRunning ? '等待生成…' : '尚无结果' }}</span>
+        </div>
       </div>
 
-      <div v-if="isRunning" class="h-3px mt-6px overflow-hidden rounded-999px bg-#ede3f2">
-        <i
-          class="block h-full rounded-999px bg-gradient-to-b from-violet-top to-violet-bottom transition-[width] duration-400"
-          :style="{ width: `${data.progress ?? 0}%` }"
-        />
-      </div>
       <div
         v-if="isRunning"
-        class="flex items-center gap-6px mt-6px px-8px py-4px rounded-6px text-11px bg-violet-soft text-violet-ink"
+        class="flex items-center gap-6px mt-6px px-8px py-5px border border-solid border-line-soft rounded-4px bg-surface2 text-muted text-11px"
       >
-        {{ data.status === 'queued' ? '排队中…' : `生成中 ${data.progress ?? 0}%` }}
+        <span
+          class="shrink-0 w-12px h-12px border-[1.5px] border-solid border-violet-line border-t-violet rounded-full animate-spin"
+        />
+        {{ data.status === 'queued' ? '排队中…' : `生成中…${data.progress ? ` ${data.progress}%` : ''}` }}
       </div>
       <RunErrorNotice v-else-if="data.status === 'error'" :node-id="id" :data="data" />
       <div
         v-else-if="partial"
-        class="flex items-center gap-6px mt-6px px-8px py-4px rounded-6px text-11px bg-success-soft text-success"
+        class="flex items-center gap-6px mt-6px px-8px py-5px border border-solid border-success-line rounded-4px text-11px bg-success-soft text-success"
       >
         成功 {{ candidates.length }}/{{ data.requestedCount }} · 只计成功张数
       </div>
 
-      <div v-if="candidates.length > 1" class="flex gap-5px mt-6px overflow-x-auto nodrag nowheel">
+      <div v-if="candidates.length > 1" class="flex gap-6px mt-8px overflow-x-auto nodrag nowheel">
         <button
           v-for="(url, index) in candidates"
           :key="url + index"
           type="button"
-          class="relative shrink-0 w-46px h-46px overflow-hidden border border-line rounded-6px p-0 bg-surface2 cursor-pointer"
-          :class="{ '!border-violet !shadow-[0_0_0_1px_rgba(135,95,154,0.45)]': selectedIdx === index }"
+          class="relative shrink-0 w-44px h-44px overflow-hidden border border-solid border-line rounded-4px p-0 bg-surface2 cursor-pointer"
+          :class="[FOCUS_RING, { '!border-violet shadow-[0_0_0_1px_#875f9a]': selectedIdx === index }]"
           :title="`候选 ${index + 1}，点击设为输出`"
+          :aria-label="`候选 ${index + 1}，设为输出`"
+          :aria-pressed="selectedIdx === index"
           @click.stop="onSelectCandidate(index)"
         >
           <img :src="url" :alt="`候选 ${index + 1}`" draggable="false" class="block w-full h-full object-cover" />
@@ -155,65 +189,41 @@ function onSelectCandidate(index: number) {
       </div>
     </div>
 
-    <span
-      class="absolute px-7px py-2px rounded-5px text-white text-10px font-600 leading-14px whitespace-nowrap -translate-x-full -translate-y-50% pointer-events-none opacity-0 transition-opacity duration-120 group-hover:opacity-100 [.is-selected_&]:opacity-100 bg-[#22c55e]"
-      :style="{ top: '26%' }"
-      >提示词</span
-    >
-    <Handle
-      id="prompt"
-      type="target"
-      :position="Position.Left"
-      class="ed-port ed-port--prompt"
-      :style="{ top: '26%' }"
-    />
+    <span :class="portLabelClass('prompt')" :style="{ top: '26%' }">提示词</span>
+    <Handle id="prompt" type="target" :position="Position.Left" :class="portClass('prompt')" :style="{ top: '26%' }" />
 
     <template v-if="isVideo">
-      <span
-        class="absolute px-7px py-2px rounded-5px text-white text-10px font-600 leading-14px whitespace-nowrap -translate-x-full -translate-y-50% pointer-events-none opacity-0 transition-opacity duration-120 group-hover:opacity-100 [.is-selected_&]:opacity-100 bg-[#38bdf8]"
-        :style="{ top: '52%' }"
-        >首帧</span
-      >
-      <Handle
-        id="image1"
-        type="target"
-        :position="Position.Left"
-        class="ed-port ed-port--image"
-        :style="{ top: '52%' }"
-      />
-      <span
-        class="absolute px-7px py-2px rounded-5px text-white text-10px font-600 leading-14px whitespace-nowrap -translate-x-full -translate-y-50% pointer-events-none opacity-0 transition-opacity duration-120 group-hover:opacity-100 [.is-selected_&]:opacity-100 bg-[#38bdf8]"
-        :style="{ top: '70%' }"
-        >尾帧</span
-      >
-      <Handle
-        id="image2"
-        type="target"
-        :position="Position.Left"
-        class="ed-port ed-port--image"
-        :style="{ top: '70%' }"
-      />
+      <span :class="portLabelClass('image')" :style="{ top: '42%' }">首帧</span>
+      <Handle id="image1" type="target" :position="Position.Left" :class="portClass('image')" :style="{ top: '42%' }" />
+      <span :class="portLabelClass('image')" :style="{ top: '56%' }">尾帧</span>
+      <Handle id="image2" type="target" :position="Position.Left" :class="portClass('image')" :style="{ top: '56%' }" />
+      <!-- 参考图 / 参考视频口（契约 4.2 元素替换模板、6.1 规则表）：缺了这两个口，模板里的连线渲染不出来 -->
+      <span :class="portLabelClass('image')" :style="{ top: '70%' }">参考图</span>
+      <Handle id="image" type="target" :position="Position.Left" :class="portClass('image')" :style="{ top: '70%' }" />
+      <span :class="portLabelClass('video')" :style="{ top: '84%' }">参考视频</span>
+      <Handle id="video" type="target" :position="Position.Left" :class="portClass('video')" :style="{ top: '84%' }" />
     </template>
     <template v-else>
-      <span
-        class="absolute px-7px py-2px rounded-5px text-white text-10px font-600 leading-14px whitespace-nowrap -translate-x-full -translate-y-50% pointer-events-none opacity-0 transition-opacity duration-120 group-hover:opacity-100 [.is-selected_&]:opacity-100 bg-[#38bdf8]"
-        :style="{ top: '62%' }"
-        >参考图</span
+      <span :class="portLabelClass('image')" :style="{ top: '62%' }"
+        >参考图 · {{ imageRefCount }}{{ data.maxImageRefs ? `/${data.maxImageRefs}` : '' }}</span
       >
-      <Handle
-        id="image"
-        type="target"
-        :position="Position.Left"
-        class="ed-port ed-port--image"
-        :style="{ top: '62%' }"
-      />
+      <Handle id="image" type="target" :position="Position.Left" :class="portClass('image')" :style="{ top: '62%' }" />
+      <span :class="PORT_COUNT" class="left-12px" :style="{ top: '62%' }" aria-hidden="true">{{ imageRefCount }}</span>
     </template>
 
-    <Handle id="image-out" type="source" :position="Position.Right" class="ed-port ed-port--out" />
+    <!-- 参考视频素材节点（inputOnly）在模板里以 sourceHandle=video 连出 -->
+    <Handle
+      :id="data.inputOnly ? 'video' : 'image-out'"
+      type="source"
+      :position="Position.Right"
+      :class="portClass(data.inputOnly ? 'video' : 'out')"
+    />
+    <span v-if="!data.inputOnly" :class="PORT_COUNT" class="right-10px" :style="{ top: '50%' }" aria-hidden="true"
+      >1</span
+    >
+    <NodeQuickAdd
+      :kinds="data.inputOnly ? ['video-model'] : ['image-model', 'video-model', 'tool']"
+      @pick="emit('quickAdd', $event)"
+    />
   </div>
 </template>
-
-<style scoped lang="less">
-// Handle 是 Vue Flow 组件，自带 .vue-flow__handle 样式，端口样式留在 Less 以保证优先级
-@import '../node-base.less';
-</style>

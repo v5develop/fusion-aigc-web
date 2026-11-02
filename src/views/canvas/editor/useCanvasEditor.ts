@@ -22,6 +22,7 @@ import {
   type ICanvasRunRef,
   type ICanvasRunResult,
 } from '@/api/canvasHome.ts'
+import { toApiError } from '@/api/index.ts'
 import { createSafeUuid } from '@/utils/utils.ts'
 import {
   applyModelToNode,
@@ -80,6 +81,12 @@ let conflictDialogOpen = false
 
 /** 节点 id → 最近一次「成功」run 的 run_id（select-candidate 必须用成功 run，内存缓存） */
 const productRunIds = new Map<string, string>()
+/** 节点 id → 提交结果未知（断网 / 超时 / 5xx）的那次请求：重试必须原样重发（同 run_id、同 body，契约 1.3） */
+const pendingUnknownRuns = new Map<string, ICanvasRunReq>()
+/** 提交在途的节点（双击 / 连点只发一次） */
+const submittingNodes = new Set<string>()
+/** 提交在途时用户点了停止：拿到 request_id 后立即取消 */
+const cancelRequested = new Set<string>()
 
 // ---------------- 快照序列化与脏检测 ----------------
 
@@ -104,7 +111,8 @@ function slimData(node: CanvasEditorNode): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const key of Object.keys(data)) {
     if (RUNTIME_KEYS.has(key)) continue
-    if (PRODUCT_KEYS.has(key) && (node.type === 'model' || node.type === 'tool')) continue
+    // inputOnly 参考视频节点从不执行，它的 video 是用户上传的内容（服务端对没跑过的节点也保留），要计入脏检测
+    if (PRODUCT_KEYS.has(key) && (node.type === 'model' || node.type === 'tool') && !node.data.inputOnly) continue
     out[key] = data[key]
   }
   return out
@@ -232,8 +240,17 @@ async function init(id: string): Promise<boolean> {
   loadError.value = ''
   ready.value = false
   conflictInfo.value = null
+  // 作废在途保存的回包与待发的防抖保存（它们属于上一份内存状态）
+  saveSeq += 1
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
   stopAllPollers()
   productRunIds.clear()
+  pendingUnknownRuns.clear()
+  submittingNodes.clear()
+  cancelRequested.clear()
   selectedNodeId.value = ''
   try {
     const res = await canvasGet(id)
@@ -253,6 +270,7 @@ async function init(id: string): Promise<boolean> {
     ready.value = true
     saveState.value = 'saved'
     saveError.value = ''
+    reconcileCatalogLimits()
     resumePollers()
     return true
   } catch (error) {
@@ -330,6 +348,7 @@ function checkSnapshot(snapshot: CanvasEditorSnapshot): string {
 async function doSave(force: boolean): Promise<boolean> {
   if (!canvasId || !ready.value) return false
   const seq = ++saveSeq
+  const targetId = canvasId
   const payload = buildSnapshot()
   const signatureBefore = signature()
   if (!force && signatureBefore === lastSignature) return true
@@ -345,11 +364,13 @@ async function doSave(force: boolean): Promise<boolean> {
     const body = force
       ? { title: title.value, snapshot: payload, force: true }
       : { title: title.value, snapshot: payload, if_match_revision: revision.value }
-    const env = await canvasSaveWithLock(canvasId, body)
-    if (seq !== saveSeq) return true
+    const env = await canvasSaveWithLock(targetId, body)
+    // 期间切换 / 重载了画布：这次回包的 revision 不属于当前画布，不能写进来
+    if (seq !== saveSeq || targetId !== canvasId) return false
     if (env.code === 0 && env.data && 'revision' in env.data) {
       revision.value = env.data.revision
-      lastSignature = signature()
+      // 只把「发出去的那份」记为已保存：请求在途时的新改动仍是脏的，会被下一次保存带上
+      lastSignature = signatureBefore
       saveState.value = 'saved'
       saveError.value = ''
       lastSavedAt.value = Date.now()
@@ -366,10 +387,11 @@ async function doSave(force: boolean): Promise<boolean> {
     message.error(saveError.value)
     return false
   } catch (error) {
-    if (seq !== saveSeq) return false
+    if (seq !== saveSeq || targetId !== canvasId) return false
     saveState.value = 'error'
     saveError.value = error instanceof Error ? error.message : '保存失败'
-    message.error(saveError.value)
+    // 业务失败拦截器已 toast，这里只补传输层失败（超时 / 断网）的提示
+    if ((toApiError(error)?.code ?? -1) === -1) message.error(saveError.value)
     return false
   }
 }
@@ -382,6 +404,9 @@ function showConflictDialog(): void {
     content: '远端已有更新的版本。可以载入最新版本（丢弃本地未保存的改动），或用当前内容强制覆盖。',
     positiveText: '覆盖保存',
     negativeText: '载入最新版本',
+    // 点遮罩 / Esc 关掉会留下 conflictInfo 而不再弹框，之后所有保存都被拦住：必须二选一
+    maskClosable: false,
+    closeOnEsc: false,
     onPositiveClick: () => {
       conflictDialogOpen = false
       conflictInfo.value = null
@@ -633,6 +658,13 @@ function hasPromptText(node: CanvasEditorNode, refs: ICanvasRunRef[]): boolean {
   return refs.some((ref) => normalizeHandle(ref.handle) === 'prompt' && (ref.text ?? '').trim())
 }
 
+/** 视频生成：服务端要求「提示词或首帧图」其一即可（只有首帧也能生成） */
+function hasVideoDriver(refs: ICanvasRunRef[]): boolean {
+  return refs.some(
+    (ref) => (ref.handle === 'image1' || ref.handle === 'first' || ref.handle === 'image') && Boolean(ref.image),
+  )
+}
+
 /** 组装 run 请求体；参数缺失返回原因（契约 3.1 / 3.2） */
 function buildRunRequest(node: CanvasEditorNode): { req?: ICanvasRunReq; error?: string } {
   const data = node.data
@@ -662,7 +694,11 @@ function buildRunRequest(node: CanvasEditorNode): { req?: ICanvasRunReq; error?:
   if (!model || !modelId) return { error: '请先在参数面板选择模型' }
   const refs = buildReferences(nodes.value, edges.value, node.id)
   // body.prompt 只放节点自带的提示词；连线文字走 references，服务端把两者拼成「连线文本 + 换行 + 节点提示词」
-  if (!hasPromptText(node, refs)) return { error: '提示词为空：请连接文字节点或在参数面板填写提示词' }
+  if (!hasPromptText(node, refs) && !(isVideo && hasVideoDriver(refs))) {
+    return {
+      error: isVideo ? '请连接文字节点 / 填写提示词，或连接首帧图' : '提示词为空：请连接文字节点或在参数面板填写提示词',
+    }
+  }
   const req: ICanvasRunReq = {
     run_id: createSafeUuid(),
     kind: isVideo ? 'video' : 'image',
@@ -684,45 +720,128 @@ function buildRunRequest(node: CanvasEditorNode): { req?: ICanvasRunReq; error?:
   return { req }
 }
 
-/** 提交前先落地待保存改动：服务端按已保存快照核对 references（先保存、再执行） */
-async function runNode(nodeId: string): Promise<void> {
+const TERMINAL_RUN_STATUS = new Set(['succeeded', 'failed', 'cancelled'])
+
+/**
+ * 提交前先落地待保存改动：服务端按已保存快照核对 references（先保存、再执行）。
+ * @param reuse 重试「结果未知」的那次提交时原样重发（同 run_id + 同 body，服务端幂等重放，不重复扣点）
+ */
+async function runNode(nodeId: string, reuse?: ICanvasRunReq): Promise<void> {
   const node = findNode(nodeId)
   if (!node || !ready.value) return
+  // 状态在 await flushSave 之后才置 queued：连点 / 双击要靠在途集合挡住第二次提交
+  if (submittingNodes.has(nodeId)) return
   if (node.data.status === 'running' || node.data.status === 'queued') return
   if (node.data.kind === 'tool' && catalog.value?.tools?.find((t) => t.tool === node.data.tool)?.ready === false) {
     message.warning('该功能暂未开放')
     return
   }
-  const { req, error } = buildRunRequest(node)
+  let req = reuse
   if (!req) {
-    message.warning(error ?? '参数不完整')
+    const built = buildRunRequest(node)
+    if (!built.req) {
+      message.warning(built.error ?? '参数不完整')
+      return
+    }
+    req = built.req
+    // 新的一次点击 = 新 run_id；之前结果未知的那次不再重发
+    pendingUnknownRuns.delete(nodeId)
+  }
+  const targetId = canvasId
+  submittingNodes.add(nodeId)
+  try {
+    const saved = await flushSave()
+    if (!saved || targetId !== canvasId) return
+    const live = findNode(nodeId)
+    if (!live) return
+    live.data.runId = req.run_id
+    // 清掉上一次 run 的 request_id：提交在途时点停止不能去取消上一次（已结束）的 run
+    live.data.requestId = undefined
+    live.data.status = 'queued'
+    live.data.errorMessage = undefined
+    live.data.errorCode = undefined
+    live.data.retryable = undefined
+    live.data.progress = 0
+    live.data.requestedCount = runCountOf(live)
+    let requestId = ''
+    try {
+      const res = await canvasNodeRun(targetId, nodeId, req, req.run_id)
+      if (targetId !== canvasId) return
+      requestId = res.data?.request_id ?? ''
+      if (!requestId) throw new Error('提交结果未知')
+      pendingUnknownRuns.delete(nodeId)
+      const current = findNode(nodeId)
+      if (!current) return
+      current.data.requestId = requestId
+      if (res.data.warnings?.length) message.warning(res.data.warnings.join('；'))
+      startPolling(current)
+    } catch (err) {
+      if (targetId !== canvasId) return
+      handleSubmitError(nodeId, req, err)
+      return
+    }
+    submittingNodes.delete(nodeId)
+    if (cancelRequested.delete(nodeId)) await cancelRun(nodeId)
+  } finally {
+    submittingNodes.delete(nodeId)
+    cancelRequested.delete(nodeId)
+  }
+}
+
+/**
+ * 提交失败分流（契约 1.3 / 1.5 / 3.1）：
+ * - 传输层失败 / 5001 / 5xx：结果未知，保留原请求，「重试」原样重发；
+ * - 4002：该节点已有进行中的 run（另一窗口或上次未知结果其实已受理），接上它继续轮询；
+ * - 其它业务失败（1003 / 3003 / 4001 …）：确定没建 run，展示原因，下次点击用新 run_id。
+ */
+function handleSubmitError(nodeId: string, req: ICanvasRunReq, err: unknown): void {
+  const node = findNode(nodeId)
+  if (!node) return
+  const apiErr = toApiError(err)
+  const code = apiErr?.code ?? -1
+  if (code === 4002) {
+    void adoptActiveRun(nodeId, apiErr?.message ?? '')
     return
   }
-  const saved = await flushSave()
-  if (!saved) return
-  const runId = req.run_id
-  const live = findNode(nodeId)
-  if (!live) return
-  live.data.runId = runId
-  live.data.status = 'queued'
-  live.data.errorMessage = undefined
-  live.data.errorCode = undefined
-  live.data.retryable = undefined
-  live.data.progress = 0
-  live.data.requestedCount = runCountOf(live)
-  try {
-    const res = await canvasNodeRun(canvasId, nodeId, req, runId)
-    const data = res.data
-    if (!data?.request_id) throw new Error('提交失败')
-    live.data.requestId = data.request_id
-    if (data.warnings?.length) message.warning(data.warnings.join('；'))
-    startPolling(live)
-  } catch (err) {
-    const current = findNode(nodeId)
-    if (!current) return
-    current.data.status = 'error'
-    current.data.errorMessage = err instanceof Error ? err.message : '提交失败'
+  const unknown = code === -1 || code === 5001 || (apiErr?.httpStatus ?? 0) >= 500
+  node.data.status = 'error'
+  node.data.errorCode = undefined
+  if (unknown) {
+    pendingUnknownRuns.set(nodeId, req)
+    node.data.errorMessage = '提交结果未知（网络异常或服务繁忙），请点「重试」：沿用同一请求，不会重复扣点'
+    node.data.retryable = true
+  } else {
+    pendingUnknownRuns.delete(nodeId)
+    node.data.errorMessage = apiErr?.message || (err instanceof Error ? err.message : '提交失败')
+    node.data.retryable = undefined
   }
+}
+
+/** 提交回 4002（同一节点已有未结束的 run）：查出那条 run 并接着轮询，查不到才报错 */
+async function adoptActiveRun(nodeId: string, fallbackMsg: string): Promise<void> {
+  const targetId = canvasId
+  try {
+    const res = await canvasRuns(targetId, 5, nodeId)
+    if (targetId !== canvasId) return
+    const node = findNode(nodeId)
+    if (!node) return
+    const active = res.data?.items?.find((item) => item.node_id === nodeId && !TERMINAL_RUN_STATUS.has(item.status))
+    if (active?.request_id) {
+      pendingUnknownRuns.delete(nodeId)
+      node.data.requestId = active.request_id
+      applyRunResult(nodeId, active)
+      startPolling(node)
+      message.info('该节点已有进行中的执行，已继续跟踪')
+      return
+    }
+  } catch {
+    // 查询失败走下面的兜底
+  }
+  if (targetId !== canvasId) return
+  const node = findNode(nodeId)
+  if (!node) return
+  node.data.status = 'error'
+  node.data.errorMessage = fallbackMsg || '提交冲突，请稍后刷新画布查看'
 }
 
 function startPolling(node: CanvasEditorNode): void {
@@ -749,9 +868,8 @@ function startPolling(node: CanvasEditorNode): void {
         const live = pollers.get(requestId)
         if (!live) return
         live.errors = 0
-        if (!applyRunResult(live.nodeId, res.data)) {
-          live.timer = setTimeout(tick, POLL_INTERVAL)
-        }
+        if (applyRunResult(live.nodeId, res.data)) stopPolling(requestId)
+        else live.timer = setTimeout(tick, POLL_INTERVAL)
       })
       .catch(() => {
         const live = pollers.get(requestId)
@@ -836,6 +954,12 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
 async function cancelRun(nodeId: string): Promise<void> {
   const node = findNode(nodeId)
   if (!node) return
+  // 提交还在途（还没有 request_id）：记下来，拿到 request_id 立即取消，不能只改本地状态
+  if (submittingNodes.has(nodeId)) {
+    cancelRequested.add(nodeId)
+    message.info('正在提交，提交完成后将立即取消')
+    return
+  }
   const requestId = node.data.requestId
   if (!requestId) {
     node.data.status = 'idle'
@@ -844,26 +968,33 @@ async function cancelRun(nodeId: string): Promise<void> {
   try {
     await canvasRunCancel(requestId)
   } catch {
-    // 已是终态（4002）等：以轮询结果为准
+    // 已是终态（4002）等：下面按服务端状态刷新
   }
   if (pollers.has(requestId)) return // 轮询继续，下一拍拿终态
   try {
     const res = await canvasRunGet(requestId)
-    applyRunResult(nodeId, res.data)
+    const current = findNode(nodeId)
+    // Java 工具取消可能回 running（后台重试取消）：没到终态就接着轮询
+    if (current && !applyRunResult(nodeId, res.data)) startPolling(current)
   } catch {
-    node.data.status = 'error'
-    node.data.errorMessage = '已请求取消，请稍后刷新画布确认结果'
+    const current = findNode(nodeId)
+    if (!current) return
+    current.data.status = 'error'
+    current.data.errorMessage = '已请求取消，请稍后刷新画布确认结果'
   }
 }
 
-/** 重试：重新组装请求，run_id 每次由 buildRunRequest 现生成 UUID，绝不复用失败那次的 run_id */
+/**
+ * 重试：提交结果未知的那次原样重发（同 run_id，服务端幂等重放）；
+ * 服务端判定失败（retryable）的 run 重新组装请求、换新 run_id（契约 3.3）。
+ */
 function retryNode(nodeId: string): Promise<void> {
   const node = findNode(nodeId)
   if (node) {
     node.data.errorCode = undefined
     node.data.retryable = undefined
   }
-  return runNode(nodeId)
+  return runNode(nodeId, pendingUnknownRuns.get(nodeId))
 }
 
 // ---------------- 候选选择 ----------------
@@ -873,7 +1004,7 @@ async function resolveProductRunId(nodeId: string): Promise<string | undefined> 
   if (cached) return cached
   if (!canvasId) return undefined
   try {
-    const res = await canvasRuns(canvasId, 50)
+    const res = await canvasRuns(canvasId, 50, nodeId)
     const hit = res.data?.items?.find((item) => item.node_id === nodeId && item.status === 'succeeded')
     if (hit?.run_id) {
       productRunIds.set(nodeId, hit.run_id)
@@ -895,6 +1026,8 @@ async function selectCandidate(nodeId: string, index: number): Promise<void> {
     return
   }
   // 先本地生效，再写回服务端（刷新后 selectedCandidate 以服务端记录为准）
+  const prevIndex = node.data.selectedCandidate
+  const prevImage = node.data.image
   node.data.selectedCandidate = index
   const data = node.data
   const isVideoModel = data.kind === 'video'
@@ -911,7 +1044,9 @@ async function selectCandidate(nodeId: string, index: number): Promise<void> {
       }
     }
   } catch {
-    // 拦截器已 toast；本地保持所选，刷新后以服务端为准
+    // 拦截器已 toast；写回失败就回滚，避免下游按「看起来选中」的那张图执行而刷新后又变回去
+    node.data.selectedCandidate = prevIndex
+    if (!isVideoModel && (data.kind === 'model' || data.kind === 'tool')) data.image = prevImage
   }
 }
 
@@ -921,8 +1056,22 @@ async function loadCatalog(): Promise<void> {
   try {
     const res = await canvasCatalog()
     catalog.value = res.data ?? null
+    reconcileCatalogLimits()
   } catch {
     catalog.value = null
+    message.warning('模型目录加载失败，生成节点暂时无法选择模型，请刷新重试')
+  }
+}
+
+/**
+ * 快照里的 maxImageRefs 可能比当前 catalog 宽（目录后来收窄）：服务端保存 / 执行按两者较小值校验，
+ * 前端连线校验只看 maxImageRefs，不收窄就会让用户连上之后保存被 1003 拒。
+ */
+function reconcileCatalogLimits(): void {
+  if (!catalog.value || !ready.value) return
+  for (const node of nodes.value) {
+    const cap = catalogOf(node)?.max_image_refs ?? 0
+    if (cap > 0 && (node.data.maxImageRefs ?? 0) > cap) node.data.maxImageRefs = cap
   }
 }
 
@@ -949,6 +1098,10 @@ export function useCanvasEditor() {
     loadCatalog,
     /** 离开编辑器时停掉轮询等后台活动（服务端 run 会继续跑，重进时按 requestId 恢复轮询） */
     dispose: () => {
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
       stopAllPollers()
       ready.value = false
       selectedNodeId.value = ''
@@ -968,7 +1121,7 @@ export function useCanvasEditor() {
     reloadLatest,
     flushSave,
     // 执行
-    runNode,
+    runNode: (nodeId: string) => runNode(nodeId),
     retryNode,
     cancelRun,
     selectCandidate,

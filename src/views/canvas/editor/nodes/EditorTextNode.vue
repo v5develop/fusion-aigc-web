@@ -1,9 +1,19 @@
 <script setup lang="ts">
-/** 提示词文本节点：正文编辑 + 右侧 text 输出口（连到生成节点的 prompt 口） */
+/**
+ * 提示词文本节点（对齐原型 CanvasTextNode + canvas-v31）：
+ * 头部只有标题与「…」；正文无框 textarea；底部字数；再下面是「生成来源」引用条
+ * （这个文本框连到的生成节点上接的参考图，形如「@图片 1 … 参考图」，点一下定位）。
+ * 右侧 text 输出口连到生成节点的 prompt 口。
+ */
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { useCanvasEditor } from '../useCanvasEditor.ts'
 import type { CanvasNodeData } from '../types.ts'
+import { normalizeHandle } from '../graph.ts'
+import { portClass } from '../ports.ts'
+import { FOCUS_RING, NODE_CARD, NODE_CARD_SELECTED, NODE_HEAD, NODE_TITLE, type QuickAddKind } from '../ui.ts'
+import NodeMenu from '../NodeMenu.vue'
+import NodeQuickAdd from '../NodeQuickAdd.vue'
 
 const props = defineProps<{
   id: string
@@ -11,42 +21,82 @@ const props = defineProps<{
   selected?: boolean
 }>()
 
-const emit = defineEmits<{ remove: [] }>()
+const emit = defineEmits<{ remove: []; locate: [id: string]; quickAdd: [kind: QuickAddKind] }>()
 
 const store = useCanvasEditor()
+
+/** 字数上限沿用编辑器既有口径（原型显示 2000，见交付说明） */
+const TEXT_MAX = 3000
 
 const text = computed({
   get: () => props.data.text ?? '',
   set: (value: string) => store.updateNodeData(props.id, { text: value }),
 })
 
-const width = computed(() => props.data.width ?? 300)
-const height = computed(() => props.data.height ?? 190)
+const width = computed(() => props.data.width ?? 320)
+const height = computed(() => props.data.height ?? 220)
+
+/** 生成来源：本节点连到的生成节点，其 image 口上接的参考图（同原型 sourceRefs） */
+const sourceRefs = computed(() => {
+  const edges = store.edges.value
+  const modelIds = new Set(edges.filter((edge) => edge.source === props.id).map((edge) => edge.target))
+  if (!modelIds.size) return []
+  const refs: { id: string; name: string; model: string }[] = []
+  for (const edge of edges) {
+    if (!modelIds.has(edge.target)) continue
+    if (normalizeHandle(edge.targetHandle) !== 'image') continue
+    if (refs.some((ref) => ref.id === edge.source)) continue
+    const source = store.findNode(edge.source)
+    if (!source) continue
+    refs.push({
+      id: source.id,
+      name: source.data.title,
+      model: source.type === 'model' ? (source.data.model ?? '模型') : source.type === 'video' ? '视频' : '参考图',
+    })
+  }
+  return refs
+})
 </script>
 
 <template>
-  <div class="ll-card group relative text-12px text-ink" :class="{ 'is-selected': selected, '!border-violet !shadow-[0_0_0_2px_rgba(135,95,154,0.18),0_10px_18px_-10px_rgba(31,35,41,0.22)]': selected }" :style="{ width: `${width}px` }">
-    <header class="flex h-34px items-center gap-8px pl-12px pr-10px border-b border-line-soft rounded-t-10px">
-      <span class="shrink-0 w-8px h-8px rounded-full bg-[#22c55e]" />
-      <span class="overflow-hidden flex-1 text-13px font-600 text-ellipsis whitespace-nowrap">{{ data.title || '文字' }}</span>
-      <span class="shrink-0 px-6px py-1px rounded-4px bg-violet-soft text-violet-ink text-10px leading-16px">提示词</span>
-      <button type="button" class="absolute -top-9px -right-9px z-3 grid w-20px h-20px p-0 place-items-center border border-line rounded-full bg-white text-muted text-12px leading-none cursor-pointer opacity-0 transition-opacity duration-120 group-hover:opacity-100 hover:border-danger-line hover:bg-danger-soft hover:text-danger" title="删除节点" @click.stop="emit('remove')">×</button>
+  <div
+    class="flex flex-col"
+    :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
+    :style="{ width: `${width}px`, minHeight: `${height}px` }"
+  >
+    <header :class="NODE_HEAD">
+      <span class="flex-1" :class="NODE_TITLE">{{ data.title || '文字' }}</span>
+      <NodeMenu :title="data.title || '文字'" @remove="emit('remove')" />
     </header>
-    <div class="px-10px pt-8px pb-10px">
+
+    <div class="flex flex-1 flex-col gap-8px px-12px pt-4px pb-20px">
       <textarea
         v-model="text"
-        class="block w-full px-10px py-8px border border-line rounded-8px bg-surface2 text-ink text-12px leading-18px resize-none outline-none focus:border-violet focus:bg-white nodrag nowheel"
-        maxlength="3000"
-        placeholder="输入提示词，连到生成节点的提示词口…"
-        :style="{ height: `${Math.max(80, height - 76)}px` }"
+        class="block flex-1 w-full min-h-72px p-0 border-none bg-transparent text-ink-2 text-13px leading-[1.6] resize-none outline-none placeholder:text-placeholder nodrag nowheel"
+        :maxlength="TEXT_MAX"
+        placeholder="输入提示词…"
+        :aria-label="`${data.title || '文字'} 提示词`"
       />
-      <div class="mt-4px text-right text-placeholder text-10px">{{ text.length }} / 3000</div>
+      <footer class="flex shrink-0 h-32px items-center text-placeholder text-10px font-500 tabular-nums">
+        {{ text.length }} / {{ TEXT_MAX }}
+      </footer>
+      <div v-if="sourceRefs.length" class="flex flex-col gap-4px">
+        <button
+          v-for="source in sourceRefs"
+          :key="`source-${source.id}`"
+          type="button"
+          class="flex w-full h-22px items-center gap-8px px-8px border border-solid border-violet-line rounded-4px bg-violet-soft text-violet-ink text-12px text-left cursor-pointer hover:bg-[#ede3f2] nodrag"
+          :class="FOCUS_RING"
+          :title="`生成节点的图片输入 · ${source.name}`"
+          @click.stop="emit('locate', source.id)"
+        >
+          <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">@{{ source.name }}</span>
+          <span class="shrink-0 ml-auto text-muted text-11px">{{ source.model }}</span>
+        </button>
+      </div>
     </div>
-    <Handle id="text" type="source" :position="Position.Right" class="ed-port ed-port--text" />
+
+    <NodeQuickAdd :kinds="['image-model', 'video-model']" @pick="emit('quickAdd', $event)" />
+    <Handle id="text" type="source" :position="Position.Right" :class="portClass('text')" />
   </div>
 </template>
-
-<style scoped lang="less">
-// Handle 是 Vue Flow 组件，自带 .vue-flow__handle 样式，端口样式留在 Less 以保证优先级
-@import '../node-base.less';
-</style>

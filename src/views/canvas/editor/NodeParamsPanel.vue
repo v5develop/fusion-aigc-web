@@ -311,18 +311,19 @@ function cancel() {
 </script>
 
 <template>
-  <aside class="flex flex-col shrink-0 w-360px border-l border-line bg-white">
-    <div class="flex items-center gap-10px px-16px py-12px border-b border-line-soft">
-      <span class="shrink-0 px-10px py-3px rounded-999px bg-violet-soft text-violet-ink text-12px font-600">{{
-        typeLabel
-      }}</span>
+  <aside class="flex flex-col shrink-0 w-360px border-l border-l-solid border-line bg-white" aria-label="节点参数">
+    <div class="flex shrink-0 items-center gap-8px h-44px px-12px border-b border-b-solid border-line-soft">
+      <span
+        class="shrink-0 px-6px py-1px border border-solid border-violet-line rounded-4px bg-violet-soft text-violet-ink text-11px font-600 leading-16px"
+        >{{ typeLabel }}</span
+      >
       <n-input v-model:value="titleValue" size="small" placeholder="节点标题" maxlength="50" />
     </div>
 
-    <div class="flex-1 overflow-auto px-16px pt-14px pb-24px">
+    <div class="flex-1 overflow-auto px-12px pt-12px pb-20px">
       <!-- 提示词文本节点 -->
       <template v-if="node.type === 'text'">
-        <div class="mb-14px">
+        <div class="mb-12px">
           <div class="ll-label">提示词正文</div>
           <n-input
             v-model:value="textValue"
@@ -338,10 +339,10 @@ function cancel() {
 
       <!-- 图片 / 视频输入节点 -->
       <template v-else-if="isImageInput || isVideoInput">
-        <div class="mb-14px">
+        <div class="mb-12px">
           <div class="ll-label">{{ isVideoInput ? '视频' : '图片' }}</div>
           <div
-            class="grid place-items-center mb-8px overflow-hidden border border-line-soft rounded-8px bg-surface2 min-h-120px empty:hidden [&_img]:block [&_img]:max-w-full [&_img]:max-h-220px [&_img]:object-contain [&_video]:block [&_video]:max-w-full [&_video]:max-h-220px [&_video]:object-contain"
+            class="grid place-items-center mb-8px overflow-hidden border border-solid border-line-soft rounded-6px bg-surface2 min-h-120px empty:hidden [&_img]:block [&_img]:max-w-full [&_img]:max-h-220px [&_img]:object-contain [&_video]:block [&_video]:max-w-full [&_video]:max-h-220px [&_video]:object-contain"
           >
             <video v-if="isVideoInput && inputVideoUrl" :src="inputVideoUrl" controls preload="metadata" />
             <n-image v-else-if="inputImageUrl" :src="inputImageUrl" object-fit="contain" />
@@ -366,7 +367,33 @@ function cancel() {
 
       <!-- 生成节点 -->
       <template v-else-if="modelNode">
-        <div class="mb-14px">
+        <!-- 参考视频素材（inputOnly，不执行）：视频由用户上传，下游从 video 口引用（契约 4.2 元素替换） -->
+        <div v-if="modelNode.inputOnly" class="mb-12px">
+          <div class="ll-label">参考视频</div>
+          <div
+            class="grid place-items-center mb-8px overflow-hidden border border-solid border-line-soft rounded-6px bg-surface2 min-h-120px"
+          >
+            <video
+              v-if="modelNode.video"
+              :src="modelNode.video"
+              controls
+              preload="metadata"
+              class="block max-w-full max-h-220px object-contain"
+            />
+            <div v-else class="py-30px text-placeholder text-12px">还没有视频</div>
+          </div>
+          <n-button size="small" :loading="uploading" @click="pickFile('video')">
+            {{ modelNode.video ? '更换' : '上传' }}
+          </n-button>
+          <input
+            ref="fileRef"
+            type="file"
+            accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm"
+            hidden
+            @change="onFile"
+          />
+        </div>
+        <div class="mb-12px">
           <div class="ll-label">模型</div>
           <n-select
             :value="modelNode.modelId || modelNode.model || ''"
@@ -377,34 +404,34 @@ function cancel() {
           />
         </div>
         <div class="grid grid-cols-2 gap-10px">
-          <div class="mb-14px">
+          <div class="mb-12px">
             <div class="ll-label">比例</div>
             <n-select v-model:value="modelNode.ratio" size="small" :options="ratioOptions" />
           </div>
-          <div class="mb-14px">
+          <div class="mb-12px">
             <div class="ll-label">分辨率</div>
             <n-select v-model:value="modelNode.size" size="small" :options="sizeOptions" />
           </div>
         </div>
-        <div v-if="capabilities.quality" class="mb-14px">
+        <div v-if="capabilities.quality" class="mb-12px">
           <div class="ll-label">质量</div>
           <n-select v-model:value="modelNode.quality" size="small" :options="qualityOptions" />
         </div>
         <div class="grid grid-cols-2 gap-10px">
-          <div v-if="capabilities.count" class="mb-14px">
+          <div v-if="capabilities.count" class="mb-12px">
             <div class="ll-label">张数（≤{{ countMax }}）</div>
             <n-input-number v-model:value="modelNode.count" size="small" :min="1" :max="countMax" style="width: 100%" />
           </div>
-          <div v-if="capabilities.duration" class="mb-14px">
+          <div v-if="capabilities.duration" class="mb-12px">
             <div class="ll-label">时长</div>
             <n-select v-model:value="modelNode.duration" size="small" :options="durationOptions" />
           </div>
         </div>
-        <div v-if="capabilities.sound" class="mb-14px">
+        <div v-if="capabilities.sound" class="mb-12px">
           <div class="ll-label">声音</div>
           <n-switch v-model:value="modelNode.sound" size="small" />
         </div>
-        <div class="mb-14px">
+        <div class="mb-12px">
           <div class="ll-label">
             提示词
             <span v-if="priceHint" class="text-warning text-11px font-400">{{ priceHint }}</span>
@@ -419,7 +446,7 @@ function cancel() {
             :autosize="{ minRows: 4, maxRows: 12 }"
           />
         </div>
-        <div class="mb-14px">
+        <div class="mb-12px">
           <div class="ll-label">参考图上限</div>
           <div class="text-ink-2 text-12px">
             {{ modelNode.maxImageRefs ?? 5 }} 张 · 参考视频 {{ currentModel?.max_reference_videos ?? 0 }} 个
@@ -429,7 +456,7 @@ function cancel() {
 
       <!-- 工具节点 -->
       <template v-else-if="toolNode">
-        <div class="mb-14px">
+        <div class="mb-12px">
           <div class="ll-label">工具</div>
           <n-select
             :value="toolNode.tool ?? 'crop'"
@@ -439,7 +466,7 @@ function cancel() {
             @update:value="onToolChange"
           />
         </div>
-        <div v-if="toolNode.tool !== 'tryon'" class="mb-14px">
+        <div v-if="toolNode.tool !== 'tryon'" class="mb-12px">
           <div class="ll-label">上游图片（不连线时指定）</div>
           <n-select
             v-model:value="toolNode.sourceNodeId"
@@ -450,13 +477,13 @@ function cancel() {
           />
           <div
             v-if="upstreamImage"
-            class="grid place-items-center mt-8px mb-8px overflow-hidden border border-line-soft rounded-8px bg-surface2 empty:hidden [&_img]:block [&_img]:max-w-full [&_img]:max-h-120px [&_img]:object-contain"
+            class="grid place-items-center mt-8px mb-8px overflow-hidden border border-solid border-line-soft rounded-6px bg-surface2 empty:hidden [&_img]:block [&_img]:max-w-full [&_img]:max-h-120px [&_img]:object-contain"
           >
             <img :src="upstreamImage" alt="" />
           </div>
         </div>
         <template v-if="toolNode.tool === 'crop'">
-          <div class="mb-14px">
+          <div class="mb-12px">
             <div class="ll-label">形状</div>
             <n-select
               v-model:value="toolNode.crop!.shape"
@@ -468,7 +495,7 @@ function cancel() {
             />
           </div>
           <div class="grid grid-cols-2 gap-10px">
-            <div class="mb-14px">
+            <div class="mb-12px">
               <div class="ll-label">X</div>
               <n-input-number
                 v-model:value="toolNode.crop!.x"
@@ -479,7 +506,7 @@ function cancel() {
                 style="width: 100%"
               />
             </div>
-            <div class="mb-14px">
+            <div class="mb-12px">
               <div class="ll-label">Y</div>
               <n-input-number
                 v-model:value="toolNode.crop!.y"
@@ -492,7 +519,7 @@ function cancel() {
             </div>
           </div>
           <div class="grid grid-cols-2 gap-10px">
-            <div class="mb-14px">
+            <div class="mb-12px">
               <div class="ll-label">宽</div>
               <n-input-number
                 v-model:value="toolNode.crop!.w"
@@ -503,7 +530,7 @@ function cancel() {
                 style="width: 100%"
               />
             </div>
-            <div class="mb-14px">
+            <div class="mb-12px">
               <div class="ll-label">高</div>
               <n-input-number
                 v-model:value="toolNode.crop!.h"
@@ -516,7 +543,7 @@ function cancel() {
             </div>
           </div>
         </template>
-        <div v-if="toolNode.tool === 'upscale'" class="mb-14px">
+        <div v-if="toolNode.tool === 'upscale'" class="mb-12px">
           <div class="ll-label">放大倍数</div>
           <n-select
             :value="String(toolNode.scale ?? 2)"
@@ -525,7 +552,7 @@ function cancel() {
             @update:value="(v: string) => store.updateNodeData(node.id, { scale: Number(v) })"
           />
         </div>
-        <div v-if="toolNode.tool === 'outpaint'" class="mb-14px">
+        <div v-if="toolNode.tool === 'outpaint'" class="mb-12px">
           <div class="ll-label">目标比例</div>
           <n-select v-model:value="toolNode.ratio" size="small" :options="outpaintRatioOptions" />
           <div class="ll-label mt-10px">分辨率</div>
@@ -565,7 +592,7 @@ function cancel() {
           </div>
         </div>
         <template v-if="toolNode.tool === 'tryon'">
-          <div class="mb-14px">
+          <div class="mb-12px">
             <div class="ll-label">单品（1–3 件）</div>
             <div class="flex flex-wrap gap-x-12px gap-y-6px">
               <n-checkbox
@@ -579,7 +606,7 @@ function cancel() {
               </n-checkbox>
             </div>
           </div>
-          <div class="mb-14px">
+          <div class="mb-12px">
             <div class="ll-label">服装名称（可选）</div>
             <n-input
               :value="toolNode.garmentName ?? ''"
@@ -588,7 +615,7 @@ function cancel() {
               @update:value="(v: string) => store.updateNodeData(node.id, { garmentName: v })"
             />
           </div>
-          <div class="mb-14px">
+          <div class="mb-12px">
             <div class="ll-label">面料（可选）</div>
             <n-input
               :value="toolNode.fabric ?? ''"
@@ -597,7 +624,7 @@ function cancel() {
               @update:value="(v: string) => store.updateNodeData(node.id, { fabric: v })"
             />
           </div>
-          <div class="grid grid-cols-3 gap-10px mb-14px">
+          <div class="grid grid-cols-3 gap-10px mb-12px">
             <div>
               <div class="ll-label">模型</div>
               <n-select
@@ -627,7 +654,7 @@ function cancel() {
             </div>
           </div>
         </template>
-        <div v-if="toolNode.tool === 'i2p'" class="mb-14px">
+        <div v-if="toolNode.tool === 'i2p'" class="mb-12px">
           <div class="ll-label">输出语言</div>
           <n-select
             v-model:value="toolNode.language"
@@ -638,7 +665,7 @@ function cancel() {
             ]"
           />
         </div>
-        <div v-if="toolNode.tool === 'mask'" class="mb-14px">
+        <div v-if="toolNode.tool === 'mask'" class="mb-12px">
           <div class="ll-label flex items-center justify-between">
             <span>重绘区域（在图上拖拽框选）</span>
             <button
@@ -679,7 +706,7 @@ function cancel() {
             请先连一张输入图片（或在上方指定上游图片），再框选区域
           </div>
         </div>
-        <div v-if="toolNode.tool === 'mask'" class="mb-14px">
+        <div v-if="toolNode.tool === 'mask'" class="mb-12px">
           <div class="ll-label">重绘要求</div>
           <n-input
             v-model:value="toolNode.maskPrompt"
@@ -694,7 +721,7 @@ function cancel() {
 
       <!-- 运行区 -->
       <template v-if="canRun">
-        <div class="mb-14px">
+        <div class="mb-12px">
           <div class="ll-label">执行</div>
           <div class="flex gap-8px">
             <button v-if="!isRunning" type="button" class="ll-btn-primary flex-1 px-0 py-8px !text-13px" @click="run">
@@ -708,7 +735,7 @@ function cancel() {
           </div>
           <RunErrorNotice v-else-if="node.data.status === 'error'" :node-id="node.id" :data="node.data" />
         </div>
-        <div v-if="candidates.length" class="mb-14px">
+        <div v-if="candidates.length" class="mb-12px">
           <div class="ll-label">候选（点击设为输出）</div>
           <div class="flex flex-wrap gap-8px">
             <button
@@ -722,10 +749,10 @@ function cancel() {
             </button>
           </div>
         </div>
-        <div v-if="(node.data as { resultText?: string }).resultText" class="mb-14px">
+        <div v-if="(node.data as { resultText?: string }).resultText" class="mb-12px">
           <div class="ll-label">反推结果</div>
           <div
-            class="px-10px py-8px border border-line-soft rounded-8px bg-surface2 text-ink text-12px leading-18px whitespace-pre-wrap break-all max-h-180px overflow-auto"
+            class="px-10px py-8px border border-solid border-line-soft rounded-6px bg-surface2 text-ink text-12px leading-18px whitespace-pre-wrap break-all max-h-180px overflow-auto"
           >
             {{ (node.data as { resultText?: string }).resultText }}
           </div>

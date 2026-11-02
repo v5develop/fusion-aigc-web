@@ -4,8 +4,7 @@
  * <p>类型与字段对齐 fusion_aigc_go gateway.api 的 canvas 段，snake_case 原样收发，
  * 契约见 fusion_aigc_go/docs/api/api-canvas.md。
  */
-import axios from 'axios'
-import { get, post, put, del } from './index.ts'
+import { get, post, put, del, toApiError } from './index.ts'
 
 const PREFIX = '/api/v1/canvas'
 
@@ -120,9 +119,18 @@ export function canvasGet(id: string) {
   return get<ICanvasDetail>(`${PREFIX}/canvases/${id}`)
 }
 
-/** 重命名：管理页约定只传 title，不动快照 */
-export function canvasRename(id: string, title: string) {
-  return put<ICanvasSaveResp>(`${PREFIX}/canvases/${id}`, { title })
+/**
+ * 重命名。保存接口 snapshot 必填，且不带 if_match_revision 又不 force 会回 1002（契约 2.4），
+ * 所以先取当前快照与 revision 原样带回；期间被别处改过则回 4002，由拦截器提示后重试即可。
+ */
+export async function canvasRename(id: string, title: string) {
+  const detail = await canvasGet(id)
+  const cur = detail.data
+  return put<ICanvasSaveResp>(`${PREFIX}/canvases/${id}`, {
+    title,
+    snapshot: cur?.snapshot ?? { nodes: [], edges: [] },
+    if_match_revision: cur?.revision ?? '',
+  })
 }
 
 /** 删除（逻辑删除） */
@@ -135,9 +143,9 @@ export function canvasSaveAs(id: string, title?: string) {
   return post<ICanvasDetail>(`${PREFIX}/canvases/${id}/save-as`, title ? { title } : {})
 }
 
-/** 画布的执行记录（新的在前） */
-export function canvasRuns(id: string, limit = 50) {
-  return get<ICanvasRuns>(`${PREFIX}/canvases/${id}/runs`, { limit })
+/** 画布的执行记录（新的在前）；nodeId 只看该节点 */
+export function canvasRuns(id: string, limit = 50, nodeId?: string) {
+  return get<ICanvasRuns>(`${PREFIX}/canvases/${id}/runs`, { limit, ...(nodeId ? { node_id: nodeId } : {}) })
 }
 
 /** 模板列表 */
@@ -278,9 +286,9 @@ export function canvasSelectCandidate(canvasId: string, nodeId: string, data: { 
 }
 
 /**
- * 保存（乐观锁）。不走共享拦截器：冲突要按 code=4002 + data.conflict==='revision' 分支处理，
- * 而共享拦截器对业务失败只回 Error(msg)，拿不到 code；本请求也不需要它代弹 toast
- * （冲突弹确认框、其余错误由编辑器按信封 msg 提示）。鉴权与 401 语义与共享层一致。
+ * 保存（乐观锁）。走共享拦截器：令牌过期时由它单航班刷新并重放（自动保存常在长时间编辑后发生，
+ * 裸 axios 遇 401 只会一直保存失败）。保存接口的 4002 只有版本冲突一种（契约 2.4），
+ * 这里把它还原成冲突信封交给编辑器弹「载入最新 / 覆盖保存」；其余失败照常 reject（拦截器已 toast）。
  */
 export interface ICanvasApiEnvelope<T = unknown> {
   code: number
@@ -298,14 +306,20 @@ export function canvasSaveWithLock(
   id: string,
   data: { title?: string; snapshot: unknown; if_match_revision?: string; force?: boolean },
 ): Promise<ICanvasApiEnvelope<ICanvasSaveResp | ICanvasSaveConflict>> {
-  const token = localStorage.getItem('fusion_accessToken')
-  const baseURL = import.meta.env.VITE_FUSION_API_BASE as string | undefined
-  return axios
-    .put<ICanvasApiEnvelope<ICanvasSaveResp | ICanvasSaveConflict>>(`${baseURL ?? ''}${PREFIX}/canvases/${id}`, data, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      timeout: 15000,
-    })
-    .then((res) => res.data)
+  return put<ICanvasSaveResp>(`${PREFIX}/canvases/${id}`, data, undefined, 15000).then(
+    (res) => ({ code: 0, msg: res.msg ?? 'ok', data: res.data }) as ICanvasApiEnvelope<ICanvasSaveResp>,
+    (err: unknown) => {
+      const apiErr = toApiError(err)
+      if (apiErr?.code === 4002) {
+        return {
+          code: 4002,
+          msg: apiErr.message,
+          data: { conflict: 'revision', revision: '', updated_at: 0 },
+        } as ICanvasApiEnvelope<ICanvasSaveConflict>
+      }
+      throw err
+    },
+  )
 }
 
 // ---------------- 上传（快照里禁止 dataURL，先传 OSS 换 URL） ----------------
@@ -321,7 +335,10 @@ interface IGoPresign {
 export async function canvasUploadMedia(file: File): Promise<string> {
   const isVideo = file.type.startsWith('video/')
   const contentType = file.type || (isVideo ? 'video/mp4' : 'image/jpeg')
-  const res = await post<IGoPresign>('/api/v1/local-life/upload/presign', { kind: isVideo ? 'video' : 'image', contentType })
+  const res = await post<IGoPresign>('/api/v1/local-life/upload/presign', {
+    kind: isVideo ? 'video' : 'image',
+    contentType,
+  })
   const { put_url: putUrl, url, content_type: signedType } = res.data ?? ({} as IGoPresign)
   if (!putUrl || !url) {
     throw new Error('获取上传凭证失败')

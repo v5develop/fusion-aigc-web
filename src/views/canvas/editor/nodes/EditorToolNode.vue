@@ -11,6 +11,18 @@ import RunErrorNotice from '../RunErrorNotice.vue'
 import { toolLabel } from '../graph.ts'
 import { useCanvasEditor } from '../useCanvasEditor.ts'
 import type { CanvasNodeData } from '../types.ts'
+import { portClass, portLabelClass } from '../ports.ts'
+import {
+  CHECKER_BG,
+  NODE_CARD,
+  NODE_CARD_SELECTED,
+  NODE_HEAD,
+  NODE_RUN_BTN,
+  NODE_TITLE,
+  type QuickAddKind,
+} from '../ui.ts'
+import NodeMenu from '../NodeMenu.vue'
+import NodeQuickAdd from '../NodeQuickAdd.vue'
 
 const props = defineProps<{
   id: string
@@ -18,7 +30,7 @@ const props = defineProps<{
   selected?: boolean
 }>()
 
-const emit = defineEmits<{ remove: [] }>()
+const emit = defineEmits<{ remove: []; quickAdd: [kind: QuickAddKind] }>()
 
 const store = useCanvasEditor()
 
@@ -54,58 +66,46 @@ const summary = computed(() => {
 
 <template>
   <div
-    class="ll-card group relative text-12px text-ink"
-    :class="{
-      'is-selected': selected,
-      'opacity-55': notReady,
-      '!border-violet !shadow-[0_0_0_2px_rgba(135,95,154,0.18),0_10px_18px_-10px_rgba(31,35,41,0.22)]': selected,
-    }"
+    :class="[NODE_CARD, { 'is-selected': selected, 'opacity-55': notReady, [NODE_CARD_SELECTED]: selected }]"
     :style="{ width: `${width}px` }"
   >
-    <header class="flex h-34px items-center gap-8px pl-12px pr-10px border-b border-line-soft rounded-t-10px">
-      <span class="shrink-0 w-8px h-8px rounded-full bg-[#6e7681]" />
-      <span class="overflow-hidden flex-1 text-13px font-600 text-ellipsis whitespace-nowrap">{{
-        data.title || toolLabel(data.tool)
-      }}</span>
-      <span class="shrink-0 px-6px py-1px rounded-4px bg-violet-soft text-violet-ink text-10px leading-16px">工具</span>
-      <button
-        type="button"
-        class="grid shrink-0 w-22px h-22px p-0 place-items-center border border-violet-line rounded-6px bg-violet-soft text-violet-ink cursor-pointer hover:border-violet hover:text-violet-press"
-        :class="{ '!bg-#ede3f2 !border-violet-line': isRunning, '!cursor-not-allowed': notReady && !isRunning }"
-        :disabled="notReady && !isRunning"
-        :title="notReady && !isRunning ? '该功能暂未开放' : isRunning ? '取消执行' : '执行此工具'"
-        @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
-      >
-        <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
-      </button>
-      <button
-        type="button"
-        class="absolute -top-9px -right-9px z-3 grid w-20px h-20px p-0 place-items-center border border-line rounded-full bg-white text-muted text-12px leading-none cursor-pointer opacity-0 transition-opacity duration-120 group-hover:opacity-100 hover:border-danger-line hover:bg-danger-soft hover:text-danger"
-        title="删除节点"
-        @click.stop="emit('remove')"
-      >
-        ×
-      </button>
+    <header :class="NODE_HEAD">
+      <span class="shrink-0 w-8px h-8px rounded-full bg-placeholder" />
+      <span class="flex-1" :class="NODE_TITLE">{{ data.title || toolLabel(data.tool) }}</span>
+      <div class="flex shrink-0 items-center gap-2px">
+        <button
+          type="button"
+          :class="NODE_RUN_BTN"
+          :disabled="notReady && !isRunning"
+          :title="notReady && !isRunning ? '该功能暂未开放' : isRunning ? '取消执行' : '执行此工具'"
+          :aria-label="isRunning ? `取消执行 ${data.title}` : `执行 ${data.title}`"
+          @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
+        >
+          <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
+        </button>
+        <NodeMenu :title="data.title || toolLabel(data.tool)" @remove="emit('remove')" />
+      </div>
     </header>
 
     <div class="px-10px pt-8px pb-10px">
-      <div class="mb-6px text-ink-2 text-11px">{{ summary }}</div>
+      <div class="mb-6px text-muted text-11px">{{ summary }}</div>
 
       <div
         v-if="isI2p && resultText"
-        class="max-h-120px overflow-auto px-10px py-8px border border-line-soft rounded-8px bg-surface2 text-ink text-11px leading-17px whitespace-pre-wrap break-all nodrag nowheel"
+        class="max-h-120px overflow-auto px-10px py-8px border border-solid border-line-soft rounded-6px bg-surface2 text-ink text-11px leading-17px whitespace-pre-wrap break-all nodrag nowheel"
       >
         {{ resultText }}
       </div>
       <div
         v-else-if="resultImage"
-        class="grid w-full place-items-center overflow-hidden rounded-8px border border-line-soft [background:repeating-conic-gradient(#f3f4f5_0%,#f3f4f5_25%,transparent_0%,transparent_50%)_0_0/14px_14px,#f7f8f9] min-h-110px"
+        class="grid w-full place-items-center overflow-hidden rounded-6px min-h-110px"
+        :class="CHECKER_BG"
       >
         <img :src="resultImage" :alt="data.title" draggable="false" class="block w-full max-h-240px object-contain" />
       </div>
       <div
         v-else
-        class="flex flex-col items-center gap-6px justify-center border border-dashed border-line rounded-8px text-placeholder text-11px bg-surface2 min-h-100px"
+        class="flex flex-col items-center gap-6px justify-center border border-dashed border-line-strong rounded-6px text-placeholder text-11px bg-surface2 min-h-100px"
       >
         <EditorIcon name="tool" :size="20" />
         <span>{{ isRunning ? '处理中…' : '连一条图片输入后执行' }}</span>
@@ -119,70 +119,51 @@ const summary = computed(() => {
       </div>
       <div
         v-if="isRunning"
-        class="flex items-center gap-6px mt-6px px-8px py-4px rounded-6px text-11px bg-violet-soft text-violet-ink"
+        class="flex items-center gap-6px mt-6px px-8px py-5px border border-solid border-line-soft rounded-4px bg-surface2 text-muted text-11px"
       >
         {{ data.status === 'queued' ? '排队中…' : `处理中 ${data.progress ?? 0}%` }}
       </div>
       <RunErrorNotice v-else-if="data.status === 'error'" :node-id="id" :data="data" />
       <div
         v-else-if="data.status === 'done'"
-        class="flex items-center gap-6px mt-6px px-8px py-4px rounded-6px text-11px bg-success-soft text-success"
+        class="flex items-center gap-6px mt-6px px-8px py-5px border border-solid border-success-line rounded-4px text-11px bg-success-soft text-success"
       >
         已完成
       </div>
     </div>
 
     <template v-if="isTryon">
-      <span
-        class="absolute px-7px py-2px rounded-5px text-white text-10px font-600 leading-14px whitespace-nowrap -translate-x-full -translate-y-50% pointer-events-none opacity-0 transition-opacity duration-120 group-hover:opacity-100 [.is-selected_&]:opacity-100 bg-[#875f9a]"
-        :style="{ top: '34%' }"
-        >服装</span
-      >
+      <span :class="portLabelClass('garment')" :style="{ top: '34%' }">服装</span>
       <Handle
         id="garment"
         type="target"
         :position="Position.Left"
-        class="ed-port ed-port--garment"
+        :class="portClass('garment')"
         :style="{ top: '34%' }"
       />
-      <span
-        class="absolute px-7px py-2px rounded-5px text-white text-10px font-600 leading-14px whitespace-nowrap -translate-x-full -translate-y-50% pointer-events-none opacity-0 transition-opacity duration-120 group-hover:opacity-100 [.is-selected_&]:opacity-100 bg-[#2f80ed]"
-        :style="{ top: '62%' }"
-        >模特</span
-      >
+      <span :class="portLabelClass('models')" :style="{ top: '62%' }">模特</span>
       <Handle
         id="models"
         type="target"
         :position="Position.Left"
-        class="ed-port ed-port--models"
+        :class="portClass('models')"
         :style="{ top: '62%' }"
       />
     </template>
     <template v-else>
-      <span
-        class="absolute px-7px py-2px rounded-5px text-white text-10px font-600 leading-14px whitespace-nowrap -translate-x-full -translate-y-50% pointer-events-none opacity-0 transition-opacity duration-120 group-hover:opacity-100 [.is-selected_&]:opacity-100 bg-[#38bdf8]"
-        :style="{ top: '50%' }"
-        >图片</span
-      >
-      <Handle
-        id="image"
-        type="target"
-        :position="Position.Left"
-        class="ed-port ed-port--image"
-        :style="{ top: '50%' }"
-      />
+      <span :class="portLabelClass('image')" :style="{ top: '50%' }">图片</span>
+      <Handle id="image" type="target" :position="Position.Left" :class="portClass('image')" :style="{ top: '50%' }" />
     </template>
 
     <Handle
       :id="isI2p ? 'text' : 'image-out'"
       type="source"
       :position="Position.Right"
-      :class="isI2p ? 'ed-port ed-port--text' : 'ed-port ed-port--out'"
+      :class="portClass(isI2p ? 'text' : 'out')"
+    />
+    <NodeQuickAdd
+      :kinds="isI2p ? ['image-model', 'video-model'] : ['image-model', 'video-model', 'tool']"
+      @pick="emit('quickAdd', $event)"
     />
   </div>
 </template>
-
-<style scoped lang="less">
-// Handle 是 Vue Flow 组件，自带 .vue-flow__handle 样式，端口样式留在 Less 以保证优先级
-@import '../node-base.less';
-</style>

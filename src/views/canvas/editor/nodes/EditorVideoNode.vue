@@ -6,6 +6,10 @@ import EditorIcon from '../EditorIcon.vue'
 import { canvasUploadMedia } from '@/api/canvasHome.ts'
 import { editorMessage, useCanvasEditor } from '../useCanvasEditor.ts'
 import type { CanvasNodeData } from '../types.ts'
+import { portClass } from '../ports.ts'
+import { FOCUS_RING, NODE_CARD, NODE_CARD_SELECTED, NODE_HEAD, NODE_TITLE, type QuickAddKind } from '../ui.ts'
+import NodeMenu from '../NodeMenu.vue'
+import NodeQuickAdd from '../NodeQuickAdd.vue'
 
 const props = defineProps<{
   id: string
@@ -13,7 +17,7 @@ const props = defineProps<{
   selected?: boolean
 }>()
 
-const emit = defineEmits<{ remove: [] }>()
+const emit = defineEmits<{ remove: []; quickAdd: [kind: QuickAddKind] }>()
 
 const store = useCanvasEditor()
 const fileRef = ref<HTMLInputElement | null>(null)
@@ -43,28 +47,50 @@ async function onFile(event: Event) {
 </script>
 
 <template>
-  <div class="ll-card group relative text-12px text-ink" :class="{ 'is-selected': selected, '!border-violet !shadow-[0_0_0_2px_rgba(135,95,154,0.18),0_10px_18px_-10px_rgba(31,35,41,0.22)]': selected }" :style="{ width: `${width}px` }">
-    <header class="flex h-34px items-center gap-8px pl-12px pr-10px border-b border-line-soft rounded-t-10px">
-      <span class="shrink-0 w-8px h-8px rounded-full bg-[#f97373]" />
-      <span class="overflow-hidden flex-1 text-13px font-600 text-ellipsis whitespace-nowrap">{{ data.title || '视频' }}</span>
-      <span class="shrink-0 px-6px py-1px rounded-4px bg-violet-soft text-violet-ink text-10px leading-16px">参考视频</span>
-      <button type="button" class="absolute -top-9px -right-9px z-3 grid w-20px h-20px p-0 place-items-center border border-line rounded-full bg-white text-muted text-12px leading-none cursor-pointer opacity-0 transition-opacity duration-120 group-hover:opacity-100 hover:border-danger-line hover:bg-danger-soft hover:text-danger" title="删除节点" @click.stop="emit('remove')">×</button>
+  <div
+    :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
+    :style="{ width: `${width}px` }"
+  >
+    <header :class="NODE_HEAD">
+      <span class="shrink-0 w-8px h-8px rounded-full bg-danger" />
+      <span class="flex-1" :class="NODE_TITLE">{{ data.title || '视频' }}</span>
+      <NodeMenu :title="data.title || '视频'" @remove="emit('remove')" />
     </header>
-    <div class="px-10px pt-8px pb-10px">
-      <div class="grid w-full place-items-center overflow-hidden rounded-8px border border-line-soft [background:repeating-conic-gradient(#f3f4f5_0%,#f3f4f5_25%,transparent_0%,transparent_50%)_0_0/14px_14px,#f7f8f9]" :style="{ height: `${Math.max(120, width * 0.75)}px` }">
-        <video v-if="data.video" :src="data.video" controls preload="metadata" class="block w-full max-h-240px object-contain nodrag nowheel" />
-        <button v-else type="button" class="flex flex-col items-center gap-6px w-full px-0 py-22px border-none bg-transparent text-placeholder text-11px hover:text-violet-ink cursor-pointer nodrag" :disabled="uploading" @click.stop="pick">
+    <div class="p-12px rounded-b-8px bg-surface3">
+      <div
+        class="grid w-full place-items-center overflow-hidden rounded-4px"
+        :style="{ height: `${Math.max(120, (width - 24) * 0.75)}px` }"
+      >
+        <video
+          v-if="data.video"
+          :src="data.video"
+          controls
+          preload="metadata"
+          class="block w-full h-full rounded-4px bg-black object-contain nodrag nowheel"
+        />
+        <button
+          v-else
+          type="button"
+          class="flex flex-col w-full h-full items-center justify-center gap-8px p-0 border border-dashed border-line-strong rounded-6px bg-surface2 text-placeholder text-11px cursor-pointer hover:text-violet-ink nodrag"
+          :class="FOCUS_RING"
+          :disabled="uploading"
+          title="上传视频"
+          @click.stop="pick"
+        >
           <EditorIcon name="video" :size="22" />
           <span>{{ uploading ? '上传中…' : '上传视频' }}</span>
         </button>
       </div>
-      <input ref="fileRef" type="file" accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm" class="nodrag" hidden @change="onFile" />
+      <input
+        ref="fileRef"
+        type="file"
+        accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm"
+        class="nodrag"
+        hidden
+        @change="onFile"
+      />
     </div>
-    <Handle id="video" type="source" :position="Position.Right" class="ed-port ed-port--video" />
+    <NodeQuickAdd :kinds="['video-model']" @pick="emit('quickAdd', $event)" />
+    <Handle id="video" type="source" :position="Position.Right" :class="portClass('video')" />
   </div>
 </template>
-
-<style scoped lang="less">
-// Handle 是 Vue Flow 组件，自带 .vue-flow__handle 样式，端口样式留在 Less 以保证优先级
-@import '../node-base.less';
-</style>

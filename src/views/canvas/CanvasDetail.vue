@@ -32,6 +32,8 @@ async function load(id: string) {
     const [d, r] = await Promise.all([canvasGet(id), canvasRuns(id, 50)])
     detail.value = d.data ?? null
     runs.value = r.data?.items ?? []
+  } catch {
+    // 业务失败拦截器已 toast；抽屉显示「不存在或已删除」兜底
   } finally {
     loading.value = false
   }
@@ -45,7 +47,7 @@ function snapshotNodeCount(): number | null {
 
 /** 状态 → 徽标。未认识的状态按 warning 兜底展示原文 */
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  submitted: { label: '已提交', cls: 'll-chip-running' },
+  submitting: { label: '提交中', cls: 'll-chip-running' },
   queued: { label: '排队中', cls: 'll-chip-running' },
   running: { label: '生成中', cls: 'll-chip-running' },
   succeeded: { label: '已完成', cls: 'll-chip-success' },
@@ -76,23 +78,36 @@ function formatTime(ms?: number) {
           </div>
 
           <div class="mb-16px">
-            <div class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0">
+            <div
+              class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0"
+            >
               <span class="shrink-0 w-60px text-muted">标题</span>
               <span class="text-ink break-all">{{ detail.title || '未命名画布' }}</span>
             </div>
-            <div class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0">
+            <div
+              class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0"
+            >
               <span class="shrink-0 w-60px text-muted">版本</span>
-              <span class="break-all text-12px text-violet-ink [font-family:SFMono-Regular,Consolas,'Liberation_Mono',Menlo,monospace]">{{ detail.revision }}</span>
+              <span
+                class="break-all text-12px text-violet-ink [font-family:SFMono-Regular,Consolas,'Liberation_Mono',Menlo,monospace]"
+                >{{ detail.revision }}</span
+              >
             </div>
-            <div class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0">
+            <div
+              class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0"
+            >
               <span class="shrink-0 w-60px text-muted">节点数</span>
               <span class="text-ink break-all">{{ detail.node_count }}（快照 {{ snapshotNodeCount() ?? '-' }}）</span>
             </div>
-            <div class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0">
+            <div
+              class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0"
+            >
               <span class="shrink-0 w-60px text-muted">创建时间</span>
               <span class="text-ink break-all">{{ formatTime(detail.created_at) }}</span>
             </div>
-            <div class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0">
+            <div
+              class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0"
+            >
               <span class="shrink-0 w-60px text-muted">更新时间</span>
               <span class="text-ink break-all">{{ formatTime(detail.updated_at) }}</span>
             </div>
@@ -103,11 +118,17 @@ function formatTime(ms?: number) {
             <div v-for="r in runs" :key="r.run_id" class="bg-surface2 border border-line rounded-8px px-12px py-10px">
               <div class="flex items-center gap-10px text-12px">
                 <span class="ll-chip" :class="statusChip(r.status).cls">{{ statusChip(r.status).label }}</span>
-                <span class="text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap">{{ r.model || '未指定模型' }}</span>
+                <span class="text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap">{{
+                  r.model || '未指定模型'
+                }}</span>
                 <span class="ml-auto shrink-0 text-placeholder">{{ formatTime(r.created_at) }}</span>
-                <span v-if="r.status === 'running' || r.status === 'queued'" class="shrink-0 text-violet-ink">{{ r.progress }}%</span>
+                <span v-if="r.status === 'running' || r.status === 'queued'" class="shrink-0 text-violet-ink"
+                  >{{ r.progress }}%</span
+                >
               </div>
-              <div v-if="r.status === 'failed' && r.error" class="mt-6px text-12px text-danger leading-18px break-all">{{ r.error }}</div>
+              <div v-if="r.status === 'failed' && r.error" class="mt-6px text-12px text-danger leading-18px break-all">
+                {{ r.error }}
+              </div>
             </div>
           </div>
           <div v-else class="ll-empty py-40px">还没有运行记录</div>

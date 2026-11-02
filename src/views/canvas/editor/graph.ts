@@ -120,7 +120,8 @@ export function validateConnection(
     target.type === 'model' &&
     target.data.kind === 'video' &&
     (rawTargetHandle === 'image1' || rawTargetHandle === 'image2')
-  const limit = isVideoFramePort ? 1 : targetHandle === 'models' ? 9 : imageLimitFor(target)
+  // 参考视频口上限 1（契约 6.1 / validate.go portLimit），不按参考图上限算
+  const limit = isVideoFramePort || targetHandle === 'video' ? 1 : targetHandle === 'models' ? 9 : imageLimitFor(target)
   const used = pool.filter((edge) => {
     if (edge.target !== target.id) return false
     if (isVideoFramePort || (target.type === 'image' && target.data.kind === 'result')) {

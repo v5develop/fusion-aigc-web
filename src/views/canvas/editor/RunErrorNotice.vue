@@ -15,13 +15,15 @@ const isUnknown = computed(() => props.data.errorCode === 'UPSTREAM_UNKNOWN')
 </script>
 
 <template>
-  <div class="mt-6px px-8px py-4px rounded-6px text-11px bg-danger-soft text-danger break-all">
+  <div
+    class="mt-6px px-8px py-5px border border-solid border-danger-line rounded-4px text-11px bg-danger-soft text-danger break-all"
+  >
     <div>{{ data.errorMessage || '执行失败' }}</div>
     <div v-if="isUnknown" class="mt-2px font-600">结果未知，点数未退回，将由系统对账</div>
     <button
       v-if="data.retryable"
       type="button"
-      class="nodrag mt-4px px-8px py-2px border border-danger-line rounded-4px bg-white text-danger text-11px cursor-pointer hover:bg-danger-soft"
+      class="nodrag mt-4px px-8px py-2px border border-solid border-danger-line rounded-4px bg-white text-danger text-11px cursor-pointer hover:bg-danger-soft focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-1"
       @click.stop="store.retryNode(nodeId)"
     >
       重试
