@@ -190,6 +190,12 @@ async function runOcr() {
   }
 }
 
+// 文字替换：原图上传后自动识别（复用 runOcr / toolOcr，无需点按钮）
+const hasRegionField = computed(() => !!schema.value?.fields.some((f) => f.type === 'region-list'))
+watch(singleImage, (url) => {
+  if (url && hasRegionField.value) void runOcr()
+})
+
 // ---------------- 就绪判定 ----------------
 
 const disabledReason = computed(() => {
@@ -496,7 +502,21 @@ const inputCls =
                 {{ ocrLoading ? '识别中…' : regions.length ? '重新识别' : '识别文字' }}
               </button>
             </div>
-            <p v-if="!regions.length" class="m-0 ll-empty py-12px">
+            <ul
+              v-if="ocrLoading"
+              class="m-0 p-0 list-none flex flex-col gap-8px"
+              role="status"
+              aria-live="polite"
+              aria-label="识别中…"
+            >
+              <li
+                v-for="n in 4"
+                :key="n"
+                class="tool-skeleton-row h-70px box-border rounded-8px bg-surface2"
+                aria-hidden="true"
+              />
+            </ul>
+            <p v-else-if="!regions.length" class="m-0 ll-empty py-12px">
               {{ singleImage ? '点击「识别文字」，识别结果会列在这里（识别单独计费）' : '先上传原图' }}
             </p>
             <ul v-else class="m-0 p-0 list-none flex flex-col gap-8px" aria-labelledby="tool-regions-label">
@@ -808,3 +828,26 @@ const inputCls =
     </section>
   </div>
 </template>
+
+<style scoped>
+/* 骨架呼吸：UnoCSS 原子类只能引用动画名，关键帧本身写不成原子类，故此处是唯一允许的 CSS；1.2s 循环，仅动透明度，不改尺寸 */
+@keyframes tool-skeleton-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.tool-skeleton-row {
+  animation: tool-skeleton-breathe 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-skeleton-row {
+    animation: none;
+  }
+}
+</style>
