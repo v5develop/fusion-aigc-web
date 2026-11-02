@@ -49,6 +49,18 @@ const router = createRouter({
         ...assetLibraryRouter,
         ...studioRouter,
         {
+          path: '/plaza',
+          name: 'plaza',
+          meta: { title: '创意广场' },
+          component: () => import('@/views/plaza/index.vue'),
+        },
+        {
+          path: '/agent',
+          name: 'agent',
+          meta: { title: '智能体' },
+          component: () => import('@/views/agent/index.vue'),
+        },
+        {
           path: '/asset',
           name: 'asset',
           component: () => import('@/views/asset/index.vue'),
