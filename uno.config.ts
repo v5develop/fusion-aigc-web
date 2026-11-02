@@ -1,4 +1,4 @@
-import { defineConfig, presetUno } from 'unocss'
+import { defineConfig, presetUno, transformerVariantGroup } from 'unocss'
 
 /**
  * UnoCSS 配置 —— 本地生活（local-life）新功能模块起启用。
@@ -12,6 +12,14 @@ import { defineConfig, presetUno } from 'unocss'
  */
 export default defineConfig({
   presets: [presetUno()],
+  // 支持 hover:(a b) 这类变体分组写法（否则分组内的类不会生成 CSS）
+  transformers: [transformerVariantGroup()],
+  // 基础边框（与 Tailwind preflight 一致）：默认宽度 0、样式实线、颜色同 palette 的 line 色。浏览器原生按钮/输入框的默认边框由此清除，只有显式写了 border 类的元素才显示边框
+  preflights: [
+    {
+      getCSS: () => '*, ::before, ::after { border-width: 0; border-style: solid; border-color: #e5e7eb; }',
+    },
+  ],
   // 老代码大量使用 .container 作为布局类名（layout / 电商 Container / Row），
   // 与 presetUno 内置的 container utility（响应式 max-width）撞名会把它们全部压窄，屏蔽之
   blocklist: ['container'],
@@ -80,7 +88,8 @@ export default defineConfig({
     'll-chip-error': 'text-danger bg-danger-soft border border-danger-line',
     'll-chip-warning': 'text-warning bg-warning-soft border border-warning-line',
     // ---- 白底记录卡：细描边 + 面板短投影 ----
-    'll-card': 'bg-white rounded-10px border border-line shadow-[0_2px_4px_-1px_rgba(31,35,41,0.08),0_10px_18px_-10px_rgba(31,35,41,0.22)]',
+    'll-card':
+      'bg-white rounded-10px border border-line shadow-[0_2px_4px_-1px_rgba(31,35,41,0.08),0_10px_18px_-10px_rgba(31,35,41,0.22)]',
     // ---- 主按钮（生成 CTA）：藤紫渐变 + 深描边 + 短投影，按下内凹 ----
     'll-btn-primary':
       'inline-flex items-center justify-center gap-8px rounded-999px text-white text-14px font-600 cursor-pointer select-none ' +
