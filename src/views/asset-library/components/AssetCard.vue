@@ -5,7 +5,6 @@
  */
 import { computed, ref } from 'vue'
 import { NCheckbox } from 'naive-ui'
-import MediaFallback from '@/components/MediaFallback/index.vue'
 import type { IAssetLibAsset } from '@/api/assetLibrary.ts'
 
 const props = defineProps<{
@@ -27,6 +26,16 @@ const isVideo = computed(() => props.asset.media === 'video' && !!props.asset.vi
 // 封面加载失败降级：video 播不了先退回封面图，图也裂了才上占位
 const videoFailed = ref(false)
 const imageFailed = ref(false)
+// 重试只给一次机会：通过 key 让 img 重新创建并再请求同一地址，不改 URL（签名链接加参数会失效）
+const retried = ref(false)
+const retryStamp = ref(0)
+const imageSrc = computed(() => props.asset.image)
+function retryImage() {
+  retried.value = true
+  retryStamp.value = Date.now()
+  imageFailed.value = false
+}
+const isVideoAsset = computed(() => props.asset.media === 'video')
 
 const SOURCE_LABELS: Record<string, string> = { official: '官方', upload: '上传', generated: 'AI 生成' }
 const sourceLabel = computed(() => SOURCE_LABELS[props.asset.source] ?? '')
@@ -63,12 +72,28 @@ const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)
       <img
         v-else-if="asset.image && !imageFailed"
         class="block w-full h-full object-contain"
-        :src="asset.image"
+        :key="retryStamp"
+        :src="imageSrc"
         alt=""
         loading="lazy"
         @error="imageFailed = true"
       />
-      <MediaFallback v-else type="image" reason="loadFailed" />
+      <div v-else class="flex flex-col items-center justify-center gap-6px w-full h-full bg-surface2 text-muted">
+        <span v-if="isVideoAsset" class="text-28px leading-none text-placeholder" aria-hidden="true">▶</span>
+        <template v-if="asset.image">
+          <span class="text-12px">图片加载失败</span>
+          <button
+            v-if="!retried"
+            type="button"
+            class="px-10px py-2px rounded-4px border border-solid border-line bg-white text-12px text-muted cursor-pointer hover:text-violet-ink"
+            :class="FOCUS"
+            @click.stop="retryImage"
+          >
+            重试
+          </button>
+        </template>
+        <span v-else-if="!isVideoAsset" class="text-12px">暂无预览</span>
+      </div>
 
       <span
         class="absolute top-8px left-8px max-w-[60%] px-6px py-2px rounded-4px bg-[rgba(31,35,41,0.72)] text-white text-11px leading-[1.4] whitespace-nowrap overflow-hidden text-ellipsis"
