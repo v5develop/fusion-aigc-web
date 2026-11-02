@@ -16,6 +16,7 @@ import { upload } from '@/api/ossUpload.ts'
 import { toApiError } from '@/api/index.ts'
 import StudioImageUpload from '@/views/studio/components/StudioImageUpload/index.vue'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
+import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import type { UploadLayout, UploadSpec } from './schemas'
 
 const props = defineProps<{
@@ -24,6 +25,8 @@ const props = defineProps<{
   disabled?: boolean
   /** s1.1 版式（纯展示）；不传按 kind / max 推断：视频或单张 = single，多张 = batch */
   layout?: UploadLayout
+  /** 空态显示「从资产选择」（只对图片槽生效；工具页打开，工作流页不传 = 不显示） */
+  assetPicker?: boolean
 }>()
 const urls = defineModel<string[]>({ required: true })
 
@@ -126,6 +129,46 @@ async function onChange(e: Event) {
   } finally {
     uploading.value = false
   }
+}
+
+// ---------------- 从资产选择 ----------------
+
+const assetShow = ref(false)
+const canPickAsset = computed(() => !!props.assetPicker && !isVideo.value)
+
+function openAssetPicker() {
+  if (props.disabled || uploading.value) return
+  assetShow.value = true
+}
+
+/**
+ * 资产库选回的是已在存储里的 URL，不再走 OSS 上传；入组规则与本地上传 onChange 一致：
+ * 单张槽 = 换一张、多张槽按剩余名额截断并给同一句提示、格式按 accept 拦（URL 路径带扩展名时才能判）。
+ * 大小 / 时长在 URL 上拿不到，不拦（资产库只列 media=image 的 http(s) 图片）。
+ */
+function addAssetUrls(picked: string[]) {
+  const fresh = picked.filter((u) => /^https?:\/\//i.test(u) && !urls.value.includes(u))
+  if (fresh.length < picked.length) message.warning('已跳过重复或不可用的图片')
+  const replacing = props.spec.max === 1
+  const capacity = replacing ? 1 : room.value
+  if (capacity <= 0) {
+    message.warning(`最多上传 ${props.spec.max} ${isVideo.value ? '段' : '张'}`)
+    return
+  }
+  let take = fresh
+  if (take.length > capacity) {
+    message.warning(`最多还能添加 ${capacity} 个，多选的 ${take.length - capacity} 个未添加`)
+    take = take.slice(0, capacity)
+  }
+  const valid = take.filter((u) => {
+    const path = (u.split(/[?#]/)[0] ?? '').toLowerCase()
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    if (!name.includes('.') || exts.value.some((ext) => name.endsWith(ext))) return true
+    message.error(`「${name}」格式不支持，仅支持 ${extText.value}`)
+    return false
+  })
+  if (!valid.length) return
+  urls.value = replacing ? valid.slice(0, 1) : [...urls.value, ...valid]
 }
 
 function remove(i: number) {
@@ -236,6 +279,13 @@ const seamCls = [
       @change="onChange"
     />
 
+    <AssetPickerModal
+      v-if="canPickAsset"
+      v-model:show="assetShow"
+      :limit="spec.max === 1 ? 1 : Math.max(room, 1)"
+      @select="addAssetUrls"
+    />
+
     <!-- 参考图槽 / 材料片：一叠 60×100 白边浮片就是入口（长相由 StudioImageUpload 的 picker 模式画） -->
     <StudioImageUpload
       v-if="isPlates"
@@ -309,6 +359,18 @@ const seamCls = [
           <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
           <span v-if="mode === 'batch'" class="text-11px leading-[1.5] text-muted">已选 0 / {{ spec.max }}</span>
         </span>
+      </button>
+      <!-- 原型：提示文案下方一颗「从资产选择」；与整卡上传按钮是兄弟节点（按钮里不能再套按钮） -->
+      <button
+        v-if="canPickAsset"
+        type="button"
+        class="ll-pill absolute left-1/2 -translate-x-1/2 z-1"
+        :class="[focusRing, mode === 'batch' ? 'top-[calc(50%+122px)]' : 'top-[calc(50%+100px)]']"
+        :disabled="disabled || uploading"
+        :aria-label="`从资产库选择${spec.label}`"
+        @click="openAssetPicker"
+      >
+        从资产选择
       </button>
     </div>
 

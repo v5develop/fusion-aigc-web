@@ -14,6 +14,7 @@ import { upload } from '@/api/ossUpload.ts'
 import { submitCutout, submitTool, toolOcr, voiceList, type ToolHistoryItem, type VoiceItem } from '@/api/tools.ts'
 import { useUserInfoStore } from '@/stores/userInfo'
 import { findToolSchema, isFieldVisible, toJavaValue, type ToolField, type ToolSchema } from './schemas'
+import { catalogFor } from './catalog'
 import { isTerminal, useToolHistory } from './useToolHistory'
 import ToolUploadSlot from './ToolUploadSlot.vue'
 import MaskPainter from './MaskPainter.vue'
@@ -41,6 +42,8 @@ const userInfo = useUserInfoStore()
 
 const toolId = computed(() => String(route.params.toolId ?? ''))
 const schema = computed<ToolSchema | undefined>(() => findToolSchema(toolId.value))
+/** 左侧目录（原型「AI 图片」分组栏）；当前工具高亮 */
+const catalog = computed(() => catalogFor(toolId.value))
 
 // ---------------- 表单状态 ----------------
 
@@ -379,7 +382,74 @@ const inputCls =
     <RouterLink to="/" class="ll-link" :class="focusRing">返回工具箱</RouterLink>
   </div>
 
-  <div v-else class="grid h-full min-h-0 gap-12px p-12px bg-page grid-cols-[460px_260px_minmax(0,1fr)]">
+  <div v-else class="grid h-full min-h-0 gap-12px p-12px bg-page grid-cols-[152px_460px_260px_minmax(0,1fr)]">
+    <!-- 目录：原型左栏，按分组列出工具；没有页面的条目显示「即将开放」 -->
+    <nav class="ll-card flex min-h-0 flex-col overflow-hidden" aria-labelledby="tool-catalog-title">
+      <h2 id="tool-catalog-title" class="flex-none m-0 pt-14px px-12px pb-6px text-15px font-600 text-ink">
+        {{ catalog.title }}
+      </h2>
+      <div class="flex-1 min-h-0 overflow-y-auto px-6px pb-10px">
+        <section
+          v-for="(g, gi) in catalog.groups"
+          :key="g.label"
+          :class="gi ? 'mt-8px pt-8px border-t border-solid border-line-soft' : ''"
+          :aria-labelledby="`tool-catalog-group-${gi}`"
+        >
+          <h3 :id="`tool-catalog-group-${gi}`" class="m-0 px-6px py-6px text-12px font-500 text-muted">
+            {{ g.label }}
+          </h3>
+          <ul class="m-0 p-0 list-none flex flex-col gap-2px">
+            <li v-for="e in g.entries" :key="e.id">
+              <component
+                :is="e.route ? RouterLink : 'div'"
+                v-bind="
+                  e.route
+                    ? { to: e.route, 'aria-current': e.id === toolId ? 'page' : undefined }
+                    : { 'aria-disabled': 'true' }
+                "
+                :aria-label="e.route ? `${e.name}，${e.tagline}` : `${e.name}（即将开放）`"
+                class="flex items-center gap-8px px-6px py-5px rounded-8px border border-solid no-underline transition-colors"
+                :class="[
+                  e.route ? focusRing : 'cursor-not-allowed',
+                  e.id === toolId
+                    ? 'border-line-strong bg-surface3'
+                    : e.route
+                      ? 'border-transparent hover:bg-surface2'
+                      : 'border-transparent',
+                ]"
+              >
+                <span
+                  class="flex-none grid place-items-center w-30px h-30px rounded-6px bg-violet-soft text-violet-ink"
+                  :class="e.route ? '' : 'opacity-60'"
+                  aria-hidden="true"
+                >
+                  <svg
+                    v-if="e.icon"
+                    class="w-16px h-16px"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    :innerHTML="e.icon"
+                  />
+                </span>
+                <span class="min-w-0 flex flex-col gap-1px">
+                  <span class="truncate text-13px font-500 leading-18px" :class="e.route ? 'text-ink' : 'text-muted'">
+                    {{ e.name }}
+                  </span>
+                  <span class="truncate text-11px leading-15px text-placeholder">
+                    {{ e.route ? e.tagline : '即将开放' }}
+                  </span>
+                </span>
+              </component>
+            </li>
+          </ul>
+        </section>
+      </div>
+    </nav>
+
     <!-- 左：操作区 -->
     <section class="ll-card flex min-h-0 flex-col overflow-hidden" aria-labelledby="tool-title">
       <div class="flex-none pt-14px px-14px pb-4px">
@@ -398,6 +468,7 @@ const inputCls =
           :spec="u"
           :layout="u.layout"
           :disabled="submitting"
+          asset-picker
           @update:model-value="setUploads(u.slot, $event)"
         />
 
@@ -562,19 +633,28 @@ const inputCls =
       </form>
 
       <!-- 底部固定提交栏 -->
-      <div class="flex-none flex items-center gap-12px pt-10px px-14px pb-12px border-t border-solid border-line-soft">
-        <div class="flex flex-1 min-w-0 flex-col gap-2px" aria-live="polite">
-          <span class="text-12px text-ink-2">{{ progressText || costText }}</span>
-          <span v-if="disabledReason" class="text-11px leading-15px text-warning">{{ disabledReason }}</span>
-        </div>
+      <!-- 原型：整宽主按钮，第二行写消耗；还不能提交的原因留在按钮上方一行小字 -->
+      <div class="flex-none flex flex-col gap-6px pt-10px px-13px pb-12px border-t border-solid border-line-soft">
+        <p
+          v-if="disabledReason"
+          id="tool-submit-reason"
+          class="m-0 text-11px leading-15px text-warning text-center"
+          aria-live="polite"
+        >
+          {{ disabledReason }}
+        </p>
         <button
           type="submit"
           form="tool-form"
-          class="ll-btn-primary flex-none h-40px px-22px py-0"
+          class="ll-btn-primary w-full h-56px py-0 px-16px flex-col !gap-2px !rounded-10px"
           :class="focusRing"
           :disabled="!!disabledReason || submitting"
+          :aria-describedby="disabledReason ? 'tool-submit-reason' : undefined"
         >
-          {{ submitting ? '提交中…' : schema.submit.label }}
+          <span class="text-15px font-600 leading-20px">{{ submitting ? '提交中…' : schema.submit.label }}</span>
+          <span class="text-11px font-400 leading-15px opacity-85" aria-live="polite">{{
+            progressText || costText
+          }}</span>
         </button>
       </div>
     </section>
@@ -583,7 +663,12 @@ const inputCls =
     <section class="ll-card flex min-h-0 flex-col overflow-hidden" aria-labelledby="tool-history-title">
       <div class="flex-none flex items-center justify-between pt-14px px-14px pb-8px">
         <h2 id="tool-history-title" class="m-0 text-14px font-600 text-ink">历史记录</h2>
-        <span v-if="history.running.value" class="ll-chip ll-chip-running">{{ history.running.value }} 个进行中</span>
+        <span class="flex items-center gap-6px">
+          <span v-if="history.running.value" class="text-11px text-violet-ink"
+            >{{ history.running.value }} 个进行中</span
+          >
+          <span class="text-12px text-placeholder">{{ history.total.value || history.items.value.length }} 条</span>
+        </span>
       </div>
       <div class="flex-1 min-h-0 overflow-y-auto px-10px pb-10px">
         <p v-if="history.loading.value && !history.items.value.length" class="ll-empty m-0 py-24px">加载中…</p>
