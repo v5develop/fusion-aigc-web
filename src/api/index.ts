@@ -224,6 +224,10 @@ const BILLING_GUARD_URLS = [
   '/studio/tryon/submit',
   '/studio/pose/submit',
   '/studio/image-generate/submit',
+  // 工具箱（Java v1 /api/v1/tools/*）：12 个工具提交口 + 文字替换的识别（OCR 同样扣点）
+  '/v1/tools/ai-',
+  '/v1/tools/cutout',
+  '/v1/tools/ocr',
 ]
 
 function isBillingBlock(body: ApiResponse, url?: string): boolean {
