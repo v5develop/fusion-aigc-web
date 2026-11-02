@@ -3,7 +3,7 @@
  * 工具箱共用工具页 /tools/:toolId（12 个工具按 schemas.ts 渲染）。
  *
  * <p>版式对齐 v1.0 原型 ToolWorkspaceColumns：左操作（上传 + 参数，自己滚，底部固定提交栏）/
- * 中历史 / 右结果 + 功能介绍。提交打 Java v1 现有路由（schema.javaRoute），请求体按 schema 的
+ * 中历史 / 右结果 + 功能介绍。左栏 460、内边距 13，正好放下 s1.1 的 B3.1 上传卡 434×742。提交打 Java v1 现有路由（schema.javaRoute），请求体按 schema 的
  * javaKey 映射组装；结果与历史都取 GET /api/v1/tools/{toolTitle}/histories（异步工具只回任务号）。
  */
 import { computed, reactive, ref, watch } from 'vue'
@@ -113,6 +113,10 @@ watch(
 )
 
 const visibleFields = computed(() => (schema.value?.fields ?? []).filter((f) => isFieldVisible(f, values)))
+/** 上传槽位的显示顺序：s1.1 产品替换「替换素材」在上、底图片格在下（只换显示顺序，校验与提交仍按 schema 顺序） */
+const displayUploads = computed(() =>
+  [...(schema.value?.uploads ?? [])].sort((a, b) => Number(b.layout === 'material') - Number(a.layout === 'material')),
+)
 const singleImage = computed(() => uploads[0]?.[0] ?? '')
 
 // 换图后蒙版与识别结果都作废
@@ -375,7 +379,7 @@ const inputCls =
     <RouterLink to="/" class="ll-link" :class="focusRing">返回工具箱</RouterLink>
   </div>
 
-  <div v-else class="grid h-full min-h-0 gap-12px p-12px bg-page grid-cols-[380px_260px_minmax(0,1fr)]">
+  <div v-else class="grid h-full min-h-0 gap-12px p-12px bg-page grid-cols-[460px_260px_minmax(0,1fr)]">
     <!-- 左：操作区 -->
     <section class="ll-card flex min-h-0 flex-col overflow-hidden" aria-labelledby="tool-title">
       <div class="flex-none pt-14px px-14px pb-4px">
@@ -383,15 +387,16 @@ const inputCls =
       </div>
       <form
         id="tool-form"
-        class="flex-1 min-h-0 overflow-y-auto pt-6px px-14px pb-14px flex flex-col gap-16px [scrollbar-gutter:stable]"
+        class="flex-1 min-h-0 overflow-y-auto pt-6px px-13px pb-14px flex flex-col gap-16px [scrollbar-gutter:stable]"
         @submit.prevent="onSubmit"
       >
         <ToolUploadSlot
-          v-for="u in schema.uploads"
+          v-for="u in displayUploads"
           :id="`tool-upload-${u.slot}`"
           :key="`${schema.homeId}-${u.slot}`"
           :model-value="uploads[u.slot] ?? []"
           :spec="u"
+          :layout="u.layout"
           :disabled="submitting"
           @update:model-value="setUploads(u.slot, $event)"
         />

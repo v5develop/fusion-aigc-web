@@ -10,6 +10,7 @@
  * - 右上角删除钮（清空这一组）跟着叠片走；右下角外沿 -12/-12 是云钮（在调用方传 cloud / onCloud 时出现）；
  * - 下方悬停面板（12 高透明桥 + 180ms 接力）：大图预览（contain，不撑卡）+ 3 列逐张删除。
  * 同排多个入口（父容器 flex gap-16px）之间自动画「切口」细线。
+ * 入口外面还包了一层（如工具页 ToolUploadSlot）时，同排容器打 `data-plate-row`，摊开压缩按整排量。
  *
  * <p>上传仍走 goUploadImage（见 useStudioUploader）。picker 模式下点入口只发 pick 事件，
  * 增删由页面处理（商拍服装图走角度弹窗）；remove / clear 事件任何模式都会发。
@@ -32,6 +33,7 @@ const {
   cloud = false,
   tagOf,
   onCloud,
+  name = '',
 } = defineProps<{
   /** 上限张数（1–9 由调用方按契约传入） */
   max?: number
@@ -52,6 +54,8 @@ const {
   tagOf?: (url: string) => string
   /** 云钮的页面自管处理（picker 模式：页面自己开选图弹窗并按自己的规则入组）。优先于 cloud */
   onCloud?: () => void
+  /** 无障碍名称里的图片名；不传用 label（label 为空时兜底「图片」）。单角色页不显示说明时用它 */
+  name?: string
 }>()
 
 const emit = defineEmits<{
@@ -96,13 +100,16 @@ function clearLeave() {
   }
 }
 
-/** 同排其它入口收起时的宽度不变：room = 父宽 − 其它入口宽 − 16 × 缝数 */
+/**
+ * 同排其它入口收起时的宽度不变：room = 排宽 − 其它入口宽 − 16 × 缝数。
+ * 排 = 最近的 `[data-plate-row]`（入口外面另包了一层时），没有就是父元素。
+ */
 function measure() {
   const root = rootEl.value
-  const parent = root?.parentElement
+  const parent = (root?.parentElement?.closest('[data-plate-row]') as HTMLElement | null) ?? root?.parentElement
   if (!root || !parent) return
   const parentRect = parent.getBoundingClientRect()
-  const others = [...parent.children].filter((el) => el !== root && el.classList.contains('stu-slot'))
+  const others = [...parent.querySelectorAll('.stu-slot')].filter((el) => el !== root)
   const room = parentRect.width - others.reduce((w, el) => w + el.getBoundingClientRect().width, 0) - 16 * others.length
   const gaps = n.value - 1
   step.value = gaps ? Math.min(63, Math.max(8, (room - PLATE_W) / gaps)) : 63
@@ -237,19 +244,41 @@ function onDrop(event: DragEvent) {
 }
 
 const entryLabel = computed(() => {
-  const name = label || '图片'
-  if (picker) return `${name}，${count.value} 张，点击编辑`
-  if (full.value) return `${name}已满 ${max} 张`
-  return count.value ? `${name}，${count.value} 张，点击继续添加` : `上传${name}`
+  const title = name || label || '图片'
+  if (picker) return count.value ? `${title}，${count.value} 张，点击编辑` : `上传${title}`
+  if (full.value) return `${title}已满 ${max} 张`
+  return count.value ? `${title}，${count.value} 张，点击继续添加` : `上传${title}`
 })
 
 const capText = computed(() => hint || (count.value ? `${count.value}/${max}` : `最多${max}张`))
+/** 同排两块之间的「切口」：两块隔 16，线画在第二块上——9 宽柔影带（上下 12%/88% 渐隐）+ 正中 1px 中线 */
+const seamCls = [
+  "[.stu-slot+&]:before:content-['']",
+  '[.stu-slot+&]:before:absolute',
+  '[.stu-slot+&]:before:top-0',
+  '[.stu-slot+&]:before:left-[-12px]',
+  '[.stu-slot+&]:before:w-9px',
+  '[.stu-slot+&]:before:h-100px',
+  '[.stu-slot+&]:before:pointer-events-none',
+  '[.stu-slot+&]:before:bg-[linear-gradient(90deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.026)_35%,rgba(31,35,41,0.026)_65%,rgba(31,35,41,0)_100%)]',
+  '[.stu-slot+&]:before:[mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
+  '[.stu-slot+&]:before:[-webkit-mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
+  "[.stu-slot+&]:after:content-['']",
+  '[.stu-slot+&]:after:absolute',
+  '[.stu-slot+&]:after:top-0',
+  '[.stu-slot+&]:after:left-[-8px]',
+  '[.stu-slot+&]:after:w-1px',
+  '[.stu-slot+&]:after:h-100px',
+  '[.stu-slot+&]:after:pointer-events-none',
+  '[.stu-slot+&]:after:bg-[linear-gradient(180deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.09)_14%,rgba(31,35,41,0.09)_86%,rgba(31,35,41,0)_100%)]',
+]
 </script>
 
 <template>
   <div
     ref="rootEl"
     class="stu-slot relative flex flex-col items-center flex-[0_0_auto] min-w-0"
+    :class="seamCls"
     @mouseenter="onEnter"
     @mouseleave="onLeave"
     @focusin="onEnter"
@@ -380,7 +409,7 @@ const capText = computed(() => hint || (count.value ? `${count.value}/${max}` : 
     <!-- 悬停面板：贴片子下沿（top 108），顶上 12 高透明桥；大图 contain 不撑卡，3 列逐张删除 -->
     <div
       v-if="panelOpen"
-      class="stu-peek absolute z-20 top-108px box-border p-10px border border-solid border-line rounded-8px bg-white text-left shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)]"
+      class="absolute z-20 top-108px box-border p-10px border border-solid border-line rounded-8px bg-white text-left shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)] animate-[stu-preview-in_120ms_ease_both] motion-reduce:animate-none before:content-[''] before:absolute before:-top-12px before:inset-x-0 before:h-12px"
       :style="{ left: `${panelLeft}px`, width: `${panelWidth}px` }"
       role="group"
       :aria-label="`${label || '图片'}，共 ${count} 张`"
@@ -436,57 +465,12 @@ const capText = computed(() => hint || (count.value ? `${count.value}/${max}` : 
   </div>
 </template>
 
-<style scoped lang="less">
-/* 同排两块之间的「切口」：两块隔 16，线画在第二块上——9 宽柔影带（上下 12%/88% 渐隐）+ 正中 1px 中线 */
-.stu-slot + .stu-slot::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -12px;
-  width: 9px;
-  height: 100px;
-  background: linear-gradient(
-    90deg,
-    rgba(31, 35, 41, 0) 0%,
-    rgba(31, 35, 41, 0.026) 35%,
-    rgba(31, 35, 41, 0.026) 65%,
-    rgba(31, 35, 41, 0) 100%
-  );
-  -webkit-mask: linear-gradient(180deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
-  mask: linear-gradient(180deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
-  pointer-events: none;
-}
-.stu-slot + .stu-slot::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -8px;
-  width: 1px;
-  height: 100px;
-  background: linear-gradient(
-    180deg,
-    rgba(31, 35, 41, 0) 0%,
-    rgba(31, 35, 41, 0.09) 14%,
-    rgba(31, 35, 41, 0.09) 86%,
-    rgba(31, 35, 41, 0) 100%
-  );
-  pointer-events: none;
-}
-
-/* 面板顶上 12 高透明桥：鼠标从片子一路走进面板不掉 */
-.stu-peek::before {
-  content: '';
-  position: absolute;
-  top: -12px;
-  right: 0;
-  left: 0;
-  height: 12px;
-}
-
-/* 预览出现：120ms + 4px 上浮，v-if 每次挂载重播 */
-.stu-peek {
-  animation: stu-preview-in 120ms ease both;
-}
+<style>
+/*
+ * 只留 @keyframes：UnoCSS 的 animate-[…] 只引用名字，关键帧本身写不成原子类。
+ * 不加 scoped——scoped 会给关键帧名加哈希，模板里的原子类就对不上了；名字带 stu- 前缀避免撞名。
+ * 用法：悬停面板 animate-[stu-preview-in_120ms_ease_both]（120ms + 4px 上浮，v-if 每次挂载重播）。
+ */
 @keyframes stu-preview-in {
   from {
     opacity: 0;
@@ -495,11 +479,6 @@ const capText = computed(() => hint || (count.value ? `${count.value}/${max}` : 
   to {
     opacity: 1;
     transform: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .stu-peek {
-    animation: none;
   }
 }
 </style>

@@ -40,6 +40,12 @@ const schema = computed<WorkflowSchema | undefined>(() =>
   resolveWorkflowSchema(q(route.query.flow), q(route.query.category), q(route.query.template)),
 )
 const mapped = computed(() => schema.value?.status === 'mapped')
+/**
+ * s1.1 上传态（纯展示）：图片槽是「材料片」（60×100 叠片 + 片下两行说明），同排、两块之间画切口；
+ * 视频槽是单槽云影球卡，排在图片后面。校验与提交仍按 schema 顺序。
+ */
+const imageUploads = computed(() => (schema.value?.uploads ?? []).filter((u) => u.kind !== 'video'))
+const videoUploads = computed(() => (schema.value?.uploads ?? []).filter((u) => u.kind === 'video'))
 
 /** 同 flow 的模板切换项（链接保持原型的 query 形状） */
 const siblings = computed(() => workflowSchemas.filter((s) => s.flow === schema.value?.flow))
@@ -293,12 +299,25 @@ const inputCls =
         class="flex-1 min-h-0 overflow-y-auto pt-10px px-14px pb-14px flex flex-col gap-16px [scrollbar-gutter:stable]"
         @submit.prevent="onSubmit"
       >
+        <div v-if="imageUploads.length" data-plate-row class="flex items-start gap-16px">
+          <ToolUploadSlot
+            v-for="u in imageUploads"
+            :id="`wf-upload-${u.slot}`"
+            :key="`${schema.schemaId}-${u.slot}`"
+            :model-value="uploads[u.slot] ?? []"
+            :spec="u"
+            layout="material"
+            :disabled="submitting"
+            @update:model-value="setUploads(u.slot, $event)"
+          />
+        </div>
         <ToolUploadSlot
-          v-for="u in schema.uploads"
+          v-for="u in videoUploads"
           :id="`wf-upload-${u.slot}`"
           :key="`${schema.schemaId}-${u.slot}`"
           :model-value="uploads[u.slot] ?? []"
           :spec="u"
+          layout="single"
           :disabled="submitting"
           @update:model-value="setUploads(u.slot, $event)"
         />

@@ -13,6 +13,16 @@
 
 export type UploadKind = 'image' | 'video'
 
+/**
+ * 上传槽位的版式（只管长相，不影响上传 / 校验 / 请求体），对齐 s1.1「本次更新了什么」§1.1：
+ * - `batch`：60×100 白边浮片格，5 列 × 4 行铺满 408×716，空态 / 满额卡都 434×742（高清放大 / 比例转换 / 商品精修 / 图片翻译）；
+ * - `pipe`：产品替换底图，60×100 · 5 列 × 4 行 = 408×512，空态 4 个底图占位 + 1 个添加格；
+ * - `single`：单图，空态只有 48 云影球，卡 434×742，球在卡正中（智能消除 / 智能抠图 / 文字替换；视频单槽同用）；
+ * - `ml`：单角色参考图槽，60×100 叠片，片下不写说明、数量写在槽头（首屏主图 / 场景生成）；
+ * - `material`：一叠片就是入口，片下两行说明（名称 11/15·500、数量 10/15），无数字角标（产品替换素材、单图复刻 / SKU 替换）。
+ */
+export type UploadLayout = 'batch' | 'pipe' | 'single' | 'ml' | 'material'
+
 export interface ToolUpload {
   /** 槽位序号（与契约 uploads[].slot 一致） */
   slot: number
@@ -32,6 +42,8 @@ export interface ToolUpload {
    */
   javaKey: 'imageUrl' | 'imageUrls' | 'originalImageUrl' | 'productImageUrl' | 'videoUrl'
   verified: boolean
+  /** s1.1 上传态版式（纯展示）；不写按 kind / max 推断：视频或单张 = single，多张 = batch */
+  layout?: UploadLayout
 }
 
 /** 上传槽位组件（ToolUploadSlot）只看的那几项；工作流页（views/workflow）复用同一个组件 */
@@ -174,7 +186,7 @@ export const toolSchemas: ToolSchema[] = [
     description: '一键提升商品质感、清晰度与光影层次，让商品图更精致、更适合店铺展示。',
     steps: ['上传 1–20 张商品图', '点击「开始精修」，每张图单独生成一条记录', '在历史记录里点一条，右侧查看与下载结果'],
     media: 'image',
-    uploads: [imageSlot('图片', 20, 'imageUrl')],
+    uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     fields: [],
     submit: { label: '开始精修', costUnit: '张', costSource: '未显示（桌面 1.0.17 未给该工具报价）' },
     actions: [],
@@ -189,7 +201,7 @@ export const toolSchemas: ToolSchema[] = [
     description: '上传原图后选择目标分辨率，AI 提升画面清晰度与细节表现，支持 1K / 2K / 4K 放大。',
     steps: ['上传 1–20 张图片', '选择目标清晰度', '点击「开始放大」，每张图单独生成一条记录'],
     media: 'image',
-    uploads: [imageSlot('图片', 20, 'imageUrl')],
+    uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     // v1 AIImageUpscalerRequest.resolution 必填，故给默认值
     fields: [{ ...resolutionField('清晰度', '2K'), required: true }],
     submit: { label: '开始放大', costUnit: '张', costSource: '工具单价（upscale）× 张数' },
@@ -205,7 +217,7 @@ export const toolSchemas: ToolSchema[] = [
     description: '涂抹选中区域后去除水印、杂物与多余元素，自动补全背景，让画面更干净自然。',
     steps: ['上传 1 张原图', '用画笔涂抹要去掉的区域', '点击「开始消除」'],
     media: 'image',
-    uploads: [imageSlot('原图', 1, 'originalImageUrl')],
+    uploads: [{ ...imageSlot('原图', 1, 'originalImageUrl'), layout: 'single' }],
     fields: [
       {
         key: 'mask',
@@ -232,7 +244,7 @@ export const toolSchemas: ToolSchema[] = [
     description: '识别图片主体并去除背景，快速生成透明背景商品图，适合电商展示与素材制作。',
     steps: ['上传 1 张原图', '点击「开始抠图」，通常数十秒内出结果', '下载透明背景图或放大查看'],
     media: 'image',
-    uploads: [imageSlot('原图', 1, 'imageUrl')],
+    uploads: [{ ...imageSlot('原图', 1, 'imageUrl'), layout: 'single' }],
     fields: [],
     submit: { label: '开始抠图', costUnit: '次', costSource: 'features/biz-points.cutout' },
     actions: ['换一张', '下载结果', '放大查看抠图结果'],
@@ -247,7 +259,7 @@ export const toolSchemas: ToolSchema[] = [
     description: '识别图片中的文字并翻译回填，更轻松地完成多语言素材本地化。',
     steps: ['上传 1–20 张图片', '选择目标语言（整批同一语言）', '点击「开始翻译」，每张图单独生成一条记录'],
     media: 'image',
-    uploads: [imageSlot('图片', 20, 'imageUrl')],
+    uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     fields: [
       {
         key: 'targetLanguage',
@@ -295,7 +307,7 @@ export const toolSchemas: ToolSchema[] = [
     description: '识别图片中的文字内容，把原文替换为目标文字，版式保持不变。',
     steps: ['上传 1 张原图', '点击「识别文字」（识别单独计费）', '在识别结果里改写要替换的文字', '点击「开始替换」'],
     media: 'image',
-    uploads: [imageSlot('原图', 1, 'imageUrl')],
+    uploads: [{ ...imageSlot('原图', 1, 'imageUrl'), layout: 'single' }],
     fields: [
       {
         key: 'regions',
@@ -323,7 +335,7 @@ export const toolSchemas: ToolSchema[] = [
     description: '批量上传后选择目标比例，结合画面内容智能调整构图与排版，避免生硬拉伸。',
     steps: ['上传 1–20 张图片（整批一次提交）', '选择预设比例，或填写自定义输出尺寸', '点击「开始转换」'],
     media: 'image',
-    uploads: [imageSlot('图片', 20, 'imageUrls')],
+    uploads: [{ ...imageSlot('图片', 20, 'imageUrls'), layout: 'batch' }],
     fields: [
       {
         key: 'mode',
@@ -394,7 +406,10 @@ export const toolSchemas: ToolSchema[] = [
     description: '保留原有场景氛围与展示效果，快速替换商品内容，适合多款商品批量出图。',
     steps: ['上传 1–20 张底图', '上传 1 张替换素材（新商品图）', '点击「开始替换」，每张底图单独生成一条记录'],
     media: 'image',
-    uploads: [imageSlot('底图', 20, 'originalImageUrl'), imageSlot('替换素材', 1, 'productImageUrl', true, 1)],
+    uploads: [
+      { ...imageSlot('底图', 20, 'originalImageUrl'), layout: 'pipe' },
+      { ...imageSlot('替换素材', 1, 'productImageUrl', true, 1), layout: 'material' },
+    ],
     fields: [],
     submit: { label: '开始替换', costUnit: '张', costSource: '未显示（桌面 1.0.17 未给该工具报价）' },
     actions: [],
@@ -409,7 +424,7 @@ export const toolSchemas: ToolSchema[] = [
     description: '基于卖点与参考图智能生成专业首屏主图，支持多语言输出。',
     steps: ['上传 1–9 张参考图', '填写卖点描述', '选择分辨率、比例、张数与输出语言', '点击「开始生成」'],
     media: 'image',
-    uploads: [imageSlot('参考图（至少一张）', 9, 'imageUrls')],
+    uploads: [{ ...imageSlot('参考图（至少一张）', 9, 'imageUrls'), layout: 'ml' }],
     fields: [
       {
         key: 'prompt',
@@ -479,7 +494,7 @@ export const toolSchemas: ToolSchema[] = [
     description: '保持画面主体与构图关系，快速发散不同的颜色氛围与周围布景细节。',
     steps: ['（选填）上传 1 张参考图', '填写场景描述', '选择分辨率、比例与张数', '点击「开始生成」'],
     media: 'image',
-    uploads: [imageSlot('参考图（选填）', 1, 'imageUrl', false)],
+    uploads: [{ ...imageSlot('参考图（选填）', 1, 'imageUrl', false), layout: 'ml' }],
     fields: [
       {
         key: 'prompt',
