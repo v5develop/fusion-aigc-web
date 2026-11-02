@@ -1,555 +1,144 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useMessage } from 'naive-ui'
-import { publicDisplay, displayCategories, promptList, promptDetail } from '@/api/methods.ts'
-import type { IPromptCard, IQuotePreview } from '@/api/types'
-import type * as types from '@/api/types'
-
-/** 本项目是 PC 端。推荐流与分类都按端隔离，两处必须用同一个值 */
-const PLATFORM = 'PC' as const
-import { useDebounce, useQuotePreview } from '@/utils/hooks'
-import { ossThumbnail } from '@/utils/oss.ts'
-import ImageTab from './ImageTab/index.vue'
-import WaterfallVirtualScroller from '@/components/WaterfallVirtualScroller/index.vue'
-import ChatInputSelect from '@/components/ChatInputSelect/index.vue'
-import ChatTab, { type TTabValue } from './ChatTab/index.vue'
-import ChatInputBox from './ChatInputBox/index.vue'
-import type { PromptSlot, FileItem } from './ChatInputBox/types'
-import { slotsToPrompt, promptDetailToSlots } from './ChatInputBox/utils'
-import { buildTargetParams } from './ChatInputBox/targetParams'
-import { entryCodeOps, modelOps as pictureModelOps, ratioOps, numOps } from '@/views/picture/constants.ts'
-import {
-  entryCodeOps as videoEntryCodeOps,
-  ratioOps as videoRatioOps,
-  durationOps,
-  modelOps,
-  config as videoConfig,
-} from '@/views/video/constants.ts'
-import { useHomeStore } from '@/stores/home'
-import { storeToRefs } from 'pinia'
-
-const router = useRouter()
-const message = useMessage()
-const store = useHomeStore()
-const { global_formData } = storeToRefs(store)
-
-const activeChatTab = ref<TTabValue>('picture')
-const formData = reactive({
-  picture: {
-    entryCode: 'imageToImage',
-    modelCode: 'xiaoqi-image-1.0-flash',
-    prompt: '',
-    ratio: '1024,1024',
-    num: 1,
-    images: [] as string[],
-  },
-  video: {
-    entryCode: 'imageToVideo',
-    modelCode: 'xiaoqi-video-1.0-lite',
-    prompt: '',
-    ratio: '9:16',
-    resolution: '720p',
-    duration: 4,
-    images: [] as string[],
-    video: [] as FileItem[],
-  },
-  ecommerce: {
-    slots: [] as PromptSlot[],
-    images: [] as FileItem[],
-  },
-})
 /**
- * 视频的比例/分辨率/时长按<b>当前模型</b>取值，不用全局静态表——各模型支持的档位本就不同
- * （如 xiaoqi-video-1.0-mini 支持 1:1，静态比例表没有）。与 /video 页同一套口径。
- * 服务端没下发该模型的档位（旧数据没刷 aigcOptions）时回退静态表，不至于把下拉变空。
+ * 首页 = 工具箱（v1.0 原型 ToolsView）。
+ * 每个工具独立提交、结果进各自的历史记录；有对应页面的卡片直达该页，没有的显示「即将开放」。
+ * 12 个 Java v1 工具的卡片指向共用工具页 /tools/:toolId（路由取自 ./tools 的 route）。
  */
-const currentVideoModel = computed(() => modelOps.find((m) => m.value === formData.video.modelCode))
-const videoModelRatioOps = computed(() =>
-  currentVideoModel.value?.ratioOps?.length ? currentVideoModel.value.ratioOps : videoRatioOps,
-)
-const videoModelResolutionOps = computed(() => currentVideoModel.value?.resolutionOps ?? [])
-const videoModelDurationOps = computed(() =>
-  currentVideoModel.value?.durationOps?.length ? currentVideoModel.value.durationOps : durationOps,
-)
+import { computed, nextTick, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import { tools, toolCategories, toolInputShapeLabels, type ToolCategory } from './tools'
 
-// 换模型（或模型表异步加载完成）后，把已选档位纠正到新模型支持的范围：
-// 下拉里已经没有这一项、formData 却还留着，界面看不出异常，提交下去必失败。
-watch(currentVideoModel, () => {
-  const ratio = videoModelRatioOps.value[0]
-  if (ratio && !videoModelRatioOps.value.some((o) => o.value === formData.video.ratio)) {
-    formData.video.ratio = ratio.value
-  }
-  const resolution = videoModelResolutionOps.value[0]
-  if (resolution && !videoModelResolutionOps.value.some((o) => o.value === formData.video.resolution)) {
-    formData.video.resolution = resolution.value
-  }
-  const duration = videoModelDurationOps.value[0]
-  if (duration && !videoModelDurationOps.value.some((o) => o.value === formData.video.duration)) {
-    formData.video.duration = duration.value
-  }
-})
+type TabKey = 'all' | ToolCategory
 
-const homeRef = ref<HTMLDivElement | null>(null)
+const tabs: { key: TabKey; label: string }[] = [{ key: 'all', label: '全部' }, ...toolCategories]
 
-const currentTemplateCode = ref('')
+const active = ref<TabKey>('all')
+const tabRefs = ref<HTMLButtonElement[]>([])
 
-// 电商模板路由 → 完整询价入参，用于首页 ecommerce Tab 按当前模板询基础价。
-// 需要额外 modelCode/params 的模板，按对应子页面初始默认值补齐（缺失会导致 1003 或价格不一致）
-const ECOMMERCE_QUOTE: Record<string, IQuotePreview> = {
-  '/e-commerce/product-detail': {
-    entryCode: 'aPlusDetailPage',
-    modelCode: 'xiaoqi-image-1.0-flash',
-    params: { image_types: [] },
-  },
-  '/e-commerce/product-kit': {
-    entryCode: 'productSetImages',
-    modelCode: 'xiaoqi-image-1.0-flash',
-    params: { white: 1, scence: 1, key_points: 1, detail: 0 },
-  },
-  '/e-commerce/product-clone': { entryCode: 'hitReplication', modelCode: 'xiaoqi-image-1.0-flash' },
-  '/e-commerce/product-in-hand': { entryCode: 'aiGestures', modelCode: 'xiaoqi-image-1.0-flash' },
-  '/e-commerce/video-clone': { entryCode: 'hitVideoReplication', modelCode: 'xiaoqi-video-1.0-lite' },
-  '/e-commerce/video-hot': { entryCode: 'hitVideo', modelCode: 'xiaoqi-video-1.0-lite' },
-  '/e-commerce/model-replace': { entryCode: 'personReplacement' },
-  '/e-commerce/product-replace': { entryCode: 'productReplacement' },
-  '/e-commerce/change-background': { entryCode: 'backgroundSwitching' },
-  // modelCode 与 clothingKit 页面的默认值保持一致，避免首页报价与进页面后不符
-  '/e-commerce/clothing-kit': {
-    entryCode: 'wearingProductSetImages',
-    modelCode: 'xiaoqi-image-1.0-flash',
-    params: { scenePhoto: [] },
-  },
-  '/e-commerce/clothing-try': { entryCode: 'aiClothExchange', modelCode: 'xiaoqi-image-1.0-flash' },
-  '/e-commerce/clothing-remove-wrinkle': { entryCode: 'removeWrinkles' },
-  '/e-commerce/merge-image': { entryCode: 'mergeClothes', modelCode: 'xiaoqi-image-1.0-flash' },
-  '/e-commerce/try-shoe': { entryCode: 'shoeSwapping', modelCode: 'xiaoqi-image-1.0-flash' },
+const list = computed(() => (active.value === 'all' ? tools : tools.filter((t) => t.category === active.value)))
+
+// WAI-ARIA tabs：左右键在分类间移动并选中，Home/End 跳到首尾
+function onTabKeydown(e: KeyboardEvent, index: number) {
+  const last = tabs.length - 1
+  const next =
+    e.key === 'ArrowRight'
+      ? index === last
+        ? 0
+        : index + 1
+      : e.key === 'ArrowLeft'
+        ? index === 0
+          ? last
+          : index - 1
+        : e.key === 'Home'
+          ? 0
+          : e.key === 'End'
+            ? last
+            : -1
+  if (next < 0) return
+  e.preventDefault()
+  active.value = tabs[next]!.key
+  nextTick(() => tabRefs.value[next]?.focus())
 }
 
-// 提交前积分预览：按当前 Tab 镜像各自提交参数；ecommerce 按模板取 entryCode 询基础价
-const { pricePoints, status: quoteStatus } = useQuotePreview(() => {
-  const tab = activeChatTab.value
-  if (tab === 'picture') {
-    const p = formData.picture
-    const [w, h] = p.ratio.split(',')
-    return {
-      entryCode: p.entryCode,
-      modelCode: p.modelCode,
-      params: {
-        prompt: p.prompt,
-        width: +w!,
-        height: +h!,
-        num: p.num,
-      },
-      imageUrls: p.images,
-    }
-  }
-  if (tab === 'video') {
-    const v = formData.video
-    const isAT = v.entryCode === 'actionTransfer'
-    return {
-      entryCode: v.entryCode,
-      modelCode: v.modelCode,
-      params: {
-        prompt: v.prompt,
-        ...(isAT ? {} : { resolution: v.resolution, aspectRatio: v.ratio, duration: v.duration }),
-      },
-      imageUrls: v.images,
-      video: isAT ? v.video[0]?.url || '' : '',
-    }
-  }
-  // ecommerce：按当前模板路由取完整询价入参（含默认 modelCode/params），未知模板 → null（兜底「限免」）
-  return ECOMMERCE_QUOTE[currentTemplateCode.value] ?? null
-}, [
-  () => activeChatTab.value,
-  () => currentTemplateCode.value,
-  () => formData.picture.entryCode,
-  () => formData.picture.modelCode,
-  () => formData.picture.ratio,
-  () => formData.picture.num,
-  () => formData.video.entryCode,
-  () => formData.video.modelCode,
-  () => formData.video.resolution,
-  () => formData.video.duration,
-  () => formData.video.ratio,
-])
-
-// 预设卡片图标 60px 方格，复用统一的 OSS 缩略图（DPR 自适应，消噪）
-function getOssThumbnail(url?: string): string {
-  return ossThumbnail(url, 60)
-}
-
-const { preData, preinstallFallbackImg, handlePreinstallClick } = usePreinstall()
-function usePreinstall() {
-  const preData = ref<IPromptCard[]>([])
-  const preinstallFallbackImg =
-    'https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp'
-  let requestSeq = 0
-
-  // 点击卡片：拉取模板详情，解析为插槽后填充输入框。
-  // 「最后请求胜出」：用户点击总是拿到最新序号，可打断进行中的默认填充；晚到的旧响应被丢弃
-  async function handlePreinstallClick(item: IPromptCard, isDefaultFill = false) {
-    const seq = ++requestSeq
-    // 业务错误拦截器已 toast，这里只需吞掉 rejection
-    const res = await promptDetail(item.id).catch(() => null)
-    if (!res || seq !== requestSeq) return
-    const slots = promptDetailToSlots(res.data, item.code)
-    if (!slots.length) return
-    // 默认填充是异步的，用户此时可能已开始输入（编辑器打字会同步 slots），不覆盖
-    if (isDefaultFill && formData.ecommerce.slots.length > 0) return
-    currentTemplateCode.value = item.code || ''
-    formData.ecommerce.slots = slots
-  }
-
-  // 首屏卡片取电商分类第一页前 4 个
-  promptList({ category: 'ecommerce', page: 1, pageSize: 4 })
-    .then((res) => {
-      preData.value = (res.data?.list ?? []).slice(0, 4)
-      // 默认填入第一个模板
-      if (preData.value[0]) handlePreinstallClick(preData.value[0], true)
-    })
-    .catch(() => {}) // 列表失败则不展示卡片区，拦截器已负责错误提示
-
-  return { preData, preinstallFallbackImg, handlePreinstallClick }
-}
-
-const { imageTab, waterfallData, getList, filterData1, filterData2, resolveRatio } = useWaterfall()
-
-// 切一级必须清二级：二级 id 属于上一个一级，带过去会筛出空列表
-watch(
-  () => imageTab.value1,
-  () => (imageTab.value2 = ''),
-)
-function useWaterfall() {
-  const pagingData = reactive({
-    page: 1,
-    pageSize: 20,
-    loading: false,
-    hasMore: true,
-  })
-  // '' = 不筛（一级即「发现」，二级即「全部」）。值存分类节点 id 的字符串形式，
-  // 因为 Tab 组件按 value 全等比较，混用 number/string 会选不中
-  const imageTab = reactive({
-    value1: '',
-    value2: '',
-  })
-  const waterfallData = ref<any>([])
-  // 去重键用 sourceType|dataId 而不是推荐记录 id：失效条目在装配阶段被剔除，
-  // 分页边界会漂移，同一条内容可能出现在相邻两页
-  const seen = new Set<string>()
-  // 切分类后在途的旧响应不能落进新列表
-  let reqVersion = 0
-
-  // 分类树由后端下发，前端不硬编码：运营调分类立刻生效，不用等发版
-  const categories = ref<types.IDisplayCategory[]>([])
-
-  const filterData1 = computed(() => [
-    { label: '发现', value: '' },
-    ...categories.value.map((c) => ({ label: c.categoryName, value: String(c.id) })),
-  ])
-
-  const filterData2 = computed(() => {
-    const root = categories.value.find((c) => String(c.id) === imageTab.value1)
-    const children = root?.children ?? []
-    // 二级为空时整行不展示，而不是留一个只有「全部」的空 Tab 行
-    if (!children.length) return []
-    return [{ label: '全部', value: '' }, ...children.map((c) => ({ label: c.categoryName, value: String(c.id) }))]
-  })
-
-  const loadCategories = async () => {
-    // 传 platform：APP 与 PC 的分类可以不一样，不筛的话这里会显示只配给 APP 的 Tab，
-    // 点进去推荐流按 platform 查是空的，看着像没数据
-    const res = await displayCategories(PLATFORM).catch(() => null)
-    if (res?.code === 0) categories.value = res.data ?? []
-  }
-  loadCategories()
-
-  const getList = () => {
-    if (!pagingData.hasMore) return
-
-    if (pagingData.loading) return
-    pagingData.loading = true
-    const my = reqVersion
-
-    const params: types.IPublicDisplay = {
-      // 必传，后端刻意不给默认值——两端推荐位不同，静默串端比报错难查
-      platform: PLATFORM,
-      page: pagingData.page,
-      pageSize: pagingData.pageSize,
-      ...(imageTab.value1 ? { categoryL1Id: Number(imageTab.value1) } : {}),
-      ...(imageTab.value2 ? { categoryL2Id: Number(imageTab.value2) } : {}),
-    }
-    publicDisplay(params)
-      .then((res) => {
-        // 切分类后回来的旧响应，丢弃
-        if (my !== reqVersion) return
-        if (res.code === 0) {
-          const list: types.IFeedItem[] = res.data.list ?? []
-          pagingData.page++
-
-          for (const item of list) {
-            // 缺封面或缺 dataId 的脏数据直接丢，且不占去重位
-            if (!item?.coverUrl || item.dataId == null) continue
-            const key = `${item.sourceType}|${item.dataId}`
-            if (seen.has(key)) continue
-            seen.add(key)
-            waterfallData.value.push(toWaterfallItem(item))
-          }
-
-          // 以「返回空列表」判到底，不能用 length < pageSize：
-          // 源失效的条目（素材下架、作品被删/被屏蔽）在装配阶段被剔除，
-          // 所以正常翻页也经常不满一页，按不满判会提前停在半路
-          if (!list.length) pagingData.hasMore = false
-        }
-      })
-      .finally(() => {
-        if (my === reqVersion) pagingData.loading = false
-      })
-  }
-  getList()
-
-  useDebounce({
-    data: imageTab,
-    callback: () => {
-      // reqVersion++ 让在途响应作废，同时把 loading 复位：
-      // 不复位的话上面那句 `if (loading) return` 会把这次换分类的请求整个吞掉，
-      // 列表就停在上一个分类的数据上，且没有任何重试时机
-      reqVersion++
-      pagingData.page = 1
-      pagingData.hasMore = true
-      pagingData.loading = false
-      seen.clear()
-      waterfallData.value = []
-      getList()
-    },
-    delay: 0,
-  })
-
-  // ---- 未知宽高的回报与重排 ----
-  // 一屏十几张未知比例的图会各回调一次，逐次写回就是十几次全列表重排，故攒批
-  const pendingRatios = new Map<any, [number, number]>()
-  let flushTimer: ReturnType<typeof setTimeout> | null = null
-  const flushRatios = () => {
-    flushTimer = null
-    for (const [item, [w, h]] of pendingRatios) {
-      item.width = w
-      item.height = h
-    }
-    pendingRatios.clear()
-  }
-  const resolveRatio = (item: any, width: number, height: number) => {
-    if (!(width > 0 && height > 0)) return
-    if (Number(item.width) > 0 && Number(item.height) > 0) return
-    pendingRatios.set(item, [width, height])
-    flushTimer ??= setTimeout(flushRatios, 80)
-  }
-  onUnmounted(() => {
-    if (flushTimer) clearTimeout(flushTimer)
-  })
-
-  return { imageTab, waterfallData, getList, filterData1, filterData2, resolveRatio }
-}
-
-/**
- * 推荐流条目 → 瀑布流条目。
- *
- * urls 已经是水印图（后端对外只出水印图），**不要再叠一次 withWatermark**，
- * 否则同一张图上会有两层水印。
- * width/height 为 0 表示未知，交给瀑布流按默认比例占位、onload 后校正。
- */
-function toWaterfallItem(item: types.IFeedItem) {
-  return {
-    ...item,
-    // 列表位只展示首图/封面；多图幻灯片在详情态用 urls
-    url: item.coverUrl || item.urls?.[0] || '',
-    width: item.width || 0,
-    height: item.height || 0,
-  }
-}
-
-const backTop = () => {
-  homeRef.value?.scrollTo({
-    top: 0,
-    behavior: 'smooth',
-  })
-}
-
-const showBackToTop = ref(false)
-
-const submit = () => {
-  if (activeChatTab.value === 'ecommerce') {
-    // 按模板详情 slot 的 required 语义校验；非必填空 select（如后端暂未配置 options）不拦截，
-    // slotsToPrompt 对空值 select 输出空串，不会混入占位 label
-    for (const s of formData.ecommerce.slots) {
-      if (s.type === 'select' && s.required && !s.value) {
-        const tip = s.title || s.label
-        message.warning(tip.startsWith('请') ? tip : tip.startsWith('选择') ? `请${tip}` : `请选择${tip}`)
-        return
-      }
-      if (s.type === 'upload' && s.required && s.value.length === 0) {
-        const tip = s.label
-        message.warning(tip.startsWith('请') ? tip : tip.startsWith('上传') ? `请${tip}` : `请上传${tip}`)
-        return
-      }
-    }
-    const { plainText, images: slotImages } = slotsToPrompt(formData.ecommerce.slots)
-    const allImages = [...slotImages, ...formData.ecommerce.images]
-    const targetCode = currentTemplateCode.value || '/e-commerce'
-    // 只传侧边栏图片作为兜底，插槽图片由 builder 从 slots 中按 key 精确提取
-    const params = buildTargetParams(targetCode, formData.ecommerce.slots, formData.ecommerce.images)
-    global_formData.value = {
-      ...global_formData.value,
-      home: true,
-      ecommerce: {
-        prompt: plainText,
-        images: allImages,
-        slots: formData.ecommerce.slots,
-        templateCode: targetCode,
-        params,
-      },
-    }
-    router.push({ path: targetCode })
-    return
-  }
-  global_formData.value = {
-    ...global_formData.value,
-    home: true,
-    [activeChatTab.value]: formData[activeChatTab.value],
-  }
-  router.push({ name: activeChatTab.value })
-}
+// 本项目 UnoCSS 未启用 transformerVariantGroup：变体分组写法不生效，hover / focus-visible 必须逐条写
+const focusRing =
+  'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2'
+const cardBase =
+  'flex flex-col items-start gap-12px w-full h-full p-16px rounded-12px bg-white text-left border border-transparent ' +
+  focusRing
 </script>
 
 <template>
-  <div
-    ref="homeRef"
-    class="home"
-    v-observer-scroll="{
-      callback: getList,
-      onScroll: (scrollTop: number) => (showBackToTop = scrollTop > 400),
-    }"
-  >
-    <div class="container">
-      <div class="top_bg"></div>
+  <div class="h-full overflow-y-auto bg-page">
+    <div class="px-24px pt-24px pb-24px">
+      <header>
+        <h1 class="m-0 text-20px font-600 leading-28px text-ink">工具箱</h1>
+        <p class="m-0 mt-4px text-13px leading-20px text-muted">
+          覆盖图片与视频创作能力，每个工具独立提交、结果进各自的历史记录
+        </p>
+      </header>
 
-      <h1 class="h1">和我聊聊， 你想要什么设计～</h1>
+      <div role="tablist" aria-label="工具分类" class="mt-16px flex flex-wrap gap-8px">
+        <button
+          v-for="(tab, i) in tabs"
+          :id="`home-tool-tab-${tab.key}`"
+          :key="tab.key"
+          ref="tabRefs"
+          type="button"
+          role="tab"
+          :aria-selected="active === tab.key"
+          aria-controls="home-tool-panel"
+          :tabindex="active === tab.key ? 0 : -1"
+          class="px-12px py-6px rounded-6px text-13px leading-20px cursor-pointer border-none transition-colors"
+          :class="[
+            focusRing,
+            active === tab.key
+              ? 'bg-violet-soft text-violet-ink font-500 shadow-[inset_0_1px_2px_rgba(80,55,95,0.12)]'
+              : 'bg-white text-ink-2 hover:bg-surface3 hover:text-ink',
+          ]"
+          @click="active = tab.key"
+          @keydown="onTabKeydown($event, i)"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
 
-      <ChatTab v-model="activeChatTab" />
-
-      <ChatInputBox
-        :activeChatTab="activeChatTab"
-        :mode="activeChatTab === 'ecommerce' ? 'slot' : 'default'"
-        v-model:formData="formData[activeChatTab]"
-        v-model:slots="formData.ecommerce.slots"
-        v-model:sideImages="formData.ecommerce.images"
-        :showVideoUpload="activeChatTab === 'video' && formData.video.entryCode === 'actionTransfer'"
-        :showImageUpload="
-          (activeChatTab === 'picture' && formData.picture.entryCode === 'imageToImage') ||
-          (activeChatTab === 'video' && formData.video.entryCode !== 'textToVideo')
-        "
-        :submit="submit"
-        :pricePoints="pricePoints"
-        :quoteFailed="quoteStatus === 'error'"
-        :quoteLoading="quoteStatus === 'loading'"
-        v-bind="activeChatTab === 'video' ? videoConfig[formData.video.entryCode] : {}"
+      <ul
+        id="home-tool-panel"
+        role="tabpanel"
+        :aria-labelledby="`home-tool-tab-${active}`"
+        class="mt-16px mb-0 p-0 list-none grid gap-12px grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6"
       >
-        <template #bottomSelect>
-          <div v-if="activeChatTab === 'picture'" class="select-cont">
-            <ChatInputSelect
-              v-model:value="formData.picture.entryCode"
-              title="选择创作类型"
-              icon-category="entryCode"
-              :options="entryCodeOps"
-            />
-            <ChatInputSelect
-              v-model:value="formData.picture.modelCode"
-              title="选择模型"
-              icon-category="model"
-              :options="pictureModelOps"
-            />
-            <ChatInputSelect
-              v-model:value="formData.picture.ratio"
-              title="选择比例"
-              icon-category="ratio"
-              :options="ratioOps"
-            />
-            <ChatInputSelect
-              v-model:value="formData.picture.num"
-              title="选择数量"
-              icon-category="num"
-              :options="numOps"
-            />
-          </div>
-          <div v-else-if="activeChatTab === 'video'" class="select-cont">
-            <ChatInputSelect
-              v-model:value="formData.video.entryCode"
-              title="选择创作类型"
-              icon-category="entryCode"
-              :options="videoEntryCodeOps"
-            />
-            <ChatInputSelect
-              v-model:value="formData.video.modelCode"
-              title="选择模型"
-              icon-category="model"
-              :options="videoEntryCodeOps.find((item) => item.value === formData.video.entryCode)?.modelOps!"
-            />
-            <!-- 动作迁移由参考视频决定画幅/时长，无需选择比例/分辨率/时长 -->
-            <template v-if="formData.video.entryCode !== 'actionTransfer'">
-              <ChatInputSelect
-                v-model:value="formData.video.ratio"
-                title="选择比例"
-                icon-category="ratio"
-                :options="videoModelRatioOps"
-              />
-              <ChatInputSelect
-                v-model:value="formData.video.resolution"
-                title="选择分辨率"
-                icon-category="resolution"
-                :options="videoModelResolutionOps"
-              />
-              <ChatInputSelect
-                v-model:value="formData.video.duration"
-                title="选择时长"
-                icon-category="duration"
-                :options="videoModelDurationOps"
-              />
-            </template>
-          </div>
-        </template>
-      </ChatInputBox>
-
-      <div v-if="activeChatTab === 'ecommerce' && preData.length" class="preinstall">
-        <div class="item" v-for="item in preData" :key="item.id" @click="handlePreinstallClick(item)">
-          <div class="icon-wrap">
-            <img :src="getOssThumbnail(item.icon) || item.coverImage || preinstallFallbackImg" alt="" />
-          </div>
-          <span>{{ item.name }}</span>
-          <i class="icon-ic_home_jump1"></i>
-          <div v-if="item.icon" class="preview-panel">
-            <img :src="item.icon" alt="" />
-          </div>
-        </div>
-      </div>
-
-      <div class="tab-content">
-        <ImageTab v-model="imageTab.value1" :data="filterData1" />
-        <ImageTab v-if="filterData2.length" class="tab2" v-model="imageTab.value2" :data="filterData2" />
-      </div>
-
-      <WaterfallVirtualScroller :waterfallData="waterfallData" @resolve="resolveRatio" />
-
-      <div class="scroll-to-top" v-show="showBackToTop" @click="backTop">
-        <i class="icon-ic_home_jump1"></i>
-      </div>
+        <li v-for="tool in list" :key="tool.id">
+          <component
+            :is="tool.route ? RouterLink : 'div'"
+            v-bind="tool.route ? { to: tool.route } : { role: 'link', 'aria-disabled': 'true', tabindex: 0 }"
+            :aria-label="tool.route ? tool.name : `${tool.name}（即将开放）`"
+            :aria-describedby="`home-tool-desc-${tool.id}`"
+            :class="[
+              cardBase,
+              tool.route
+                ? 'no-underline cursor-pointer transition-all duration-200 hover:-translate-y-2px hover:border-line hover:shadow-[0_4px_16px_rgba(31,35,41,0.08)]'
+                : 'cursor-not-allowed',
+            ]"
+          >
+            <span class="w-full flex items-center gap-12px">
+              <span
+                class="shrink-0 flex items-center justify-center w-44px h-44px rounded-10px bg-violet-soft text-violet"
+                :class="tool.route ? '' : 'opacity-60'"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                  :innerHTML="tool.icon"
+                />
+              </span>
+              <span
+                class="min-w-0 flex-1 truncate text-15px font-600 leading-22px"
+                :class="tool.route ? 'text-ink' : 'text-muted'"
+              >
+                {{ tool.name }}
+              </span>
+              <span v-if="!tool.route" class="ll-chip shrink-0 text-muted bg-surface3 border border-line"
+                >即将开放</span
+              >
+            </span>
+            <span :id="`home-tool-desc-${tool.id}`" class="line-clamp-2 min-h-40px text-13px leading-20px text-muted">
+              {{ tool.description }}
+            </span>
+            <span class="mt-auto text-12px leading-18px text-placeholder">
+              {{ toolInputShapeLabels[tool.inputShape] }}
+            </span>
+          </component>
+        </li>
+      </ul>
     </div>
   </div>
 </template>
-
-<style scoped lang="less">
-@import './index.less';
-.select-cont {
-  width: 250px;
-  display: flex;
-  gap: 24px;
-}
-</style>
