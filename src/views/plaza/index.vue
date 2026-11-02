@@ -31,9 +31,7 @@ const router = useRouter()
         </svg>
       </span>
       <b class="text-14px font-600 text-ink">广场内容还未接入</b>
-      <p class="m-0 max-w-420px text-11px leading-[1.7] text-muted">
-        公开作品、作者与筛选会在接口接通后出现在这里；当前先保留真实入口与空态。
-      </p>
+      <p class="m-0 max-w-420px text-11px leading-[1.7] text-muted">这里将展示社区的公开作品，支持按作者与类型筛选。</p>
       <button
         type="button"
         class="mt-8px inline-flex h-32px cursor-pointer items-center gap-6px rounded-4px border border-solid border-line-strong bg-white px-12px text-12px text-ink-2 transition-colors hover:border-violet-line hover:text-violet-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet focus-visible:outline-offset-2"
