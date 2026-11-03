@@ -4,14 +4,15 @@
  * 右侧顶栏 + 消息流（历史消息 + SSE 流式回复 + 停止）+ 底部输入框（技能选择在工具栏）。
  *
  * <p>技能语义照 StreamRequest.agentSkillId：技能决定本轮的提示词、工具集与计费，是每轮请求带的 id，
- * 不是一段可预填的文字；目录非空（v2 已开放）时必须带一条，界面默认选中第一条。
+ * 不是一段可预填的文字；目录非空（v2 已开放）时必须带一条，界面默认选中第一条；用户移除后不发送。
  * 目录为空时不能带（旧链路有值即拒）。workflow 形态的技能选进对话会被拒，不展示。
+ * 选择走「选择技能」弹窗，页签即目录接口的分类键。
  *
  * <p>计费与重试：流式对话受理即预扣。客户端不自动重试；受理前结果未知（断网 / 超时）时
  * 沿用同一个 X-Request-Id（服务端据它幂等），用户点「重试」才重发；确定失败或已受理则换新 id。
  */
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { NConfigProvider, NDropdown, NImage, NInput, NSpin, useDialog, useMessage } from 'naive-ui'
+import { NConfigProvider, NImage, NInput, NModal, NSpin, useDialog, useMessage } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
 import { toApiError } from '@/api'
 import {
@@ -24,10 +25,12 @@ import {
   agentSkills,
   agentStream,
   applyFrame,
+  chatSkillGroups,
   emptyReply,
+  MY_SKILL_GROUP,
   replyFromFrames,
 } from '@/api/agent.ts'
-import type { IAgentConversation, IAgentMessage, IAgentReply, IAgentSkill } from '@/api/agent.ts'
+import type { IAgentConversation, IAgentMessage, IAgentReply, IAgentSkill, IAgentSkillGroup } from '@/api/agent.ts'
 import { useIdempotentSubmit } from '@/views/studio/hooks.ts'
 
 defineOptions({ name: 'agent-chat' })
@@ -70,6 +73,7 @@ const ICON = {
   checkCircle: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM8 12l3 3 5-6',
   xCircle: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM9 9l6 6M15 9l-6 6',
   x: 'M6 6l12 12M18 6L6 18',
+  check: 'M5 12l5 5 9-10',
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01',
   arrowUp: 'M12 19V5M6 11l6-6 6 6',
   edit: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
@@ -119,21 +123,23 @@ function versionLabel(s: IAgentSkill | undefined): string {
 
 // ---------------- 技能 ----------------
 
-const skills = ref<IAgentSkill[]>([])
+const skillGroups = ref<IAgentSkillGroup[]>([])
+const skills = computed(() => skillGroups.value.flatMap((g) => g.skills))
 const selectedSkillId = ref('')
 const idem = useIdempotentSubmit()
+
+/** 目录非空时服务端拒绝不带技能的一轮：未选技能就不发 */
+const SKILL_REQUIRED = '请先选择技能'
+const skillMissing = computed(() => skills.value.length > 0 && !selectedSkillId.value)
 
 async function loadSkills() {
   try {
     const res = await agentSkills()
-    const groups = res.data ?? {}
-    skills.value = Object.values(groups)
-      .flat()
-      .filter((s) => s.enabled !== false && s.executionShape !== 'workflow')
+    skillGroups.value = chatSkillGroups(res.data)
     selectedSkillId.value = skills.value[0]?.agentSkillId ?? ''
   } catch {
     // 目录拉失败不挡对话：不带 agentSkillId，服务端要求时会回 ERROR 帧
-    skills.value = []
+    skillGroups.value = []
   }
 }
 
@@ -143,10 +149,44 @@ function pickSkill(id: string) {
   idem.invalidate()
 }
 
+function removeSkill() {
+  if (!selectedSkillId.value || streaming.value) return
+  selectedSkillId.value = ''
+  idem.invalidate()
+}
+
 const selectedSkill = computed(() => skills.value.find((s) => s.agentSkillId === selectedSkillId.value))
-const skillOptions = computed(() =>
-  skills.value.map((s) => ({ key: s.agentSkillId, label: [s.title, versionLabel(s)].filter(Boolean).join(' ') })),
-)
+
+/** 首字作为技能头像 */
+function skillInitial(s: IAgentSkill): string {
+  return Array.from(s.title?.trim() || '技')[0] ?? '技'
+}
+
+// 选择技能弹窗：分类页签 = 服务端分组（空组已去掉），「我的技能」恒在最后
+const skillDialogShow = ref(false)
+const skillTab = ref('')
+const pendingSkillId = ref('')
+const skillPillEl = ref<HTMLButtonElement | null>(null)
+
+const skillTabs = computed<IAgentSkillGroup[]>(() => [
+  ...skillGroups.value.filter((g) => g.name !== MY_SKILL_GROUP),
+  { name: MY_SKILL_GROUP, skills: skillGroups.value.find((g) => g.name === MY_SKILL_GROUP)?.skills ?? [] },
+])
+const tabSkills = computed(() => skillTabs.value.find((t) => t.name === skillTab.value)?.skills ?? [])
+
+function openSkillDialog() {
+  if (streaming.value) return
+  pendingSkillId.value = selectedSkillId.value
+  const home = skillTabs.value.find((t) => t.skills.some((s) => s.agentSkillId === selectedSkillId.value))
+  skillTab.value = (home ?? skillTabs.value[0])?.name ?? MY_SKILL_GROUP
+  skillDialogShow.value = true
+}
+
+function confirmSkill() {
+  if (!pendingSkillId.value) return
+  pickSkill(pendingSkillId.value)
+  skillDialogShow.value = false
+}
 
 // ---------------- 会话列表 ----------------
 
@@ -414,6 +454,10 @@ function bumpConversation(id: string, accepted = false) {
 async function send(raw: string) {
   const content = raw.trim()
   if (!content || streaming.value) return
+  if (skillMissing.value) {
+    message.warning(SKILL_REQUIRED)
+    return
+  }
   streaming.value = true
 
   let conversationId: string
@@ -487,6 +531,10 @@ async function send(raw: string) {
 function retry(item: ChatItem) {
   const content = item.retryContent
   if (!content || streaming.value) return
+  if (skillMissing.value) {
+    message.warning(SKILL_REQUIRED)
+    return
+  }
   const idx = items.value.indexOf(item)
   if (idx > 0) items.value.splice(idx - 1, 2)
   void send(content)
@@ -970,6 +1018,28 @@ onUnmounted(() => controller?.abort())
                     <path :d="ICON.sparkle" />
                   </svg>
                   {{ selectedSkill.title }}
+                  <button
+                    type="button"
+                    title="移除技能"
+                    :aria-label="`移除技能：${selectedSkill.title}`"
+                    :disabled="streaming"
+                    :class="[
+                      'grid h-16px w-16px place-items-center rounded-999px border-none bg-transparent p-0 text-violet-ink cursor-pointer hover:bg-violet-soft-2 disabled:(cursor-not-allowed opacity-50)',
+                      FOCUS,
+                    ]"
+                    @click="removeSkill"
+                  >
+                    <svg
+                      class="h-10px w-10px"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.4"
+                      aria-hidden="true"
+                    >
+                      <path :d="ICON.x" />
+                    </svg>
+                  </button>
                 </span>
               </div>
               <n-input
@@ -1004,39 +1074,36 @@ onUnmounted(() => controller?.abort())
                     图片 0/4
                   </button>
                 </span>
-                <n-dropdown
+                <button
                   v-if="skills.length"
-                  trigger="click"
-                  :options="skillOptions"
+                  ref="skillPillEl"
+                  type="button"
+                  aria-haspopup="dialog"
+                  :aria-label="selectedSkill ? `技能：${selectedSkill.title}，点击更换` : '选择技能'"
+                  :title="selectedSkill?.description"
                   :disabled="streaming"
-                  @select="(key: string | number) => pickSkill(String(key))"
+                  :class="[
+                    'inline-flex h-26px max-w-[200px] items-center gap-4px rounded-999px border border-solid bg-white px-10px text-12px cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
+                    selectedSkill ? 'border-line text-ink-2' : 'border-violet-line text-violet-ink',
+                    FOCUS,
+                  ]"
+                  @click="openSkillDialog"
                 >
-                  <button
-                    type="button"
-                    aria-label="技能"
-                    :title="selectedSkill?.description"
-                    :disabled="streaming"
-                    :class="[
-                      'inline-flex h-26px max-w-[200px] items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
-                      FOCUS,
-                    ]"
+                  <span class="truncate">{{ selectedSkill ? selectedSkill.title : '选择技能' }}</span>
+                  <span v-if="versionLabel(selectedSkill)" class="flex-none text-muted">{{
+                    versionLabel(selectedSkill)
+                  }}</span>
+                  <svg
+                    class="h-12px w-12px flex-none text-muted"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
                   >
-                    <span class="truncate">{{ selectedSkill ? selectedSkill.title : '技能' }}</span>
-                    <span v-if="versionLabel(selectedSkill)" class="flex-none text-muted">{{
-                      versionLabel(selectedSkill)
-                    }}</span>
-                    <svg
-                      class="h-12px w-12px flex-none text-muted"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      aria-hidden="true"
-                    >
-                      <path :d="ICON.chevronDown" />
-                    </svg>
-                  </button>
-                </n-dropdown>
+                    <path :d="ICON.chevronDown" />
+                  </svg>
+                </button>
                 <span :title="SOON" class="inline-flex">
                   <button
                     type="button"
@@ -1057,6 +1124,12 @@ onUnmounted(() => controller?.abort())
                   </button>
                 </span>
                 <span class="flex-1" />
+                <span
+                  v-if="skillMissing && !streaming"
+                  id="agent-skill-required"
+                  class="flex-none text-12px text-warning"
+                  >{{ SKILL_REQUIRED }}</span
+                >
                 <button
                   v-if="streaming"
                   type="button"
@@ -1072,7 +1145,8 @@ onUnmounted(() => controller?.abort())
                 <button
                   v-else
                   type="button"
-                  :disabled="!draft.trim()"
+                  :disabled="!draft.trim() || skillMissing"
+                  :aria-describedby="skillMissing ? 'agent-skill-required' : undefined"
                   :class="['ll-btn-primary h-32px flex-none gap-4px px-16px text-13px', FOCUS]"
                   @click="send(draft)"
                 >
@@ -1095,5 +1169,138 @@ onUnmounted(() => controller?.abort())
         </div>
       </section>
     </div>
+
+    <!-- 选择技能 -->
+    <n-modal
+      v-model:show="skillDialogShow"
+      preset="card"
+      title="选择技能"
+      :style="{ width: '560px', maxWidth: 'calc(100vw - 48px)' }"
+      @after-leave="skillPillEl?.focus()"
+    >
+      <template #header-extra>
+        <span class="mr-8px rounded-999px bg-violet-soft px-8px py-2px text-12px text-violet-ink"
+          >{{ skills.length }} 个技能</span
+        >
+      </template>
+
+      <div class="flex flex-col gap-12px">
+        <div class="flex items-center gap-10px">
+          <span id="agent-skill-tabs-label" class="flex-none text-13px text-ink-2">技能分类</span>
+          <div
+            role="group"
+            aria-labelledby="agent-skill-tabs-label"
+            class="flex min-w-0 flex-1 flex-wrap gap-4px rounded-10px bg-surface2 p-4px"
+          >
+            <button
+              v-for="t in skillTabs"
+              :key="t.name"
+              type="button"
+              :aria-pressed="skillTab === t.name"
+              :class="[
+                'h-28px rounded-8px border-none px-12px text-13px cursor-pointer',
+                skillTab === t.name
+                  ? 'bg-white font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.08)]'
+                  : 'bg-transparent text-ink-2 hover:text-ink',
+                FOCUS,
+              ]"
+              @click="skillTab = t.name"
+            >
+              {{ t.name }}
+            </button>
+          </div>
+        </div>
+
+        <div class="flex max-h-420px min-h-160px flex-col gap-8px overflow-y-auto">
+          <span v-if="skillTab === MY_SKILL_GROUP" :title="SOON" class="flex">
+            <button
+              type="button"
+              disabled
+              class="inline-flex h-40px w-full items-center justify-center gap-4px rounded-12px border border-dashed border-violet-line bg-white text-13px text-violet-ink cursor-not-allowed opacity-60"
+            >
+              <svg
+                class="h-14px w-14px"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path :d="ICON.plus" />
+              </svg>
+              新建技能
+            </button>
+          </span>
+          <button
+            v-for="s in tabSkills"
+            :key="s.agentSkillId"
+            type="button"
+            :aria-pressed="pendingSkillId === s.agentSkillId"
+            :class="[
+              'flex w-full flex-none items-center gap-10px rounded-12px border border-solid px-12px py-10px text-left cursor-pointer',
+              pendingSkillId === s.agentSkillId
+                ? 'bg-violet-soft border-violet-line'
+                : 'bg-white border-line hover:border-violet-line',
+              FOCUS,
+            ]"
+            @click="pendingSkillId = s.agentSkillId"
+          >
+            <span
+              class="grid h-32px w-32px flex-none place-items-center rounded-8px bg-violet-soft-2 text-13px font-600 text-violet-ink"
+              aria-hidden="true"
+              >{{ skillInitial(s) }}</span
+            >
+            <span class="min-w-0 flex-1">
+              <span class="flex items-center gap-6px">
+                <span class="truncate text-14px font-600 text-ink">{{ s.title }}</span>
+                <span
+                  v-if="versionLabel(s)"
+                  class="flex-none rounded-4px bg-violet-soft-2 px-6px py-1px text-11px text-violet-ink"
+                  >{{ versionLabel(s) }}</span
+                >
+              </span>
+              <span v-if="s.description" class="mt-2px block truncate text-12px text-muted">{{ s.description }}</span>
+            </span>
+            <svg
+              v-if="pendingSkillId === s.agentSkillId"
+              class="h-16px w-16px flex-none text-violet"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.4"
+              aria-hidden="true"
+            >
+              <path :d="ICON.check" />
+            </svg>
+          </button>
+          <div v-if="!tabSkills.length" class="ll-empty py-24px">
+            {{ skillTab === MY_SKILL_GROUP ? '暂无自建技能' : '暂无技能' }}
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-8px">
+          <button
+            type="button"
+            :class="[
+              'inline-flex h-32px items-center rounded-999px border border-solid border-line-strong bg-white px-16px text-13px text-ink cursor-pointer hover:border-violet-line',
+              FOCUS,
+            ]"
+            @click="skillDialogShow = false"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            :disabled="!pendingSkillId"
+            :class="['ll-btn-primary h-32px px-16px text-13px', FOCUS]"
+            @click="confirmSkill"
+          >
+            确认
+          </button>
+        </div>
+      </template>
+    </n-modal>
   </n-config-provider>
 </template>

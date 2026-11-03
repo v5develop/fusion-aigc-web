@@ -39,6 +39,28 @@ export interface IAgentSkill {
   executionShape: string | null
 }
 
+/** 技能目录的一个分组（键 = 分类中文名，组序照服务端下发） */
+export interface IAgentSkillGroup {
+  name: string
+  skills: IAgentSkill[]
+}
+
+/** 「我的技能」分组名。目录是公共资源、当前不下发用户自建技能；若哪天下发了同名分类，就落进这一组 */
+export const MY_SKILL_GROUP = '我的技能'
+
+/**
+ * 对话面可选的技能分组：去掉停用与 workflow 形态（选进对话会被拒），去掉因此变空的组；
+ * 组序、组内顺序都照服务端（服务端已按运营配置 / 条目数与 weight 排好，默认技能取第一条）。
+ */
+export function chatSkillGroups(groups: Record<string, IAgentSkill[]> | null | undefined): IAgentSkillGroup[] {
+  return Object.entries(groups ?? {})
+    .map(([name, list]) => ({
+      name,
+      skills: (list ?? []).filter((s) => s.enabled !== false && s.executionShape !== 'workflow'),
+    }))
+    .filter((g) => g.skills.length > 0)
+}
+
 /** 会话列表行（ConversationListView） */
 export interface IAgentConversation {
   agentConversationId: string
