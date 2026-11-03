@@ -72,6 +72,8 @@ const ICON = {
   x: 'M6 6l12 12M18 6L6 18',
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01',
   arrowUp: 'M12 19V5M6 11l6-6 6 6',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
+  trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6',
 } as const
 
 const HEADER_ACTIONS = [
@@ -253,16 +255,6 @@ function confirmDelete(c: IAgentConversation) {
       }
     },
   })
-}
-
-const MENU_OPTIONS = [
-  { label: '重命名', key: 'rename' },
-  { label: '删除', key: 'delete' },
-]
-
-function onMenu(key: string, c: IAgentConversation) {
-  if (key === 'rename') startRename(c)
-  else if (key === 'delete') confirmDelete(c)
 }
 
 // ---------------- 消息 ----------------
@@ -644,7 +636,7 @@ onUnmounted(() => controller?.abort())
           <li v-for="c in visibleConversations" :key="c.agentConversationId" class="mb-4px">
             <div
               :class="[
-                'group relative flex items-center gap-10px rounded-12px border border-solid px-8px py-8px',
+                'flex items-start gap-10px rounded-12px border border-solid px-8px py-8px',
                 activeId === c.agentConversationId
                   ? 'bg-violet-soft border-violet-line'
                   : 'border-transparent hover:bg-surface2',
@@ -665,67 +657,94 @@ onUnmounted(() => controller?.abort())
                   <path :d="ICON.sparkle" />
                 </svg>
               </span>
-              <n-input
-                v-if="editingId === c.agentConversationId"
-                v-model:value="editingTitle"
-                size="small"
-                :maxlength="120"
-                autofocus
-                aria-label="对话标题"
-                @keydown.enter.prevent="commitRename(c)"
-                @keydown.esc.prevent="editingId = ''"
-                @blur="commitRename(c)"
-              />
-              <button
-                v-else
-                type="button"
-                :disabled="streaming && activeId !== c.agentConversationId"
-                :aria-current="activeId === c.agentConversationId ? 'true' : undefined"
-                :class="[
-                  'flex min-w-0 flex-1 items-start gap-8px border-none bg-transparent p-0 text-left cursor-pointer disabled:cursor-not-allowed',
-                  FOCUS,
-                ]"
-                @click="selectConversation(c.agentConversationId)"
-              >
-                <span class="min-w-0 flex-1">
-                  <span
-                    :class="[
-                      'block truncate text-13px font-600',
-                      activeId === c.agentConversationId ? 'text-violet-ink' : 'text-ink',
-                    ]"
-                  >
-                    {{ c.title }}
-                  </span>
-                  <span v-if="c.lastMessage" class="mt-2px block truncate text-12px text-muted">{{
-                    c.lastMessage
-                  }}</span>
-                </span>
-                <span class="flex flex-none flex-col items-end gap-2px text-11px text-muted">
-                  <span>{{ dayLabel(c.updatedAt || c.createdAt) }}</span>
-                  <span>{{ roundsOf(c) }} 轮</span>
-                </span>
-              </button>
-              <n-dropdown
-                v-if="editingId !== c.agentConversationId"
-                trigger="click"
-                :options="MENU_OPTIONS"
-                @select="(key: string | number) => onMenu(String(key), c)"
-              >
+              <div class="flex min-w-0 flex-1 flex-col gap-4px">
+                <n-input
+                  v-if="editingId === c.agentConversationId"
+                  v-model:value="editingTitle"
+                  size="small"
+                  :maxlength="120"
+                  autofocus
+                  aria-label="对话标题"
+                  @keydown.enter.prevent="commitRename(c)"
+                  @keydown.esc.prevent="editingId = ''"
+                  @blur="commitRename(c)"
+                />
                 <button
+                  v-else
                   type="button"
-                  aria-label="更多操作"
+                  :disabled="streaming && activeId !== c.agentConversationId"
+                  :aria-current="activeId === c.agentConversationId ? 'true' : undefined"
                   :class="[
-                    'absolute right-6px top-6px grid h-22px w-22px place-items-center rounded-4px border border-solid border-line bg-white text-muted cursor-pointer opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-ink',
+                    'flex min-w-0 flex-1 items-start gap-8px border-none bg-transparent p-0 text-left cursor-pointer disabled:cursor-not-allowed',
                     FOCUS,
                   ]"
+                  @click="selectConversation(c.agentConversationId)"
                 >
-                  <svg class="h-14px w-14px" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <circle cx="5" cy="12" r="1.8" />
-                    <circle cx="12" cy="12" r="1.8" />
-                    <circle cx="19" cy="12" r="1.8" />
-                  </svg>
+                  <span class="min-w-0 flex-1">
+                    <span
+                      :class="[
+                        'block truncate text-13px font-600',
+                        activeId === c.agentConversationId ? 'text-violet-ink' : 'text-ink',
+                      ]"
+                    >
+                      {{ c.title }}
+                    </span>
+                    <span v-if="c.lastMessage" class="mt-2px block truncate text-12px text-muted">{{
+                      c.lastMessage
+                    }}</span>
+                  </span>
+                  <span class="flex flex-none flex-col items-end gap-2px text-11px text-muted">
+                    <span>{{ dayLabel(c.updatedAt || c.createdAt) }}</span>
+                    <span>{{ roundsOf(c) }} 轮</span>
+                  </span>
                 </button>
-              </n-dropdown>
+                <div v-if="editingId !== c.agentConversationId" class="flex justify-end gap-6px">
+                  <button
+                    type="button"
+                    :aria-label="`重命名：${c.title}`"
+                    title="重命名"
+                    :class="[
+                      'grid h-22px w-22px place-items-center rounded-6px border border-solid border-line bg-white text-muted cursor-pointer hover:(text-violet-ink border-violet-line)',
+                      FOCUS,
+                    ]"
+                    @click="startRename(c)"
+                  >
+                    <svg
+                      class="h-12px w-12px"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path :d="ICON.edit" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    :aria-label="`删除：${c.title}`"
+                    title="删除"
+                    :class="[
+                      'grid h-22px w-22px place-items-center rounded-6px border border-solid border-line bg-white text-muted cursor-pointer hover:(text-danger border-danger-line)',
+                      FOCUS,
+                    ]"
+                    @click="confirmDelete(c)"
+                  >
+                    <svg
+                      class="h-12px w-12px"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path :d="ICON.trash" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
           </li>
           <li v-if="!visibleConversations.length && !listLoading" class="ll-empty py-24px">暂无对话</li>
@@ -970,7 +989,7 @@ onUnmounted(() => controller?.abort())
                   <button
                     type="button"
                     disabled
-                    class="inline-flex h-28px items-center gap-4px rounded-8px border border-solid border-line bg-white px-8px text-12px text-ink-2 cursor-not-allowed opacity-60"
+                    class="inline-flex h-26px items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-not-allowed opacity-60"
                   >
                     <svg
                       class="h-13px w-13px"
@@ -998,7 +1017,7 @@ onUnmounted(() => controller?.abort())
                     :title="selectedSkill?.description"
                     :disabled="streaming"
                     :class="[
-                      'inline-flex h-28px max-w-[200px] items-center gap-4px rounded-8px border border-solid border-line bg-white px-8px text-12px text-ink-2 cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
+                      'inline-flex h-26px max-w-[200px] items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
                       FOCUS,
                     ]"
                   >
@@ -1022,7 +1041,7 @@ onUnmounted(() => controller?.abort())
                   <button
                     type="button"
                     disabled
-                    class="inline-flex h-28px items-center gap-4px rounded-8px border border-solid border-line bg-white px-8px text-12px text-ink-2 cursor-not-allowed opacity-60"
+                    class="inline-flex h-26px items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-not-allowed opacity-60"
                   >
                     ZH 中文
                     <svg
