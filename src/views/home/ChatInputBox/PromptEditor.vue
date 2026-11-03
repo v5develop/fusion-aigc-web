@@ -8,6 +8,7 @@ import { buildUploadHTML, updateUploadBlockDOM, type UploadIdentity } from './sl
 import ModelImageModal from './ModelImageModal.vue'
 import { upload } from '@/api/ossUpload'
 import { ACCEPT_IMAGE } from '@/utils/utils'
+import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
 declare global {
   interface Window {
@@ -20,6 +21,10 @@ declare global {
 }
 
 const slots = defineModel<PromptSlot[]>('slots', { required: true })
+const emit = defineEmits<{
+  /** 粘贴 / 拖入的图片没有可放的上传插槽时，交给外层（ChatInputBox 左侧图片上传） */
+  'paste-files': [files: File[]]
+}>()
 
 const message = useMessage()
 const surfaceRef = ref<HTMLDivElement | null>(null)
@@ -29,6 +34,7 @@ let pendingUpload: UploadIdentity | null = null
 const showModelModal = ref(false)
 const modelModalModuleCode = ref<string | undefined>(undefined)
 const modelModalExistingUrls = ref<string[]>([])
+const modelModalLimit = ref(DEFAULT_UPLOAD_LIMIT)
 let pendingModalSlot: UploadIdentity | null = null
 
 /** 按 key 优先、label 兜底查找上传插槽（label 可能重复，key 来自模板详情接口） */
@@ -304,7 +310,13 @@ async function onFileChange(e: Event) {
   const files = input.files
   if (!files || files.length === 0) return
 
-  const id = pendingUpload
+  await uploadToSlot(pendingUpload, Array.from(files))
+  input.value = ''
+  pendingUpload = null
+}
+
+/** 选文件 / 拖入 / 粘贴共用：按插槽上限截取后上传，回写插槽 */
+async function uploadToSlot(id: UploadIdentity | null, files: File[]) {
   const slot = id && findUploadSlot(id)
   if (id && slot && surfaceRef.value) {
     const limit = slot.limit ?? DEFAULT_UPLOAD_LIMIT
@@ -321,9 +333,32 @@ async function onFileChange(e: Event) {
       message.error('图片上传失败，请重试')
     }
   }
-  input.value = ''
-  pendingUpload = null
 }
+
+/** 拖入 / 粘贴的落点：拖到某个上传块上就放那块，否则放第一个还没满的图片插槽（模特图走弹窗，不接） */
+function dropSlotOf(event: DragEvent | ClipboardEvent): UploadIdentity | null {
+  const hit = event instanceof DragEvent ? (event.target as HTMLElement | null)?.closest('.ps-slot--upload') : null
+  const eligible = (s: PromptSlot | undefined): s is SlotUpload =>
+    !!s && s.type === 'upload' && s.key !== 'modelImage' && s.accept !== 'video'
+  if (hit) {
+    // 拖到哪块就放哪块，满了由上传逻辑照常提示
+    const s = findUploadSlot(blockIdentity(hit as HTMLElement))
+    if (eligible(s)) return { key: s.key, label: s.label }
+  }
+  const open = slots.value.find((s) => eligible(s) && s.value.length < (s.limit ?? DEFAULT_UPLOAD_LIMIT))
+  return eligible(open) ? { key: open.key, label: open.label } : null
+}
+
+const { dragging } = useFileDropPaste(surfaceRef, {
+  accept: 'image',
+  multiple: true,
+  textEditor: true,
+  onFiles: (files, event) => {
+    const id = dropSlotOf(event)
+    if (id) uploadToSlot(id, files)
+    else emit('paste-files', files)
+  },
+})
 
 // ========== 生命周期 ==========
 
@@ -342,6 +377,7 @@ onMounted(() => {
         pendingModalSlot = id
         modelModalModuleCode.value = slot.moduleCode
         modelModalExistingUrls.value = slot.value.map((f) => f.url)
+        modelModalLimit.value = slot.limit ?? DEFAULT_UPLOAD_LIMIT
         showModelModal.value = true
         return
       }
@@ -430,7 +466,8 @@ watch(
 <template>
   <div
     ref="surfaceRef"
-    class="prompt-editor"
+    class="prompt-editor rounded-lg"
+    :class="dragging && 'sx-drop-ring'"
     contenteditable="true"
     data-placeholder="和我聊聊，你想要什么设计～"
     @input="onInput"
@@ -442,6 +479,7 @@ watch(
     v-model:show="showModelModal"
     :module-code="modelModalModuleCode"
     :existing-urls="modelModalExistingUrls"
+    :limit="modelModalLimit"
     @select="onModelModalSelect"
   />
 </template>

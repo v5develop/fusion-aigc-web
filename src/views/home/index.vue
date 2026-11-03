@@ -41,11 +41,11 @@ function onTabKeydown(e: KeyboardEvent, index: number) {
 }
 
 // 本项目 UnoCSS 未启用 transformerVariantGroup：变体分组写法不生效，hover / focus-visible 必须逐条写
-// 样式逐值对齐原型 ToolsView / CreationPillTabs：#f1ecf3 = color-mix(#875f9a 12%, #fff)，rgba(31,35,41,0.08) = color-mix(#1f2329 8%, transparent)
+// 样式逐值对齐原型 ToolsView / CreationPillTabs（卡片与图标底板 r8：原型 v3 把 rounded-2xl / rounded-xl 强制为 8px）：#f1ecf3 = color-mix(#875f9a 12%, #fff)，rgba(31,35,41,0.08) = color-mix(#1f2329 8%, transparent)
 const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2'
 const cardBase =
-  'flex flex-col items-start gap-12px w-full h-full p-16px rounded-16px bg-white text-left border-none ' +
+  'flex flex-col items-start gap-12px w-full h-full p-16px rounded-8px bg-white text-left border-none ' +
   'transition-[box-shadow,transform] duration-200 ease ' +
   'focus-visible:-translate-y-2px focus-visible:shadow-[0_4px_16px_rgba(31,35,41,0.08)] ' +
   focusRing
@@ -107,7 +107,7 @@ const cardBase =
           >
             <span class="w-full flex items-center gap-12px">
               <span
-                class="shrink-0 flex items-center justify-center w-44px h-44px rounded-12px bg-[#f1ecf3] text-violet"
+                class="shrink-0 flex items-center justify-center w-44px h-44px rounded-8px bg-[#f1ecf3] text-violet"
                 :class="tool.route ? '' : 'opacity-60'"
               >
                 <svg

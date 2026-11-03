@@ -19,7 +19,7 @@ export const RESOLUTION_OPTIONS = [
 ]
 
 /** 比例 10 档；tryon / pose 另加「自动」（空 = 按输入图比例取最近档） */
-export const ASPECT_RATIO_OPTIONS = ['1:1', '3:4', '4:3', '2:3', '3:2', '9:16', '16:9', '4:5', '5:4', '21:9'].map(
+export const ASPECT_RATIO_OPTIONS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'].map(
   (v) => ({ label: v, value: v }),
 )
 

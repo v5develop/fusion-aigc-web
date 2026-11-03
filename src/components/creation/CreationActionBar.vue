@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * 创作页底部提交栏（原型商拍换装「开始换装」/ 工具详情「开始抠图 · 消耗 8 点」同款）：整宽藤紫渐变主按钮，
- * 圆角 10、深紫描边、内高光 + 短投影（ll-btn-primary，与原型 dump 同值）。默认只有一行粗体白字（高 52）；
- * 传了 costText 才出第二行消耗说明（高 56，原型只有工具页有）。
+ * 圆角 10、深紫描边、内高光 + 短投影（ll-btn-primary，与原型 dump 同值）。按钮统一高 56、内边距 0 12、行距 3：
+ * 第一行 16/22·600 白字；传了 costText 才出第二行消耗说明（11/14、白色 74%）。
  * 不能提交的原因写在按钮上方一行小字（warning 色，aria-live）。
  *
  * <p>传 form 时按钮是 type=submit 并挂到该表单（工具页 / 工作流页的 &lt;form&gt; 提交）；
@@ -50,22 +50,27 @@ function onClick() {
     <button
       :type="form ? 'submit' : 'button'"
       :form="form"
-      class="ll-btn-primary relative w-full py-0 px-16px flex-col !gap-2px !rounded-10px ![transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s_ease,box-shadow_0.11s_ease,color_0.11s_ease] motion-reduce:!transition-none outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
-      :class="costText ? 'h-56px' : 'h-52px'"
+      class="group ll-btn-primary relative w-full h-56px box-border py-0 px-12px flex-col !gap-3px !rounded-10px ![transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s_ease,box-shadow_0.11s_ease,color_0.11s_ease] motion-reduce:!transition-none outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
       :disabled="disabled || loading"
       :aria-busy="loading || undefined"
       :aria-describedby="reason ? reasonId : undefined"
       @click="onClick"
     >
-      <span class="flex items-center gap-6px text-15px font-600 leading-20px">
-        <span
-          v-if="loading"
-          class="block w-12px h-12px box-border rounded-full border-1.5px border-solid border-white/35 border-t-white animate-spin motion-reduce:animate-none"
-          aria-hidden="true"
-        />
+      <!-- 加载环绝对定位在左 14、垂直居中，文字位置不动（原型 ToolSubmitBar） -->
+      <span
+        v-if="loading"
+        class="absolute left-14px top-1/2 -mt-6px block w-12px h-12px box-border rounded-full border-1.5px border-solid border-white/35 border-t-white animate-spin [animation-duration:0.7s] motion-reduce:animate-none"
+        aria-hidden="true"
+      />
+      <span class="text-16px font-600 leading-22px tracking-[0.04em] whitespace-nowrap group-disabled:text-white/80">
         {{ loading ? '提交中…' : label }}
       </span>
-      <span v-if="costText" class="text-11px font-400 leading-15px opacity-85" aria-live="polite">{{ costText }}</span>
+      <span
+        v-if="costText"
+        class="text-11px font-400 leading-14px text-white/74 whitespace-nowrap"
+        aria-live="polite"
+        >{{ costText }}</span
+      >
     </button>
   </div>
 </template>

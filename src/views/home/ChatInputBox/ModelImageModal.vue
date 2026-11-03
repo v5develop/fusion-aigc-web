@@ -6,12 +6,16 @@ import { upload } from '@/api/ossUpload'
 import { useMessage } from 'naive-ui'
 import { ossThumbnail } from '@/utils/oss.ts'
 import { ACCEPT_IMAGE } from '@/utils/utils'
+import { useFileDropPaste } from '@/composables/useFileDropPaste'
+import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 
 const show = defineModel<boolean>('show', { required: true })
 const props = defineProps<{
   moduleCode?: string
   /** 已有图片 URL 集合，用于回显已选中状态 */
   existingUrls?: string[]
+  /** 插槽上限（从资产库添加时最多选几张）；不传 = 1 */
+  limit?: number
 }>()
 const emit = defineEmits<{
   select: [images: FileItem[], fromLibrary: boolean]
@@ -22,23 +26,16 @@ const activeTab = ref<'upload' | 'library'>('upload')
 
 // ========== 本地上传 ==========
 
-const dragging = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const uploadPanelRef = ref<HTMLElement | null>(null)
 
-function onDragOver(e: DragEvent) {
-  e.preventDefault()
-  dragging.value = true
-}
-function onDragLeave() {
-  dragging.value = false
-}
-function onDrop(e: DragEvent) {
-  e.preventDefault()
-  dragging.value = false
-  const files = e.dataTransfer?.files
-  if (!files?.length) return
-  readFiles(Array.from(files))
-}
+// 拖入 + ⌘/Ctrl+V（提示文案里本来就写了粘贴）：弹窗打开时这是唯一的上传区，粘贴不要求悬停
+const { dragging } = useFileDropPaste(uploadPanelRef, {
+  accept: 'image',
+  multiple: true,
+  globalPaste: true,
+  onFiles: (files) => readFiles(files),
+})
 function onUploadClick() {
   fileInputRef.value?.click()
 }
@@ -54,12 +51,31 @@ const message = useMessage()
 async function readFiles(files: File[]) {
   try {
     const urls = await upload(files)
-    const items: FileItem[] = files.map((file, i) => ({ url: urls[i] || '', name: file.name }))
-    emit('select', items, false)
-    show.value = false
+    emitUploaded(files.map((file, i) => ({ url: urls[i] || '', name: file.name })))
   } catch {
     message.error('图片上传失败，请重试')
   }
+}
+
+/** 本地上传 / 资产库共用：按上传结果交回（fromLibrary = false，与模特库区分） */
+function emitUploaded(items: FileItem[]) {
+  emit('select', items, false)
+  show.value = false
+}
+
+// ========== 从资产库添加 ==========
+
+const assetShow = ref(false)
+
+function onAssetSelect(urls: string[]) {
+  const picked = urls.filter((u) => /^https?:\/\//i.test(u))
+  if (!picked.length) return
+  emitUploaded(
+    picked.map((url) => {
+      const path = url.split(/[?#]/)[0] ?? ''
+      return { url, name: path.slice(path.lastIndexOf('/') + 1) || 'image' }
+    }),
+  )
 }
 
 // ========== 模特库 ==========
@@ -158,43 +174,31 @@ function onLibScroll(e: Event) {
 </script>
 
 <template>
-  <NModal
-    :show="show"
-    :on-update:show="(v: boolean) => (show = v)"
-    transform-origin="center"
-    :closable="false"
-  >
+  <NModal :show="show" :on-update:show="(v: boolean) => (show = v)" transform-origin="center" :closable="false">
     <div class="model-image-modal">
       <!-- Header -->
       <div class="modal-header">
-        <span
-          class="modal-tab"
-          :class="{ active: activeTab === 'upload' }"
-          @click="activeTab = 'upload'"
-        >上传图片</span>
-        <span
-          class="modal-tab"
-          :class="{ active: activeTab === 'library' }"
-          @click="activeTab = 'library'"
-        >模特库</span>
+        <span class="modal-tab" :class="{ active: activeTab === 'upload' }" @click="activeTab = 'upload'"
+          >上传图片</span
+        >
+        <span class="modal-tab" :class="{ active: activeTab === 'library' }" @click="activeTab = 'library'"
+          >模特库</span
+        >
       </div>
 
       <!-- 白色内容区 -->
       <div class="modal-body">
-
         <!-- 本地上传 -->
-        <div
-          v-if="activeTab === 'upload'"
-          class="upload-panel"
-          @dragover="onDragOver"
-          @dragleave="onDragLeave"
-          @drop="onDrop"
-        >
-          <div
-            class="upload-zone"
-            :class="{ dragging }"
-            @click="onUploadClick"
-          >
+        <div v-if="activeTab === 'upload'" ref="uploadPanelRef" class="upload-panel">
+          <div class="upload-zone relative" :class="[{ dragging }, dragging && 'sx-drop']" @click="onUploadClick">
+            <button
+              type="button"
+              class="absolute right-12px top-12px z-1 px-4px text-12px leading-18px text-violet bg-transparent border-none cursor-pointer rounded-sm hover:underline sx-focus"
+              aria-label="从资产库添加图片"
+              @click.stop="assetShow = true"
+            >
+              从资产库添加
+            </button>
             <div class="upload-hint">拖拽文件，或截图后</div>
             <div class="upload-shortcut"><span class="key-icon">⌘</span> + V 上传素材</div>
             <div class="upload-format">PNG/JPG/JPEG</div>
@@ -219,7 +223,8 @@ function onLibScroll(e: Event) {
               class="filter-chip"
               :class="{ active: activeFilter === f.value }"
               @click="activeFilter = f.value"
-            >{{ f.label }}</span>
+              >{{ f.label }}</span
+            >
           </div>
           <div class="lib-grid" @scroll="onLibScroll">
             <div
@@ -237,6 +242,7 @@ function onLibScroll(e: Event) {
       </div>
     </div>
   </NModal>
+  <AssetPickerModal v-model:show="assetShow" :limit="Math.max(1, limit ?? 1)" @select="onAssetSelect" />
 </template>
 
 <style scoped lang="less">

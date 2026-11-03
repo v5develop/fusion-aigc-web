@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import { upload } from '@/api/ossUpload.ts'
 import { ACCEPT_IMAGE, ACCEPT_VIDEO } from '@/utils/utils'
+import { onPickerKeydown, useFileDropPaste } from '@/composables/useFileDropPaste'
+import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 
 interface IProps {
   type?: 'image' | 'video'
@@ -34,13 +36,20 @@ const getPreviewSrc = (item: any) => {
   return item
 }
 
-const beforeUpload = () => {
-  if (loading.value) return
+/** 追加前的统一检查（选文件 / 拖入 / 粘贴同一套） */
+const canAppend = () => {
+  if (loading.value) return false
 
   if (limitNumber && fileList.value.length >= limitNumber) {
     const unit = type === 'video' ? '个视频' : '张图片'
-    return message.warning(`最多上传${limitNumber}${unit}`)
+    message.warning(`最多上传${limitNumber}${unit}`)
+    return false
   }
+  return true
+}
+
+const beforeUpload = () => {
+  if (!canAppend()) return
   uploadRef.value!.click()
 }
 
@@ -96,17 +105,19 @@ const extractVideoThumbnail = (videoUrl: string): Promise<string> => {
   })
 }
 
-const getVideoDuration = (file: File): Promise<number> => {
+/** 本地文件或远端地址（资产库）都能读时长；读不出来返回 0，不拦 */
+const getVideoDuration = (source: File | string): Promise<number> => {
   return new Promise((resolve) => {
     const video = document.createElement('video')
+    const isFile = typeof source !== 'string'
     video.preload = 'metadata'
-    video.src = URL.createObjectURL(file)
+    video.src = isFile ? URL.createObjectURL(source) : source
     video.onloadedmetadata = () => {
-      URL.revokeObjectURL(video.src)
+      if (isFile) URL.revokeObjectURL(video.src)
       resolve(video.duration)
     }
     video.onerror = () => {
-      URL.revokeObjectURL(video.src)
+      if (isFile) URL.revokeObjectURL(video.src)
       resolve(0)
     }
   })
@@ -116,8 +127,11 @@ const handleUpload = async (e: Event) => {
   const target = e.target as HTMLInputElement
   const files = target.files
   if (!files || files.length === 0) return
+  await uploadFiles(Array.from(files))
+}
 
-  const fileArray = Array.from(files)
+/** 选文件 / 拖入 / 粘贴共用的校验 + 上传 */
+const uploadFiles = async (fileArray: File[]) => {
   const mimePrefix = type === 'video' ? 'video/' : 'image/'
   const label = type === 'video' ? '视频' : '图片'
 
@@ -148,18 +162,7 @@ const handleUpload = async (e: Event) => {
 
   loading.value = true
   try {
-    const urls = await upload(fileArray)
-    const remaining = limitNumber ? limitNumber - fileList.value.length : urls.length
-    const validUrls = urls.slice(0, remaining)
-
-    if (type === 'video') {
-      for (const url of validUrls) {
-        const thumbnail = await extractVideoThumbnail(url)
-        fileList.value.push({ url, thumbnail })
-      }
-    } else {
-      fileList.value.push(...validUrls)
-    }
+    await appendUrls(await upload(fileArray))
   } catch {
     message.error(`${type === 'video' ? '视频' : '图片'}上传失败，请重试`)
   } finally {
@@ -168,13 +171,76 @@ const handleUpload = async (e: Event) => {
   }
 }
 
+/** 上传 / 资产库共用：按余量截取后入组（视频补封面） */
+const appendUrls = async (urls: string[]) => {
+  const remaining = limitNumber ? limitNumber - fileList.value.length : urls.length
+  const validUrls = urls.slice(0, remaining)
+
+  if (type === 'video') {
+    for (const url of validUrls) {
+      const thumbnail = await extractVideoThumbnail(url)
+      fileList.value.push({ url, thumbnail })
+    }
+  } else {
+    fileList.value.push(...validUrls)
+  }
+}
+
+// ---------------- 从资产库添加 ----------------
+
+const assetShow = ref(false)
+const full = computed(() => !!limitNumber && fileList.value.length >= limitNumber)
+const assetLimit = computed(() => Math.max(1, limitNumber ? limitNumber - fileList.value.length : 1))
+const urlOf = (item: any): string => (type === 'video' ? item?.url : item)
+
+const openAssets = () => {
+  if (!canAppend()) return
+  assetShow.value = true
+}
+
+/** 资产地址与上传同口径：去重、视频时长同一条上限与提示（体积在地址上拿不到，不拦），再按余量入组 */
+const onAssetSelect = async (picked: string[]) => {
+  const fresh = picked.filter((u) => /^https?:\/\//i.test(u) && !fileList.value.some((it) => urlOf(it) === u))
+  if (!fresh.length) return
+  loading.value = true
+  try {
+    if (type === 'video') {
+      for (const url of fresh) {
+        if ((await getVideoDuration(url)) > limitDuration) {
+          return message.warning(`视频时长不能超过${limitDuration}秒`)
+        }
+      }
+    }
+    await appendUrls(fresh)
+  } finally {
+    loading.value = false
+  }
+}
+
 const deleteImg = (index: number) => {
   fileList.value.splice(index, 1)
 }
+
+/** 拖入 / 粘贴进来的文件：先过数量检查，再走同一套校验和上传 */
+const addFiles = (files: File[]) => {
+  if (canAppend()) uploadFiles(files)
+}
+
+const rootRef = ref<HTMLElement | null>(null)
+const { dragging } = useFileDropPaste(rootRef, {
+  accept: () => type,
+  multiple: () => multiple,
+  max: () => (limitNumber ? limitNumber - fileList.value.length : undefined),
+  disabled: loading,
+  onFiles: addFiles,
+})
+
+// 输入框里粘贴的图片转交到这里（ChatInputBox）
+defineExpose({ addFiles })
 </script>
 
 <template>
-  <div class="upload-component">
+  <div ref="rootRef" class="upload-component rounded-lg" :class="dragging && 'sx-drop-ring'">
     <input
       ref="uploadRef"
       type="file"
@@ -201,9 +267,13 @@ const deleteImg = (index: number) => {
 
         <div
           :style="{ '--transformX': expand ? 60 * fileList.length + 'px' : 0 }"
-          class="item upload-btn"
+          class="item upload-btn sx-focus"
           :class="[fileList.length && !expand ? 'upload-btn-small' : '', { disabled: loading }]"
+          role="button"
+          tabindex="0"
+          :aria-label="label || (type === 'video' ? '上传视频' : '上传图片')"
           @click="beforeUpload"
+          @keydown="onPickerKeydown($event, beforeUpload)"
           v-loading="loading"
         >
           <i class="icon-ic_home_upload1"></i>
@@ -211,6 +281,18 @@ const deleteImg = (index: number) => {
         </div>
       </div>
     </div>
+
+    <!-- 从资产库添加：叠片下方（上传区 80 高，下面留有 20 的空） -->
+    <button
+      type="button"
+      class="absolute left-0 top-full mt-2px p-0 text-12px leading-18px whitespace-nowrap text-violet bg-transparent border-none cursor-pointer rounded-sm hover:underline disabled:(opacity-45 cursor-not-allowed) sx-focus"
+      :aria-label="type === 'video' ? '从资产库添加视频' : '从资产库添加图片'"
+      :disabled="loading || full"
+      @click="openAssets"
+    >
+      从资产库添加
+    </button>
+    <AssetPickerModal v-model:show="assetShow" :media="type" :limit="assetLimit" @select="onAssetSelect" />
   </div>
 </template>
 

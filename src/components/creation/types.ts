@@ -6,6 +6,8 @@ export interface CreationOption<V extends CreationOptionValue = CreationOptionVa
   label: string
   value: V
   disabled?: boolean
+  /** 列表行右侧的能力标签（模型浮层「名称 + 标签」，11/16）；胶囊样式不显示 */
+  description?: string
 }
 
 /** 图片设置行可出现的字段；没写进配置的字段不渲染 */

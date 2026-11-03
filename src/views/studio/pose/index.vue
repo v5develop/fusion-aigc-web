@@ -5,18 +5,18 @@
  * <p>一张人物图锁定身份 / 服装 / 场景，1–9 张姿势参考图各出一个任务。
  * 补充说明拆两处：全局说明放 global_prompt，单张动作说明按姿势下标进 pose_prompts。
  * 服务端按姿势拆任务，每张的提示词 = 全局补充 + 本张补充（换行拼，空的不写）；姿态没有「生成张数」。
- * 两块入口为 s1.1 白边浮片叠片（StudioImageUpload），同排、中间切口；姿势满 9 张只拦点击 / 拖入，悬停照常摊开。
+ * 版式对齐线上原型 /tools/ai-posture-fission（.pm-mat / .pm-slots / 两列逐张补充）：入口、补充说明、各姿势补充同在一块输入框里；
+ * 两块入口见 PoseMaterialSlots，逐张补充见 PoseNotesList。原型的提交按钮不置灰，未就绪在点击时由 submit() 提示。
  */
 import { computed, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { studioSubmitPose } from '@/api/studio.ts'
 import type { StudioPosePayload, StudioPoseSubmitReq } from '@/api/studioTypes.ts'
 import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.vue'
-import StudioImageUpload from '../components/StudioImageUpload/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
-import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
-import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
+import PoseMaterialSlots from './PoseMaterialSlots.vue'
+import PoseNotesList from './PoseNotesList.vue'
 import { useIdempotentSubmit } from '../hooks.ts'
 import { MAX_POSE_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
 
@@ -34,7 +34,7 @@ const form = reactive({
   global_prompt: '',
   model: '通用',
   resolution: '1k',
-  aspect_ratio: '',
+  aspect_ratio: '3:4',
 })
 
 /** 组装 pose_prompts：键为姿势下标字符串（从 0 起），空说明不下发 */
@@ -52,6 +52,12 @@ function removePose(url: string) {
   const at = poseImages.value.indexOf(url)
   if (at >= 0) poseImages.value.splice(at, 1)
   delete poseNotes[url]
+}
+
+/** 叠片右上清空：姿势图和全部逐张说明一起清 */
+function clearPoses() {
+  poseImages.value = []
+  Object.keys(poseNotes).forEach((k) => delete poseNotes[k])
 }
 
 // ---------------- 提交 ----------------
@@ -141,76 +147,42 @@ function onReedit(payload: Record<string, unknown>) {
 <template>
   <StudioWorkspaceColumns ref="shell" kind="pose" title="姿态复刻" @reedit="onReedit">
     <template #operate>
-      <!-- 人物图 + 姿势参考图：两块白边浮片同排，中间切口 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">
-          人物图 · 姿势参考图<span class="text-11px text-placeholder font-400"
-            >姿势 {{ poseImages.length }}/{{ MAX_POSE_IMAGES }} · 每张出一个任务</span
+      <!-- 原型 .pm-mat：一块输入框装下 人物图 / 姿势图 → 补充说明 + 计数 → 各姿势补充 -->
+      <!-- flex-1：卡吃满操作区剩余高度（原型 .pm-mat flex 1 1 auto），补充说明框跟着长 -->
+      <div
+        class="flex min-h-320px flex-1 flex-col gap-10px box-border p-12px rounded-6px border border-solid border-line bg-white shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)]"
+      >
+        <!-- 人物图 + 姿势图：两块白边浮片同排，中间切口；人物图悬停单图预览，姿势图悬停摊开 + 3 列序号面板 -->
+        <PoseMaterialSlots
+          v-model:source="sourceImages"
+          v-model:poses="poseImages"
+          :max="MAX_POSE_IMAGES"
+          :disabled="submitting"
+          @remove-pose="removePose"
+          @clear-poses="clearPoses"
+        />
+
+        <!-- 补充说明（全局）：框内无边 textarea，左下计数 -->
+        <div class="flex min-h-0 flex-1 flex-col gap-6px">
+          <label for="pose-global-prompt" class="sr-only">补充说明</label>
+          <textarea
+            id="pose-global-prompt"
+            v-model="form.global_prompt"
+            class="block w-full min-h-96px flex-1 box-border m-0 p-0 resize-none overflow-y-auto overscroll-contain border-none bg-transparent text-13px leading-20px text-ink-2 outline-none placeholder:text-placeholder"
+            :maxlength="3000"
+            aria-describedby="pose-global-prompt-count"
+            placeholder="这套姿势统一的补充要求，会加到每一张里，例如：动作幅度小一点、手里不要拿东西（选填）"
+          />
+          <span
+            id="pose-global-prompt-count"
+            class="self-start mt-2px text-10px leading-15px tabular-nums select-none"
+            :class="form.global_prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
+            >{{ form.global_prompt.length }} / 3000</span
           >
         </div>
-        <div class="flex items-start gap-16px">
-          <StudioImageUpload v-model="sourceImages" :max="1" :multiple="false" label="人物图" hint="1 张" cloud />
-          <StudioImageUpload v-model="poseImages" :max="MAX_POSE_IMAGES" panel-fill label="姿势图" cloud />
-        </div>
-        <div class="mt-8px text-11px leading-16px text-placeholder">
-          人物图锁定身份 / 服装 / 场景；姿势图只取动作与表情
-        </div>
-      </div>
 
-      <!-- 逐张动作说明 -->
-      <div v-if="poseImages.length" class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">
-          逐张动作说明<span class="text-11px text-placeholder font-400">选填，对应每张姿势图</span>
-        </div>
-        <!-- 两列：每格 32 缩略图 + 30 高 / 11px 单行输入；缩略图右上角悬停出删除 -->
-        <div class="grid grid-cols-2 gap-x-12px gap-y-8px items-start mt-5px">
-          <div v-for="(url, i) in poseImages" :key="url" class="group relative flex items-center gap-8px min-w-0">
-            <span
-              class="shrink-0 block w-32px h-32px box-border overflow-hidden border border-solid border-line rounded-4px bg-surface3"
-            >
-              <img class="block w-full h-full object-cover" :src="url" :alt="`姿势${i + 1}`" />
-            </span>
-            <StudioMedBtn
-              :label="`删除姿势${i + 1}`"
-              class="top-[-9px] left-21px z-2 opacity-0 pointer-events-none transition-opacity duration-120 group-hover:(opacity-100 pointer-events-auto) group-focus-within:(opacity-100 pointer-events-auto) motion-reduce:transition-none"
-              @click="removePose(url)"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
-              </svg>
-            </StudioMedBtn>
-            <input
-              v-model="poseNotes[url]"
-              type="text"
-              class="flex-[1_1_0] w-0 min-w-0 h-30px box-border px-10px border border-solid border-line rounded-6px bg-white text-11px leading-18px text-ink outline-none shadow-[inset_0_1px_2px_rgba(31,35,41,0.09)] placeholder:text-placeholder focus:border-violet"
-              :maxlength="3000"
-              placeholder="这张的动作补充（选填）"
-              :aria-label="`姿势${i + 1}：动作补充`"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- 全局说明 -->
-      <div>
-        <div class="ll-section-title flex items-baseline gap-6px">
-          全局补充说明<span class="text-11px text-placeholder font-400">选填，对所有姿势生效</span>
-        </div>
-        <CreationPromptInput
-          v-model="form.global_prompt"
-          :rows="4"
-          :max-length="3000"
-          aria-label="全局补充说明"
-          placeholder="如：保持服装不变，表情自然，室内暖光"
-        />
+        <!-- 各姿势补充：两列，每格 32 缩略图（悬停小预览 / 右上删除）+ 30 高 / 11px 单行输入（200 字） -->
+        <PoseNotesList v-model:notes="poseNotes" :items="poseImages" :disabled="submitting" @remove="removePose" />
       </div>
     </template>
 
@@ -226,7 +198,6 @@ function onReedit(payload: Record<string, unknown>) {
         <StudioSubmitBar
           :label="submitText"
           :submitting="submitting"
-          :disabled="!!disabledReason"
           :disabled-reason="disabledReason"
           :retry="idem.retrying.value"
           @submit="submit"

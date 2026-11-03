@@ -1,7 +1,10 @@
 import { computed, onMounted, onUnmounted, ref, type Ref } from 'vue'
 import { toApiError } from '@/api/index.ts'
-import { deleteToolHistories, toolHistories, type ToolHistoryItem } from '@/api/tools.ts'
+import { deleteToolHistories, toolHistories, type ToolHistoryItem, type ToolHistoryPage } from '@/api/tools.ts'
+import { deleteWorkflowHistories, workflowHistories, type WorkflowHistoryItem } from '@/api/workflows.ts'
+import type { ApiResponse } from '@/api/types'
 import { useStudioPolling, type PollRoundResult } from '@/views/studio/hooks.ts'
+import { toolSchemas } from './schemas.ts'
 
 /** 终态（Java CompatV1TaskStatus.TERMINAL；WAITING_MANUAL_PROCESS 不算终态） */
 const TERMINAL = new Set(['SUCCEED', 'FAILED', 'TIMEOUT', 'CANCELLED'])
@@ -45,6 +48,42 @@ export function useOfflineBanner(pollerOffline: Ref<boolean>) {
  * 调度复用创作页的 useStudioPolling：隐藏页降频、失败退避，连续 3 次网络失败暂停并置 offline
  * （页面显示断网提示条，「重试」恢复）。拉取失败由请求层 toast。
  */
+/** 这个历史标题是否属于提交打工作流路由的工具页（schema.historyKind = workflow） */
+function isWorkflowHistory(title: string) {
+  return toolSchemas.some((s) => s.historyTitle === title && s.historyKind === 'workflow')
+}
+
+/** 工作流历史的一条 → 工具历史的形状（页面只认后者）；单件工作流的部分成功按成功算，免得轮询停不下来 */
+function fromWorkflowItem(w: WorkflowHistoryItem): ToolHistoryItem {
+  const d = w.data ?? null
+  return {
+    aiToolHistoryId: w.workflowHistoryId,
+    taskUid: d?.result?.tasks?.[0]?.taskId ?? '',
+    status: w.status === 'PARTIAL_SUCCEED' ? 'SUCCEED' : w.status,
+    payload: d?.payload ?? null,
+    result: { url: d?.result?.taskResult?.url ?? null },
+    errorCode: d?.result?.errorCode ?? null,
+    errorMessage: d?.result?.error ?? null,
+    createdAt: w.createdAt,
+    updatedAt: w.updatedAt,
+    inputImageUrls: d?.inputImageUrls ?? null,
+    resultImageUrls: d?.resultImageUrls ?? null,
+    inputVideoUrls: d?.inputVideoUrls ?? null,
+    resultVideoUrls: d?.resultVideoUrls ?? null,
+    requestParams: d?.requestParams ?? null,
+  }
+}
+
+async function historyPage(title: string, pageSize: number): Promise<ApiResponse<ToolHistoryPage>> {
+  if (!isWorkflowHistory(title)) return toolHistories(title, 1, pageSize)
+  const res = await workflowHistories(title, 1, pageSize)
+  const page = res.data
+  return {
+    ...res,
+    data: page && { ...page, data: (page.data ?? []).map(fromWorkflowItem) },
+  }
+}
+
 export function useToolHistory(toolTitle: () => string, pageSize = 20) {
   const items = ref<ToolHistoryItem[]>([])
   const total = ref(0)
@@ -55,7 +94,7 @@ export function useToolHistory(toolTitle: () => string, pageSize = 20) {
 
   async function fetchPage() {
     const title = toolTitle()
-    const res = await toolHistories(title, 1, pageSize)
+    const res = await historyPage(title, pageSize)
     // 拉取期间切到了别的工具：丢弃旧工具的结果
     if (title !== toolTitle()) return res
     items.value = res.data?.data ?? []
@@ -115,7 +154,8 @@ export function useToolHistory(toolTitle: () => string, pageSize = 20) {
   /** 删除一条历史（DELETE /tools/{toolTitle}/histories）；成功后先本地摘掉再静默刷新一次补位 */
   async function remove(id: number) {
     const title = toolTitle()
-    await deleteToolHistories(title, [id])
+    if (isWorkflowHistory(title)) await deleteWorkflowHistories(title, [id])
+    else await deleteToolHistories(title, [id])
     if (title !== toolTitle()) return
     items.value = items.value.filter((i) => i.aiToolHistoryId !== id)
     total.value = Math.max(0, total.value - 1)

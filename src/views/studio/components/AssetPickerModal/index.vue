@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * 从资产库选图（s1.1 图片入口的云钮）。
+ * 从资产库选图 / 选视频（s1.1 图片入口的云钮；工具页视频槽的「资产添加」）。
  *
- * <p>只读：GET /api/v1/asset-library/assets（media=image）+ 分类条计数，不做任何写入。
+ * <p>只读：GET /api/v1/asset-library/assets（media=image，或调用方传 media="video" 时为 video）+ 分类条计数，不做任何写入。
  * 筛选与资产库页一致：分类（kind）+ 来源（source）+ 关键词（q）。
- * 选中后把图片 URL 数组交回调用方（http/https 以外的地址不展示，契约拒收 blob: / data:），
+ * 选中后把图片 URL（视频模式为 video_url）数组交回调用方（http/https 以外的地址不展示，契约拒收 blob: / data:），
  * 调用方按上传同一条路径入组（上限 / 提示 / 角度规则不变）。
  * limit=1 时点一张即选中并关闭；多选时点「使用」确认。
  */
@@ -15,9 +15,11 @@ import { useDebounce } from '@/utils/hooks/index.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 
-const { limit = 1 } = defineProps<{
+const { limit = 1, media = 'image' } = defineProps<{
   /** 本次最多还能选几张 */
   limit?: number
+  /** 选哪类资产；不传 = 图片（原有行为） */
+  media?: 'image' | 'video'
 }>()
 
 const emit = defineEmits<{
@@ -49,6 +51,10 @@ let seq = 0
 
 const hasMore = computed(() => items.value.length < total.value)
 const isHttp = (url: string) => /^https?:\/\//i.test(url)
+const isVideoMode = computed(() => media === 'video')
+const mediaWord = computed(() => (isVideoMode.value ? '视频' : '图片'))
+/** 交回调用方的地址：图片取 image，视频取 video_url（image 是封面） */
+const pickUrl = (a: IAssetLibAsset) => (isVideoMode.value ? a.video_url : a.image)
 
 async function fetchPage(reset: boolean) {
   if (!show.value) return
@@ -65,13 +71,13 @@ async function fetchPage(reset: boolean) {
     const res = await assetLibList({
       kind: kind.value === 'all' ? undefined : kind.value,
       source: source.value || undefined,
-      media: 'image',
+      media,
       q: keyword.value.trim().slice(0, 100) || undefined,
       page: page.value,
       page_size: PAGE_SIZE,
     })
     if (my !== seq) return
-    const list = (res.data?.items ?? []).filter((a) => a.media === 'image' && isHttp(a.image))
+    const list = (res.data?.items ?? []).filter((a) => a.media === media && isHttp(pickUrl(a)))
     items.value = reset ? list : [...items.value, ...list]
     total.value = res.data?.total ?? 0
   } catch {
@@ -93,7 +99,7 @@ async function fetchPage(reset: boolean) {
 
 async function fetchCategories() {
   try {
-    const res = await assetLibCategories({ source: source.value || undefined, media: 'image' })
+    const res = await assetLibCategories({ source: source.value || undefined, media })
     categories.value = res.data?.items ?? []
   } catch {
     categories.value = []
@@ -111,14 +117,15 @@ function loadMore() {
 }
 
 function toggle(asset: IAssetLibAsset) {
+  const url = pickUrl(asset)
   if (limit <= 1) {
-    emit('select', [asset.image])
+    emit('select', [url])
     show.value = false
     return
   }
-  const at = chosen.value.indexOf(asset.image)
+  const at = chosen.value.indexOf(url)
   if (at >= 0) chosen.value.splice(at, 1)
-  else if (chosen.value.length < limit) chosen.value.push(asset.image)
+  else if (chosen.value.length < limit) chosen.value.push(url)
 }
 
 function confirm() {
@@ -156,7 +163,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
   <n-modal
     v-model:show="show"
     preset="card"
-    title="从资产库选图"
+    :title="isVideoMode ? '从资产库添加视频' : '从资产库添加图片'"
     :style="{ width: '760px', maxWidth: 'calc(100vw - 48px)' }"
   >
     <div class="flex flex-col gap-10px">
@@ -196,7 +203,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
           <span class="ll-link ml-6px" @click="reload">重试</span>
         </div>
         <div v-else-if="!loading && !items.length" class="py-40px text-center text-12px text-placeholder">
-          没有匹配的图片资产，换个分类或关键词试试
+          没有匹配的{{ mediaWord }}资产，换个分类或关键词试试
         </div>
         <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-10px">
           <button
@@ -204,17 +211,38 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
             :key="a.id"
             type="button"
             class="relative aspect-[3/4] p-0 overflow-hidden border-2 border-solid rounded-8px bg-surface2 cursor-pointer focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet"
-            :class="chosen.includes(a.image) ? 'border-violet' : 'border-transparent hover:border-violet-line'"
+            :class="chosen.includes(pickUrl(a)) ? 'border-violet' : 'border-transparent hover:border-violet-line'"
             :title="a.title"
-            :aria-label="a.title || '资产图片'"
-            :aria-pressed="chosen.includes(a.image)"
+            :aria-label="a.title || `资产${mediaWord}`"
+            :aria-pressed="chosen.includes(pickUrl(a))"
             @click="toggle(a)"
           >
-            <img class="block w-full h-full object-cover" :src="a.image" :alt="a.title" loading="lazy" />
+            <img
+              v-if="isHttp(a.image)"
+              class="block w-full h-full object-cover"
+              :src="a.image"
+              :alt="a.title"
+              loading="lazy"
+            />
+            <video
+              v-else
+              class="block w-full h-full object-cover pointer-events-none"
+              :src="a.video_url"
+              preload="metadata"
+              muted
+              playsinline
+              aria-hidden="true"
+            />
             <span
-              v-if="chosen.includes(a.image)"
+              v-if="isVideoMode"
+              class="absolute left-4px bottom-4px px-4px rounded-4px bg-black/55 text-white text-10px leading-16px"
+              aria-hidden="true"
+              >视频</span
+            >
+            <span
+              v-if="chosen.includes(pickUrl(a))"
               class="absolute top-4px right-4px grid place-items-center w-18px h-18px rounded-full bg-violet text-white text-11px"
-              >{{ chosen.indexOf(a.image) + 1 }}</span
+              >{{ chosen.indexOf(pickUrl(a)) + 1 }}</span
             >
           </button>
         </div>

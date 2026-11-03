@@ -22,6 +22,67 @@ export interface CutoutResult {
   url: string
 }
 
+/**
+ * 「重新编辑」用的原始提交体（CompatV1HistoryView.ToolHistory.requestParams，工作流同 WorkflowData.requestParams）：
+ * 任务 request_params.request，即 Java CoreToolSubmissionRequest 绑定、校验之后的形状——camelCase、空字段不落、
+ * 鉴权 / 令牌类键已由服务端剔除。2026-09-24 之前的老任务、抠图等不写快照的路径、快照损坏时整段为 null。
+ *
+ * <p>只列端侧回填会读的键（键名逐字抄 CoreToolSubmissionRequest），其余键原样保留但不读；
+ * 值来自服务端存档，回填时仍按运行时类型逐项判定，不信任这里的静态类型。
+ */
+export interface SubmittedToolRequest {
+  title?: string
+  content?: string
+  imageUrls?: string[]
+  imageUrl?: string
+  originalImageUrl?: string
+  maskUrl?: string
+  productImageUrl?: string
+  videoUrl?: string
+  /** 仅 /tools/ai-posture-fission：姿势参考图（mode=reference） */
+  referenceImageUrl?: string
+  /** 仅 /tools/ai-model-tryon */
+  clothImageUrl?: string
+  modelImageUrl?: string
+  /** 仅 /tools/ai-posture-fission：fission / reference / imitation */
+  mode?: string
+  /** 仅 /tools/ai-video-generator：模型别名、视频比例（不是 aspectRatio）、时长秒数、是否生成音频 */
+  model?: string
+  ratio?: string
+  duration?: number
+  generateAudio?: boolean
+  resolution?: string
+  aspectRatio?: string
+  num?: number
+  rewritePrompt?: boolean
+  language?: string
+  targetLanguage?: string
+  voiceModel?: string
+  voiceKey?: string
+  addSubtitle?: boolean
+  eraseOriginalSubtitle?: boolean
+  width?: number
+  height?: number
+  /** 仅 /workflows/visual：产品图 + 逐件文案 */
+  prdImageUrls?: { url?: string; content?: string }[]
+  /** 仅 /tools/ai-text-replace：pos 是像素四点 */
+  textInformation?: {
+    targetText?: string
+    text?: string
+    textRectangles?: {
+      angle?: number
+      height?: number
+      left?: number
+      top?: number
+      width?: number
+      pos?: { x?: number; y?: number }[]
+    }
+  }[]
+  /** 工作流模板选项（只用于回填，不参与生成） */
+  promptOptions?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 /** GET /api/v1/tools/{toolTitle}/histories 的单条（CompatV1HistoryView.ToolHistory） */
 export interface ToolHistoryItem {
   aiToolHistoryId: number
@@ -39,6 +100,8 @@ export interface ToolHistoryItem {
   resultImageUrls?: string[] | null
   inputVideoUrls?: string[] | null
   resultVideoUrls?: string[] | null
+  /** 原始提交体，「重新编辑」回填用；老记录为 null（见 SubmittedToolRequest） */
+  requestParams?: SubmittedToolRequest | null
 }
 
 /** v1 分页信封 {current, pages, total, data} */
@@ -141,6 +204,37 @@ export function bizPoints() {
 /** 文字识别（同步，单独计费）：文字替换的「识别文字」 */
 export function toolOcr(imageUrl: string) {
   return post<OcrResult>('/api/v1/tools/ocr', { imageUrl }, idempotency(), SUBMIT_TIMEOUT)
+}
+
+/** model-configs 的一档：points 是该档单价（图片按张；视频按秒） */
+export interface ModelConfigSize {
+  resolution: string
+  /** 图片 / 视频这一档可选的比例 */
+  aspectRatio?: string[]
+  points?: number
+}
+
+/**
+ * GET /api/v1/features/{image,video}-model-configs 的单条（CompatFeaturePricingService.modelConfigs）。
+ * 视频多 weight / supportedModes（i2v / t2v / v2v，空 = 未建模）/ duration:[min,max]（空 = 未建模）。
+ */
+export interface ModelConfig {
+  model: string
+  description?: string
+  size?: ModelConfigSize[]
+  weight?: number
+  supportedModes?: string[]
+  duration?: number[]
+}
+
+/** 图片生成（/tools/ai-image-generator）的价目：按分辨率逐档报价，没配定价的档不下发 */
+export function imageModelConfigs() {
+  return get<ModelConfig[]>('/api/v1/features/image-model-configs')
+}
+
+/** 视频生成（/tools/ai-video-generator）可选的模型与各档每秒单价，按 weight 降序 */
+export function videoModelConfigs() {
+  return get<ModelConfig[]>('/api/v1/features/video-model-configs')
 }
 
 /** 音色库（视频翻译的配音音色） */

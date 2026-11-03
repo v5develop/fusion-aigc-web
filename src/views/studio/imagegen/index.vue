@@ -2,7 +2,8 @@
 /**
  * 图片生成工作台（三栏：左操作 / 中历史 / 右预览）。
  *
- * <p>提示词（必填，可从提示词库选择）+ 参考图（≤9）+ 生成张数（1–9）+ 润色开关。
+ * <p>原型「画面描述」一体卡：参考图（≤9）+ 提示词（必填，可从我的提示词选择）+ 输入润色开关；
+ * 底部 模型 / 图片设置（含生成张数 1–9）+ 立即生成。
  * count 张拆 count 个任务；比例默认 1:1（无「自动」档）。
  */
 import { computed, reactive, ref } from 'vue'
@@ -13,8 +14,8 @@ import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.v
 import StudioImageUpload from '../components/StudioImageUpload/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
-import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
 import PromptLibraryPicker from '../components/PromptLibraryPicker/index.vue'
+import { PromptWriteButton } from '@/components/prompt-write'
 import { useIdempotentSubmit } from '../hooks.ts'
 import { MAX_REF_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
 
@@ -28,7 +29,7 @@ const form = reactive({
   prompt: '',
   model: '通用',
   resolution: '1k',
-  aspect_ratio: '1:1',
+  aspect_ratio: '3:4',
   count: 1,
   rewrite_prompt: false,
 })
@@ -51,10 +52,14 @@ const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
 const idem = useIdempotentSubmit()
 idem.bindForm(form, refImages)
 
-const submitText = computed(() => `开始生成（${form.count} 张）`)
+/** 按钮文案对齐原型「立即生成」 */
+const submitText = '立即生成'
 
-/** 未就绪原因（提交条置灰展示）；空 = 就绪 */
-const disabledReason = computed(() => (form.prompt.trim() ? '' : '输入提示词，或从提示词库选择'))
+/** 未就绪（提交条置灰）：没写提示词；原型不在按钮上方写原因 */
+const notReady = computed(() => !form.prompt.trim())
+
+/** 提示词字数上限（与原 CreationPromptInput 传值一致） */
+const PROMPT_MAX = 3000
 
 async function submit() {
   if (submitting.value) return
@@ -114,51 +119,78 @@ function onReedit(payload: Record<string, unknown>) {
 <template>
   <StudioWorkspaceColumns ref="shell" kind="imagegen" title="图片生成" @reedit="onReedit">
     <template #operate>
-      <!-- 参考图 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">
-          参考图<span class="text-11px text-placeholder font-400"
-            >选填，{{ refImages.length }}/{{ MAX_REF_IMAGES }}</span
+      <!--
+        原型「画面描述」一体卡：顶行 参考图计数 0/9 + 我的提示词（书本图标）→ 参考图浮片 → 提示词输入
+        → 底行 字数计数 + 输入润色开关。外观沿用 CreationPromptInput 的输入框（line 描边、圆角 6、四边内影、聚焦藤紫光晕）。
+      -->
+      <section
+        class="flex min-h-320px flex-1 flex-col gap-12px box-border rounded-10px border border-solid border-line bg-white p-12px shadow-[inset_0_0_8px_1px_rgba(31,35,41,0.10),inset_0_1px_0_rgba(31,35,41,0.05)] [transition:box-shadow_110ms] motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05),0_0_0_3px_rgba(135,95,154,0.14)]"
+        aria-labelledby="imagegen-prompt-label"
+      >
+        <div class="flex items-center justify-between gap-8px">
+          <span class="text-11px leading-16px tabular-nums text-placeholder" aria-label="参考图数量"
+            >{{ refImages.length }}/{{ MAX_REF_IMAGES }}</span
           >
+          <PromptWriteButton v-model="form.prompt" biz-type="image-prompt" :image-urls="refImages" />
+          <button
+            type="button"
+            class="grid h-24px w-24px cursor-pointer place-items-center rounded-sm border-none bg-transparent p-0 text-ink-2 hover:text-violet sx-focus"
+            aria-label="我的提示词"
+            title="我的提示词"
+            @click="pickerShow = true"
+          >
+            <svg
+              class="h-16px w-16px"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z" />
+              <path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z" />
+            </svg>
+          </button>
         </div>
-        <!-- 单角色参考图槽（s1.1 MlReferenceSlots 口径）：60×100 白边浮片，数量写在标题，片下不写说明 -->
+
+        <!-- 单角色参考图槽（s1.1 MlReferenceSlots 口径）：60×100 白边浮片 + 右下云钮（资产添加） -->
         <div class="flex items-start gap-16px">
-          <StudioImageUpload v-model="refImages" :max="MAX_REF_IMAGES" cloud />
+          <StudioImageUpload v-model="refImages" :max="MAX_REF_IMAGES" name="参考图" cloud />
         </div>
-      </div>
 
-      <!-- 提示词 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">
-          提示词<span class="text-11px text-placeholder font-400">必填</span>
-          <span class="ll-link ml-auto" @click="pickerShow = true">从提示词库选择</span>
-        </div>
-        <CreationPromptInput
+        <label id="imagegen-prompt-label" for="imagegen-prompt" class="sr-only">画面描述（必填）</label>
+        <textarea
+          id="imagegen-prompt"
           v-model="form.prompt"
-          :rows="5"
-          :max-length="3000"
-          aria-label="提示词"
-          placeholder="描述想生成的画面，如：一只在窗边晒太阳的橘猫，胶片质感"
+          :maxlength="PROMPT_MAX"
+          placeholder="描述想要的画面：主体、场景、风格、光影"
+          aria-describedby="imagegen-prompt-count"
+          class="block min-h-120px w-full flex-1 box-border m-0 resize-none overflow-y-auto overscroll-contain border-none bg-transparent p-0 text-13px leading-20px text-ink outline-none placeholder:text-placeholder"
         />
-      </div>
 
-      <!-- 提示词润色 -->
-      <div class="mb-16px flex items-start justify-between gap-12px">
-        <div>
-          <div class="ll-section-title flex items-baseline gap-6px">提示词自动润色</div>
-          <div class="mt-4px text-11px text-placeholder">
-            开启后先由 AI 润色一次提示词再生成，批次会多一步「反推中」
-          </div>
+        <div class="flex h-24px flex-none items-center justify-between gap-8px">
+          <span
+            id="imagegen-prompt-count"
+            class="select-none text-11px leading-16px tabular-nums"
+            :class="form.prompt.length >= PROMPT_MAX ? 'text-warning' : 'text-placeholder'"
+            :aria-live="form.prompt.length >= PROMPT_MAX ? 'polite' : undefined"
+            >{{ form.prompt.length }} / {{ PROMPT_MAX }}</span
+          >
+          <span class="flex items-center gap-6px">
+            <span id="imagegen-rewrite-label" class="text-12px leading-16px text-ink-2">输入润色</span>
+            <n-switch v-model:value="form.rewrite_prompt" size="small" aria-labelledby="imagegen-rewrite-label" />
+          </span>
         </div>
-        <n-switch v-model:value="form.rewrite_prompt" size="small" />
-      </div>
+      </section>
 
       <!-- 弹层放壳内：跟 naive 组件同处 llTheme 的 abstract provider 下（teleport 不丢主题） -->
       <PromptLibraryPicker v-model:show="pickerShow" @select="onPickPrompt" />
     </template>
 
     <template #action>
-      <!-- 原型底部：设置行（模型 | 图片设置）→ 整宽主按钮 -->
+      <!-- 原型底部：设置行（模型 | 图片设置）→ 段距 12 → 整宽主按钮 -->
       <div class="flex flex-col gap-12px">
         <ModelSettings
           v-model:model="form.model"
@@ -169,8 +201,7 @@ function onReedit(payload: Record<string, unknown>) {
         <StudioSubmitBar
           :label="submitText"
           :submitting="submitting"
-          :disabled="!!disabledReason"
-          :disabled-reason="disabledReason"
+          :disabled="notReady"
           :retry="idem.retrying.value"
           @submit="submit"
         />

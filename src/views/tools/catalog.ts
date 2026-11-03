@@ -3,7 +3,8 @@
  *
  * <p>分组与短说明抄自原型；名称、图标、路由一律取首页工具箱注册表（views/home/tools.ts），
  * 注册表里没有的条目（或没有 route 的）显示为「即将开放」，不自造路由；
- * 例外是单图复刻 / SKU替换：注册表没收，但工作流页（/workflow，wf:13 / wf:14）已可用，按工作流页同一 query 直达。
+ * 例外是单图复刻 / SKU替换：注册表没收，但工作流页（/workflow，wf:13 / wf:14）已可用，按工作流页同一 query 直达；
+ * 局部重绘同理：注册表没收，但工具页 schema 已有，直达 /tools/ai-inpaint。
  * 原型「本地生活」组的条目在原型截图里看不全、注册表里也没有对应工具，这里不列。
  */
 import { tools, type ToolItem } from '@/views/home/tools'
@@ -51,6 +52,8 @@ const imageCatalog: Catalog = {
     group('图片处理', [
       ['ai-upscale', '高清放大', '放大补细节'],
       ['ai-eraser', '智能消除', '去除杂物'],
+      // 注册表没收（也没有原型）：工具页 schema 已就绪（schemas.ts ai-inpaint），直达 /tools/ai-inpaint，借智能消除的图标
+      ['ai-inpaint', '局部重绘', '框选重画', '/tools/ai-inpaint', 'ai-eraser'],
       ['ai-cutout', '智能抠图', '一键去背景'],
       ['image-translate', '图片翻译', '多语换字'],
       ['text-replace', '文字替换', '换字不换版'],
@@ -94,6 +97,16 @@ const videoCatalog: Catalog = {
       ['voice-sell', '口播带货', '产品口播', workflowRouteOf('video-product-talk')],
     ]),
   ],
+}
+
+/** 功能切换弹层（原型 FunctionSwitcher ml）顶部的一级「AI 图片 / AI 视频」分段，按这个顺序 */
+export const catalogKinds: readonly { key: 'image' | 'video'; catalog: Catalog }[] = [
+  { key: 'image', catalog: imageCatalog },
+  { key: 'video', catalog: videoCatalog },
+]
+
+export function catalogKindOf(toolId: string): 'image' | 'video' {
+  return byId.get(toolId)?.category === 'video' ? 'video' : 'image'
 }
 
 export function catalogFor(toolId: string): Catalog {

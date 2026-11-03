@@ -15,7 +15,9 @@ import { useMessage } from 'naive-ui'
 import { ACCEPT_IMAGE } from '@/utils/utils.ts'
 import { ANGLE_OPTIONS, ANGLE_SEQUENCE } from '../../constants.ts'
 import StudioMedBtn from '../StudioImageUpload/StudioMedBtn.vue'
+import AssetPickerModal from '../AssetPickerModal/index.vue'
 import { useStudioUploader } from '../StudioImageUpload/useStudioUploader.ts'
+import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
 interface GarmentGroup {
   key: string
@@ -104,21 +106,70 @@ function nextFreeAngle(start: string, taken: Set<string>) {
   return 'unknown'
 }
 
+/** 入组：从起始角度往后落空角度（选文件 / 拖入 / 粘贴 / 资产库同一条） */
+function placer(group: GarmentGroup, startAngle: string) {
+  const taken = new Set(group.urls.map((u) => angleOf[u]).filter((a): a is string => !!a))
+  return (url: string) => {
+    const angle = nextFreeAngle(startAngle, taken)
+    taken.add(angle)
+    emit('add', group.key, url, angle)
+  }
+}
+
+/** 提示用的上限：每件上限先到就报每件，否则报合计 */
+function limitOf(group: GarmentGroup, room: number) {
+  return group.urls.length + room >= maxPerGroup ? maxPerGroup : maxTotal
+}
+
 async function addFiles(group: GarmentGroup, startAngle: string, files: File[]) {
   const room = roomOf(group)
   if (room <= 0) return
-  const limit = group.urls.length + room >= maxPerGroup ? maxPerGroup : maxTotal
-  const taken = new Set(group.urls.map((u) => angleOf[u]).filter((a): a is string => !!a))
+  const place = placer(group, startAngle)
   target.value = { key: group.key, angle: startAngle }
   try {
-    await uploadFiles(files, room, limit, (url) => {
-      const angle = nextFreeAngle(startAngle, taken)
-      taken.add(angle)
-      emit('add', group.key, url, angle)
-    })
+    await uploadFiles(files, room, limitOf(group, room), place)
   } finally {
     target.value = null
   }
+}
+
+// ---------------- 从资产库添加（按件；余量 / 角度 / 提示与上传同口径） ----------------
+
+const assetShow = ref(false)
+const assetKey = ref<string | null>(null)
+const assetRoom = ref(1)
+
+function openAssets(group: GarmentGroup) {
+  if (uploading.value) return
+  const room = roomOf(group)
+  if (room <= 0) return
+  assetKey.value = group.key
+  assetRoom.value = room
+  assetShow.value = true
+}
+
+function addAssetUrls(picked: string[]) {
+  const group = groups.find((g) => g.key === assetKey.value)
+  assetKey.value = null
+  if (!group) return
+  const room = roomOf(group)
+  if (room <= 0) return
+  const all = new Set(groups.flatMap((g) => g.urls))
+  const fresh = picked.filter((u) => /^https?:\/\//i.test(u) && !all.has(u))
+  if (fresh.length < picked.length) message.warning('已跳过重复或不可用的图片')
+  const take = fresh.slice(0, room)
+  if (take.length < fresh.length) {
+    message.warning(
+      `最多还能添加 ${room} 张（上限 ${limitOf(group, room)} 张），多选的其余 ${fresh.length - take.length} 张未添加`,
+    )
+  }
+  const taken = new Set(group.urls.map((u) => angleOf[u]).filter((a): a is string => !!a))
+  take.forEach(placer(group, nextFreeAngle('front', taken)))
+}
+
+/** 这件是否已满（每件或合计到顶）：「从资产库添加」置灰 */
+function isFull(group: GarmentGroup) {
+  return group.urls.length >= maxPerGroup || total.value >= maxTotal
 }
 
 function onFiles(event: Event) {
@@ -134,13 +185,33 @@ function onFiles(event: Event) {
   void addFiles(group, t.angle, files)
 }
 
-function onDrop(group: GarmentGroup, event: DragEvent) {
+/** 拖入 / 粘贴到某一件：从第一个空角度起放（与选文件同一个 addFiles） */
+function dropInto(group: GarmentGroup, files: File[]) {
   if (uploading.value) return
-  const files = [...(event.dataTransfer?.files ?? [])]
   if (!files.length) return
   const taken = new Set(group.urls.map((u) => angleOf[u]).filter((a): a is string => !!a))
   void addFiles(group, nextFreeAngle('front', taken), files)
 }
+
+// 拖入 / 粘贴：整块内容区接，落到哪一件看拖到 / 悬停 / 聚焦的是哪一件
+const bodyEl = ref<HTMLElement | null>(null)
+/** 当前指向的单品：拖入时是拖到的那件，粘贴时是悬停或聚焦的那件 */
+const pointedKey = ref<string | null>(null)
+const groupOfEvent = (event: Event) =>
+  (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-garment-key]')?.dataset.garmentKey ?? null
+const { dragging } = useFileDropPaste(bodyEl, {
+  accept: 'image',
+  multiple: true,
+  // 弹窗里只有这一处上传：粘贴不要求先悬停
+  globalPaste: true,
+  rejectMessage: () => '已跳过非图片文件',
+  onFiles: (files, event) => {
+    const key = (event instanceof DragEvent ? groupOfEvent(event) : null) ?? pointedKey.value
+    // 粘贴时没指向哪件：放进第一件
+    const group = groups.find((g) => g.key === key) ?? (event instanceof DragEvent ? undefined : groups[0])
+    if (group) dropInto(group, files)
+  },
+})
 
 function isPending(key: string, angle: string) {
   return uploading.value && target.value?.key === key && target.value?.angle === angle
@@ -160,21 +231,33 @@ function isPending(key: string, angle: string) {
       @change="onFiles"
     />
 
-    <div class="flex flex-col gap-12px">
+    <div ref="bodyEl" class="flex flex-col gap-12px">
       <div v-if="!groups.length" class="ll-empty py-24px">先在页面上选 1–3 件单品，再上传对应的服装图。</div>
 
       <div
         v-for="group in groups"
         :key="group.key"
-        class="flex flex-col gap-8px"
+        class="flex flex-col gap-8px -m-4px p-4px rounded-8px"
+        :class="dragging && pointedKey === group.key && 'sx-drop-ring'"
         role="group"
         :aria-label="`${group.label}服装图`"
-        @dragover.prevent
-        @drop.prevent="onDrop(group, $event)"
+        :data-garment-key="group.key"
+        @dragenter="pointedKey = group.key"
+        @mouseenter="pointedKey = group.key"
+        @focusin="pointedKey = group.key"
       >
         <div class="flex items-baseline gap-8px">
           <b class="text-12px font-600 text-ink">{{ group.label }}</b>
           <span class="ml-auto text-10px text-placeholder">{{ group.urls.length }} / {{ maxPerGroup }}</span>
+          <button
+            type="button"
+            class="px-4px text-12px leading-18px text-violet bg-transparent border-none cursor-pointer rounded-sm hover:underline disabled:(opacity-45 cursor-not-allowed) sx-focus"
+            :aria-label="`从资产库添加${group.label}服装图`"
+            :disabled="uploading || isFull(group)"
+            @click="openAssets(group)"
+          >
+            从资产库添加
+          </button>
         </div>
         <div class="flex flex-wrap gap-8px">
           <template v-for="cell in cellsFor(group)" :key="cell.extra ? cell.url : cell.angle">
@@ -228,6 +311,8 @@ function isPending(key: string, angle: string) {
         {{ total }}）；背面、侧面一起传更准，缺的角度不影响出图。可直接把图片拖进每一件。
       </p>
     </div>
+
+    <AssetPickerModal v-model:show="assetShow" :limit="assetRoom" @select="addAssetUrls" />
 
     <template #footer>
       <div class="flex items-center gap-10px">

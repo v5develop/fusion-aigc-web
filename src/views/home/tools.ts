@@ -133,7 +133,7 @@ export const tools: ToolItem[] = [
     category: 'retouch',
     description: '智能抚平衣物褶皱和折痕，优化面料纹理质感，提升服装展示的平整度与精致感。',
     inputShape: 'batch-image',
-    route: '/e-commerce/clothing-remove-wrinkle',
+    route: '/tools/cloth-wrinkle-removal',
     icon: ICONS.dewrinkle,
   },
   {
@@ -215,7 +215,7 @@ export const tools: ToolItem[] = [
     category: 'edit',
     description: '选单品、传服装与模特，AI 把衣服穿到模特身上；细节裁切与提示词由系统完成。',
     inputShape: 'dual-image',
-    route: '/studio/tryon',
+    route: '/tools/ai-digital-model',
     icon: ICONS.changeClothes,
   },
   {
@@ -224,7 +224,7 @@ export const tools: ToolItem[] = [
     category: 'edit',
     description: '上传一张人物图，再放最多 9 张姿势参考图；身份与服装不变，只换动作与神态表情。',
     inputShape: 'single-image',
-    route: '/studio/pose',
+    route: '/tools/ai-posture-fission',
     icon: ICONS.pose,
   },
   {
@@ -233,7 +233,7 @@ export const tools: ToolItem[] = [
     category: 'generate',
     description: '输入提示词并按需上传参考图，自定义清晰度、比例与出图数量，快速生成目标画面。',
     inputShape: 'text-to-image',
-    route: '/studio/imagegen',
+    route: '/tools/image-generate',
     icon: ICONS.generate,
   },
   {
@@ -273,23 +273,24 @@ export const tools: ToolItem[] = [
     icon: ICONS.videoTranslate,
   },
   {
-    // /video 页：文生视频 / 图生视频 / 动作迁移（参考视频）/ 首尾帧
+    // 工具页 /tools/ai-video-generator（Creaft /api/v1/tools/ai-video-generator）；/video 通用生视频页仍由导航与做同款使用
     id: 'ai-video-generator',
     name: '视频生成',
     category: 'video',
     description: '输入提示词后按需上传参考视频与多张参考图，快速生成短视频内容。',
     inputShape: 'text-image-video',
-    route: '/video',
+    route: '/tools/ai-video-generator',
     icon: ICONS.videoGenerate,
   },
   {
-    // 原型的视频复刻是「识别画面 → 标保持/替换 → 出多家模型提示词」；/e-commerce/video-clone 是商品图 + 参考视频的带货生成，
-    // 不是同一能力，所以不接，先显示「即将开放」
+    // 工具页 /tools/ai-video-clone：复用视频工作流 POST /api/v1/workflows/video（title=video-clone），原片 + 参考图 + 描述直接出片。
+    // 原型的「识别画面 → 标保持 / 替换」依赖独立解析服务，后端没有，暂不做
     id: 'ai-video-clone',
     name: '视频复刻',
     category: 'video',
-    description: '上传一条现成的短视频，机器先认画面，你只标哪几项保持、哪几项替换；四家视频模型的提示词一次出齐。',
+    description: '上传一条现成的短视频，配上参考图，写清改成什么样，选好模型与清晰度，直接生成新视频。',
     inputShape: 'video',
+    route: '/tools/ai-video-clone',
     icon: ICONS.videoClone,
   },
 ]

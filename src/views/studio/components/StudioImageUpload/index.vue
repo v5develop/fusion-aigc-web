@@ -23,6 +23,7 @@ import { ACCEPT_IMAGE } from '@/utils/utils.ts'
 import AssetPickerModal from '../AssetPickerModal/index.vue'
 import StudioMedBtn from './StudioMedBtn.vue'
 import { useStudioUploader } from './useStudioUploader.ts'
+import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
 const {
   max = 9,
@@ -38,6 +39,7 @@ const {
   name = '',
   panelMin = 1,
   panelFill = false,
+  onDropFiles,
 } = defineProps<{
   /** 上限张数（1–9 由调用方按契约传入） */
   max?: number
@@ -64,6 +66,8 @@ const {
   panelMin?: number
   /** 面板宽度拉到同排右缘（左缘对齐本块） */
   panelFill?: boolean
+  /** picker 模式下拖入 / 粘贴的文件交给页面（页面按自己的校验上传）；不传则照旧发 pick 打开页面的弹窗 */
+  onDropFiles?: (files: File[]) => void
 }>()
 
 const emit = defineEmits<{
@@ -79,6 +83,7 @@ const message = useMessage()
 const { uploading, uploadFiles } = useStudioUploader()
 const fileInput = ref<HTMLInputElement | null>(null)
 const rootEl = ref<HTMLElement | null>(null)
+const entryEl = ref<HTMLElement | null>(null)
 
 const PLATE_W = 60
 const STACK = 6
@@ -260,13 +265,14 @@ function onFiles(event: Event) {
   void addFiles(files)
 }
 
-function onDrop(event: DragEvent) {
+/** 拖入 / 粘贴进来的文件（数量、余量、非图片的提示都在 addFiles → useStudioUploader 里，与选文件同口径） */
+function onIncoming(files: File[]) {
   if (disabled || uploading.value) return
-  const files = [...(event.dataTransfer?.files ?? [])]
   if (!files.length) return
-  // picker 模式由页面的弹窗按自己的规则入组：拖进来就打开弹窗，不静默丢
+  // picker 模式由页面按自己的规则入组：页面接了文件就交给它，否则打开页面的弹窗，不静默丢
   if (picker) {
-    emit('pick')
+    if (onDropFiles) onDropFiles(files)
+    else emit('pick')
     return
   }
   // 满额拖入与点入口同一句提示，不发上传
@@ -276,6 +282,15 @@ function onDrop(event: DragEvent) {
   }
   void addFiles(files)
 }
+
+const { dragging } = useFileDropPaste(entryEl, {
+  accept: 'image',
+  multiple: () => multiple,
+  disabled: () => disabled || uploading.value,
+  // 与 useStudioUploader 过滤非图片时同一句
+  rejectMessage: () => '已跳过非图片文件',
+  onFiles: onIncoming,
+})
 
 const entryLabel = computed(() => {
   const title = name || label || '图片'
@@ -333,6 +348,7 @@ const seamCls = [
     <div class="relative">
       <!-- 入口就是一叠片：后一张盖住前一张只露 6px，悬停摊开 -->
       <button
+        ref="entryEl"
         type="button"
         class="relative flex flex-col items-center justify-center gap-4px box-border h-100px p-0 overflow-visible rounded-5px cursor-pointer transition-[width] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2 disabled:cursor-not-allowed"
         :class="[
@@ -341,14 +357,13 @@ const seamCls = [
             : 'border border-solid border-white bg-white text-placeholder shadow-[0_1px_3px_rgba(31,35,41,0.16)] hover:shadow-[0_2px_6px_rgba(31,35,41,0.2)]',
           full && !picker ? '!cursor-default' : '',
           expanded ? 'z-5' : 'z-1',
+          dragging && 'sx-drop-ring',
         ]"
         :style="{ width: entryWidth }"
         :disabled="disabled"
         :aria-disabled="(full && !picker) || undefined"
         :aria-label="entryLabel"
         @click="onEntryClick"
-        @dragover.prevent
-        @drop.prevent="onDrop"
       >
         <span v-if="count" class="absolute left-0 top-0 flex" aria-hidden="true">
           <span
@@ -393,7 +408,7 @@ const seamCls = [
       <!-- 云钮：片外右下角 -12/-12；摊开时片子会盖到它，收掉（空块不藏） -->
       <StudioMedBtn
         v-if="cloudVisible"
-        :label="label ? `从资产库选${label}` : '从资产库选'"
+        :label="label ? `从资产库添加${label}` : '从资产库添加'"
         class="-right-12px -bottom-12px transition-opacity duration-120 motion-reduce:transition-none"
         :class="expanded && count ? 'opacity-0 pointer-events-none' : ''"
         :disabled="disabled"

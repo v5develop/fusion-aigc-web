@@ -37,16 +37,24 @@ function pick(opt: CreationOption) {
 </script>
 
 <template>
-  <!-- 设置弹层内：分段控件（标签在左，选项组为一个灰底圆角条，选中项白底描边） -->
-  <div v-if="inSettings" class="flex items-center gap-12px">
-    <div :id="labelId" :class="hideLabel ? 'sr-only' : 'flex-none text-13px leading-18px text-ink-2'">
+  <!--
+    设置弹层内（原型 SettingsPopover 设置行）：最小高 48、内边距 8 0、纵向 gap 6；弹层宽 ≥320 时横排，标签列 64、gap 10。
+    标签 12/18；分段轨道 内边距 3 / gap 2 / 1px line / r6 / #f3f4f5；选项高 30、内边距 0 9、r4、11px，
+    选中 = violet-line + 白→#f8f3fc 渐变 + 短影 + violet-ink 600；过渡 300ms (.4,0,.2,1)。选项多于 5 个时按 5 列排。
+  -->
+  <div
+    v-if="inSettings"
+    class="flex flex-col gap-6px min-h-48px box-border py-8px @[320px]:(flex-row items-center gap-10px)"
+  >
+    <div :id="labelId" :class="hideLabel ? 'sr-only' : 'flex-none text-12px leading-18px text-ink-2 @[320px]:w-64px'">
       <span>{{ label }}<span v-if="required" class="text-danger" aria-hidden="true"> *</span></span>
     </div>
     <div
       role="radiogroup"
       :aria-labelledby="labelId"
       :aria-disabled="disabled || undefined"
-      class="flex flex-1 min-w-0 p-3px gap-2px rounded-8px bg-surface2 border border-solid border-line"
+      class="flex-1 min-w-0 p-3px gap-2px box-border rounded-6px border border-solid border-line bg-surface3"
+      :class="options.length > 3 ? 'grid grid-cols-[repeat(auto-fit,minmax(64px,1fr))]' : 'flex flex-wrap'"
     >
       <button
         v-for="opt in options"
@@ -55,11 +63,11 @@ function pick(opt: CreationOption) {
         role="radio"
         :aria-checked="modelValue === opt.value"
         :disabled="disabled || opt.disabled"
-        class="flex-1 h-30px rounded-6px border border-solid text-13px font-500 cursor-pointer outline-none transition-[background-color,border-color,color,box-shadow] duration-110 ease-[cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2) disabled:(opacity-50 cursor-not-allowed)"
+        class="flex-1 min-w-0 h-30px box-border px-6px rounded-4px border border-solid text-11px leading-none whitespace-nowrap cursor-pointer outline-none [transition:background_300ms_cubic-bezier(0.4,0,0.2,1),border-color_300ms_cubic-bezier(0.4,0,0.2,1),color_300ms_cubic-bezier(0.4,0,0.2,1),box-shadow_300ms_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2) active:shadow-[inset_0_1px_2px_rgba(80,55,95,0.16)] disabled:(opacity-45 cursor-not-allowed)"
         :class="
           modelValue === opt.value
-            ? 'bg-white border-line text-ink shadow-[0_1px_2px_rgba(31,35,41,0.08)]'
-            : 'bg-transparent border-transparent text-muted hover:text-ink-2'
+            ? 'border-violet-line bg-[linear-gradient(180deg,#ffffff_0%,#f8f3fc_100%)] font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+            : 'border-transparent bg-transparent font-400 text-muted hover:text-ink'
         "
         @click="pick(opt)"
       >

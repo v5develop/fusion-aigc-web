@@ -5,8 +5,10 @@
  * <p>上传走现有的 api/ossUpload.ts（STS 直传 + confirm，ImageUpload / VideoUpload 同一条通道），不另开通道。
  *
  * <p>长相对齐 s1.1 统一上传态（`layout`，见 schemas.ts 的 UploadLayout）：
- * - batch / single：B3.1 卡 434×742（内边距 13），空态只有 48 云影球、球心在卡正中，不写「原图」；
- *   batch 有图后是 60×100 白边浮片格（5 列、列距 27、行距 105.33，20 张铺满 408×716）；
+ * - batch / single：B3.1 卡最宽 434、高度吃满操作栏余高（原型 .tool-op__uploads > section 的 flex 1 1 auto；1px line、r6、内边距 12），
+ *   空态只有 48 云影球、球心在卡正中，不写「原图」；
+ *   batch 有图后是 60×100 白边浮片格（5 列、列距按卡内宽分、行距 72，408×616 在卡内垂直居中；卡宽固定，
+ *   原型的 min(1, 宽/408, 高/400) 缩放恒为 1，不另做）；
  * - pipe：同款片格 5 列 × 4 行 = 408×512（产品替换底图）；
  * - ml / material：60×100 叠片入口（StudioImageUpload 的 picker 模式只负责长相，选文件 / 校验 / 上传仍在这里）。
  */
@@ -18,6 +20,7 @@ import StudioImageUpload from '@/views/studio/components/StudioImageUpload/index
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import type { UploadLayout, UploadSpec } from './schemas'
+import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
 const props = defineProps<{
   spec: UploadSpec
@@ -25,7 +28,7 @@ const props = defineProps<{
   disabled?: boolean
   /** s1.1 版式（纯展示）；不传按 kind / max 推断：视频或单张 = single，多张 = batch */
   layout?: UploadLayout
-  /** 空态显示「从资产选择」（只对图片槽生效；工具页打开，工作流页不传 = 不显示） */
+  /** 显示「从资产库添加」（图片槽按 media=image、视频槽按 media=video 列资产；工具页与工作流页都打开） */
   assetPicker?: boolean
 }>()
 const urls = defineModel<string[]>({ required: true })
@@ -99,6 +102,11 @@ async function onChange(e: Event) {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = ''
+  await addFiles(files)
+}
+
+/** 选文件 / 拖入 / 粘贴共用：名额、格式、体积、时长校验后上传 */
+async function addFiles(files: File[]) {
   if (!files.length) return
   // 单槽位（max=1）选新文件 = 换一张
   const replacing = props.spec.max === 1
@@ -133,11 +141,21 @@ async function onChange(e: Event) {
   }
 }
 
-// ---------------- 从资产选择 ----------------
+// 拖入 / 粘贴：整个槽位接（叠片版式由 StudioImageUpload 接住后经 on-drop-files 交回 addFiles）
+const rootEl = ref<HTMLElement | null>(null)
+const { dragging } = useFileDropPaste(rootEl, {
+  accept: () => (isVideo.value ? 'video' : 'image'),
+  multiple: () => props.spec.max > 1,
+  disabled: () => !!props.disabled || uploading.value,
+  rejectMessage: (file) => `「${file.name}」格式不支持，仅支持 ${extText.value}`,
+  onFiles: (files) => void addFiles(files),
+})
+
+// ---------------- 从资产库添加 ----------------
 
 const assetShow = ref(false)
-/** 图片槽才有；`video` 版式（新版原型视频高清）也出「资产添加」，选回的地址照常按 accept 校验 */
-const canPickAsset = computed(() => !!props.assetPicker && (!isVideo.value || mode.value === 'video'))
+/** 图片槽与视频槽都有：视频槽资产库按 media=video 列、选回 video_url，照常按 accept 校验 */
+const canPickAsset = computed(() => !!props.assetPicker)
 
 function openAssetPicker() {
   if (props.disabled || uploading.value) return
@@ -147,11 +165,11 @@ function openAssetPicker() {
 /**
  * 资产库选回的是已在存储里的 URL，不再走 OSS 上传；入组规则与本地上传 onChange 一致：
  * 单张槽 = 换一张、多张槽按剩余名额截断并给同一句提示、格式按 accept 拦（URL 路径带扩展名时才能判）。
- * 大小 / 时长在 URL 上拿不到，不拦（资产库只列 media=image 的 http(s) 图片）。
+ * 大小 / 时长在 URL 上拿不到，不拦（资产库按槽位只列 media=image 的图片或 media=video 的视频，均为 http(s)）。
  */
 function addAssetUrls(picked: string[]) {
   const fresh = picked.filter((u) => /^https?:\/\//i.test(u) && !urls.value.includes(u))
-  if (fresh.length < picked.length) message.warning('已跳过重复或不可用的图片')
+  if (fresh.length < picked.length) message.warning(`已跳过重复或不可用的${isVideo.value ? '视频' : '图片'}`)
   const replacing = props.spec.max === 1
   const capacity = replacing ? 1 : room.value
   if (capacity <= 0) {
@@ -226,9 +244,25 @@ onBeforeUnmount(() => {
 })
 
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
-/** B3.1 上传卡：434×742 的外壳，内边距 13；材质照抄原型（内凹 16 柔影 + 顶 1px 内线，边框 / 底色 200ms 过渡） */
+/**
+ * 批量空态投放区（原型 C-35 压沿空态，sx-drop-pressed.css）：本体 1px 透明实线 + r8；虚线单独一层 ::before（inset -1、r9）——
+ * border-style 不能补间，悬停时虚线 160ms 淡出、rgba(.16) 实线淡入，上沿 / 左右内影 240ms ease-out；拖入换藤紫实线 + 柔紫底、虚线隐去。
+ */
+const batchZoneCls =
+  'rounded-8px border border-solid [transition:border-color_160ms_ease-out,box-shadow_240ms_ease-out] ' +
+  "before:(content-[''] absolute -inset-1px box-border rounded-9px border border-dashed border-[rgba(31,35,41,0.1)] pointer-events-none) " +
+  'before:[transition:opacity_160ms_ease-out] motion-reduce:before:transition-none'
+/**
+ * 单图空态（原型 .single-zone 外框）：r8、白→#f9fafb、内影；内框虚线与批量空态同一层 ::before（1px dashed rgba(31,35,41,.1)、inset -1、r9），
+ * 本体 1px 透明实线；悬停虚线淡出、柔紫实线 + 白→#fbf7fd，200ms；拖入藤紫线 + 柔紫底、虚线隐去
+ */
+const singleZoneCls =
+  'rounded-8px border border-solid shadow-[inset_0_1px_3px_rgba(31,35,41,0.04)] [transition:border-color_0.2s_ease,background-color_0.2s_ease] ' +
+  "before:(content-[''] absolute -inset-1px box-border rounded-9px border border-dashed border-[rgba(31,35,41,0.1)] pointer-events-none) " +
+  'before:[transition:opacity_160ms_ease-out] motion-reduce:before:transition-none'
+/** B3.1 上传卡（原型 v3:2080-2091）：最宽 434、撑满余高的外壳，1px #e5e7eb、圆角 6、内边距 12；内凹 16 柔影 + 顶 1px 内线，边框 / 底色 200ms 过渡 */
 const cardCls =
-  'relative w-full max-w-[434px] box-border p-[13px] rounded-10px bg-white ' +
+  'relative w-full max-w-[434px] box-border p-12px rounded-6px border border-solid border-line bg-white ' +
   'shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)] ' +
   '[transition:border-color_0.2s_ease,background_0.2s_ease]'
 /** 白边浮片：60×100 · r5 · 1px #fff · 0 1px 3px .16；悬停只把影压深 */
@@ -255,11 +289,12 @@ const seamCls = [
 
 <template>
   <div
+    ref="rootEl"
     :class="
       isPlates
         ? ['tus-plate relative flex-[0_0_auto] min-w-0', seamCls]
         : mode === 'single' || mode === 'batch'
-          ? 'w-full flex justify-center'
+          ? ['w-full flex justify-center', !(urls.length && mode === 'single') && 'flex-[1_0_auto]']
           : mode === 'video'
             ? 'flex-1 min-h-[300px] flex'
             : ''
@@ -289,6 +324,7 @@ const seamCls = [
       v-if="canPickAsset"
       v-model:show="assetShow"
       :limit="spec.max === 1 ? 1 : Math.max(room, 1)"
+      :media="isVideo ? 'video' : 'image'"
       @select="addAssetUrls"
     />
 
@@ -303,105 +339,130 @@ const seamCls = [
       :label="mode === 'material' ? spec.label : ''"
       :name="spec.label"
       :hint="uploading ? '上传中…' : ''"
+      :on-drop-files="addFiles"
       @pick="pickFromPlates"
       @remove="(_url: string, index: number) => remove(index)"
       @clear="urls = []"
     />
-
-    <!-- 空态（batch / single）：B3.1 卡 434×742，整块可点，48 云影球在卡正中 -->
-    <div v-else-if="!urls.length && (mode === 'batch' || mode === 'single')" :class="[cardCls, 'h-[742px]']">
+    <div v-if="canPickAsset && isPlates" class="flex justify-end mt-6px">
       <button
         type="button"
-        class="relative block w-full h-full box-border p-0 rounded-8px cursor-pointer [transition:border-color_0.2s_ease,background-color_0.2s_ease] motion-reduce:transition-none disabled:cursor-not-allowed"
-        :class="[
-          focusRing,
-          mode === 'batch'
-            ? 'border border-dashed border-line-strong bg-white hover:border-violet-line'
-            : 'border border-solid border-#c9cfd6 bg-gradient-to-b from-white to-#f9fafb shadow-[inset_0_1px_3px_rgba(31,35,41,0.04)] hover:border-violet-line',
-        ]"
-        :disabled="disabled || uploading"
-        :aria-describedby="`${id}-hint`"
-        @click="pick"
-      >
-        <span
-          class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 grid w-64px h-84px place-items-center"
-          aria-hidden="true"
-          @pointerenter="playBall"
-        >
-          <!-- 地面影 38.4×11.2 · blur 7.2，弹跳时同步变深变浅 -->
-          <span
-            class="absolute left-1/2 bottom-5px z-1 w-[38.4px] h-[11.2px] ml-[-19.2px] rounded-full bg-[rgba(31,35,41,0.32)] blur-[7.2px] opacity-75 scale-x-85 scale-y-80 pointer-events-none motion-reduce:animate-none"
-            :class="ballPlaying ? 'animate-[tus-ball-ground_1300ms_both]' : ''"
-          />
-          <span
-            class="relative z-2 w-48px h-48px motion-reduce:animate-none"
-            :class="ballPlaying ? 'animate-[tus-ball-jump_1300ms_both]' : ''"
-          >
-            <span
-              class="absolute inset-0 box-border border border-solid border-[#dfe3e8] rounded-full bg-[radial-gradient(circle_at_50%_35%,#fff_0_55%,#fbfbfc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] origin-[50%_100%] motion-reduce:animate-none"
-              :class="ballPlaying ? 'animate-[tus-ball-shell_1300ms_both]' : ''"
-            />
-            <span class="absolute inset-0 z-1 grid place-items-center text-ink-2 pointer-events-none -translate-y-2px">
-              <svg
-                class="w-[35.2px] h-[35.2px] overflow-visible"
-                viewBox="-0.4 -0.56 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.6"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M6.5 18a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.5 10.5a3.75 3.75 0 0 1 0 7.5z" />
-                <path d="M12 11v7" />
-                <path d="M9.5 13.5 12 11l2.5 2.5" />
-              </svg>
-            </span>
-          </span>
-        </span>
-        <span class="absolute inset-x-12px top-[calc(50%+46px)] flex flex-col items-center gap-6px text-center">
-          <b class="text-13px font-600 leading-[1.4] text-ink">{{
-            uploading ? '上传中…' : (spec.title ?? `点击上传${isVideo ? '视频' : '图片'}`)
-          }}</b>
-          <span v-if="spec.subtitle" class="text-11px leading-[1.5] text-muted">{{ spec.subtitle }}</span>
-          <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
-          <span v-if="mode === 'batch'" class="text-11px leading-[1.5] text-muted">已选 0 / {{ spec.max }}</span>
-        </span>
-      </button>
-      <!-- 原型：提示文案下方一颗「从资产选择」；与整卡上传按钮是兄弟节点（按钮里不能再套按钮） -->
-      <button
-        v-if="canPickAsset"
-        type="button"
-        class="ll-pill absolute left-1/2 -translate-x-1/2 z-1"
-        :class="[focusRing, mode === 'batch' || spec.subtitle ? 'top-[calc(50%+122px)]' : 'top-[calc(50%+100px)]']"
-        :disabled="disabled || uploading"
-        :aria-label="`从资产库选择${spec.label}`"
+        class="h-30px box-border px-10px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+        :class="focusRing"
+        :disabled="disabled || uploading || (spec.max > 1 && room <= 0)"
+        :aria-label="`从资产库添加${spec.label}`"
         @click="openAssetPicker"
       >
-        从资产选择
+        从资产库添加
       </button>
+    </div>
+
+    <!-- 空态（batch / single）：B3.1 卡撑满余高，整块可点，48 云影球在卡正中 -->
+    <div v-else-if="!urls.length && (mode === 'batch' || mode === 'single')" :class="[cardCls, 'flex-1 min-h-[300px]']">
+      <div class="relative w-full h-full">
+        <button
+          type="button"
+          class="relative block w-full h-full box-border p-0 cursor-pointer motion-reduce:transition-none disabled:cursor-not-allowed"
+          :class="[
+            focusRing,
+            mode === 'batch' ? batchZoneCls : singleZoneCls,
+            mode === 'batch'
+              ? dragging
+                ? 'border-violet bg-violet-soft before:opacity-0'
+                : 'border-transparent bg-transparent before:opacity-100 hover:(border-[rgba(31,35,41,0.16)] before:opacity-0) hover:shadow-[inset_0_12px_22px_-12px_rgba(31,35,41,0.22),inset_8px_0_18px_-14px_rgba(31,35,41,0.1),inset_-8px_0_18px_-14px_rgba(31,35,41,0.1),inset_0_-1px_0_rgba(255,255,255,0.9)]'
+              : dragging
+                ? 'border-violet bg-violet-soft before:opacity-0'
+                : 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100 hover:(border-violet-line from-white to-#fbf7fd before:opacity-0)',
+          ]"
+          :disabled="disabled || uploading"
+          :aria-describedby="`${id}-hint`"
+          @click="pick"
+        >
+          <span
+            class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 grid w-64px h-84px place-items-center"
+            aria-hidden="true"
+            @pointerenter="playBall"
+          >
+            <!-- 地面影 38.4×11.2 · blur 7.2，弹跳时同步变深变浅 -->
+            <span
+              class="absolute left-1/2 bottom-5px z-1 w-[38.4px] h-[11.2px] ml-[-19.2px] rounded-full bg-[rgba(31,35,41,0.32)] blur-[7.2px] opacity-75 scale-x-85 scale-y-80 pointer-events-none motion-reduce:animate-none"
+              :class="ballPlaying ? 'animate-[tus-ball-ground_1300ms_both]' : ''"
+            />
+            <span
+              class="relative z-2 w-48px h-48px motion-reduce:animate-none"
+              :class="ballPlaying ? 'animate-[tus-ball-jump_1300ms_both]' : ''"
+            >
+              <span
+                class="absolute inset-0 box-border border border-solid border-[#dfe3e8] rounded-full bg-[radial-gradient(circle_at_50%_35%,#fff_0_55%,#fbfbfc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] origin-[50%_100%] motion-reduce:animate-none"
+                :class="ballPlaying ? 'animate-[tus-ball-shell_1300ms_both]' : ''"
+              />
+              <span
+                class="absolute inset-0 z-1 grid place-items-center text-ink-2 pointer-events-none -translate-y-2px"
+              >
+                <svg
+                  class="w-[35.2px] h-[35.2px] overflow-visible"
+                  viewBox="-0.4 -0.56 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M6.5 18a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.5 10.5a3.75 3.75 0 0 1 0 7.5z" />
+                  <path d="M12 11v7" />
+                  <path d="M9.5 13.5 12 11l2.5 2.5" />
+                </svg>
+              </span>
+            </span>
+          </span>
+          <span class="absolute inset-x-12px top-[calc(50%+46px)] flex flex-col items-center gap-6px text-center">
+            <b class="text-13px font-600 leading-[1.4] text-ink">{{
+              uploading ? '上传中…' : (spec.title ?? `拖拽或点击上传${isVideo ? '视频' : '图片'}`)
+            }}</b>
+            <span v-if="spec.subtitle" class="text-11px leading-[1.5] text-muted">{{ spec.subtitle }}</span>
+            <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
+            <span v-if="mode === 'batch'" class="text-11px leading-[1.5] text-muted">已选 0 / {{ spec.max }}</span>
+          </span>
+        </button>
+        <!--
+        从资产库添加（文字）：与视频空态同一写法，放在上传区右上角；与整卡上传按钮是兄弟节点（按钮里不能再套按钮）
+      -->
+        <button
+          v-if="canPickAsset"
+          type="button"
+          class="absolute right-12px top-12px z-30 h-30px box-border px-10px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+          :class="focusRing"
+          :disabled="disabled || uploading"
+          :aria-label="`从资产库添加${spec.label}`"
+          @click="openAssetPicker"
+        >
+          从资产库添加
+        </button>
+      </div>
     </div>
 
     <!--
       空态（video）：新版原型视频高清——卡片撑满余高（操作栏 833 高时为 434×607）、1px line 描边、圆角 6、内边距 12；
-      文案块靠上居中：大字 13/18.2·600 距卡顶 43，说明与格式行 11/16.5，间距 6；格式行下 8 是「资产添加」72×30。
-      整卡是上传按钮（铺满的透明按钮），「资产添加」是它的兄弟节点（按钮里不能再套按钮）。
+      文案块靠上居中：大字 13/18.2·600 距卡顶 43，说明与格式行 11/16.5，间距 6；格式行下 8 是「从资产库添加」。
+      整卡是上传按钮（铺满的透明按钮），「从资产库添加」是它的兄弟节点（按钮里不能再套按钮）。
     -->
     <div
       v-else-if="!urls.length && mode === 'video'"
       class="group relative flex-1 min-w-0 box-border p-12px rounded-6px border border-solid border-line bg-white shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)] [transition:border-color_0.2s_ease,background-color_0.2s_ease] motion-reduce:transition-none hover:border-violet-line"
+      :class="dragging && 'sx-drop'"
     >
       <button
         type="button"
         class="absolute inset-0 w-full h-full p-0 rounded-6px border-none bg-transparent cursor-pointer disabled:cursor-not-allowed"
         :class="focusRing"
         :disabled="disabled || uploading"
-        :aria-label="uploading ? '上传中…' : (spec.title ?? `点击上传${isVideo ? '视频' : '图片'}`)"
+        :aria-label="uploading ? '上传中…' : (spec.title ?? `拖拽或点击上传${isVideo ? '视频' : '图片'}`)"
         :aria-describedby="`${id}-hint`"
         @click="pick"
       />
       <div class="relative flex flex-col items-center gap-6px pt-30px text-center pointer-events-none">
         <b class="text-13px font-600 leading-[1.4] text-ink">{{
-          uploading ? '上传中…' : (spec.title ?? `点击上传${isVideo ? '视频' : '图片'}`)
+          uploading ? '上传中…' : (spec.title ?? `拖拽或点击上传${isVideo ? '视频' : '图片'}`)
         }}</b>
         <span v-if="spec.subtitle" class="text-11px leading-[1.5] text-muted">{{ spec.subtitle }}</span>
         <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
@@ -414,16 +475,33 @@ const seamCls = [
           :aria-label="`从资产库添加${spec.label}`"
           @click="openAssetPicker"
         >
-          资产添加
+          从资产库添加
         </button>
       </div>
     </div>
 
     <!-- 有图（batch / pipe）：60×100 白边浮片格；pipe 空态也走这里（4 个底图占位 + 添加格） -->
-    <div v-else-if="mode === 'batch' || mode === 'pipe'" :class="[cardCls, mode === 'batch' ? 'h-[742px]' : '']">
+    <div
+      v-else-if="mode === 'batch' || mode === 'pipe'"
+      :class="[cardCls, mode === 'batch' ? 'flex-1 min-h-[640px]' : '', dragging && 'sx-drop']"
+    >
       <span :id="`${id}-hint`" class="sr-only">{{ hint }}</span>
+      <button
+        v-if="canPickAsset && room > 0"
+        type="button"
+        class="absolute right-12px top-12px z-30 h-30px box-border px-10px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+        :class="focusRing"
+        :disabled="disabled || uploading"
+        :aria-label="`从资产库添加${spec.label}`"
+        @click="openAssetPicker"
+      >
+        从资产库添加
+      </button>
       <ul
-        :class="[gridCls, mode === 'batch' ? 'grid-rows-[repeat(4,100px)] gap-y-[105.33px]' : 'gap-y-[37.33px]']"
+        :class="[
+          gridCls,
+          mode === 'batch' ? 'h-full grid-rows-[repeat(4,100px)] gap-y-72px content-center' : 'gap-y-[37.33px]',
+        ]"
         :aria-labelledby="`${id}-label`"
       >
         <li v-for="(url, i) in urls" :key="url + i" class="group relative w-60px h-100px">
@@ -435,13 +513,16 @@ const seamCls = [
           >
             <img :src="url" alt="" class="block w-full h-full object-cover rounded-4px" />
           </div>
-          <!-- 悬停 / 聚焦看大图：240 宽固定框 contain，120ms + 4px 上浮；纯看不挡点击 -->
+          <!--
+            悬停 / 聚焦看大图（原型 HoverPreview）：触发元素 ≤80 宽 → 媒体 240；卡内边距 4、r8；媒体最大高 312；
+            延迟 320ms 出现、入场 120ms + 4px 上浮；阴影 0 12px 28px .16 + 0 2px 6px .06；纯看不挡点击
+          -->
           <div
-            class="hidden group-hover:block group-focus-within:block absolute z-30 w-240px box-border p-8px rounded-8px border border-solid border-line bg-white shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)] pointer-events-none animate-[tus-preview-in_120ms_ease_both] motion-reduce:animate-none"
+            class="hidden group-hover:block group-focus-within:block absolute z-30 w-248px box-border p-4px rounded-8px border border-solid border-line bg-white shadow-[0_12px_28px_rgba(31,35,41,0.16),0_2px_6px_rgba(31,35,41,0.06)] pointer-events-none animate-[tus-preview-in_120ms_ease_320ms_both] motion-reduce:animate-none"
             :class="previewPos(i)"
             aria-hidden="true"
           >
-            <div class="grid place-items-center h-[312px] overflow-hidden rounded-6px bg-surface2">
+            <div class="grid place-items-center w-240px h-[312px] overflow-hidden rounded-6px bg-surface2">
               <img :src="url" alt="" class="block max-w-full max-h-[312px] object-contain" />
             </div>
           </div>
@@ -511,7 +592,7 @@ const seamCls = [
     </div>
 
     <!-- 有图（single）：在上传卡里看图，图高封顶 340；右上删除，下方换一张 -->
-    <div v-else :class="cardCls">
+    <div v-else :class="[cardCls, dragging && 'sx-drop']">
       <div
         v-for="(url, i) in urls"
         :key="url + i"

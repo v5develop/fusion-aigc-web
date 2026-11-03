@@ -136,7 +136,7 @@ const shootTools: ToolCard[] = [
     desc: '服装 + 模特整批试穿，批量出商拍大片',
     tag: '图片',
     icon: 'shirt',
-    path: '/studio/tryon',
+    path: '/studio/ai-digital-model',
   },
   {
     key: 'pose',
@@ -144,7 +144,7 @@ const shootTools: ToolCard[] = [
     desc: '一张人物图 + 姿势参考，同款姿态批量复刻',
     tag: '图片',
     icon: 'pose',
-    path: '/studio/pose',
+    path: '/studio/ai-posture-fission',
   },
   {
     key: 'imagegen',
@@ -152,7 +152,7 @@ const shootTools: ToolCard[] = [
     desc: '提示词 + 参考图，文生图 / 图生图一次多张',
     tag: '图片',
     icon: 'sparkle',
-    path: '/studio/imagegen',
+    path: '/studio/image-generate',
   },
 ]
 
@@ -191,7 +191,7 @@ async function onTabKeydown(event: KeyboardEvent, index: number) {
   tabRefs.value[next]?.focus()
 }
 
-const cardBase = 'flex flex-col items-start gap-12px rounded-16px bg-white p-16px text-left no-underline'
+const cardBase = 'flex flex-col items-start gap-12px rounded-lg bg-white p-16px text-left no-underline'
 const cardEnabled =
   'cursor-pointer transition-all duration-200 ' +
   'hover:shadow-[0_4px_16px_rgba(31,35,41,0.08)] hover:-translate-y-2px ' +
@@ -199,7 +199,7 @@ const cardEnabled =
   'focus-visible:shadow-[0_4px_16px_rgba(31,35,41,0.08)] focus-visible:-translate-y-2px'
 const sections = computed(() => {
   const result: { key: string; title?: string; items: ToolCard[] }[] = [{ key: 'local-life', items: list.value }]
-  if (active.value === 'all') result.push({ key: 'shoot', title: '商拍工作室', items: shootTools })
+  if (active.value === 'all') result.push({ key: 'shoot', title: 'AI 商拍', items: shootTools })
   return result
 })
 </script>
@@ -208,12 +208,12 @@ const sections = computed(() => {
   <div class="h-full flex flex-col bg-page">
     <div class="shrink-0 flex flex-col gap-16px px-24px pt-24px pb-8px">
       <header>
-        <h1 class="m-0 text-20px font-600 leading-28px text-ink">工作室</h1>
+        <h1 class="m-0 text-20px font-600 leading-28px text-ink">AI 商拍</h1>
         <p class="m-0 mt-4px text-14px leading-22px text-muted">
           移动端几个重点功能的桌面版：先出文案 / 剧本，再出图出片，按张按秒计费
         </p>
       </header>
-      <div class="flex flex-wrap gap-8px" role="tablist" aria-label="功能分组">
+      <div class="flex flex-wrap gap-2px" role="tablist" aria-label="功能分组">
         <button
           v-for="(tab, index) in tabs"
           :id="`studio-tab-${tab.key}`"
@@ -225,9 +225,9 @@ const sections = computed(() => {
           aria-controls="studio-tab-panel"
           :tabindex="active === tab.key ? 0 : -1"
           :class="[
-            'h-32px cursor-pointer rounded-8px border-none px-12px text-14px transition-colors',
+            'sx-pilltab border-none transition-colors',
             'focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet focus-visible:outline-offset-2',
-            active === tab.key ? 'bg-violet-soft text-violet-ink font-600' : 'bg-white text-ink-2 hover:text-violet',
+            active === tab.key ? 'sx-pilltab-on' : 'bg-transparent',
           ]"
           @click="active = tab.key"
           @keydown="onTabKeydown($event, index)"
@@ -261,9 +261,7 @@ const sections = computed(() => {
               :class="[cardBase, 'w-full', tool.path ? cardEnabled : 'cursor-not-allowed opacity-60']"
             >
               <span class="w-full flex items-center gap-12px">
-                <span
-                  class="h-44px w-44px shrink-0 flex items-center justify-center rounded-12px bg-violet-soft text-violet"
-                >
+                <span class="h-44px w-44px shrink-0 flex items-center justify-center rounded-lg bg-#f1ecf3 text-violet">
                   <svg
                     viewBox="0 0 24 24"
                     width="20"

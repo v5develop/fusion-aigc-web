@@ -8,6 +8,7 @@
  * 原「本地生活」分组已移到本地生活导航首页（views/local-life/landingData.ts）。
  */
 import { tools, type ToolItem } from '@/views/home/tools'
+import { workflowRouteOf } from '@/views/workflow/schemas'
 
 export interface LandingTool {
   /** 注册表 id；注册表没有的条目用本地 id，仅作 key */
@@ -55,8 +56,8 @@ export function isGeneratorEntry(query: Record<string, unknown>): boolean {
   return GENERATOR_QUERY_KEYS.some((k) => query[k] != null && query[k] !== '')
 }
 
-/** 视频生成页的深链：/video 不带参数是导航首页，带 entryCode 才进生成页（见 views/video/index.vue） */
-const VIDEO_GENERATE_ROUTE = '/video?entryCode=textToVideo'
+/** 视频生成：工具页 /tools/ai-video-generator（/video 不带参数仍是本导航首页，带 entryCode 进通用生视频页） */
+const VIDEO_GENERATE_ROUTE = '/tools/ai-video-generator'
 
 /**
  * 注册表里没有的条目所用图标：按原型截图的图形意思画的近似件（24×24、单色 currentColor），非原型原件。
@@ -139,9 +140,19 @@ export const pictureLanding: LandingPageData = {
       ['product-replace', '产品替换', '换品保场景', { hot: true }],
       ['ai-first-screen-main-image', '首屏主图', '卖点主图'],
       ['ai-background-generator', '场景生成', '更换场景'],
-      // 注册表里没有这两项：即将开放
-      ['single-image-clone', '单图复刻', '同款复制', { icon: EXTRA_ICONS.singleClone }],
-      ['sku-replace', 'SKU替换', '批量换货', { icon: EXTRA_ICONS.skuReplace }],
+      // 工作流页已接通（视觉复刻流），直达对应模板
+      [
+        'single-image-clone',
+        '单图复刻',
+        '同款复制',
+        { icon: EXTRA_ICONS.singleClone, route: workflowRouteOf('visual-style-replace') },
+      ],
+      [
+        'sku-replace',
+        'SKU替换',
+        '批量换货',
+        { icon: EXTRA_ICONS.skuReplace, route: workflowRouteOf('visual-sku-replace') },
+      ],
     ]),
     section('服装', [
       ['cloth-wrinkle-removal', '服装去皱', '抚平褶皱'],
@@ -154,9 +165,20 @@ export const pictureLanding: LandingPageData = {
 export const videoLanding: LandingPageData = {
   title: 'AI 视频',
   banners: [
-    // 注册表里没有「模特带货」「商品替换（视频）」：即将开放
-    { id: 'model-sell', title: '模特带货', desc: '模特穿上商品，直接出带货视频', cta: '去看看' },
-    { id: 'video-product-replace', title: '商品替换', desc: '原片换商品，场景和运镜不动', cta: '去看看' },
+    {
+      id: 'model-sell',
+      title: '模特带货',
+      desc: '模特穿上商品，直接出带货视频',
+      cta: '去看看',
+      route: workflowRouteOf('video-product-sell'),
+    },
+    {
+      id: 'video-product-replace',
+      title: '商品替换',
+      desc: '原片换商品，场景和运镜不动',
+      cta: '去看看',
+      route: workflowRouteOf('video-product-replace'),
+    },
     {
       id: 'ai-video-generator',
       title: '视频生成',
@@ -174,14 +196,27 @@ export const videoLanding: LandingPageData = {
       ['ai-video-clone', '视频复刻', '复刻提示词'],
     ]),
     section('电商', [
-      ['model-sell', '模特带货', '模特卖货', { icon: EXTRA_ICONS.modelSell }],
+      [
+        'model-sell',
+        '模特带货',
+        '模特卖货',
+        { icon: EXTRA_ICONS.modelSell, route: workflowRouteOf('video-product-sell') },
+      ],
       [
         'video-product-replace',
         '商品替换',
         '原片换品',
-        { icon: byId.get('product-replace')?.icon ?? EXTRA_ICONS.skuReplace },
+        {
+          icon: byId.get('product-replace')?.icon ?? EXTRA_ICONS.skuReplace,
+          route: workflowRouteOf('video-product-replace'),
+        },
       ],
-      ['voice-sell', '口播带货', '产品口播', { icon: EXTRA_ICONS.voiceSell, hot: true }],
+      [
+        'voice-sell',
+        '口播带货',
+        '产品口播',
+        { icon: EXTRA_ICONS.voiceSell, hot: true, route: workflowRouteOf('video-product-talk') },
+      ],
     ]),
   ],
 }

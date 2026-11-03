@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import Upload from '@/components/ChatImageUpload/index.vue'
 import PromptEditor from './PromptEditor.vue'
+import { clipboardHasText, clipboardMediaFiles } from '@/composables/useFileDropPaste'
 import type { PromptSlot, FileItem } from './types'
 
 interface IProps {
@@ -83,9 +84,30 @@ const onInput = (e: Event) => {
   }
   formData.value.prompt = text
 }
+// 输入框里粘贴的图片 / 视频：转交给左侧对应的上传控件（同一套校验与上传）
+const imageUploadRef = ref<InstanceType<typeof Upload> | null>(null)
+const videoUploadRef = ref<InstanceType<typeof Upload> | null>(null)
+const sideUploadRef = ref<InstanceType<typeof Upload> | null>(null)
+const forwardPastedMedia = (e: ClipboardEvent) => {
+  // 带文字就按文字粘贴（Office 复制会同时带一张截图）
+  if (clipboardHasText(e.clipboardData)) return false
+  const files = clipboardMediaFiles(e.clipboardData)
+  const images = files.filter((f) => f.type.startsWith('image/'))
+  const videos = files.filter((f) => f.type.startsWith('video/'))
+  const imageTarget = showImageUpload ? imageUploadRef.value : null
+  const videoTarget = showVideoUpload ? videoUploadRef.value : null
+  if (images.length && imageTarget) imageTarget.addFiles(images)
+  if (videos.length && videoTarget) videoTarget.addFiles(videos)
+  return (!!images.length && !!imageTarget) || (!!videos.length && !!videoTarget)
+}
+const onSlotPasteFiles = (files: File[]) => {
+  if (showImageUpload) sideUploadRef.value?.addFiles(files)
+}
+
 // 拦截粘贴，强制纯文本
 const handlePaste = (e: ClipboardEvent) => {
   e.preventDefault()
+  if (forwardPastedMedia(e)) return
   const text = e.clipboardData?.getData('text/plain') ?? ''
   if (!text || !textareaRef.value) return
 
@@ -109,14 +131,9 @@ const handlePaste = (e: ClipboardEvent) => {
       <div class="main-content main-content--slot">
         <!-- 电商商品 tab 隐藏左侧图片选择控件（showImageUpload 为 false） -->
         <div v-show="showImageUpload" class="upload-cont">
-          <Upload
-            style="width: 72px"
-            v-model:fileList="sideImages!"
-            :limitNumber="5"
-            multiple
-          />
+          <Upload ref="sideUploadRef" style="width: 72px" v-model:fileList="sideImages!" :limitNumber="5" multiple />
         </div>
-        <PromptEditor v-model:slots="slots!" />
+        <PromptEditor v-model:slots="slots!" @paste-files="onSlotPasteFiles" />
       </div>
     </template>
 
@@ -126,6 +143,7 @@ const handlePaste = (e: ClipboardEvent) => {
         <div v-show="showImageUpload || showVideoUpload" class="upload-cont">
           <Upload
             v-show="showImageUpload"
+            ref="imageUploadRef"
             style="width: 72px"
             v-model:fileList="formData.images"
             :limitNumber="imageLimit"
@@ -133,6 +151,7 @@ const handlePaste = (e: ClipboardEvent) => {
           />
           <Upload
             v-if="showVideoUpload"
+            ref="videoUploadRef"
             style="width: 72px"
             v-model:fileList="formData.video"
             type="video"
