@@ -78,13 +78,20 @@ export interface IAssetLibAsset {
   height: number
 }
 
+/** 列表大类筛选 */
+export type AssetLibKindGroup = 'image' | 'video'
+
 export interface IAssetLibListParams {
-  /** 空 = 全部；uncategorized = 未分类；或 5 个 kind 之一 */
+  /** 空 = 全部；uncategorized = 未分类；或 5 个 kind 之一；或视频二级分类键（VIDEO_KINDS） */
   kind?: string
+  /** 大类：image = 5 个图片 kind；video = 视频二级分类键。与 kind 同传时同时生效 */
+  kind_group?: AssetLibKindGroup
   /** 空 = 全部；input = official + upload */
   source?: string
   /** 空 = 全部；image / video */
   media?: string
+  /** 比例 宽:高，如 1:1 / 3:4 / 9:16，精确匹配 */
+  aspect_ratio?: string
   /** 标签名（精确匹配） */
   tag?: string
   favorite_only?: boolean

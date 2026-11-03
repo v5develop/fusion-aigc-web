@@ -159,7 +159,7 @@ const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)
           </button>
           <span v-if="asset.tags.length > 3" class="text-placeholder">+{{ asset.tags.length - 3 }}</span>
         </template>
-        <span v-else>未分类</span>
+        <span v-else>其他分类</span>
         <span
           v-if="sourceLabel"
           class="px-5px py-1px rounded-4px border border-solid border-line text-10px text-muted"

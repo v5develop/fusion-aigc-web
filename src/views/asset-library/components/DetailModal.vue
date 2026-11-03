@@ -32,7 +32,7 @@ const message = useMessage()
 const PAGE_SIZE = 6
 
 const KIND_OPTIONS = [
-  { label: '未分类', value: '' },
+  { label: '其他分类', value: '' },
   { label: '模特', value: 'model' },
   { label: '场景', value: 'scene' },
   { label: '妆造', value: 'makeup' },

@@ -8,7 +8,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NConfigProvider, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
 import { assetLibCategories, assetLibList, assetLibUpdate } from '@/api/assetLibrary.ts'
-import type { IAssetLibAsset, IAssetLibCategory } from '@/api/assetLibrary.ts'
+import type { AssetLibKindGroup, IAssetLibAsset, IAssetLibCategory, IAssetLibListParams } from '@/api/assetLibrary.ts'
 import { useDebounce } from '@/utils/hooks'
 import AssetCard from './components/AssetCard.vue'
 import DetailModal from './components/DetailModal.vue'
@@ -28,12 +28,79 @@ const KIND_LABELS: Record<string, string> = {
   makeup: '妆造',
   hair: '发型',
   accessory: '配饰',
-  uncategorized: '未分类',
+  uncategorized: '其他分类',
 }
 const kindLabel = (key: string) => KIND_LABELS[key] ?? key
 
+/** 「创作素材」大类下的二级（现有 5 个 kind） */
+const IMAGE_KINDS = [
+  { key: 'model', label: '模特' },
+  { key: 'scene', label: '场景' },
+  { key: 'makeup', label: '妆造' },
+  { key: 'hair', label: '发型' },
+  { key: 'accessory', label: '配饰' },
+]
+/**
+ * 「AI生视频」大类下的二级。唯一来源：后端 kind_group=video 的键表（model.VideoKinds）与此一一对应。
+ * 视频资产怎么归到这些分类还没定数据来源：分类接口暂不返回这些键，计数按 0 显示。
+ */
+const VIDEO_KINDS = [
+  { key: 'viral_video', label: '爆款视频' },
+  { key: 'video_remake', label: '视频复刻' },
+  { key: 'promo_video', label: '带货视频' },
+  { key: 'digital_human', label: '数字人' },
+  { key: 'digital_human_talk', label: '数字人口播' },
+  { key: 'store_visit', label: '探店视频' },
+  { key: 'promo_drama', label: '带货短剧' },
+  { key: 'motion_transfer', label: '动作迁移' },
+  { key: 'canvas_video', label: '画布视频' },
+  { key: 'video_other', label: '其他' },
+]
+for (const k of [...IMAGE_KINDS, ...VIDEO_KINDS]) KIND_LABELS[k.key] ??= k.label
+
+type GroupKey = 'all' | AssetLibKindGroup | 'uncategorized'
+/** 一级大类；children 为二级，没有二级的大类直接按自身筛选 */
+const GROUPS: { key: GroupKey; label: string; children: { key: string; label: string }[] }[] = [
+  { key: 'all', label: '全部', children: [] },
+  { key: 'image', label: '创作素材', children: IMAGE_KINDS },
+  { key: 'video', label: 'AI生视频', children: VIDEO_KINDS },
+  { key: 'uncategorized', label: '其他分类', children: [] },
+]
+
 const categories = ref<IAssetLibCategory[]>([])
-const activeKind = ref('all')
+const activeGroup = ref<GroupKey>('all')
+/** 选中的二级 kind；空 = 只按大类 */
+const activeKind = ref('')
+
+const countOf = (key: string) => categories.value.find((c) => c.key === key)?.count ?? 0
+/** 一级计数：全部 / 其他分类取接口原值，有二级的大类 = 二级计数之和（前端相加） */
+const groupItems = computed(() =>
+  GROUPS.map((g) => ({
+    key: g.key,
+    label: g.label,
+    count: g.children.length ? g.children.reduce((n, c) => n + countOf(c.key), 0) : countOf(g.key),
+  })),
+)
+const subItems = computed(() =>
+  (GROUPS.find((g) => g.key === activeGroup.value)?.children ?? []).map((c) => ({ ...c, count: countOf(c.key) })),
+)
+
+function selectGroup(key: GroupKey) {
+  activeGroup.value = key
+  activeKind.value = ''
+}
+/** 再点一次已选的二级则取消，回到大类 */
+function selectSub(key: string) {
+  activeKind.value = activeKind.value === key ? '' : key
+}
+
+/** 列表的分类参数：二级 → kind；有二级的大类 → kind_group；其他分类 → kind=uncategorized */
+function categoryParams(): Pick<IAssetLibListParams, 'kind' | 'kind_group'> {
+  if (activeKind.value) return { kind: activeKind.value }
+  if (activeGroup.value === 'image' || activeGroup.value === 'video') return { kind_group: activeGroup.value }
+  if (activeGroup.value === 'uncategorized') return { kind: 'uncategorized' }
+  return {}
+}
 
 async function loadCategories() {
   try {
@@ -64,7 +131,18 @@ const filters = reactive({
   favorite_only: false,
   q: '',
   tag: '',
+  aspect_ratio: '',
 })
+
+/** 比例（素材的 aspect_ratio 精确匹配） */
+const RATIO_OPTIONS = [
+  { label: '全部', value: '' },
+  { label: '1:1', value: '1:1' },
+  { label: '3:4', value: '3:4' },
+  { label: '4:3', value: '4:3' },
+  { label: '9:16', value: '9:16' },
+  { label: '16:9', value: '16:9' },
+]
 
 // 页头范围 / 类型切换（原型：输入资产 / 生成结果；图片 / 视频）：再点一次取消，回到「全部」
 const SCOPE_TABS = [
@@ -83,9 +161,11 @@ function toggleMedia(v: string) {
 }
 
 const filterOpen = ref(false)
-const activeFilterCount = computed(() => (filters.source ? 1 : 0) + (filters.favorite_only ? 1 : 0))
+const activeFilterCount = computed(
+  () => (filters.source ? 1 : 0) + (filters.favorite_only ? 1 : 0) + (filters.aspect_ratio ? 1 : 0),
+)
 /** 当前来源 / 类型下的资产总数（分类条「全部」计数） */
-const allCount = computed(() => categories.value.find((c) => c.key === 'all')?.count ?? 0)
+const allCount = computed(() => countOf('all'))
 
 const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)'
 const TAB_CLS =
@@ -116,9 +196,10 @@ const hasMore = computed(() => items.value.length < total.value)
 
 async function loadPage(p: number): Promise<IAssetLibAsset[]> {
   const res = await assetLibList({
-    kind: activeKind.value === 'all' ? undefined : activeKind.value,
+    ...categoryParams(),
     source: filters.source || undefined,
     media: filters.media || undefined,
+    aspect_ratio: filters.aspect_ratio || undefined,
     tag: filters.tag || undefined,
     favorite_only: filters.favorite_only || undefined,
     q: filters.q || undefined,
@@ -172,7 +253,8 @@ watch(
     void reload()
   },
 )
-watch(activeKind, () => {
+// 比例不影响分类计数，只重查列表
+watch([activeGroup, activeKind, () => filters.aspect_ratio], () => {
   void reload()
 })
 useDebounce({ data: () => filters.q, callback: () => void reload() })
@@ -340,40 +422,70 @@ function openDetail(asset: IAssetLibAsset) {
 
       <div ref="scroller" class="flex-1 min-h-0 overflow-auto px-20px pb-32px" @scroll="onScroll">
         <div class="flex items-start gap-12px pt-20px pb-16px">
-          <div class="flex flex-wrap items-center gap-8px">
-            <button
-              v-for="c in categories"
-              :key="c.key"
-              type="button"
-              :aria-pressed="activeKind === c.key"
-              :class="[
-                'inline-flex items-center gap-6px h-34px px-10px rounded-8px border border-solid text-13px font-500 cursor-pointer',
-                activeKind === c.key
-                  ? 'bg-violet-soft border-violet-line text-violet-ink'
-                  : 'bg-white border-line text-ink-2 hover:border-line-strong',
-                FOCUS,
-              ]"
-              @click="activeKind = c.key"
-            >
-              {{ kindLabel(c.key) }}
-              <span
-                class="px-5px py-1px rounded-4px text-10px"
-                :class="activeKind === c.key ? 'bg-white/70 text-violet-ink' : 'bg-surface3 text-muted'"
-                >{{ c.count }}</span
+          <div class="flex flex-col gap-8px min-w-0">
+            <div class="flex flex-wrap items-center gap-8px">
+              <button
+                v-for="g in groupItems"
+                :key="g.key"
+                type="button"
+                :aria-pressed="activeGroup === g.key"
+                :class="[
+                  'inline-flex items-center gap-6px h-34px px-10px rounded-8px border border-solid text-13px font-500 cursor-pointer',
+                  activeGroup === g.key
+                    ? 'bg-violet-soft border-violet-line text-violet-ink'
+                    : 'bg-white border-line text-ink-2 hover:border-line-strong',
+                  FOCUS,
+                ]"
+                @click="selectGroup(g.key)"
               >
-            </button>
-            <button
-              v-if="filters.tag"
-              type="button"
-              :class="[
-                'inline-flex items-center gap-4px h-34px px-10px rounded-8px border border-solid border-violet-line bg-info-soft text-13px text-violet-ink cursor-pointer',
-                FOCUS,
-              ]"
-              title="点击清除"
-              @click="filters.tag = ''"
+                {{ g.label }}
+                <span
+                  class="px-5px py-1px rounded-4px text-10px"
+                  :class="activeGroup === g.key ? 'bg-white/70 text-violet-ink' : 'bg-surface3 text-muted'"
+                  >{{ g.count }}</span
+                >
+              </button>
+              <button
+                v-if="filters.tag"
+                type="button"
+                :class="[
+                  'inline-flex items-center gap-4px h-34px px-10px rounded-8px border border-solid border-violet-line bg-info-soft text-13px text-violet-ink cursor-pointer',
+                  FOCUS,
+                ]"
+                title="点击清除"
+                @click="filters.tag = ''"
+              >
+                标签：{{ filters.tag }} ×
+              </button>
+            </div>
+            <div
+              v-if="subItems.length"
+              class="flex flex-wrap items-center gap-8px pl-12px"
+              role="group"
+              :aria-label="`${groupItems.find((g) => g.key === activeGroup)?.label ?? ''}二级分类`"
             >
-              标签：{{ filters.tag }} ×
-            </button>
+              <button
+                v-for="c in subItems"
+                :key="c.key"
+                type="button"
+                :aria-pressed="activeKind === c.key"
+                :class="[
+                  'inline-flex items-center gap-6px h-30px px-10px rounded-8px border border-solid text-12px font-500 cursor-pointer',
+                  activeKind === c.key
+                    ? 'bg-violet-soft border-violet-line text-violet-ink'
+                    : 'bg-white border-line text-muted hover:border-line-strong hover:text-ink-2',
+                  FOCUS,
+                ]"
+                @click="selectSub(c.key)"
+              >
+                {{ c.label }}
+                <span
+                  class="px-5px py-1px rounded-4px text-10px"
+                  :class="activeKind === c.key ? 'bg-white/70 text-violet-ink' : 'bg-surface3 text-muted'"
+                  >{{ c.count }}</span
+                >
+              </button>
+            </div>
           </div>
           <div class="flex items-center gap-6px ml-auto shrink-0">
             <span class="mr-6px text-12px text-muted whitespace-nowrap">共 {{ total }} 项</span>
@@ -404,6 +516,25 @@ function openDetail(asset: IAssetLibAsset) {
             来源
             <n-select v-model:value="filters.source" :options="SOURCE_OPTIONS" size="small" class="w-130px" />
           </label>
+          <div class="flex items-center gap-6px text-12px text-ink-2" role="group" aria-label="比例">
+            <span class="mr-2px">比例</span>
+            <button
+              v-for="r in RATIO_OPTIONS"
+              :key="r.value"
+              type="button"
+              :aria-pressed="filters.aspect_ratio === r.value"
+              :class="[
+                'inline-flex items-center h-26px px-8px rounded-6px border border-solid text-12px cursor-pointer',
+                filters.aspect_ratio === r.value
+                  ? 'bg-violet-soft border-violet-line text-violet-ink'
+                  : 'bg-white border-line text-ink-2 hover:border-line-strong',
+                FOCUS,
+              ]"
+              @click="filters.aspect_ratio = r.value"
+            >
+              {{ r.label }}
+            </button>
+          </div>
           <label class="flex items-center gap-6px text-12px text-ink-2 whitespace-nowrap">
             <n-switch v-model:value="filters.favorite_only" size="small" />
             仅看收藏
