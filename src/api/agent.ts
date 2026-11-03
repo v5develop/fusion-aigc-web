@@ -89,18 +89,52 @@ export interface IAgentMessage {
   sseEvents?: IAgentFrame[]
   generationLanguage?: string
   hidden?: boolean
+  /** 用户消息本轮带的图片 */
   imageUrls?: string[]
   createdAt?: string | null
   updatedAt?: string | null
 }
 
-/** 流式请求体（StreamRequest 的子集：本页不传图、不答表单） */
+/** 流式请求体（StreamRequest 的子集：本页不答表单） */
 export interface IAgentStreamReq {
   conversationId: string
   content: string
   /** v2 开启（技能目录非空）时必填；目录为空时不能带 */
   agentSkillId?: string
+  /** 本轮图片（http/https，最多 9 个，服务端按用户核验归属）；没有图就不带 */
+  imageUrls?: string[]
+  /** 回答语言（≤64 字符），服务端拼进系统提示 "Response language: …"；不限语言就不带 */
+  language?: string
 }
+
+/** 回答语言选项：value 为空 = 不限语言（不带 language） */
+export interface IAgentLanguage {
+  code: string
+  name: string
+  value: string
+}
+
+export const AGENT_LANGUAGES: readonly IAgentLanguage[] = [
+  { code: 'ZH', name: '中文', value: 'Chinese' },
+  { code: 'EN', name: '英语', value: 'English' },
+  { code: '—', name: '无语言', value: '' },
+  { code: 'ZH-HANT', name: '繁体中文', value: 'Traditional Chinese' },
+  { code: 'KO', name: '韩语', value: 'Korean' },
+  { code: 'FR', name: '法语', value: 'French' },
+  { code: 'DE', name: '德语', value: 'German' },
+  { code: 'ES', name: '西班牙语', value: 'Spanish' },
+  { code: 'PT', name: '葡萄牙语', value: 'Portuguese' },
+  { code: 'RU', name: '俄语', value: 'Russian' },
+  { code: 'AR', name: '阿拉伯语', value: 'Arabic' },
+  { code: 'TH', name: '泰语', value: 'Thai' },
+  { code: 'VI', name: '越南语', value: 'Vietnamese' },
+  { code: 'IT', name: '意大利语', value: 'Italian' },
+  { code: 'JA', name: '日语', value: 'Japanese' },
+  { code: 'PL', name: '波兰语', value: 'Polish' },
+  { code: 'TR', name: '土耳其语', value: 'Turkish' },
+  { code: 'ID', name: '印尼语', value: 'Indonesian' },
+  { code: 'HI', name: '印地语', value: 'Hindi' },
+]
 
 // ---------------- 普通接口 ----------------
 

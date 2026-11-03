@@ -11,11 +11,12 @@
  * <p>计费与重试：流式对话受理即预扣。客户端不自动重试；受理前结果未知（断网 / 超时）时
  * 沿用同一个 X-Request-Id（服务端据它幂等），用户点「重试」才重发；确定失败或已受理则换新 id。
  */
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { NConfigProvider, NImage, NInput, NModal, NSpin, useDialog, useMessage } from 'naive-ui'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { NConfigProvider, NImage, NInput, NModal, NPopover, NSpin, useDialog, useMessage } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
 import { toApiError } from '@/api'
 import {
+  AGENT_LANGUAGES,
   agentCancel,
   agentConversations,
   agentCreateConversation,
@@ -32,6 +33,8 @@ import {
 } from '@/api/agent.ts'
 import type { IAgentConversation, IAgentMessage, IAgentReply, IAgentSkill, IAgentSkillGroup } from '@/api/agent.ts'
 import { useIdempotentSubmit } from '@/views/studio/hooks.ts'
+import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
+import { useStudioUploader } from '@/views/studio/components/StudioImageUpload/useStudioUploader.ts'
 
 defineOptions({ name: 'agent-chat' })
 
@@ -39,6 +42,19 @@ const message = useMessage()
 const dialog = useDialog()
 
 const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)'
+
+/*
+ * 原型计算样式（proto-agent-visual-tokens.json）照抄：渐变、内高光、投影与过渡时长 / 曲线不估算。
+ * 按钮过渡只有 background 走 cubic-bezier(0.2,0.7,0.2,1)，其余三项是 ease（原型即如此）。
+ */
+const T_BTN =
+  '[transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s_ease,box-shadow_0.11s_ease,color_0.11s_ease] motion-reduce:transition-none'
+const T_ROW =
+  '[transition:border-color_0.11s_ease,background_0.11s_ease,box-shadow_0.11s_ease] motion-reduce:transition-none'
+/** 「新建」等描边按钮：白→淡紫竖向渐变 + 极浅投影 */
+const BTN_SURFACE = 'bg-[linear-gradient(#fff_0%,#f8f3fc_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.043)]'
+/** 会话栏 / 对话区面板：顶部白内高光 + 底部灰内描边 + 下投影 */
+const PANEL_SHADOW = 'shadow-[inset_0_1px_0_#fff,inset_0_-1px_0_#eff1f3,0_10px_16px_rgba(0,0,0,0.04)]'
 const LIST_SIZE = 20
 const MSG_SIZE = 50
 
@@ -79,6 +95,7 @@ const ICON = {
   arrowUp: 'M12 19V5M6 11l6-6 6 6',
   edit: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6',
+  upload: 'M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3',
 } as const
 
 const HEADER_ACTIONS = [
@@ -187,6 +204,146 @@ function confirmSkill() {
   if (!pendingSkillId.value) return
   pickSkill(pendingSkillId.value)
   skillDialogShow.value = false
+}
+
+// ---------------- 图片（StreamRequest.imageUrls） ----------------
+
+/** 原型上限 4 张（服务端字段收 9 个，另有账号单次上限，超了回 ERROR 帧） */
+const MAX_IMAGES = 4
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp'
+const IMAGE_FORMATS = '支持 JPEG / JPG / PNG / WEBP'
+const LIMIT_TEXT = `最多上传 ${MAX_IMAGES} 张`
+
+const attachments = ref<string[]>([])
+const imageRoom = computed(() => Math.max(0, MAX_IMAGES - attachments.value.length))
+const { uploading, uploadFiles } = useStudioUploader()
+
+const IMAGE_TABS = [
+  { key: 'local', label: '本地上传', soon: false },
+  { key: 'generated', label: '最近生成', soon: false },
+  { key: 'upload', label: '最近上传', soon: false },
+  // 资产选择器没有「收藏」筛选
+  { key: 'favorite', label: '收藏资产', soon: true },
+  { key: 'model', label: '模特库', soon: false },
+] as const
+type ImageTab = (typeof IMAGE_TABS)[number]['key']
+
+const imageDialogShow = ref(false)
+const imageTab = ref<ImageTab>('local')
+const assetPickerShow = ref(false)
+const dragging = ref(false)
+const fileInputEl = ref<HTMLInputElement | null>(null)
+const imagePillEl = ref<HTMLButtonElement | null>(null)
+
+function addImages(urls: string[]) {
+  const fresh = urls.filter((u) => /^https?:\/\//i.test(u) && !attachments.value.includes(u))
+  if (!fresh.length) return
+  if (imageRoom.value <= 0) {
+    message.warning(LIMIT_TEXT)
+    return
+  }
+  attachments.value = [...attachments.value, ...fresh.slice(0, imageRoom.value)]
+  idem.invalidate()
+}
+
+function removeImage(i: number) {
+  if (streaming.value) return
+  attachments.value = attachments.value.filter((_, idx) => idx !== i)
+  idem.invalidate()
+}
+
+function openImageDialog() {
+  if (streaming.value) return
+  imageTab.value = 'local'
+  imageDialogShow.value = true
+}
+
+/** 本地 / 粘贴共用：格式按原型四种拦，余量与上传走商拍工作室同一条直传 */
+async function uploadLocal(files: File[]) {
+  if (!files.length || uploading.value) return
+  const picked = files.filter((f) => IMAGE_TYPES.includes(f.type))
+  if (picked.length < files.length) message.warning(IMAGE_FORMATS)
+  if (!picked.length) return
+  let added = 0
+  await uploadFiles(picked, imageRoom.value, MAX_IMAGES, (url) => {
+    const before = attachments.value.length
+    addImages([url])
+    if (attachments.value.length > before) added += 1
+  })
+  if (added && imageDialogShow.value) imageDialogShow.value = false
+}
+
+function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  void uploadLocal(files)
+}
+
+function onDrop(e: DragEvent) {
+  dragging.value = false
+  void uploadLocal(Array.from(e.dataTransfer?.files ?? []))
+}
+
+function onPaste(e: ClipboardEvent) {
+  if (!imageDialogShow.value || assetPickerShow.value) return
+  const files = Array.from(e.clipboardData?.items ?? [])
+    .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+    .map((it) => it.getAsFile())
+    .filter((f): f is File => !!f)
+  if (!files.length) return
+  e.preventDefault()
+  void uploadLocal(files)
+}
+
+watch(imageDialogShow, (open) => {
+  if (open) document.addEventListener('paste', onPaste)
+  else document.removeEventListener('paste', onPaste)
+})
+
+function openAssetPicker() {
+  if (imageRoom.value <= 0) {
+    message.warning(LIMIT_TEXT)
+    return
+  }
+  assetPickerShow.value = true
+}
+
+function onAssetSelect(urls: string[]) {
+  addImages(urls)
+  imageDialogShow.value = false
+}
+
+// ---------------- 回答语言（StreamRequest.language） ----------------
+
+const languageCode = ref('ZH')
+const languageShow = ref(false)
+const languagePillEl = ref<HTMLButtonElement | null>(null)
+const selectedLanguage = computed(
+  () => AGENT_LANGUAGES.find((l) => l.code === languageCode.value) ?? AGENT_LANGUAGES[0]!,
+)
+
+function pickLanguage(code: string) {
+  languageShow.value = false
+  languagePillEl.value?.focus()
+  if (languageCode.value === code) return
+  languageCode.value = code
+  idem.invalidate()
+}
+
+function closeLanguage() {
+  languageShow.value = false
+  languagePillEl.value?.focus()
+}
+
+function onLanguageShow(open: boolean) {
+  languageShow.value = open
+  if (open) {
+    void nextTick(() => {
+      document.querySelector<HTMLButtonElement>('#agent-language-panel button[aria-pressed="true"]')?.focus()
+    })
+  }
 }
 
 // ---------------- 会话列表 ----------------
@@ -313,6 +470,8 @@ interface ChatItem {
   stopped?: boolean
   /** 受理前失败：可用同一条内容重试 */
   retryContent?: string
+  /** 重试时随同发送的图片 */
+  retryImages?: string[]
 }
 
 const items = ref<ChatItem[]>([])
@@ -453,7 +612,8 @@ function bumpConversation(id: string, accepted = false) {
   conversations.value.unshift(c)
 }
 
-async function send(raw: string) {
+/** 服务端要求 content 非空（只有表单续答可空），所以有图也得有文字 */
+async function send(raw: string, images: string[] = attachments.value) {
   const content = raw.trim()
   if (!content || streaming.value) return
   if (skillMissing.value) {
@@ -472,8 +632,16 @@ async function send(raw: string) {
   }
 
   const requestId = idem.take()
+  const imageUrls = [...images]
+  const language = selectedLanguage.value.value
   draft.value = ''
-  const user = reactive<ChatItem>({ key: `l${++localKey}`, role: 'user', text: content, reply: emptyReply() })
+  const user = reactive<ChatItem>({
+    key: `l${++localKey}`,
+    role: 'user',
+    text: content,
+    images: imageUrls,
+    reply: emptyReply(),
+  })
   const bot = reactive<ChatItem>({
     key: `l${++localKey}`,
     role: 'assistant',
@@ -493,6 +661,8 @@ async function send(raw: string) {
         conversationId,
         content,
         ...(selectedSkillId.value ? { agentSkillId: selectedSkillId.value } : {}),
+        ...(imageUrls.length ? { imageUrls } : {}),
+        ...(language ? { language } : {}),
       },
       {
         requestId,
@@ -501,6 +671,8 @@ async function send(raw: string) {
           if (frame.event === 'START') {
             accepted = true
             idem.settle()
+            // 受理才清空已附图片；失败时留着，便于改后重发
+            attachments.value = []
           }
           applyFrame(bot.reply, frame)
           scrollToBottom()
@@ -510,7 +682,10 @@ async function send(raw: string) {
     // 受理前拒绝只有一帧 ERROR：确定失败，下次换新 id
     if (!accepted) {
       idem.settle()
-      if (bot.reply.error) bot.retryContent = content
+      if (bot.reply.error) {
+        bot.retryContent = content
+        bot.retryImages = imageUrls
+      }
     }
   } catch (err) {
     if ((err as any)?.name !== 'AbortError') {
@@ -518,6 +693,7 @@ async function send(raw: string) {
       if (!accepted) {
         idem.fail(err)
         bot.retryContent = content
+        bot.retryImages = imageUrls
       }
     }
   } finally {
@@ -539,7 +715,7 @@ function retry(item: ChatItem) {
   }
   const idx = items.value.indexOf(item)
   if (idx > 0) items.value.splice(idx - 1, 2)
-  void send(content)
+  void send(content, item.retryImages ?? [])
 }
 
 async function stop() {
@@ -561,7 +737,10 @@ onMounted(() => {
   void loadConversations(true)
 })
 
-onUnmounted(() => controller?.abort())
+onUnmounted(() => {
+  controller?.abort()
+  document.removeEventListener('paste', onPaste)
+})
 </script>
 
 <template>
@@ -570,7 +749,10 @@ onUnmounted(() => controller?.abort())
       <!-- 左：会话栏 -->
       <aside
         v-if="sidebarCollapsed"
-        class="flex w-52px flex-none flex-col items-center gap-8px border-r border-solid border-line bg-white py-14px"
+        :class="[
+          'flex w-52px flex-none flex-col items-center gap-8px border-r border-solid border-line bg-white py-14px',
+          PANEL_SHADOW,
+        ]"
         aria-label="对话列表"
       >
         <button
@@ -578,6 +760,7 @@ onUnmounted(() => controller?.abort())
           aria-label="展开会话列表"
           :class="[
             'grid h-28px w-28px place-items-center rounded-8px border border-solid border-line bg-white text-muted cursor-pointer hover:(text-ink border-line-strong)',
+            T_BTN,
             FOCUS,
           ]"
           @click="sidebarCollapsed = false"
@@ -598,7 +781,9 @@ onUnmounted(() => controller?.abort())
           aria-label="新建"
           :disabled="streaming"
           :class="[
-            'grid h-28px w-28px place-items-center rounded-999px border border-solid border-violet-line bg-white text-violet-ink cursor-pointer hover:bg-violet-soft disabled:(cursor-not-allowed opacity-50)',
+            'grid h-28px w-28px place-items-center rounded-999px border border-solid border-violet-line text-violet-ink cursor-pointer hover:(bg-none bg-violet-soft) disabled:(cursor-not-allowed opacity-50)',
+            BTN_SURFACE,
+            T_BTN,
             FOCUS,
           ]"
           @click="newConversation"
@@ -617,7 +802,7 @@ onUnmounted(() => controller?.abort())
       </aside>
       <aside
         v-else
-        class="flex w-260px flex-none min-h-0 flex-col border-r border-solid border-line bg-white"
+        :class="['flex w-260px flex-none min-h-0 flex-col border-r border-solid border-line bg-white', PANEL_SHADOW]"
         aria-label="对话列表"
       >
         <div class="flex flex-none items-center gap-6px px-14px pt-16px pb-10px">
@@ -628,7 +813,9 @@ onUnmounted(() => controller?.abort())
             type="button"
             :disabled="streaming"
             :class="[
-              'inline-flex h-28px items-center gap-4px rounded-6px border border-solid border-line bg-white px-10px text-12px text-violet-ink cursor-pointer hover:(border-violet-line bg-violet-soft) disabled:(cursor-not-allowed opacity-50)',
+              'inline-flex h-28px items-center gap-4px rounded-6px border border-solid border-line px-10px text-12px text-violet-ink cursor-pointer hover:(border-violet-line bg-none bg-violet-soft) disabled:(cursor-not-allowed opacity-50)',
+              BTN_SURFACE,
+              T_BTN,
               FOCUS,
             ]"
             @click="newConversation"
@@ -650,6 +837,7 @@ onUnmounted(() => controller?.abort())
             aria-label="收起会话列表"
             :class="[
               'grid h-28px w-28px place-items-center rounded-6px border-none bg-transparent text-muted cursor-pointer hover:(bg-surface2 text-ink)',
+              T_BTN,
               FOCUS,
             ]"
             @click="sidebarCollapsed = true"
@@ -667,7 +855,14 @@ onUnmounted(() => controller?.abort())
           </button>
         </div>
         <div class="flex-none px-14px pb-10px">
-          <n-input v-model:value="keyword" size="small" clearable placeholder="搜索会话" aria-label="搜索会话">
+          <n-input
+            v-model:value="keyword"
+            size="small"
+            clearable
+            placeholder="搜索会话"
+            aria-label="搜索会话"
+            class="shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] ![transition:border-color_0.11s_ease,box-shadow_0.11s_ease] motion-reduce:!transition-none"
+          >
             <template #prefix>
               <svg
                 class="h-14px w-14px text-muted"
@@ -688,8 +883,9 @@ onUnmounted(() => controller?.abort())
               :class="[
                 'flex items-start gap-10px rounded-10px border border-solid p-10px',
                 activeId === c.agentConversationId
-                  ? 'bg-violet-soft border-violet-line'
+                  ? 'border-violet-line bg-[linear-gradient(#fff,#f8f3fc)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
                   : 'border-transparent hover:bg-surface2',
+                T_ROW,
               ]"
             >
               <!-- 缩略图：会话列表接口暂无封面字段，先用星芒占位块；有封面后在此换成图片 -->
@@ -756,6 +952,7 @@ onUnmounted(() => controller?.abort())
                     title="重命名"
                     :class="[
                       'grid h-22px w-22px place-items-center rounded-6px border-none bg-transparent text-muted cursor-pointer hover:(bg-violet-soft-2 text-violet-ink)',
+                      T_BTN,
                       FOCUS,
                     ]"
                     @click="startRename(c)"
@@ -778,6 +975,7 @@ onUnmounted(() => controller?.abort())
                     title="删除"
                     :class="[
                       'grid h-22px w-22px place-items-center rounded-6px border-none bg-transparent text-muted cursor-pointer hover:(bg-violet-soft-2 text-violet-ink)',
+                      T_BTN,
                       FOCUS,
                     ]"
                     @click="confirmDelete(c)"
@@ -813,10 +1011,12 @@ onUnmounted(() => controller?.abort())
       </aside>
 
       <!-- 右：对话 -->
-      <section class="flex min-w-0 flex-1 min-h-0 flex-col" aria-label="对话">
-        <header class="flex h-64px flex-none items-center gap-12px border-b border-solid border-line bg-white px-20px">
+      <section :class="['flex min-w-0 flex-1 min-h-0 flex-col', PANEL_SHADOW]" aria-label="对话">
+        <header
+          class="flex h-64px flex-none items-center gap-12px border-b border-solid border-line bg-[linear-gradient(#fff,#fbf7fe)] px-20px shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
+        >
           <span
-            class="grid h-40px w-40px flex-none place-items-center rounded-10px bg-violet-soft text-violet"
+            class="grid h-40px w-40px flex-none place-items-center rounded-10px bg-[linear-gradient(135deg,#f6effa,#efe6f5)] text-violet shadow-[inset_0_1px_0_#fff]"
             aria-hidden="true"
           >
             <svg
@@ -841,7 +1041,10 @@ onUnmounted(() => controller?.abort())
               <button
                 type="button"
                 disabled
-                class="inline-flex h-32px items-center gap-6px rounded-8px border border-solid border-line bg-white px-12px text-12px text-ink-2 cursor-not-allowed opacity-60"
+                :class="[
+                  'inline-flex h-32px items-center gap-6px rounded-8px border border-solid border-line bg-[linear-gradient(#fff,#fbfcfc)] px-12px text-12px text-ink-2 cursor-not-allowed opacity-60 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]',
+                  T_BTN,
+                ]"
               >
                 <svg
                   class="h-14px w-14px"
@@ -888,7 +1091,7 @@ onUnmounted(() => controller?.abort())
               <!-- 用户 -->
               <div
                 v-if="item.role === 'user'"
-                class="max-w-[80%] rounded-14px border border-solid border-violet-line bg-violet-soft px-14px py-10px"
+                class="max-w-[80%] rounded-14px border border-solid border-violet-line bg-[linear-gradient(#f8f3fc,#f2ebf8)] px-14px py-10px shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
               >
                 <div class="whitespace-pre-wrap break-words text-14px leading-22px text-ink">{{ item.text }}</div>
                 <div v-if="item.images?.length" class="mt-8px flex gap-8px">
@@ -927,7 +1130,7 @@ onUnmounted(() => controller?.abort())
                   </p>
                   <div
                     v-if="item.reply.tools.length"
-                    class="mb-10px rounded-12px border border-solid border-line bg-white px-14px py-10px"
+                    class="mb-10px rounded-12px border border-solid border-line bg-white px-14px py-10px shadow-[inset_0_1px_2px_rgba(31,35,41,0.035)]"
                   >
                     <div class="mb-6px flex items-center gap-6px text-13px font-600 text-ink">
                       <svg
@@ -991,9 +1194,13 @@ onUnmounted(() => controller?.abort())
                     {{ item.reply.text }}
                   </div>
                   <span v-if="item.live" class="mt-4px inline-flex items-center gap-4px" aria-label="生成中">
-                    <span class="h-6px w-6px rounded-999px bg-violet animate-pulse" />
-                    <span class="h-6px w-6px rounded-999px bg-violet animate-pulse [animation-delay:150ms]" />
-                    <span class="h-6px w-6px rounded-999px bg-violet animate-pulse [animation-delay:300ms]" />
+                    <span class="h-6px w-6px rounded-999px bg-violet animate-pulse motion-reduce:animate-none" />
+                    <span
+                      class="h-6px w-6px rounded-999px bg-violet animate-pulse [animation-delay:150ms] motion-reduce:animate-none"
+                    />
+                    <span
+                      class="h-6px w-6px rounded-999px bg-violet animate-pulse [animation-delay:300ms] motion-reduce:animate-none"
+                    />
                   </span>
                   <div v-if="item.stopped" class="mt-6px text-12px text-muted">已停止</div>
                   <div v-if="item.reply.error" role="alert" class="mt-6px flex items-center gap-8px">
@@ -1017,7 +1224,7 @@ onUnmounted(() => controller?.abort())
         <div class="flex-none border-t border-solid border-line bg-white px-20px pt-12px pb-10px">
           <div class="mx-auto max-w-[760px]">
             <div
-              class="rounded-14px border border-solid border-line bg-white px-12px pt-10px pb-10px shadow-[0_1px_2px_rgba(31,35,41,0.06)] focus-within:border-violet-line"
+              class="rounded-14px border border-solid border-line bg-[linear-gradient(#fbfcfc,#fff)] px-12px pt-10px pb-10px shadow-[inset_0_0_10px_rgba(31,35,41,0.086),inset_0_1px_0_rgba(31,35,41,0.04)] [transition:box-shadow_0.11s_ease,border-color_0.11s_ease] focus-within:border-violet-line motion-reduce:transition-none"
             >
               <div v-if="selectedSkill" class="mb-6px flex">
                 <span
@@ -1059,6 +1266,37 @@ onUnmounted(() => controller?.abort())
                   </button>
                 </span>
               </div>
+              <ul v-if="attachments.length" class="m-0 mb-6px flex list-none gap-8px p-0" aria-label="已添加的图片">
+                <li v-for="(url, i) in attachments" :key="url" class="relative h-56px w-56px flex-none">
+                  <img
+                    :src="url"
+                    :alt="`图片 ${i + 1}`"
+                    class="block h-56px w-56px rounded-8px border border-solid border-line bg-surface2 object-cover"
+                  />
+                  <button
+                    type="button"
+                    title="移除图片"
+                    :aria-label="`移除图片 ${i + 1}`"
+                    :disabled="streaming"
+                    :class="[
+                      'absolute -right-6px -top-6px grid h-18px w-18px place-items-center rounded-999px border border-solid border-line bg-white p-0 text-ink-2 cursor-pointer hover:text-ink disabled:(cursor-not-allowed opacity-50)',
+                      FOCUS,
+                    ]"
+                    @click="removeImage(i)"
+                  >
+                    <svg
+                      class="h-10px w-10px"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.4"
+                      aria-hidden="true"
+                    >
+                      <path :d="ICON.x" />
+                    </svg>
+                  </button>
+                </li>
+              </ul>
               <n-input
                 :value="draft"
                 type="textarea"
@@ -1068,29 +1306,37 @@ onUnmounted(() => controller?.abort())
                 :disabled="streaming"
                 placeholder="描述你的创作目标、风格方向或产品卖点"
                 aria-label="输入消息"
+                class="!bg-transparent"
                 @update:value="onDraftInput"
                 @keydown="onKeydown"
               />
               <div class="mt-6px flex items-center gap-8px">
-                <span :title="SOON" class="inline-flex">
-                  <button
-                    type="button"
-                    disabled
-                    class="inline-flex h-28px items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-not-allowed opacity-60"
+                <button
+                  ref="imagePillEl"
+                  type="button"
+                  aria-haspopup="dialog"
+                  :aria-label="`添加图片，已添加 ${attachments.length}/${MAX_IMAGES}`"
+                  :disabled="streaming"
+                  :class="[
+                    'inline-flex h-28px items-center gap-4px rounded-999px border border-solid bg-white px-10px text-12px cursor-pointer shadow-[0_1px_2px_rgba(31,35,41,0.04)] hover:border-violet-line disabled:(cursor-not-allowed opacity-60)',
+                    attachments.length ? 'border-violet-line text-violet-ink' : 'border-line text-ink-2',
+                    T_BTN,
+                    FOCUS,
+                  ]"
+                  @click="openImageDialog"
+                >
+                  <svg
+                    class="h-13px w-13px"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
                   >
-                    <svg
-                      class="h-13px w-13px"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      aria-hidden="true"
-                    >
-                      <path :d="ICON.image" />
-                    </svg>
-                    图片 0/4
-                  </button>
-                </span>
+                    <path :d="ICON.image" />
+                  </svg>
+                  图片 {{ attachments.length }}/{{ MAX_IMAGES }}
+                </button>
                 <button
                   v-if="skills.length"
                   ref="skillPillEl"
@@ -1100,8 +1346,9 @@ onUnmounted(() => controller?.abort())
                   :title="selectedSkill?.description"
                   :disabled="streaming"
                   :class="[
-                    'inline-flex h-28px max-w-[220px] items-center gap-4px rounded-999px border border-solid bg-white px-10px text-12px cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
+                    'inline-flex h-28px max-w-[220px] items-center gap-4px rounded-999px border border-solid bg-white px-10px text-12px cursor-pointer shadow-[0_1px_2px_rgba(31,35,41,0.04)] hover:border-violet-line disabled:cursor-not-allowed',
                     selectedSkill ? 'border-line text-ink-2' : 'border-violet-line text-violet-ink',
+                    T_BTN,
                     FOCUS,
                   ]"
                   @click="openSkillDialog"
@@ -1134,25 +1381,72 @@ onUnmounted(() => controller?.abort())
                     <path :d="ICON.chevronDown" />
                   </svg>
                 </button>
-                <span :title="SOON" class="inline-flex">
-                  <button
-                    type="button"
-                    disabled
-                    class="inline-flex h-28px items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-not-allowed opacity-60"
-                  >
-                    ZH 中文
-                    <svg
-                      class="h-12px w-12px text-muted"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      aria-hidden="true"
+                <n-popover
+                  :show="languageShow"
+                  trigger="click"
+                  placement="top-start"
+                  :show-arrow="false"
+                  :disabled="streaming"
+                  content-class="!p-0"
+                  @update:show="onLanguageShow"
+                >
+                  <template #trigger>
+                    <button
+                      ref="languagePillEl"
+                      type="button"
+                      aria-haspopup="dialog"
+                      :aria-expanded="languageShow"
+                      :aria-label="`回答语言：${selectedLanguage.name}，点击更换`"
+                      :disabled="streaming"
+                      :class="[
+                        'inline-flex h-28px items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-pointer shadow-[0_1px_2px_rgba(31,35,41,0.04)] hover:border-violet-line disabled:(cursor-not-allowed opacity-60)',
+                        T_BTN,
+                        FOCUS,
+                      ]"
                     >
-                      <path :d="ICON.chevronDown" />
-                    </svg>
-                  </button>
-                </span>
+                      {{ selectedLanguage.name }}
+                      <svg
+                        class="h-12px w-12px text-muted"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        aria-hidden="true"
+                      >
+                        <path :d="ICON.chevronDown" />
+                      </svg>
+                    </button>
+                  </template>
+                  <div
+                    id="agent-language-panel"
+                    role="dialog"
+                    aria-label="选择语言"
+                    class="grid w-480px max-w-[calc(100vw-48px)] grid-cols-3 gap-6px p-10px"
+                    @keydown.esc.stop.prevent="closeLanguage"
+                  >
+                    <button
+                      v-for="l in AGENT_LANGUAGES"
+                      :key="l.code"
+                      type="button"
+                      :aria-pressed="languageCode === l.code"
+                      :class="[
+                        'flex h-36px min-w-0 items-center gap-8px rounded-8px border border-solid px-10px text-left text-13px text-ink cursor-pointer',
+                        languageCode === l.code
+                          ? 'border-violet bg-violet-soft'
+                          : 'border-line bg-white hover:border-violet-line',
+                        FOCUS,
+                      ]"
+                      @click="pickLanguage(l.code)"
+                    >
+                      <span
+                        class="flex-none rounded-4px bg-surface3 px-5px text-11px font-600 leading-18px text-muted"
+                        aria-hidden="true"
+                        >{{ l.code }}</span
+                      >
+                      <span class="truncate">{{ l.name }}</span>
+                    </button>
+                  </div>
+                </n-popover>
                 <span class="flex-1" />
                 <span
                   v-if="skillMissing && !streaming"
@@ -1165,7 +1459,9 @@ onUnmounted(() => controller?.abort())
                   type="button"
                   :disabled="stopping"
                   :class="[
-                    'inline-flex h-32px flex-none items-center justify-center rounded-8px border border-solid border-line-strong bg-white px-16px text-13px text-ink cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
+                    'inline-flex h-32px flex-none items-center justify-center rounded-8px border border-solid border-line-strong px-16px text-13px text-ink cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
+                    BTN_SURFACE,
+                    T_BTN,
                     FOCUS,
                   ]"
                   @click="stop"
@@ -1177,7 +1473,10 @@ onUnmounted(() => controller?.abort())
                   type="button"
                   :disabled="!draft.trim() || skillMissing"
                   :aria-describedby="skillMissing ? 'agent-skill-required' : undefined"
-                  :class="['ll-btn-primary !rounded-8px h-32px flex-none gap-4px px-16px text-13px', FOCUS]"
+                  :class="[
+                    'll-btn-primary !rounded-8px h-32px flex-none gap-4px px-16px text-13px ![transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s_ease,box-shadow_0.11s_ease,color_0.11s_ease] motion-reduce:!transition-none',
+                    FOCUS,
+                  ]"
                   @click="send(draft)"
                 >
                   <svg
@@ -1345,5 +1644,122 @@ onUnmounted(() => controller?.abort())
         </div>
       </template>
     </n-modal>
+
+    <!-- 上传素材：页签与选择技能同款分段控件；本地上传走商拍工作室同一条直传，资产页签复用资产选择器 -->
+    <n-modal
+      v-model:show="imageDialogShow"
+      preset="card"
+      closable
+      :bordered="false"
+      :segmented="{ content: true }"
+      :style="{ width: '680px', maxWidth: 'calc(100vw - 48px)' }"
+      header-style="padding: 16px 20px"
+      content-style="padding: 16px 20px 20px"
+      aria-labelledby="agent-image-dialog-title"
+      @after-leave="imagePillEl?.focus()"
+    >
+      <template #header>
+        <div class="flex items-center gap-8px">
+          <span id="agent-image-dialog-title" class="text-16px font-600 leading-24px text-ink">上传素材</span>
+          <span class="rounded-6px bg-surface3 px-8px text-12px font-400 leading-20px text-muted"
+            >Ctrl + V 粘贴图片</span
+          >
+        </div>
+      </template>
+
+      <div class="flex flex-col gap-12px">
+        <div class="flex min-w-0">
+          <div
+            role="group"
+            aria-label="素材来源"
+            class="inline-flex max-w-full flex-nowrap items-center gap-2px overflow-x-auto rounded-10px border border-solid border-line bg-surface2 p-3px"
+          >
+            <span v-for="t in IMAGE_TABS" :key="t.key" :title="t.soon ? SOON : undefined" class="inline-flex flex-none">
+              <button
+                type="button"
+                :disabled="t.soon"
+                :aria-pressed="imageTab === t.key"
+                :class="[
+                  'inline-flex h-30px flex-none items-center justify-center whitespace-nowrap rounded-8px border border-solid px-14px text-13px leading-none cursor-pointer disabled:(cursor-not-allowed opacity-50)',
+                  imageTab === t.key
+                    ? 'border-line bg-white font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.08)]'
+                    : 'border-transparent bg-transparent text-ink-2 hover:text-ink',
+                  FOCUS,
+                ]"
+                @click="imageTab = t.key"
+              >
+                {{ t.label }}
+              </button>
+            </span>
+          </div>
+        </div>
+
+        <div
+          v-if="imageTab === 'local'"
+          :class="[
+            'flex min-h-240px flex-col items-center justify-center gap-8px rounded-12px border border-dashed px-20px py-24px text-center',
+            dragging ? 'border-violet bg-violet-soft' : 'border-line-strong bg-surface2',
+          ]"
+          @dragover.prevent="dragging = true"
+          @dragleave.prevent="dragging = false"
+          @drop.prevent="onDrop"
+        >
+          <span
+            class="grid h-44px w-44px place-items-center rounded-12px bg-violet-soft-2 text-violet"
+            aria-hidden="true"
+          >
+            <n-spin v-if="uploading" size="small" />
+            <svg
+              v-else
+              class="h-20px w-20px"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linejoin="round"
+            >
+              <path :d="ICON.upload" />
+            </svg>
+          </span>
+          <p class="m-0 text-13px text-ink-2">{{ IMAGE_FORMATS }}</p>
+          <p class="m-0 text-12px text-muted">当前还能添加 {{ imageRoom }} 张图片</p>
+          <button
+            type="button"
+            :disabled="uploading"
+            :aria-busy="uploading"
+            :class="['ll-btn-primary !rounded-8px mt-4px h-32px px-16px text-13px', FOCUS]"
+            @click="imageRoom > 0 ? fileInputEl?.click() : message.warning(LIMIT_TEXT)"
+          >
+            选择本地图片
+          </button>
+          <input
+            ref="fileInputEl"
+            type="file"
+            multiple
+            :accept="IMAGE_ACCEPT"
+            class="hidden"
+            tabindex="-1"
+            aria-hidden="true"
+            @change="onFileChange"
+          />
+        </div>
+
+        <div
+          v-else
+          class="flex min-h-240px flex-col items-center justify-center gap-8px rounded-12px border border-solid border-line bg-surface2 px-20px py-24px text-center"
+        >
+          <p class="m-0 text-12px text-muted">当前还能添加 {{ imageRoom }} 张图片</p>
+          <button
+            type="button"
+            :class="['ll-btn-primary !rounded-8px h-32px px-16px text-13px', FOCUS]"
+            @click="openAssetPicker"
+          >
+            从资产选择
+          </button>
+        </div>
+      </div>
+    </n-modal>
+
+    <AssetPickerModal v-model:show="assetPickerShow" :limit="Math.max(imageRoom, 1)" @select="onAssetSelect" />
   </n-config-provider>
 </template>
