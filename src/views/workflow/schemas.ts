@@ -33,6 +33,11 @@ export interface WorkflowUpload extends UploadSpec {
   javaKey: 'imageUrls' | 'imageUrl' | 'prdImageUrls' | 'videoUrl'
   verified: boolean
   note?: string
+  /**
+   * 逐张备注（仅 `prdImageUrls`）：每张图一行文本，出网为 `prdImageUrls[i].content`
+   * （Java CoreToolSubmissionRequest.ProductImage.content，@Size(max=300)，与顶层 content 不是同一个）；空的不传。
+   */
+  itemNote?: { label: string; maxLength: number }
 }
 
 export type WorkflowFieldType = 'select' | 'chips' | 'number' | 'textarea'
@@ -122,15 +127,18 @@ const video = (slot: number, label: string): WorkflowUpload => ({
   verified: false,
 })
 
-const COST = { label: '开始生成', costUnit: '张', costSource: 'image-model-configs.points[清晰度] × 张数' }
+const COST = { label: '开始生成', costUnit: '张', costSource: 'image-model-configs.points[目标分辨率] × 张数' }
 
 // ---------------- 服装（fashion）：v1 ImageRequest ----------------
 
-/** 清晰度：Java normalizeResolution 白名单 1k/2k/4k（CompatBatchCatalog.RESOLUTIONS）；v1 必填，故给默认 */
+/**
+ * 目标分辨率（契约叫「清晰度」）、画幅比例（契约叫「尺寸」）、生成张数（契约叫「张数」）：
+ * 界面标签与工具页 / 视觉复刻统一，传值不变。
+ * 分辨率：Java normalizeResolution 白名单 1k/2k/4k（CompatBatchCatalog.RESOLUTIONS）；v1 必填，故给默认 */
 const fashionFields = (): WorkflowField[] => [
   {
     key: 'resolution',
-    label: '清晰度',
+    label: '目标分辨率',
     type: 'select',
     required: true,
     default: '2K',
@@ -142,7 +150,7 @@ const fashionFields = (): WorkflowField[] => [
   {
     // 5 个比例都在 CompatBatchCatalog.ASPECT_RATIOS / GptImage2Spec 里；v1 必填
     key: 'aspectRatio',
-    label: '尺寸',
+    label: '画幅比例',
     type: 'select',
     required: true,
     default: '3:4',
@@ -153,7 +161,7 @@ const fashionFields = (): WorkflowField[] => [
   {
     // 契约 count（x1–x4）→ Java num（@Min(1) @Max(9)，按 num 扇出成 N 条历史，直接乘进计费）
     key: 'count',
-    label: '张数',
+    label: '生成张数',
     type: 'select',
     required: true,
     default: 'x1',
@@ -335,16 +343,10 @@ export const workflowSchemas: WorkflowSchema[] = [
     fixedBody: { title: 'visual-sku-replace' },
     media: 'image',
     // 每件产品单独出图：num × 产品数 个任务，一条组历史（Java isVisualSkuReplace）
+    // 逐件「特殊需求」→ prdImageUrls[].content（≤300 字，Java ProductImage.content，CoreToolWorkflowSubmissionAdapter 逐件读取）
     uploads: [
       img(0, '参考图', 1, 'imageUrl'),
-      img(
-        1,
-        'SKU产品图',
-        20,
-        'prdImageUrls',
-        true,
-        '逐件「特殊需求」（prdImageUrls[].content ≤300 字）契约未给字段，当前不传',
-      ),
+      { ...img(1, 'SKU产品图', 20, 'prdImageUrls'), itemNote: { label: '特殊需求', maxLength: 300 } },
     ],
     fields: [
       visualResolution(),
@@ -391,6 +393,14 @@ export function resolveWorkflowSchema(flow: string, category: string, template: 
   if (!sameFlow.length) return undefined
   if (template) return sameFlow.find((s) => s.name === template || s.templateTitle === template)
   return sameFlow.find((s) => s.category === category) ?? sameFlow[0]
+}
+
+/** 工具目录等外部入口跳到某个工作流：与工作流页模板切换同一 query 形状（flow / category / template） */
+export function workflowRouteOf(templateTitle: string): string | undefined {
+  const s = workflowSchemas.find((x) => x.templateTitle === templateTitle)
+  if (!s) return undefined
+  const query = new URLSearchParams({ flow: s.flow, category: s.category, template: s.name })
+  return `/workflow?${query.toString()}`
 }
 
 /** 界面值 → Java 取值；undefined 表示不传该键 */

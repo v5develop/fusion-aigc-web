@@ -43,7 +43,9 @@ const sizeText = computed(() => {
   return mb >= 1024 ? `${mb / 1024}G` : `${mb}M`
 })
 const hint = computed(() => {
-  const parts = [`支持 ${extText.value}`, `单个不超过 ${sizeText.value}`]
+  if (props.spec.hint) return props.spec.hint
+  // 原型口径：「支持 JPG / JPEG / PNG / WEBP / GIF，单张不超过 10MB」（校验报错仍用 sizeText）
+  const parts = [`支持 ${extText.value}`, `单${isVideo.value ? '段' : '张'}不超过 ${sizeText.value}B`]
   if (props.spec.max > 1) parts.push(`最多 ${props.spec.max} ${isVideo.value ? '段' : '张'}`)
   if (props.spec.minDuration || props.spec.maxDuration)
     parts.push(`时长 ${props.spec.minDuration ?? 0}–${props.spec.maxDuration ?? '∞'} 秒`)
@@ -134,7 +136,8 @@ async function onChange(e: Event) {
 // ---------------- 从资产选择 ----------------
 
 const assetShow = ref(false)
-const canPickAsset = computed(() => !!props.assetPicker && !isVideo.value)
+/** 图片槽才有；`video` 版式（新版原型视频高清）也出「资产添加」，选回的地址照常按 accept 校验 */
+const canPickAsset = computed(() => !!props.assetPicker && (!isVideo.value || mode.value === 'video'))
 
 function openAssetPicker() {
   if (props.disabled || uploading.value) return
@@ -223,10 +226,11 @@ onBeforeUnmount(() => {
 })
 
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
-/** B3.1 上传卡：434×742 的外壳，内边距 13 */
+/** B3.1 上传卡：434×742 的外壳，内边距 13；材质照抄原型（内凹 16 柔影 + 顶 1px 内线，边框 / 底色 200ms 过渡） */
 const cardCls =
   'relative w-full max-w-[434px] box-border p-[13px] rounded-10px bg-white ' +
-  'shadow-[0_0_0_1px_rgba(31,35,41,0.05),0_1px_3px_rgba(31,35,41,0.06)]'
+  'shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)] ' +
+  '[transition:border-color_0.2s_ease,background_0.2s_ease]'
 /** 白边浮片：60×100 · r5 · 1px #fff · 0 1px 3px .16；悬停只把影压深 */
 const plateCls =
   'relative box-border w-60px h-100px rounded-5px border border-solid border-white bg-white ' +
@@ -256,7 +260,9 @@ const seamCls = [
         ? ['tus-plate relative flex-[0_0_auto] min-w-0', seamCls]
         : mode === 'single' || mode === 'batch'
           ? 'w-full flex justify-center'
-          : ''
+          : mode === 'video'
+            ? 'flex-1 min-h-[300px] flex'
+            : ''
     "
   >
     <div :class="showHeader ? 'll-label' : 'sr-only'">
@@ -306,7 +312,7 @@ const seamCls = [
     <div v-else-if="!urls.length && (mode === 'batch' || mode === 'single')" :class="[cardCls, 'h-[742px]']">
       <button
         type="button"
-        class="relative block w-full h-full box-border p-0 rounded-8px cursor-pointer transition-colors disabled:cursor-not-allowed"
+        class="relative block w-full h-full box-border p-0 rounded-8px cursor-pointer [transition:border-color_0.2s_ease,background-color_0.2s_ease] motion-reduce:transition-none disabled:cursor-not-allowed"
         :class="[
           focusRing,
           mode === 'batch'
@@ -354,8 +360,9 @@ const seamCls = [
         </span>
         <span class="absolute inset-x-12px top-[calc(50%+46px)] flex flex-col items-center gap-6px text-center">
           <b class="text-13px font-600 leading-[1.4] text-ink">{{
-            uploading ? '上传中…' : `点击上传${isVideo ? '视频' : '图片'}`
+            uploading ? '上传中…' : (spec.title ?? `点击上传${isVideo ? '视频' : '图片'}`)
           }}</b>
+          <span v-if="spec.subtitle" class="text-11px leading-[1.5] text-muted">{{ spec.subtitle }}</span>
           <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
           <span v-if="mode === 'batch'" class="text-11px leading-[1.5] text-muted">已选 0 / {{ spec.max }}</span>
         </span>
@@ -365,13 +372,51 @@ const seamCls = [
         v-if="canPickAsset"
         type="button"
         class="ll-pill absolute left-1/2 -translate-x-1/2 z-1"
-        :class="[focusRing, mode === 'batch' ? 'top-[calc(50%+122px)]' : 'top-[calc(50%+100px)]']"
+        :class="[focusRing, mode === 'batch' || spec.subtitle ? 'top-[calc(50%+122px)]' : 'top-[calc(50%+100px)]']"
         :disabled="disabled || uploading"
         :aria-label="`从资产库选择${spec.label}`"
         @click="openAssetPicker"
       >
         从资产选择
       </button>
+    </div>
+
+    <!--
+      空态（video）：新版原型视频高清——卡片撑满余高（操作栏 833 高时为 434×607）、1px line 描边、圆角 6、内边距 12；
+      文案块靠上居中：大字 13/18.2·600 距卡顶 43，说明与格式行 11/16.5，间距 6；格式行下 8 是「资产添加」72×30。
+      整卡是上传按钮（铺满的透明按钮），「资产添加」是它的兄弟节点（按钮里不能再套按钮）。
+    -->
+    <div
+      v-else-if="!urls.length && mode === 'video'"
+      class="group relative flex-1 min-w-0 box-border p-12px rounded-6px border border-solid border-line bg-white shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)] [transition:border-color_0.2s_ease,background-color_0.2s_ease] motion-reduce:transition-none hover:border-violet-line"
+    >
+      <button
+        type="button"
+        class="absolute inset-0 w-full h-full p-0 rounded-6px border-none bg-transparent cursor-pointer disabled:cursor-not-allowed"
+        :class="focusRing"
+        :disabled="disabled || uploading"
+        :aria-label="uploading ? '上传中…' : (spec.title ?? `点击上传${isVideo ? '视频' : '图片'}`)"
+        :aria-describedby="`${id}-hint`"
+        @click="pick"
+      />
+      <div class="relative flex flex-col items-center gap-6px pt-30px text-center pointer-events-none">
+        <b class="text-13px font-600 leading-[1.4] text-ink">{{
+          uploading ? '上传中…' : (spec.title ?? `点击上传${isVideo ? '视频' : '图片'}`)
+        }}</b>
+        <span v-if="spec.subtitle" class="text-11px leading-[1.5] text-muted">{{ spec.subtitle }}</span>
+        <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
+        <button
+          v-if="canPickAsset"
+          type="button"
+          class="mt-2px h-30px box-border px-10px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer pointer-events-auto [transition:color_0.3s_cubic-bezier(0.4,0,0.2,1),background-color_0.3s_cubic-bezier(0.4,0,0.2,1),opacity_0.3s_cubic-bezier(0.4,0,0.2,1),border-color_0.3s_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+          :class="focusRing"
+          :disabled="disabled || uploading"
+          :aria-label="`从资产库添加${spec.label}`"
+          @click="openAssetPicker"
+        >
+          资产添加
+        </button>
+      </div>
     </div>
 
     <!-- 有图（batch / pipe）：60×100 白边浮片格；pipe 空态也走这里（4 个底图占位 + 添加格） -->

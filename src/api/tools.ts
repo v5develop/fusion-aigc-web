@@ -7,7 +7,8 @@
  *
  * <p>提交即计费；不带 Idempotency-Key 时重试会重复扣费，所以每次提交都带一个新的 UUID。
  */
-import { get, post } from './index.ts'
+import { ApiError, authorizedFetch, get, post } from './index.ts'
+import type { ApiResponse } from './types'
 import { createSafeUuid } from '@/utils/utils'
 
 /** 异步工具的提交凭据（CoreToolWorkflowSubmissionAdapter.Submission，NON_NULL：tools 路由只有 taskId 或 taskIds） */
@@ -92,6 +93,49 @@ export function submitCutout(imageUrl: string) {
 /** 某个工具的历史（只返回本人的记录；toolTitle 是工具路径最后一段） */
 export function toolHistories(toolTitle: string, page = 1, size = 20) {
   return get<ToolHistoryPage>(`/api/v1/tools/${toolTitle}/histories`, { page, size })
+}
+
+/**
+ * 带 JSON 请求体的 DELETE（Java 历史批量删除是 `@RequestBody`）。
+ *
+ * <p>api/index.ts 的 del() 只带 query，这里借 authorizedFetch（同一 baseURL、Bearer、401 刷新）发请求体；
+ * 它不走 axios 拦截器，所以<b>业务失败不会自动 toast</b>：一律抛 ApiError，由调用方提示。
+ */
+export async function deleteWithBody(url: string, body: Record<string, unknown>): Promise<void> {
+  let resp: Response
+  try {
+    resp = await authorizedFetch(url, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    throw new ApiError(err instanceof Error ? err.message : '网络异常', { code: -1, isNetwork: true })
+  }
+  const json = (await resp.json().catch(() => null)) as ApiResponse | null
+  const code = typeof json?.code === 'number' ? json.code : -1
+  if (resp.ok && code === 0) return
+  throw new ApiError(json?.msg || '删除失败，请重试', {
+    code: code === 0 ? -1 : code,
+    httpStatus: resp.ok ? undefined : resp.status,
+  })
+}
+
+/**
+ * 删除工具历史：DELETE /api/v1/tools/{toolTitle}/histories，请求体 {aiToolHistoryIds:[id]}。
+ * 整批校验，任务仍在进行中会整批拒绝。
+ */
+export function deleteToolHistories(toolTitle: string, ids: number[]) {
+  return deleteWithBody(`/api/v1/tools/${toolTitle}/histories`, { aiToolHistoryIds: ids })
+}
+
+/**
+ * GET /api/v1/features/biz-points：按当前用户返回「业务 → 所需点数」（只用于展示，不构成预留）。
+ * 值有两种：纯数字（cutout / ocr / aiWrite），或按档位的对象（videoEnhance[tier] = {points, unit}）；
+ * 报不出价的项不下发。
+ */
+export function bizPoints() {
+  return get<Record<string, unknown>>('/api/v1/features/biz-points')
 }
 
 /** 文字识别（同步，单独计费）：文字替换的「识别文字」 */

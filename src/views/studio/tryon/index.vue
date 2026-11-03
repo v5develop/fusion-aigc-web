@@ -19,13 +19,13 @@ import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.v
 import StudioImageUpload from '../components/StudioImageUpload/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
+import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
 import GarmentAngleDialog from '../components/GarmentAngleDialog/index.vue'
 import AssetPickerModal from '../components/AssetPickerModal/index.vue'
 import { useIdempotentSubmit } from '../hooks.ts'
 import {
   ANGLE_OPTIONS,
   ANGLE_SEQUENCE,
-  COUNT_OPTIONS,
   MAX_GARMENT_IMAGES,
   MAX_GARMENT_PER_ROLE,
   MAX_ITEMS,
@@ -238,9 +238,6 @@ const fabricText = computed(() =>
 
 const taskCount = computed(() => modelImages.value.length * form.count_per_model)
 const submitText = computed(() => (taskCount.value ? `开始换装（${taskCount.value} 张）` : '开始换装'))
-const metaText = computed(
-  () => `共 ${taskCount.value} 张 = ${modelImages.value.length} 位模特 × 每位 ${form.count_per_model} 张`,
-)
 
 /** 未就绪原因（提交条置灰展示）；空 = 就绪 */
 const disabledReason = computed(() => {
@@ -503,12 +500,6 @@ function onReedit(payload: Record<string, unknown>) {
         </div>
       </div>
 
-      <!-- 每位模特张数 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">每位模特生成张数</div>
-        <n-select v-model:value="form.count_per_model" size="small" :options="COUNT_OPTIONS" />
-      </div>
-
       <!-- 各单品参数：按件一行（32 缩略图 + 面料 + 长度 / 袖长）；鞋子 / 配饰 / 文胸 / 内裤只有面料；没填显示「按图」 -->
       <div v-if="selectedItems.length" class="mb-16px">
         <div class="ll-section-title flex items-baseline gap-6px">
@@ -602,31 +593,14 @@ function onReedit(payload: Record<string, unknown>) {
         </div>
       </div>
 
-      <!-- 补充说明 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">
-          补充说明<span class="text-11px text-placeholder font-400">选填</span>
-        </div>
-        <n-input
-          v-model:value="form.prompt"
-          type="textarea"
-          :rows="3"
-          :maxlength="3000"
-          show-count
-          placeholder="门襟暗扣、裤脚开衩这类设计点；背景、姿势要求也可以写"
-        />
-      </div>
-
-      <!-- 生图参数 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">生图参数</div>
-        <ModelSettings
-          v-model:model="form.model"
-          v-model:resolution="form.resolution"
-          v-model:aspect-ratio="form.aspect_ratio"
-          auto-ratio
-        />
-      </div>
+      <!-- 补充说明（原型：框内文本 + 左下角计数，无分组标题） -->
+      <CreationPromptInput
+        v-model="form.prompt"
+        :rows="6"
+        :max-length="3000"
+        aria-label="补充说明"
+        placeholder="门襟暗扣、裤脚开衩这类设计点写这里；背景、姿势要求也可以写（选填）"
+      />
 
       <!-- 弹层放壳内：跟 naive 组件同处 llTheme 的 abstract provider 下（teleport 不丢主题） -->
       <AssetPickerModal v-model:show="assetShow" :limit="garmentRoom" @select="addGarmentAssets" />
@@ -642,15 +616,25 @@ function onReedit(payload: Record<string, unknown>) {
     </template>
 
     <template #action>
-      <StudioSubmitBar
-        :label="submitText"
-        :submitting="submitting"
-        :disabled="!!disabledReason"
-        :disabled-reason="disabledReason"
-        :meta-text="metaText"
-        :retry="idem.retrying.value"
-        @submit="submit"
-      />
+      <!-- 原型底部：设置行（模型 | 图片设置）→ 整宽主按钮 -->
+      <div class="flex flex-col gap-12px">
+        <ModelSettings
+          v-model:model="form.model"
+          v-model:resolution="form.resolution"
+          v-model:aspect-ratio="form.aspect_ratio"
+          v-model:count="form.count_per_model"
+          count-label="每位模特生成张数"
+          auto-ratio
+        />
+        <StudioSubmitBar
+          :label="submitText"
+          :submitting="submitting"
+          :disabled="!!disabledReason"
+          :disabled-reason="disabledReason"
+          :retry="idem.retrying.value"
+          @submit="submit"
+        />
+      </div>
     </template>
   </StudioWorkspaceColumns>
 </template>

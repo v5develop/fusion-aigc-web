@@ -103,7 +103,8 @@ defineExpose({
           <div class="stu-scroll flex-1 min-h-0 pt-6px px-14px pb-14px overflow-y-auto [scrollbar-gutter:stable]">
             <slot name="operate" />
           </div>
-          <div class="flex-none pt-10px px-14px pb-12px border-t border-solid border-line-soft">
+          <!-- 底部：设置行 + 主按钮（原型不画分隔线） -->
+          <div class="flex-none pt-4px px-14px pb-12px">
             <slot name="action" />
           </div>
         </section>

@@ -6,8 +6,9 @@
  * 游标分页（滚动触底自动加载 + 兜底按钮）；在跑批次由 useStudioHistory 自动轮询。
  * 操作：重新编辑（parse payload 后上抛）/ 取消（非终态）/ 删除（终态，二次确认）。
  */
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { useMessage } from 'naive-ui'
+import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
 import { studioCancelBatch, studioDeleteBatch } from '@/api/studio.ts'
 import type { StudioBatchDetail } from '@/api/studioTypes.ts'
 import type { useStudioHistory } from '../../hooks.ts'
@@ -74,49 +75,66 @@ function onScroll() {
   if (el.scrollTop + el.clientHeight < el.scrollHeight - 120) return
   void ctl.loadMore()
 }
-
-const countText = computed(() => {
-  const n = ctl.items.value.length
-  return n ? `${n} 条` : ''
-})
 </script>
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <div class="flex flex-none items-center gap-8px pt-12px px-12px pb-8px">
-      <span class="text-13px font-600 text-ink">生成历史</span>
-      <span v-if="countText" class="text-11px text-placeholder">{{ countText }}</span>
-      <span class="ll-link ml-auto" @click="ctl.reload()">刷新</span>
-    </div>
+    <CreationHistoryHeader :count="ctl.items.value.length" @refresh="ctl.reload()" />
 
-    <div ref="listEl" class="stu-scroll flex-1 min-h-0 px-12px pb-12px overflow-y-auto [scrollbar-gutter:stable]" v-loading="ctl.loading.value" @scroll="onScroll">
+    <div
+      ref="listEl"
+      class="stu-scroll flex-1 min-h-0 px-12px pb-12px overflow-y-auto [scrollbar-gutter:stable]"
+      v-loading="ctl.loading.value"
+      @scroll="onScroll"
+    >
       <div
         v-for="d in ctl.items.value"
         :key="d.batch.id"
         class="flex gap-10px items-start p-10px mb-8px border border-solid rounded-8px shadow-[0_1px_2px_rgba(31,35,41,0.04)] cursor-pointer transition-[border-color,background-color] duration-180 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
-        :class="d.batch.id === selectedId ? 'border-violet-line bg-#f8f4fb' : 'border-line bg-white hover:border-#d9dde2 hover:bg-#fbfcfc'"
+        :class="
+          d.batch.id === selectedId
+            ? 'border-violet-line bg-#f8f4fb'
+            : 'border-line bg-white hover:border-#d9dde2 hover:bg-#fbfcfc'
+        "
         @click="emit('select', d)"
       >
-        <div class="flex w-48px h-48px flex-[0_0_48px] items-center justify-center overflow-hidden rounded-6px bg-violet-soft">
+        <div
+          class="flex w-48px h-48px flex-[0_0_48px] items-center justify-center overflow-hidden rounded-6px bg-violet-soft"
+        >
           <img v-if="d.batch.cover_url" :src="d.batch.cover_url" alt="" class="block w-full h-full object-cover" />
           <span v-else class="text-11px text-violet-ink">{{ (KIND_LABEL[d.batch.kind] ?? '批次').slice(0, 2) }}</span>
         </div>
         <div class="flex-1 min-w-0">
           <div class="flex gap-8px items-center justify-between">
-            <span class="overflow-hidden text-12px font-600 text-ink whitespace-nowrap text-ellipsis">{{ KIND_LABEL[d.batch.kind] ?? d.batch.kind }} · {{ d.batch.task_total }}张</span>
+            <span class="overflow-hidden text-12px font-600 text-ink whitespace-nowrap text-ellipsis"
+              >{{ KIND_LABEL[d.batch.kind] ?? d.batch.kind }} · {{ d.batch.task_total }}张</span
+            >
             <span class="ll-chip" :class="batchChip(d.batch.status).cls">{{ batchChip(d.batch.status).label }}</span>
           </div>
-          <div class="mt-3px text-11px text-muted">成功 {{ d.batch.task_done }} · 失败 {{ d.batch.task_failed }} · {{ d.batch.estimated_points }}点</div>
-          <div v-if="!isBatchTerminal(d.batch.status)" class="h-4px mt-6px overflow-hidden rounded-999px bg-line-soft">
-            <div class="h-full rounded-999px bg-[linear-gradient(90deg,#8a639f,#7a548c)] transition-[width] duration-240 ease-[cubic-bezier(0.2,0.7,0.2,1)]" :style="{ width: batchProgress(d.batch) + '%' }" />
+          <div class="mt-3px text-11px text-muted">
+            成功 {{ d.batch.task_done }} · 失败 {{ d.batch.task_failed }} · {{ d.batch.estimated_points }}点
           </div>
-          <div v-else-if="d.batch.error_reason" class="mt-4px overflow-hidden text-11px text-danger whitespace-nowrap text-ellipsis" :title="d.batch.error_reason">{{ d.batch.error_reason }}</div>
+          <div v-if="!isBatchTerminal(d.batch.status)" class="h-4px mt-6px overflow-hidden rounded-999px bg-line-soft">
+            <div
+              class="h-full rounded-999px bg-[linear-gradient(90deg,#8a639f,#7a548c)] transition-[width] duration-240 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
+              :style="{ width: batchProgress(d.batch) + '%' }"
+            />
+          </div>
+          <div
+            v-else-if="d.batch.error_reason"
+            class="mt-4px overflow-hidden text-11px text-danger whitespace-nowrap text-ellipsis"
+            :title="d.batch.error_reason"
+          >
+            {{ d.batch.error_reason }}
+          </div>
           <div class="flex gap-8px items-center justify-between mt-6px">
             <span class="text-10px text-placeholder">{{ formatTime(d.batch.created_at) }}</span>
             <span class="flex gap-10px" @click.stop>
               <span class="text-11px text-violet cursor-pointer hover:text-violet-press" @click="reedit(d)">编辑</span>
               <n-popconfirm v-if="!isBatchTerminal(d.batch.status)" @positive-click="cancelBatch(d)">
-                <template #trigger><span class="text-11px text-violet cursor-pointer hover:text-violet-press">取消</span></template>
+                <template #trigger
+                  ><span class="text-11px text-violet cursor-pointer hover:text-violet-press">取消</span></template
+                >
                 只会取消还没开始的任务，已开始的继续跑完，确定取消？
               </n-popconfirm>
               <n-popconfirm v-else @positive-click="removeBatch(d)">
@@ -130,11 +148,21 @@ const countText = computed(() => {
 
       <div v-if="!ctl.loading.value && !ctl.items.value.length" class="py-40px px-12px text-center">
         <p class="m-0 text-13px font-600 text-ink-2">还没有生成记录</p>
-        <p class="mt-6px mb-0 mx-0 text-11px leading-17px text-placeholder">左侧传好素材、点底部按钮提交，每次生成都会在这一列留一条</p>
+        <p class="mt-6px mb-0 mx-0 text-11px leading-17px text-placeholder">
+          左侧传好素材、点底部按钮提交，每次生成都会在这一列留一条
+        </p>
       </div>
       <div v-if="ctl.loadingMore.value" class="pt-8px pb-2px text-11px text-center">加载中…</div>
-      <div v-else-if="ctl.hasMore.value && ctl.items.value.length" class="ll-link pt-8px pb-2px !text-11px text-center" @click="ctl.loadMore()">加载更多</div>
-      <div v-else-if="ctl.items.value.length" class="pt-8px pb-2px text-11px text-center text-placeholder">没有更多了</div>
+      <div
+        v-else-if="ctl.hasMore.value && ctl.items.value.length"
+        class="ll-link pt-8px pb-2px !text-11px text-center"
+        @click="ctl.loadMore()"
+      >
+        加载更多
+      </div>
+      <div v-else-if="ctl.items.value.length" class="pt-8px pb-2px text-11px text-center text-placeholder">
+        没有更多了
+      </div>
     </div>
   </div>
 </template>

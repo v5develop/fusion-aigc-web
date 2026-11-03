@@ -15,6 +15,7 @@ import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.v
 import StudioImageUpload from '../components/StudioImageUpload/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
+import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
 import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
 import { useIdempotentSubmit } from '../hooks.ts'
 import { MAX_POSE_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
@@ -63,7 +64,6 @@ const idem = useIdempotentSubmit()
 idem.bindForm(form, sourceImages, poseImages, poseNotes)
 
 const submitText = computed(() => (poseImages.value.length ? `开始复刻（${poseImages.value.length} 张）` : '开始复刻'))
-const metaText = computed(() => `共 ${poseImages.value.length} 张 = 每张姿势参考图各出一个任务`)
 
 /** 未就绪原因（提交条置灰展示）；空 = 就绪 */
 const disabledReason = computed(() => {
@@ -200,42 +200,38 @@ function onReedit(payload: Record<string, unknown>) {
       </div>
 
       <!-- 全局说明 -->
-      <div class="mb-16px">
+      <div>
         <div class="ll-section-title flex items-baseline gap-6px">
           全局补充说明<span class="text-11px text-placeholder font-400">选填，对所有姿势生效</span>
         </div>
-        <n-input
-          v-model:value="form.global_prompt"
-          type="textarea"
-          :rows="3"
-          :maxlength="3000"
-          show-count
+        <CreationPromptInput
+          v-model="form.global_prompt"
+          :rows="4"
+          :max-length="3000"
+          aria-label="全局补充说明"
           placeholder="如：保持服装不变，表情自然，室内暖光"
         />
       </div>
+    </template>
 
-      <!-- 生图参数 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">生图参数</div>
+    <template #action>
+      <!-- 原型底部：设置行（模型 | 图片设置）→ 整宽主按钮 -->
+      <div class="flex flex-col gap-12px">
         <ModelSettings
           v-model:model="form.model"
           v-model:resolution="form.resolution"
           v-model:aspect-ratio="form.aspect_ratio"
           auto-ratio
         />
+        <StudioSubmitBar
+          :label="submitText"
+          :submitting="submitting"
+          :disabled="!!disabledReason"
+          :disabled-reason="disabledReason"
+          :retry="idem.retrying.value"
+          @submit="submit"
+        />
       </div>
-    </template>
-
-    <template #action>
-      <StudioSubmitBar
-        :label="submitText"
-        :submitting="submitting"
-        :disabled="!!disabledReason"
-        :disabled-reason="disabledReason"
-        :meta-text="metaText"
-        :retry="idem.retrying.value"
-        @submit="submit"
-      />
     </template>
   </StudioWorkspaceColumns>
 </template>

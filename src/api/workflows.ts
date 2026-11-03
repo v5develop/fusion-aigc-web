@@ -9,6 +9,7 @@
  */
 import { get, post } from './index.ts'
 import { createSafeUuid } from '@/utils/utils'
+import { deleteWithBody } from './tools.ts'
 
 /** 工作流提交凭据（CoreToolWorkflowSubmissionAdapter.Submission：workflows 路由只回 workflowHistoryIds） */
 export interface WorkflowSubmission {
@@ -94,4 +95,12 @@ export function workflowTemplates(category: string) {
  */
 export function workflowHistories(workflowTitle: string, page = 1, size = 20, original = false) {
   return get<WorkflowHistoryPage>(`/api/v1/workflows/${workflowTitle}/histories`, { page, size, original })
+}
+
+/**
+ * 删除工作流历史：DELETE /api/v1/workflows/{workflowTitle}/histories，请求体 {historyIds:[id]}。
+ * 整批校验，记录（含组执行成员）仍在进行中会整批拒绝。
+ */
+export function deleteWorkflowHistories(workflowTitle: string, ids: number[]) {
+  return deleteWithBody(`/api/v1/workflows/${workflowTitle}/histories`, { historyIds: ids })
 }

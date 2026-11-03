@@ -19,9 +19,11 @@ export type UploadKind = 'image' | 'video'
  * - `pipe`：产品替换底图，60×100 · 5 列 × 4 行 = 408×512，空态 4 个底图占位 + 1 个添加格；
  * - `single`：单图，空态只有 48 云影球，卡 434×742，球在卡正中（智能消除 / 智能抠图 / 文字替换；视频单槽同用）；
  * - `ml`：单角色参考图槽，60×100 叠片，片下不写说明、数量写在槽头（首屏主图 / 场景生成）；
- * - `material`：一叠片就是入口，片下两行说明（名称 11/15·500、数量 10/15），无数字角标（产品替换素材、单图复刻 / SKU 替换）。
+ * - `material`：一叠片就是入口，片下两行说明（名称 11/15·500、数量 10/15），无数字角标（产品替换素材、单图复刻 / SKU 替换）；
+ * - `video`：新版原型视频高清的上传卡：卡片撑满操作栏余高、1px 描边圆角 6，文案靠上居中（大字 / 说明 / 格式行 / 「资产添加」），
+ *   没有云影球；用了这个版式的工具页，底部设置行与提交按钮也换成同一原型的样子（见 index.vue 的 compact）。
  */
-export type UploadLayout = 'batch' | 'pipe' | 'single' | 'ml' | 'material'
+export type UploadLayout = 'batch' | 'pipe' | 'single' | 'ml' | 'material' | 'video'
 
 export interface ToolUpload {
   /** 槽位序号（与契约 uploads[].slot 一致） */
@@ -44,12 +46,28 @@ export interface ToolUpload {
   verified: boolean
   /** s1.1 上传态版式（纯展示）；不写按 kind / max 推断：视频或单张 = single，多张 = batch */
   layout?: UploadLayout
+  /** 空态大字（纯展示，原型给了才写；不写 = 「点击上传图片 / 视频」） */
+  title?: string
+  /** 空态大字下的一行说明（纯展示，原型给了才写） */
+  subtitle?: string
+  /** 空态格式行（纯展示，原型给了才写；不写 = 按 accept / maxBytes / 时长拼出来）；校验仍按 accept / maxBytes / 时长 */
+  hint?: string
 }
 
 /** 上传槽位组件（ToolUploadSlot）只看的那几项；工作流页（views/workflow）复用同一个组件 */
 export type UploadSpec = Pick<
   ToolUpload,
-  'label' | 'kind' | 'max' | 'required' | 'maxBytes' | 'accept' | 'minDuration' | 'maxDuration'
+  | 'label'
+  | 'kind'
+  | 'max'
+  | 'required'
+  | 'maxBytes'
+  | 'accept'
+  | 'minDuration'
+  | 'maxDuration'
+  | 'title'
+  | 'subtitle'
+  | 'hint'
 >
 
 export type FieldType =
@@ -100,8 +118,12 @@ export interface ToolSchema {
   sync?: boolean
   title: string
   description: string
-  /** 功能介绍面板里的使用步骤 */
+  /** 功能介绍面板里的使用步骤（没有 scenarios 时显示） */
   steps: string[]
+  /** 功能介绍面板的「适用场景」（原型给了才写，写了就替代 steps） */
+  scenarios?: string[]
+  /** 结果卡标题（原型给了才写；不写 = 「生成结果」） */
+  resultTitle?: string
   media: UploadKind
   uploads: ToolUpload[]
   fields: ToolField[]
@@ -241,10 +263,19 @@ export const toolSchemas: ToolSchema[] = [
     historyTitle: 'cutout',
     sync: true,
     title: '智能抠图',
-    description: '识别图片主体并去除背景，快速生成透明背景商品图，适合电商展示与素材制作。',
+    description: '识别图片主体并去除背景，快速生成透明背景的商品图，适合电商展示与素材制作。',
     steps: ['上传 1 张原图', '点击「开始抠图」，通常数十秒内出结果', '下载透明背景图或放大查看'],
+    scenarios: ['电商商品图去背景', '透明底素材制作', '海报 / 拼图的主体提取'],
+    resultTitle: '抠图结果',
     media: 'image',
-    uploads: [{ ...imageSlot('原图', 1, 'imageUrl'), layout: 'single' }],
+    uploads: [
+      {
+        ...imageSlot('原图', 1, 'imageUrl'),
+        layout: 'single',
+        title: '上传需要抠图的图片',
+        subtitle: '识别主体并去除背景，输出透明底',
+      },
+    ],
     fields: [],
     submit: { label: '开始抠图', costUnit: '次', costSource: 'features/biz-points.cutout' },
     actions: ['换一张', '下载结果', '放大查看抠图结果'],
@@ -521,11 +552,16 @@ export const toolSchemas: ToolSchema[] = [
     title: '视频高清',
     description: '上传视频后选择目标分辨率，提升视频清晰度与细节表现，支持 720P 到 4K。',
     steps: ['上传 1 段视频（2–300 秒，≤500M）', '选择目标分辨率', '点击「开始提升画质」'],
+    scenarios: ['老素材 / 低码率视频的画质提升', '投放前的成片规格升级', '拉伸放大前的清晰度补齐'],
     media: 'video',
     uploads: [
       {
         slot: 0,
         label: '视频',
+        layout: 'video',
+        title: '上传需要提升画质的视频',
+        subtitle: '选择目标分辨率后提交',
+        hint: '支持 MP4 / MOV / WEBM，单个不超过 500MB，时长 2～300 秒',
         kind: 'video',
         max: 1,
         required: true,

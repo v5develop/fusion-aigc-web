@@ -13,9 +13,10 @@ import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.v
 import StudioImageUpload from '../components/StudioImageUpload/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
+import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
 import PromptLibraryPicker from '../components/PromptLibraryPicker/index.vue'
 import { useIdempotentSubmit } from '../hooks.ts'
-import { COUNT_OPTIONS, MAX_REF_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
+import { MAX_REF_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
 
 defineOptions({ name: 'studio-imagegen' })
 
@@ -51,7 +52,6 @@ const idem = useIdempotentSubmit()
 idem.bindForm(form, refImages)
 
 const submitText = computed(() => `开始生成（${form.count} 张）`)
-const metaText = computed(() => `共 ${form.count} 张 = 一次提交拆 ${form.count} 个任务`)
 
 /** 未就绪原因（提交条置灰展示）；空 = 就绪 */
 const disabledReason = computed(() => (form.prompt.trim() ? '' : '输入提示词，或从提示词库选择'))
@@ -114,22 +114,6 @@ function onReedit(payload: Record<string, unknown>) {
 <template>
   <StudioWorkspaceColumns ref="shell" kind="imagegen" title="图片生成" @reedit="onReedit">
     <template #operate>
-      <!-- 提示词 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">
-          提示词<span class="text-11px text-placeholder font-400">必填</span>
-          <span class="ll-link ml-auto" @click="pickerShow = true">从提示词库选择</span>
-        </div>
-        <n-input
-          v-model:value="form.prompt"
-          type="textarea"
-          :rows="5"
-          :maxlength="3000"
-          show-count
-          placeholder="描述想生成的画面，如：一只在窗边晒太阳的橘猫，胶片质感"
-        />
-      </div>
-
       <!-- 参考图 -->
       <div class="mb-16px">
         <div class="ll-section-title flex items-baseline gap-6px">
@@ -143,10 +127,19 @@ function onReedit(payload: Record<string, unknown>) {
         </div>
       </div>
 
-      <!-- 生成张数 -->
+      <!-- 提示词 -->
       <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">生成张数</div>
-        <n-select v-model:value="form.count" size="small" :options="COUNT_OPTIONS" />
+        <div class="ll-section-title flex items-baseline gap-6px">
+          提示词<span class="text-11px text-placeholder font-400">必填</span>
+          <span class="ll-link ml-auto" @click="pickerShow = true">从提示词库选择</span>
+        </div>
+        <CreationPromptInput
+          v-model="form.prompt"
+          :rows="5"
+          :max-length="3000"
+          aria-label="提示词"
+          placeholder="描述想生成的画面，如：一只在窗边晒太阳的橘猫，胶片质感"
+        />
       </div>
 
       <!-- 提示词润色 -->
@@ -160,30 +153,28 @@ function onReedit(payload: Record<string, unknown>) {
         <n-switch v-model:value="form.rewrite_prompt" size="small" />
       </div>
 
-      <!-- 生图参数 -->
-      <div class="mb-16px">
-        <div class="ll-section-title flex items-baseline gap-6px">生图参数</div>
-        <ModelSettings
-          v-model:model="form.model"
-          v-model:resolution="form.resolution"
-          v-model:aspect-ratio="form.aspect_ratio"
-        />
-      </div>
-
       <!-- 弹层放壳内：跟 naive 组件同处 llTheme 的 abstract provider 下（teleport 不丢主题） -->
       <PromptLibraryPicker v-model:show="pickerShow" @select="onPickPrompt" />
     </template>
 
     <template #action>
-      <StudioSubmitBar
-        :label="submitText"
-        :submitting="submitting"
-        :disabled="!!disabledReason"
-        :disabled-reason="disabledReason"
-        :meta-text="metaText"
-        :retry="idem.retrying.value"
-        @submit="submit"
-      />
+      <!-- 原型底部：设置行（模型 | 图片设置）→ 整宽主按钮 -->
+      <div class="flex flex-col gap-12px">
+        <ModelSettings
+          v-model:model="form.model"
+          v-model:resolution="form.resolution"
+          v-model:aspect-ratio="form.aspect_ratio"
+          v-model:count="form.count"
+        />
+        <StudioSubmitBar
+          :label="submitText"
+          :submitting="submitting"
+          :disabled="!!disabledReason"
+          :disabled-reason="disabledReason"
+          :retry="idem.retrying.value"
+          @submit="submit"
+        />
+      </div>
     </template>
   </StudioWorkspaceColumns>
 </template>

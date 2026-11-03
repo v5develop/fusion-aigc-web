@@ -9,7 +9,7 @@
  */
 import { computed, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { NSelect, useMessage, type SelectProps } from 'naive-ui'
+import { NSelect, useDialog, useMessage, type SelectProps } from 'naive-ui'
 import { toApiError } from '@/api/index.ts'
 import {
   submitWorkflow,
@@ -20,6 +20,20 @@ import {
 } from '@/api/workflows.ts'
 import { useUserInfoStore } from '@/stores/userInfo'
 import ToolUploadSlot from '@/views/tools/ToolUploadSlot.vue'
+import PollingOfflineBanner from '@/views/tools/PollingOfflineBanner.vue'
+import CreationImageSettings from '@/components/creation/CreationImageSettings.vue'
+import CreationSettingsRow from '@/components/creation/CreationSettingsRow.vue'
+import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
+import CreationActionBar from '@/components/creation/CreationActionBar.vue'
+import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
+import {
+  creationSettingsSummary,
+  toCreationOptions,
+  type CreationSettingKey,
+  type CreationSettingsConfig,
+  type CreationSettingsRowItem,
+  type CreationSettingsValue,
+} from '@/components/creation/types'
 import {
   resolveWorkflowSchema,
   taskCountOf,
@@ -33,6 +47,7 @@ import { isWorkflowTerminal, useWorkflowHistory } from './useWorkflowHistory'
 
 const route = useRoute()
 const message = useMessage()
+const dialog = useDialog()
 const userInfo = useUserInfoStore()
 
 const q = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? '') : String(v ?? ''))
@@ -46,6 +61,10 @@ const mapped = computed(() => schema.value?.status === 'mapped')
  */
 const imageUploads = computed(() => (schema.value?.uploads ?? []).filter((u) => u.kind !== 'video'))
 const videoUploads = computed(() => (schema.value?.uploads ?? []).filter((u) => u.kind === 'video'))
+/** 带逐张备注的槽位（SKU替换的「特殊需求」），传了图才出输入行 */
+const noteUploads = computed(() =>
+  (schema.value?.uploads ?? []).filter((u) => u.itemNote && (uploads[u.slot]?.length ?? 0) > 0),
+)
 
 /** 同 flow 的模板切换项（链接保持原型的 query 形状） */
 const siblings = computed(() => workflowSchemas.filter((s) => s.flow === schema.value?.flow))
@@ -56,8 +75,53 @@ const linkOf = (s: WorkflowSchema) => ({
 
 // ---------------- 表单状态 ----------------
 
+// 图片设置（目标分辨率 / 画幅比例 / 生成张数）交给共用的 CreationImageSettings：
+// 这几个字段合成一组，放进底部设置行（原型「图片设置 3:4 · 1K · 1 张 ▾」）的弹层；取值仍写回 values[key]，请求体不变
+const SETTING_KEYS: readonly string[] = ['resolution', 'aspectRatio', 'count'] satisfies CreationSettingKey[]
+const isSettingField = (f: WorkflowField) => SETTING_KEYS.includes(f.key) && f.type !== 'textarea'
+const settingFields = computed(() => (schema.value?.fields ?? []).filter(isSettingField))
+/** 表单里渲染的字段：设置字段改由底部设置行承载 */
+const formFields = computed(() => (schema.value?.fields ?? []).filter((f) => !isSettingField(f)))
+const settingsConfig = computed<CreationSettingsConfig>(() =>
+  Object.fromEntries(
+    settingFields.value.map((f) => [
+      f.key,
+      {
+        label: f.label,
+        required: f.required,
+        // 数字字段（SKU替换张数 1–4）列成同范围的胶囊，取值仍是数字；下拉 / 胶囊字段取值仍是原字符串
+        options:
+          f.type === 'number'
+            ? toCreationOptions(Array.from({ length: (f.max ?? 1) - (f.min ?? 1) + 1 }, (_, i) => (f.min ?? 1) + i))
+            : toCreationOptions(f.options ?? []),
+      },
+    ]),
+  ),
+)
+
 const uploads = reactive<Record<number, string[]>>({})
 const values = reactive<Record<string, any>>({})
+const settingsValue = computed<CreationSettingsValue>(() =>
+  Object.fromEntries(settingFields.value.map((f) => [f.key, values[f.key]])),
+)
+function onSettings(v: CreationSettingsValue) {
+  for (const f of settingFields.value) values[f.key] = v[f.key as CreationSettingKey]
+}
+/** 底部设置行：有设置字段才出一枚按钮；视频模板叫「视频设置」 */
+const settingItems = computed<CreationSettingsRowItem[]>(() =>
+  settingFields.value.length
+    ? [
+        {
+          key: 'settings',
+          icon: 'gear',
+          label: schema.value?.media === 'video' ? '视频设置' : '图片设置',
+          value: creationSettingsSummary(settingsConfig.value, settingsValue.value),
+        },
+      ]
+    : [],
+)
+/** 逐张备注，按图片地址存：删图 / 换顺序后备注仍跟着那张图 */
+const itemNotes = reactive<Record<string, string>>({})
 const submitting = ref(false)
 const selectedId = ref<number | null>(null)
 
@@ -82,6 +146,7 @@ function clampNumber(f: WorkflowField) {
 function resetForm(s: WorkflowSchema) {
   for (const key of Object.keys(uploads)) delete uploads[Number(key)]
   for (const key of Object.keys(values)) delete values[key]
+  for (const key of Object.keys(itemNotes)) delete itemNotes[key]
   for (const u of s.uploads) uploads[u.slot] = []
   for (const f of s.fields) if (f.default !== undefined) values[f.key] = f.default
   selectedId.value = null
@@ -171,8 +236,12 @@ function buildBody(s: WorkflowSchema): Record<string, unknown> {
     const urls = uploads[u.slot] ?? []
     if (!urls.length) continue
     if (u.javaKey === 'imageUrls') imageUrls.push(...urls)
-    else if (u.javaKey === 'prdImageUrls') body.prdImageUrls = urls.map((url) => ({ url }))
-    else body[u.javaKey] = urls[0]
+    else if (u.javaKey === 'prdImageUrls') {
+      body.prdImageUrls = urls.map((url) => {
+        const content = u.itemNote ? itemNotes[url]?.trim().slice(0, u.itemNote.maxLength) : ''
+        return content ? { url, content } : { url }
+      })
+    } else body[u.javaKey] = urls[0]
   }
   if (imageUrls.length) body.imageUrls = imageUrls
   return body
@@ -199,6 +268,28 @@ async function onSubmit() {
 }
 
 // ---------------- 历史与结果 ----------------
+
+/** 删除单条历史（DELETE /api/v1/workflows/{workflowTitle}/histories）；进行中的记录 Java 会拒绝，界面上不给删除入口 */
+function confirmDelete(item: WorkflowHistoryItem) {
+  dialog.warning({
+    title: '删除记录',
+    content: '确定删除这条历史记录？已下载的结果不受影响。',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await history.remove(item.workflowHistoryId)
+        if (selectedId.value === item.workflowHistoryId) selectedId.value = null
+        message.success('已删除')
+      } catch (err) {
+        // 删除走 authorizedFetch，不经拦截器：业务失败也要在这里提示
+        const apiErr = toApiError(err)
+        message.error(apiErr?.isNetwork ? '网络异常，请稍后重试' : (apiErr?.message ?? '删除失败，请重试'))
+        return false
+      }
+    },
+  })
+}
 
 const current = computed<WorkflowHistoryItem | null>(
   () => history.items.value.find((i) => i.workflowHistoryId === selectedId.value) ?? history.items.value[0] ?? null,
@@ -281,7 +372,9 @@ const inputCls =
     <RouterLink to="/" class="ll-link" :class="focusRing">返回首页</RouterLink>
   </div>
 
-  <div v-else class="grid h-full min-h-0 gap-12px p-12px bg-page grid-cols-[380px_260px_minmax(0,1fr)]">
+  <div v-else class="relative grid h-full min-h-0 gap-12px p-12px bg-page grid-cols-[380px_260px_minmax(0,1fr)]">
+    <!-- 断网提示条：浏览器离线或连续网络失败暂停轮询时出现（与创作页同一份） -->
+    <PollingOfflineBanner :show="history.offline.value" @retry="history.retryPolling()" />
     <!-- 左：操作区 -->
     <section class="ll-card flex min-h-0 flex-col overflow-hidden" aria-labelledby="wf-title">
       <div class="flex-none pt-14px px-14px pb-4px">
@@ -340,7 +433,29 @@ const inputCls =
           @update:model-value="setUploads(u.slot, $event)"
         />
 
-        <template v-for="f in schema.fields" :key="`${schema.schemaId}-${f.key}`">
+        <!-- 逐张备注（SKU替换「特殊需求」）：每张图一行，选填 -->
+        <div v-for="u in noteUploads" :key="`${schema.schemaId}-notes-${u.slot}`">
+          <div class="ll-label">
+            <span :id="`wf-notes-${u.slot}-label`">{{ u.itemNote!.label }}</span>
+            <span class="text-12px text-placeholder">每张选填，≤{{ u.itemNote!.maxLength }} 字</span>
+          </div>
+          <ul class="m-0 p-0 list-none flex flex-col gap-6px" :aria-labelledby="`wf-notes-${u.slot}-label`">
+            <li v-for="(url, i) in uploads[u.slot]" :key="url" class="flex items-center gap-8px">
+              <img :src="url" alt="" class="flex-none w-34px h-34px rounded-6px object-cover bg-surface3" />
+              <input
+                v-model="itemNotes[url]"
+                type="text"
+                :maxlength="u.itemNote!.maxLength"
+                :disabled="submitting"
+                :placeholder="`第 ${i + 1} 张${u.label}（选填）`"
+                :aria-label="`第 ${i + 1} 张${u.label}的${u.itemNote!.label}`"
+                :class="inputCls"
+              />
+            </li>
+          </ul>
+        </div>
+
+        <template v-for="f in formFields" :key="`${schema.schemaId}-${f.key}`">
           <div v-if="f.type === 'chips'">
             <div :id="`wf-field-${f.key}-label`" class="ll-label">
               <span>{{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span></span>
@@ -397,49 +512,48 @@ const inputCls =
             />
           </div>
 
-          <div v-else-if="f.type === 'textarea'">
-            <div class="ll-label">
-              <label :for="`wf-field-${f.key}`">
-                {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
-              </label>
-              <span class="text-12px text-placeholder">{{ (values[f.key] ?? '').length }} / {{ f.maxLength }}</span>
-            </div>
-            <textarea
-              :id="`wf-field-${f.key}`"
-              v-model="values[f.key]"
-              rows="4"
-              :maxlength="f.maxLength"
-              :placeholder="`请输入${f.label}（选填）`"
-              :class="[inputCls, 'resize-y leading-20px']"
-            />
-          </div>
+          <CreationPromptInput
+            v-else-if="f.type === 'textarea'"
+            :id="`wf-field-${f.key}`"
+            v-model="values[f.key]"
+            :label="f.label"
+            :required="f.required"
+            :rows="4"
+            :max-length="f.maxLength"
+            :placeholder="`请输入${f.label}（选填）`"
+          />
         </template>
       </form>
 
-      <!-- 底部固定提交栏 -->
-      <div class="flex-none flex items-center gap-12px pt-10px px-14px pb-12px border-t border-solid border-line-soft">
-        <div class="flex flex-1 min-w-0 flex-col gap-2px" aria-live="polite">
-          <span class="text-12px text-ink-2">{{ costText }}</span>
-          <span v-if="disabledReason" class="text-11px leading-15px text-warning">{{ disabledReason }}</span>
-        </div>
-        <button
-          type="submit"
+      <!-- 底部固定提交栏；上方是设置行（原型「图片设置 / 视频设置 ▾」）-->
+      <div class="flex-none flex flex-col gap-12px pt-10px px-14px pb-12px">
+        <CreationSettingsRow v-if="mapped && settingItems.length" :items="settingItems">
+          <template #settings>
+            <CreationImageSettings
+              :model-value="settingsValue"
+              :fields="settingsConfig"
+              @update:model-value="onSettings"
+            />
+          </template>
+        </CreationSettingsRow>
+        <CreationActionBar
           form="wf-form"
-          class="ll-btn-primary flex-none h-40px px-22px py-0"
-          :class="focusRing"
-          :disabled="!!disabledReason || submitting"
-        >
-          {{ submitting ? '提交中…' : schema.submit.label }}
-        </button>
+          :label="schema.submit.label"
+          :cost-text="costText"
+          :disabled="!!disabledReason"
+          :loading="submitting"
+          :reason="disabledReason"
+        />
       </div>
     </section>
 
     <!-- 中：历史记录 -->
     <section class="ll-card flex min-h-0 flex-col overflow-hidden" aria-labelledby="wf-history-title">
-      <div class="flex-none flex items-center justify-between pt-14px px-14px pb-8px">
-        <h2 id="wf-history-title" class="m-0 text-14px font-600 text-ink">历史记录</h2>
-        <span v-if="history.running.value" class="ll-chip ll-chip-running">{{ history.running.value }} 个进行中</span>
-      </div>
+      <CreationHistoryHeader
+        title-id="wf-history-title"
+        :count="mapped ? history.items.value.length : undefined"
+        :running="history.running.value"
+      />
       <div class="flex-1 min-h-0 overflow-y-auto px-10px pb-10px">
         <p v-if="!mapped" class="ll-empty m-0 py-24px">即将开放</p>
         <p v-else-if="history.loading.value && !history.items.value.length" class="ll-empty m-0 py-24px">加载中…</p>
@@ -447,10 +561,10 @@ const inputCls =
           还没有记录。左边传好素材、点底部按钮提交，每次提交都会在这里留一条
         </p>
         <ul v-else class="m-0 p-0 list-none flex flex-col gap-6px">
-          <li v-for="item in history.items.value" :key="item.workflowHistoryId">
+          <li v-for="item in history.items.value" :key="item.workflowHistoryId" class="group relative">
             <button
               type="button"
-              class="w-full flex items-center gap-10px p-8px rounded-8px border border-solid text-left cursor-pointer transition-colors"
+              class="w-full flex items-center gap-10px p-8px pr-30px rounded-8px border border-solid text-left cursor-pointer transition-colors"
               :class="[
                 focusRing,
                 current?.workflowHistoryId === item.workflowHistoryId
@@ -473,6 +587,28 @@ const inputCls =
                 }}</span>
                 <span class="text-11px text-placeholder">{{ formatTime(item.createdAt) }}</span>
               </span>
+            </button>
+            <button
+              v-if="isWorkflowTerminal(item.status)"
+              type="button"
+              class="absolute right-6px top-6px grid place-items-center w-22px h-22px p-0 rounded-6px border-none bg-transparent text-placeholder cursor-pointer opacity-0 transition-colors group-hover:opacity-100 focus-visible:opacity-100 hover:(bg-surface3 text-danger)"
+              :class="focusRing"
+              :aria-label="`删除 ${formatTime(item.createdAt)} 的记录`"
+              title="删除"
+              @click="confirmDelete(item)"
+            >
+              <svg
+                class="w-14px h-14px"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+              </svg>
             </button>
           </li>
         </ul>
