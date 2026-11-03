@@ -19,6 +19,8 @@ const emit = defineEmits<{
   'toggle-favorite': [asset: IAssetLibAsset]
   open: [asset: IAssetLibAsset]
   'filter-tag': [name: string]
+  /** 右下角标签按钮：唤起单卡快捷打标签浮层，anchor 为按钮本身（定位 + 关闭后还焦点） */
+  'edit-tags': [asset: IAssetLibAsset, anchor: HTMLElement]
 }>()
 
 const isVideo = computed(() => props.asset.media === 'video' && !!props.asset.video_url)
@@ -52,6 +54,7 @@ const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)
   <div
     role="button"
     tabindex="0"
+    data-asset-card
     class="group flex flex-col min-w-0 bg-white border border-solid rounded-12px overflow-hidden cursor-pointer transition-[border-color,box-shadow] duration-200 hover:shadow-[0_4px_12px_0_rgba(31,35,41,0.1)] focus-visible:(outline outline-2 outline-violet outline-offset-2)"
     :class="checked ? 'border-violet shadow-[0_0_0_2px_rgba(135,95,154,0.18)]' : 'border-line'"
     :aria-label="asset.title || '未命名资产'"
@@ -165,6 +168,28 @@ const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)
           class="px-5px py-1px rounded-4px border border-solid border-line text-10px text-muted"
           >{{ sourceLabel }}</span
         >
+        <button
+          type="button"
+          data-tag-trigger
+          aria-label="打标签"
+          aria-haspopup="dialog"
+          class="grid place-items-center w-20px h-20px ml-auto -mr-4px p-0 border-none rounded-4px bg-transparent text-[#8a9099] cursor-pointer hover:text-violet-ink"
+          :class="FOCUS"
+          :title="`标签：${asset.tags[0] ?? '未分类'}`"
+          @click.stop="emit('edit-tags', asset, $event.currentTarget as HTMLElement)"
+        >
+          <svg class="w-11px h-11px" viewBox="0 0 512 512" aria-hidden="true">
+            <path
+              d="M435.25 48h-122.9a14.46 14.46 0 0 0-10.2 4.2L56.45 297.9a28.85 28.85 0 0 0 0 40.7l117 117a28.85 28.85 0 0 0 40.7 0L459.75 210a14.46 14.46 0 0 0 4.2-10.2v-123a28.66 28.66 0 0 0-28.7-28.8z"
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="32"
+            />
+            <path d="M384 160a32 32 0 1 1 32-32a32 32 0 0 1-32 32z" fill="currentColor" />
+          </svg>
+        </button>
       </div>
     </div>
   </div>

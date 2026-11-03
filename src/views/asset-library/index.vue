@@ -7,13 +7,14 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NConfigProvider, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
-import { assetLibCategories, assetLibList, assetLibUpdate } from '@/api/assetLibrary.ts'
-import type { AssetLibKindGroup, IAssetLibAsset, IAssetLibCategory, IAssetLibListParams } from '@/api/assetLibrary.ts'
+import { assetCategoryTree, assetLibCategories, assetLibList, assetLibUpdate } from '@/api/assetLibrary.ts'
+import type { AssetLibKindGroup, IAssetCategoryNode, IAssetLibAsset, IAssetLibCategory } from '@/api/assetLibrary.ts'
 import { useDebounce } from '@/utils/hooks'
 import AssetCard from './components/AssetCard.vue'
 import DetailModal from './components/DetailModal.vue'
 import TagManagerModal from './components/TagManagerModal.vue'
 import BatchTagModal from './components/BatchTagModal.vue'
+import AssetTagPopover from './components/AssetTagPopover.vue'
 
 defineOptions({ name: 'asset-library' })
 
@@ -21,85 +22,95 @@ const message = useMessage()
 
 // ---------------- 分类条 ----------------
 
+/** 卡片 / 详情上的 kind 中文名（编目用的 kind，与分类条无关） */
 const KIND_LABELS: Record<string, string> = {
   all: '全部',
   model: '模特',
   scene: '场景',
-  makeup: '妆造',
+  makeup: '妆容',
   hair: '发型',
   accessory: '配饰',
   uncategorized: '其他分类',
 }
 const kindLabel = (key: string) => KIND_LABELS[key] ?? key
 
-/** 「创作素材」大类下的二级（现有 5 个 kind） */
-const IMAGE_KINDS = [
-  { key: 'model', label: '模特' },
-  { key: 'scene', label: '场景' },
-  { key: 'makeup', label: '妆造' },
-  { key: 'hair', label: '发型' },
-  { key: 'accessory', label: '配饰' },
-]
 /**
- * 「AI生视频」大类下的二级。唯一来源：后端 kind_group=video 的键表（model.VideoKinds）与此一一对应。
- * 视频资产怎么归到这些分类还没定数据来源：分类接口暂不返回这些键，计数按 0 显示。
+ * 分类条：Java 聚合分类树（GET /api/v1/asset/categories）。首项「全部」不是分类、不传 entry_codes；
+ * 其后一级 tab，选中有二级的一级时出二级 chip（首个为该组「全部」= 各二级入口码之并）。
+ * 二级里 __other 结尾的「其他」是后端合成的虚拟分类，照常渲染（key 用 categoryCode，id 可能为 null）。
  */
-const VIDEO_KINDS = [
-  { key: 'viral_video', label: '爆款视频' },
-  { key: 'video_remake', label: '视频复刻' },
-  { key: 'promo_video', label: '带货视频' },
-  { key: 'digital_human', label: '数字人' },
-  { key: 'digital_human_talk', label: '数字人口播' },
-  { key: 'store_visit', label: '探店视频' },
-  { key: 'promo_drama', label: '带货短剧' },
-  { key: 'motion_transfer', label: '动作迁移' },
-  { key: 'canvas_video', label: '画布视频' },
-  { key: 'video_other', label: '其他' },
-]
-for (const k of [...IMAGE_KINDS, ...VIDEO_KINDS]) KIND_LABELS[k.key] ??= k.label
-
-type GroupKey = 'all' | AssetLibKindGroup | 'uncategorized'
-/** 一级大类；children 为二级，没有二级的大类直接按自身筛选 */
-const GROUPS: { key: GroupKey; label: string; children: { key: string; label: string }[] }[] = [
-  { key: 'all', label: '全部', children: [] },
-  { key: 'image', label: '创作素材', children: IMAGE_KINDS },
-  { key: 'video', label: 'AI生视频', children: VIDEO_KINDS },
-  { key: 'uncategorized', label: '其他分类', children: [] },
-]
-
+const tree = ref<IAssetCategoryNode[]>([])
+/** Go 分类计数：只取 all 作「全部」计数（随来源 / 类型变化） */
 const categories = ref<IAssetLibCategory[]>([])
-const activeGroup = ref<GroupKey>('all')
-/** 选中的二级 kind；空 = 只按大类 */
-const activeKind = ref('')
+/** 选中的一级 categoryCode；空 = 全部 */
+const activeGroup = ref('')
+/** 选中的二级 categoryCode；空 = 该组全部 */
+const activeSub = ref('')
 
 const countOf = (key: string) => categories.value.find((c) => c.key === key)?.count ?? 0
-/** 一级计数：全部 / 其他分类取接口原值，有二级的大类 = 二级计数之和（前端相加） */
-const groupItems = computed(() =>
-  GROUPS.map((g) => ({
-    key: g.key,
-    label: g.label,
-    count: g.children.length ? g.children.reduce((n, c) => n + countOf(c.key), 0) : countOf(g.key),
-  })),
-)
-const subItems = computed(() =>
-  (GROUPS.find((g) => g.key === activeGroup.value)?.children ?? []).map((c) => ({ ...c, count: countOf(c.key) })),
-)
+/** 当前来源 / 类型下的资产总数（分类条「全部」计数） */
+const allCount = computed(() => countOf('all'))
 
-function selectGroup(key: GroupKey) {
+const childrenOf = (n: IAssetCategoryNode) => n.children ?? []
+const uniq = (codes: string[]) => [...new Set(codes.filter(Boolean))]
+/** 节点的筛选入口码：有二级 = 各二级之并（并集为空时退回一级自身），否则取自身 */
+function codesOf(n: IAssetCategoryNode): string[] {
+  const kids = childrenOf(n)
+  const union = uniq(kids.flatMap((c) => c.entryCodes ?? []))
+  return kids.length && union.length ? union : uniq(n.entryCodes ?? [])
+}
+
+const activeNode = computed(() => tree.value.find((n) => n.categoryCode === activeGroup.value))
+
+const groupItems = computed(() => [
+  { key: '', label: '全部', count: allCount.value },
+  ...tree.value.map((n) => ({ key: n.categoryCode, label: n.categoryName, count: n.count ?? 0 })),
+])
+/** 二级 chip：首个为该组「全部」（key 空），没有二级时不显示 */
+const subItems = computed(() => {
+  const node = activeNode.value
+  const kids = node ? childrenOf(node) : []
+  if (!node || !kids.length) return []
+  return [
+    { key: '', label: '全部', count: node.count ?? 0 },
+    ...kids.map((c) => ({ key: c.categoryCode, label: c.categoryName, count: c.count ?? 0 })),
+  ]
+})
+
+function selectGroup(key: string) {
   activeGroup.value = key
-  activeKind.value = ''
+  activeSub.value = ''
 }
-/** 再点一次已选的二级则取消，回到大类 */
+/** 再点一次已选的二级则取消，回到该组全部 */
 function selectSub(key: string) {
-  activeKind.value = activeKind.value === key ? '' : key
+  activeSub.value = activeSub.value === key ? '' : key
 }
 
-/** 列表的分类参数：二级 → kind；有二级的大类 → kind_group；其他分类 → kind=uncategorized */
-function categoryParams(): Pick<IAssetLibListParams, 'kind' | 'kind_group'> {
-  if (activeKind.value) return { kind: activeKind.value }
-  if (activeGroup.value === 'image' || activeGroup.value === 'video') return { kind_group: activeGroup.value }
-  if (activeGroup.value === 'uncategorized') return { kind: 'uncategorized' }
-  return {}
+/**
+ * 当前分类的列表筛选：null = 不限（全部）。
+ * 按素材类型的节点（创作素材 / 其下二级）走 kind_group / kind；旧的入口码节点仍走 entry_codes。
+ * entry_codes 为空串 = 选中的节点没有任何入口（直接视为空列表，不发请求）。
+ */
+function categoryFilter(): { kind?: string; kind_group?: AssetLibKindGroup; entry_codes?: string } | null {
+  const node = activeNode.value
+  if (!node) return null
+  const sub = activeSub.value ? childrenOf(node).find((c) => c.categoryCode === activeSub.value) : undefined
+  if (sub?.kind) return { kind: sub.kind }
+  if (!sub && node.kindGroup) return { kind_group: node.kindGroup }
+  const codes = sub ? uniq(sub.entryCodes ?? []) : codesOf(node)
+  return { entry_codes: codes.join(',') }
+}
+
+async function loadTree() {
+  try {
+    const res = await assetCategoryTree()
+    tree.value = Array.isArray(res.data) ? res.data : []
+  } catch {
+    // 分类树拉失败不挡列表：分类条只剩「全部」
+    tree.value = []
+  }
+  // 选中的分类已不在树里：回到全部
+  if (activeGroup.value && !activeNode.value) selectGroup('')
 }
 
 async function loadCategories() {
@@ -110,7 +121,7 @@ async function loadCategories() {
     })
     categories.value = res.data?.items ?? []
   } catch {
-    // 分类条拉失败不挡列表：pill 置空，下次换筛选会重试
+    // 计数拉失败不挡列表：「全部」计数置 0，下次换筛选会重试
     categories.value = []
   }
 }
@@ -160,13 +171,23 @@ function toggleMedia(v: string) {
   filters.media = filters.media === v ? '' : v
 }
 
+/**
+ * 分类条末尾的「我的收藏」tab：与筛选面板的收藏开关同一个 filters.favorite_only。
+ * 选它 = 回到全部分类 + 只看收藏；选任一分类 tab = 关掉只看收藏。收藏没有计数源，不显示计数。
+ */
+function pickGroup(key: string) {
+  filters.favorite_only = false
+  selectGroup(key)
+}
+function pickFavorite() {
+  selectGroup('')
+  filters.favorite_only = true
+}
+
 const filterOpen = ref(false)
 const activeFilterCount = computed(
   () => (filters.source ? 1 : 0) + (filters.favorite_only ? 1 : 0) + (filters.aspect_ratio ? 1 : 0),
 )
-/** 当前来源 / 类型下的资产总数（分类条「全部」计数） */
-const allCount = computed(() => countOf('all'))
-
 const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)'
 const TAB_CLS =
   'inline-flex items-center h-28px px-10px rounded-6px border-none bg-transparent text-12px cursor-pointer ' + FOCUS
@@ -195,8 +216,15 @@ const loadingMore = ref(false)
 const hasMore = computed(() => items.value.length < total.value)
 
 async function loadPage(p: number): Promise<IAssetLibAsset[]> {
+  const cat = categoryFilter()
+  // 选中的旧分类没有任何入口：不发请求（不传 entry_codes 会变成「不限」）
+  if (cat?.entry_codes === '') {
+    total.value = 0
+    return []
+  }
   const res = await assetLibList({
-    ...categoryParams(),
+    ...(cat ?? {}),
+    entry_codes: cat?.entry_codes || undefined,
     source: filters.source || undefined,
     media: filters.media || undefined,
     aspect_ratio: filters.aspect_ratio || undefined,
@@ -254,12 +282,13 @@ watch(
   },
 )
 // 比例不影响分类计数，只重查列表
-watch([activeGroup, activeKind, () => filters.aspect_ratio], () => {
+watch([activeGroup, activeSub, () => filters.aspect_ratio], () => {
   void reload()
 })
 useDebounce({ data: () => filters.q, callback: () => void reload() })
 
 onMounted(() => {
+  void loadTree()
   void loadCategories()
   void reload()
 })
@@ -334,6 +363,9 @@ function onTagsChanged(deletedName?: string) {
 }
 
 const detailId = ref<number | null>(null)
+
+/** 单卡快捷打标签浮层（页面一个实例，卡片唤起） */
+const tagPopover = ref<InstanceType<typeof AssetTagPopover> | null>(null)
 
 function openDetail(asset: IAssetLibAsset) {
   detailId.value = asset.id
@@ -426,24 +458,42 @@ function openDetail(asset: IAssetLibAsset) {
             <div class="flex flex-wrap items-center gap-8px">
               <button
                 v-for="g in groupItems"
-                :key="g.key"
+                :key="g.key || '__all'"
                 type="button"
-                :aria-pressed="activeGroup === g.key"
+                :aria-pressed="!filters.favorite_only && activeGroup === g.key"
                 :class="[
                   'inline-flex items-center gap-6px h-34px px-10px rounded-8px border border-solid text-13px font-500 cursor-pointer',
-                  activeGroup === g.key
+                  !filters.favorite_only && activeGroup === g.key
                     ? 'bg-violet-soft border-violet-line text-violet-ink'
                     : 'bg-white border-line text-ink-2 hover:border-line-strong',
                   FOCUS,
                 ]"
-                @click="selectGroup(g.key)"
+                @click="pickGroup(g.key)"
               >
                 {{ g.label }}
                 <span
                   class="px-5px py-1px rounded-4px text-10px"
-                  :class="activeGroup === g.key ? 'bg-white/70 text-violet-ink' : 'bg-surface3 text-muted'"
+                  :class="
+                    !filters.favorite_only && activeGroup === g.key
+                      ? 'bg-white/70 text-violet-ink'
+                      : 'bg-surface3 text-muted'
+                  "
                   >{{ g.count }}</span
                 >
+              </button>
+              <button
+                type="button"
+                :aria-pressed="filters.favorite_only"
+                :class="[
+                  'inline-flex items-center gap-6px h-34px px-10px rounded-8px border border-solid text-13px font-500 cursor-pointer',
+                  filters.favorite_only
+                    ? 'bg-violet-soft border-violet-line text-violet-ink'
+                    : 'bg-white border-line text-ink-2 hover:border-line-strong',
+                  FOCUS,
+                ]"
+                @click="pickFavorite"
+              >
+                我的收藏
               </button>
               <button
                 v-if="filters.tag"
@@ -466,12 +516,12 @@ function openDetail(asset: IAssetLibAsset) {
             >
               <button
                 v-for="c in subItems"
-                :key="c.key"
+                :key="c.key || '__all'"
                 type="button"
-                :aria-pressed="activeKind === c.key"
+                :aria-pressed="activeSub === c.key"
                 :class="[
                   'inline-flex items-center gap-6px h-30px px-10px rounded-8px border border-solid text-12px font-500 cursor-pointer',
-                  activeKind === c.key
+                  activeSub === c.key
                     ? 'bg-violet-soft border-violet-line text-violet-ink'
                     : 'bg-white border-line text-muted hover:border-line-strong hover:text-ink-2',
                   FOCUS,
@@ -481,7 +531,7 @@ function openDetail(asset: IAssetLibAsset) {
                 {{ c.label }}
                 <span
                   class="px-5px py-1px rounded-4px text-10px"
-                  :class="activeKind === c.key ? 'bg-white/70 text-violet-ink' : 'bg-surface3 text-muted'"
+                  :class="activeSub === c.key ? 'bg-white/70 text-violet-ink' : 'bg-surface3 text-muted'"
                   >{{ c.count }}</span
                 >
               </button>
@@ -564,6 +614,7 @@ function openDetail(asset: IAssetLibAsset) {
             @toggle-favorite="toggleFavorite"
             @open="openDetail"
             @filter-tag="(name: string) => (filters.tag = name)"
+            @edit-tags="(a: IAssetLibAsset, el: HTMLElement) => tagPopover?.open(a, el)"
           />
           <div
             v-if="!loading && !items.length"
@@ -592,5 +643,6 @@ function openDetail(asset: IAssetLibAsset) {
     <DetailModal v-model="detailId" @changed="silentRefresh" />
     <TagManagerModal v-model:show="showTagManager" @changed="onTagsChanged" />
     <BatchTagModal v-model:show="showBatchTag" :asset-ids="selectedIds" @success="onBatchTagged" />
+    <AssetTagPopover ref="tagPopover" />
   </n-config-provider>
 </template>

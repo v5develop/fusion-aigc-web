@@ -92,6 +92,8 @@ export interface IAssetLibListParams {
   media?: string
   /** 比例 宽:高，如 1:1 / 3:4 / 9:16，精确匹配 */
   aspect_ratio?: string
+  /** 入口码，逗号分隔（每项 [A-Za-z0-9_.-]{1,64}，≤200 个），按 entry_code IN (...)；分类树节点的 entryCodes */
+  entry_codes?: string
   /** 标签名（精确匹配） */
   tag?: string
   favorite_only?: boolean
@@ -116,6 +118,36 @@ export interface IAssetLibCategory {
 
 export interface IAssetLibCategoriesResp {
   items: IAssetLibCategory[]
+}
+
+/** 分类树节点的创作入口（仅二级有） */
+export interface IAssetCategoryEntry {
+  entryCode: string
+  /** 展示名；查不到时等于 entryCode */
+  entryName: string
+}
+
+/**
+ * Java 素材库聚合分类（GET /api/v1/asset/categories，AssetCategoryRespVO）。
+ * 一级是 tab，children 为二级 chip（二级的 children 恒为 []）。
+ * 二级里编码以 __other 结尾的「其他」是后端合成的虚拟分类，id 为 null：渲染 key 用 categoryCode。
+ */
+export interface IAssetCategoryNode {
+  /** 虚拟「其他」恒为 null */
+  id: number | null
+  categoryCode: string
+  categoryName: string
+  sortOrder: number | null
+  /** 成员入口码；一级 = 各二级之并 ∪ 未归类兜底 */
+  entryCodes: string[] | null
+  /** 按素材类型分组的节点：二级的 kind（模特 / 场景 / 妆容 / 发型 / 配饰）；一级（创作素材）的 kindGroup = image */
+  kind?: string | null
+  kindGroup?: AssetLibKindGroup | null
+  children: IAssetCategoryNode[] | null
+  /** 当前用户在该分类下的素材数（一级按并集去重）；取不到当前用户时为 null */
+  count: number | null
+  /** 入口及展示名（仅二级有，一级为 []） */
+  entries: IAssetCategoryEntry[] | null
 }
 
 export interface IAssetLibDetailParams {
@@ -171,6 +203,8 @@ export interface IAssetLibTag {
 
 export interface IAssetLibTagListResp {
   items: IAssetLibTag[]
+  /** 当前用户没挂任何标签的素材数（「未分类」的计数） */
+  untagged_count?: number | null
 }
 
 export interface IAssetLibBatchTagResp {
@@ -187,6 +221,11 @@ export function assetLibList(params: IAssetLibListParams) {
 /** 分类条计数：固定返回 all + 5 kind + uncategorized，计数随 source / media 变化 */
 export function assetLibCategories(params: { source?: string; media?: string } = {}) {
   return get<IAssetLibCategoriesResp>(`${PREFIX}/assets/categories`, params)
+}
+
+/** 我的资产分类树（Java 素材库接口，同一请求实例带用户 token） */
+export function assetCategoryTree() {
+  return get<IAssetCategoryNode[]>('/api/v1/asset/categories')
 }
 
 /** 详情：版本 / 相关资产 / 生成结果三组子列表各自分页，共用 page_size（默认 6） */

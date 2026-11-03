@@ -22,6 +22,8 @@ import {
 import type { IAssetLibAsset, IAssetLibDetail, IAssetLibTag, IAssetLibUpdateReq } from '@/api/assetLibrary.ts'
 import { formatTime } from '@/views/local-life/constants.ts'
 import { goUploadImage } from '@/api/goUpload.ts'
+import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
+import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
 const assetId = defineModel<number | null>({ required: true })
 
@@ -364,6 +366,11 @@ async function onVersionFile(e: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
+  await uploadVersionFile(file)
+}
+
+/** 选文件 / 拖入 / 粘贴共用 */
+async function uploadVersionFile(file: File) {
   versionUploading.value = true
   try {
     versionImage.value = [await goUploadImage(file)]
@@ -374,6 +381,29 @@ async function onVersionFile(e: Event) {
     versionUploading.value = false
   }
 }
+
+// 从资产库添加：选回的是资产库里已有的图片地址，与上传结果同样落进 versionImage（单张，换一张）
+const versionAssetShow = ref(false)
+
+function openVersionAssets() {
+  if (versionUploading.value) return
+  versionAssetShow.value = true
+}
+
+function onVersionAssets(picked: string[]) {
+  const url = picked.find((u) => /^https?:\/\//i.test(u))
+  if (url) versionImage.value = [url]
+}
+
+// 拖入 / 粘贴新版本图片：与选文件同一个上传函数
+const versionDropRef = ref<HTMLElement | null>(null)
+const { dragging: versionDragging } = useFileDropPaste(versionDropRef, {
+  accept: 'image',
+  disabled: versionUploading,
+  onFiles: ([file]) => {
+    if (file) uploadVersionFile(file)
+  },
+})
 
 function resetVersionForm() {
   versionImage.value = []
@@ -453,7 +483,7 @@ async function removeRelation(relatedId: number) {
   <n-modal v-model:show="show" preset="card" title="资产详情" style="width: 960px">
     <div v-loading="loading" class="min-h-320px max-h-74vh overflow-auto">
       <template v-if="asset">
-        <div class="flex gap-16px mb-16px">
+        <div class="flex gap-16px">
           <div
             class="w-400px shrink-0 self-start h-420px flex items-center justify-center bg-sunken rounded-10px overflow-hidden"
           >
@@ -501,10 +531,12 @@ async function removeRelation(relatedId: number) {
               </div>
             </div>
 
-            <div class="flex gap-12px">
-              <div class="flex-1 min-w-0">
-                <div class="ll-label">分类</div>
+            <!-- 字段网格：分类/授权/收藏与元数据共用同一两列网格（标签列 28px、列距 16px），控件左缘对齐 -->
+            <div class="grid grid-cols-2 gap-x-16px gap-y-8px mb-12px">
+              <div class="flex items-center gap-8px min-w-0">
+                <span class="shrink-0 w-28px text-12px text-placeholder">分类</span>
                 <n-select
+                  class="flex-1 min-w-0"
                   size="small"
                   :options="KIND_OPTIONS"
                   :value="asset.kind"
@@ -512,14 +544,20 @@ async function removeRelation(relatedId: number) {
                   @update:value="(v: string) => patchAsset({ kind: v })"
                 />
               </div>
-              <div class="flex-1 min-w-0">
-                <div class="ll-label">授权</div>
-                <n-select size="small" :options="LICENSE_OPTIONS" v-model:value="licenseDraft" :disabled="saving" />
+              <div class="flex items-center gap-8px min-w-0">
+                <span class="shrink-0 w-28px text-12px text-placeholder">授权</span>
+                <n-select
+                  class="flex-1 min-w-0"
+                  size="small"
+                  :options="LICENSE_OPTIONS"
+                  v-model:value="licenseDraft"
+                  :disabled="saving"
+                />
               </div>
-              <div class="flex-1 min-w-0">
-                <div class="ll-label">收藏</div>
+              <div class="flex items-center gap-8px min-w-0">
+                <span class="shrink-0 w-28px text-12px text-placeholder">收藏</span>
                 <span
-                  class="inline-block text-13px leading-28px cursor-pointer"
+                  class="inline-flex items-center text-13px leading-20px cursor-pointer"
                   :class="asset.favorite ? 'text-violet' : 'text-ink-2'"
                   @click="patchAsset({ favorite: !asset.favorite })"
                 >
@@ -542,10 +580,10 @@ async function removeRelation(relatedId: number) {
                 </span>
                 <n-input
                   v-model:value="newTagName"
-                  size="tiny"
+                  size="small"
                   maxlength="20"
                   placeholder="输入后回车，没有的会自动建"
-                  class="w-180px"
+                  class="flex-1 min-w-180px"
                   @keydown.enter="addTag"
                 />
               </div>
@@ -559,11 +597,12 @@ async function removeRelation(relatedId: number) {
 
             <div class="mb-12px">
               <div class="ll-label">元数据</div>
-              <div class="grid grid-cols-2 gap-x-12px gap-y-8px">
-                <div v-for="f in META_FIELDS" :key="f.key" class="flex items-center gap-6px">
-                  <span class="shrink-0 w-32px text-12px text-placeholder">{{ f.label }}</span>
+              <div class="grid grid-cols-2 gap-x-16px gap-y-8px">
+                <div v-for="f in META_FIELDS" :key="f.key" class="flex items-center gap-8px min-w-0">
+                  <span class="shrink-0 w-28px text-12px text-placeholder">{{ f.label }}</span>
                   <n-input
                     v-model:value="metaDraft[f.key]"
+                    class="flex-1 min-w-0"
                     size="small"
                     :maxlength="META_MAX"
                     show-count
@@ -625,8 +664,8 @@ async function removeRelation(relatedId: number) {
         </div>
 
         <div class="border-t border-solid border-sunken pt-12px mt-12px">
-          <div class="flex items-center gap-10px">
-            <span class="ll-section-title">版本（{{ versions.total }}）</span>
+          <div class="flex items-center gap-10px min-h-20px mb-10px">
+            <span class="ll-section-title !mb-0">版本（{{ versions.total }}）</span>
             <span v-if="!asset.current_version_id" class="ll-chip ll-chip-success">当前：原图</span>
             <span class="ll-link ml-auto" @click="addingVersion = !addingVersion">
               {{ addingVersion ? '收起' : '+ 追加版本' }}
@@ -640,10 +679,21 @@ async function removeRelation(relatedId: number) {
           >
             <div
               v-if="!versionImage.length"
-              class="relative flex flex-col items-center gap-4px py-18px border-2 border-dashed border-line-strong rounded-8px text-muted text-12px hover:(border-violet text-violet-ink)"
-              :class="versionUploading ? 'opacity-60 cursor-wait' : 'cursor-pointer'"
+              ref="versionDropRef"
+              class="relative flex flex-col items-center gap-4px py-18px border-2 border-dashed border-line-strong rounded-8px text-muted text-12px hover:(border-violet text-violet-ink) has-[:focus-visible]:(outline outline-2 outline-solid outline-violet outline-offset-2)"
+              :class="[versionUploading ? 'opacity-60 cursor-wait' : 'cursor-pointer', versionDragging && 'sx-drop']"
               @click="pickVersionFile"
             >
+              <!-- 从资产库添加：盖在透明文件框之上（z-1），点它不弹文件框 -->
+              <button
+                type="button"
+                class="absolute right-12px top-12px z-1 px-4px text-12px leading-18px text-violet bg-transparent border-none cursor-pointer rounded-sm hover:underline disabled:(opacity-45 cursor-not-allowed) sx-focus"
+                aria-label="从资产库添加新版本图片"
+                :disabled="versionUploading"
+                @click.stop="openVersionAssets"
+              >
+                从资产库添加
+              </button>
               <input
                 ref="versionFileRef"
                 type="file"
@@ -681,6 +731,8 @@ async function removeRelation(relatedId: number) {
               >
             </div>
           </div>
+
+          <AssetPickerModal v-model:show="versionAssetShow" :limit="1" @select="onVersionAssets" />
 
           <div v-if="!versions.items.length" class="ll-empty">没有版本记录，当前展示原图</div>
           <div
@@ -735,8 +787,8 @@ async function removeRelation(relatedId: number) {
         </div>
 
         <div class="border-t border-solid border-sunken pt-12px mt-12px">
-          <div class="flex items-center gap-10px">
-            <span class="ll-section-title">相关资产（{{ related.total }}）</span>
+          <div class="flex items-center gap-10px min-h-20px mb-10px">
+            <span class="ll-section-title !mb-0">相关资产（{{ related.total }}）</span>
             <span class="ll-link ml-auto" @click="addingRelation = !addingRelation">
               {{ addingRelation ? '收起' : '+ 添加关联' }}
             </span>
@@ -790,8 +842,8 @@ async function removeRelation(relatedId: number) {
         </div>
 
         <div class="border-t border-solid border-sunken pt-12px mt-12px">
-          <div class="flex items-center gap-10px">
-            <span class="ll-section-title">生成结果（{{ generatedResults.total }}）</span>
+          <div class="flex items-center gap-10px min-h-20px mb-10px">
+            <span class="ll-section-title !mb-0">生成结果（{{ generatedResults.total }}）</span>
           </div>
           <div v-if="!generatedResults.items.length" class="ll-empty">还没有由它生成的资产</div>
           <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-10px mt-10px">

@@ -8,6 +8,7 @@ import eCommerceRouter from './e-commerce'
 import localLifeRouter from './local-life'
 import toolsRouter from './tools'
 import assetLibraryRouter from './asset-library'
+import taskCenterRouter from './task-center'
 import studioRouter from './studio'
 import workflowRouter from './workflow'
 
@@ -25,12 +26,22 @@ const router = createRouter({
           },
         ]
       : []),
+    // 智能体会话分享页：免登录（GET /api/v1/agent/messages/share 凭 token 读），不挂布局
+    {
+      path: '/agent/share',
+      name: 'agent-share',
+      meta: { title: '智能体对话分享', public: true },
+      component: () => import('@/views/agent/share.vue'),
+    },
     {
       path: '/',
       component: () => import('@/views/layout/index.vue'),
       children: [
+        // 首页 = 工具箱，路径对齐原型 #/tools（原型 / 也是重定向到 /tools）；
+        // 根路径 / 重定向过来：登录回跳、书签与容器初始地址都还写着 /
+        { path: '/', redirect: '/tools' },
         {
-          path: '/',
+          path: '/tools',
           name: 'home',
           component: () => import('@/views/home/index.vue'),
         },
@@ -48,6 +59,7 @@ const router = createRouter({
         ...localLifeRouter,
         ...toolsRouter,
         ...assetLibraryRouter,
+        ...taskCenterRouter,
         ...studioRouter,
         ...workflowRouter,
         {
@@ -66,6 +78,12 @@ const router = createRouter({
           path: '/asset',
           name: 'asset',
           component: () => import('@/views/asset/index.vue'),
+        },
+        {
+          path: '/user-center',
+          name: 'user-center',
+          meta: { title: '用户中心' },
+          component: () => import('@/views/user-center/index.vue'),
         },
       ],
     },
@@ -101,7 +119,7 @@ router.beforeEach(async (to) => {
 
   // 没有 token 且不在容器内：跳登录页走短信登录
   if (!hasBridge) {
-    if (to.name !== 'login') {
+    if (to.name !== 'login' && !to.meta.public) {
       return { name: 'login', query: { redirect: to.fullPath } }
     }
     return

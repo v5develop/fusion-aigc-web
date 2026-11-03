@@ -2,6 +2,32 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { unionTokenLogin } from '@/api/methods'
+
+const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
+
+/** 左侧品牌面板的能力卡片：文案只用产品里已有的功能名 */
+const CAPABILITIES = [
+  {
+    title: 'AI 图片',
+    desc: '文生图、图生图、高清放大、智能抠图等',
+    icon: 'M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5',
+  },
+  {
+    title: 'AI 视频',
+    desc: '文生视频、图生视频、视频高清、视频翻译',
+    icon: 'M6 4v16l14-8z',
+  },
+  {
+    title: '商拍与电商',
+    desc: '商拍换装、姿态复刻、商品套图、产品替换',
+    icon: 'M6 7h12l-1 13H7L6 7zM9 7V5a3 3 0 0 1 6 0v2',
+  },
+  {
+    title: '本地生活',
+    desc: '门店全案、AI文案、AI数字人、图文笔记',
+    icon: 'M4 9l2-5h12l2 5M4 9h16v1a2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1-6 0 2.5 2.5 0 0 1-5 0V9zM5 13v7h14v-7',
+  },
+]
 import { sendSms, smsLogin, reportDevice, getAuthToken } from '@/api/union'
 import { adoptSession } from '@/utils/authSession'
 
@@ -98,7 +124,7 @@ async function handleLogin() {
 
 <template>
   <div class="login-page min-h-100vh flex flex-col md:flex-row bg-page text-ink">
-    <!-- 品牌面板（桌面端） -->
+    <!-- 品牌面板（桌面端）：品牌块 + 标题 + 四个能力卡片 + 版权 -->
     <aside
       class="relative hidden md:flex md:w-[44%] lg:w-[46%] flex-col justify-between overflow-hidden px-48px py-44px bg-gradient-to-br from-violet-soft via-#f8f4fa to-violet-soft-2 border-r border-violet-line"
     >
@@ -112,62 +138,76 @@ async function handleLogin() {
       />
 
       <div class="relative flex items-center gap-12px">
-        <span
-          class="flex items-center justify-center w-40px h-40px rounded-10px bg-gradient-to-b from-violet-top to-violet-bottom border border-violet-border text-white text-18px font-700 shadow-[0_2px_4px_-1px_rgba(31,35,41,0.08),0_10px_18px_-10px_rgba(31,35,41,0.22)]"
-          aria-hidden="true"
-        >
-          F
-        </span>
-        <span class="text-18px font-600 tracking-wide text-ink">Fusion AIGC</span>
+        <img
+          :src="VITE_OSS_ASSET_URL + 'logo.png'"
+          alt=""
+          class="block w-40px h-40px rounded-10px object-cover shadow-[0_2px_4px_-1px_rgba(31,35,41,0.08),0_10px_18px_-10px_rgba(31,35,41,0.22)]"
+        />
+        <div class="flex flex-col">
+          <b class="block text-20px font-600 leading-[1.2] tracking-[.01em] text-ink">小岐AI</b>
+          <span class="mt-2px text-12px leading-[1.2] text-muted">一体化数字员工平台</span>
+        </div>
       </div>
 
-      <div class="relative max-w-420px">
+      <div class="relative">
         <h2 class="m-0 text-30px lg:text-34px leading-tight font-700 text-ink">一站式 AI 创作平台</h2>
-        <p class="mt-14px mb-0 text-15px leading-relaxed text-ink-2">
-          从灵感到成片，图片、视频与商拍内容在同一个工作台完成。
+        <p class="mt-14px mb-0 max-w-none lg:whitespace-nowrap text-15px leading-relaxed text-ink-2">
+          从灵感到成片，图片、视频、商拍与本地生活内容在同一个工作台完成。
         </p>
-        <ul class="mt-32px mb-0 p-0 list-none flex flex-col gap-14px">
+
+        <ul class="mt-32px mb-0 p-0 list-none grid grid-cols-2 gap-12px w-full">
           <li
-            v-for="item in ['AI 图片与视频生成', '商拍换装与姿态复刻', '素材资产管理']"
-            :key="item"
-            class="flex items-center gap-12px text-14px text-ink"
+            v-for="card in CAPABILITIES"
+            :key="card.title"
+            class="group relative flex flex-col gap-12px p-18px rounded-14px overflow-hidden border border-white/80 bg-gradient-to-br from-white via-violet-soft to-violet-soft-2 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(31,35,41,0.05),0_18px_32px_-18px_rgba(95,63,111,0.35)] transition-[transform,box-shadow] duration-200 ease-out hover:(-translate-y-2px shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_2px_4px_rgba(31,35,41,0.06),0_24px_40px_-18px_rgba(95,63,111,0.45)]) motion-reduce:transition-none motion-reduce:hover:transform-none"
           >
             <span
-              class="flex items-center justify-center flex-shrink-0 w-24px h-24px rounded-8px bg-white border border-violet-line text-violet-ink"
+              class="pointer-events-none absolute -top-40px -right-40px w-120px h-120px rounded-full bg-violet/20 blur-[36px] transition-opacity duration-200 group-hover:opacity-100"
+              aria-hidden="true"
+            />
+            <span
+              class="flex items-center justify-center w-36px h-36px rounded-10px bg-gradient-to-b from-violet-top to-violet-bottom border border-violet-border text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_6px_14px_-6px_rgba(95,63,111,0.55)]"
               aria-hidden="true"
             >
-              <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
-                <path
-                  d="M3.5 8.5l3 3 6-7"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path :d="card.icon" />
               </svg>
             </span>
-            {{ item }}
+            <div>
+              <div class="text-14px font-600 text-ink">{{ card.title }}</div>
+              <div class="mt-4px text-12px leading-relaxed text-muted">{{ card.desc }}</div>
+            </div>
           </li>
         </ul>
       </div>
 
-      <p class="relative m-0 text-12px text-muted">© Fusion AIGC</p>
+      <p class="relative m-0 text-12px text-muted">© 小岐AI</p>
     </aside>
 
     <!-- 品牌头（移动端） -->
     <header class="md:hidden flex items-center gap-10px px-20px pt-28px">
-      <span
-        class="flex items-center justify-center w-32px h-32px rounded-8px bg-gradient-to-b from-violet-top to-violet-bottom border border-violet-border text-white text-15px font-700"
-        aria-hidden="true"
-      >
-        F
-      </span>
-      <span class="text-16px font-600 text-ink">Fusion AIGC</span>
+      <img :src="VITE_OSS_ASSET_URL + 'logo.png'" alt="" class="block w-32px h-32px rounded-8px object-cover" />
+      <b class="text-16px font-600 text-ink">小岐AI</b>
     </header>
 
     <!-- 登录区 -->
     <main class="flex-1 flex items-start md:items-center justify-center px-16px py-24px md:p-48px">
-      <div class="login-card ll-card w-full max-w-400px px-24px py-28px sm:px-36px sm:py-36px">
+      <div
+        class="login-card relative w-full max-w-400px overflow-hidden rounded-16px border border-white/90 bg-gradient-to-b from-white via-white to-violet-soft/60 px-24px py-28px sm:px-36px sm:py-36px shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(31,35,41,0.05),0_30px_60px_-30px_rgba(95,63,111,0.35)] backdrop-blur-sm"
+      >
+        <span
+          class="pointer-events-none absolute -top-80px -right-60px w-220px h-220px rounded-full bg-violet/15 blur-[56px]"
+          aria-hidden="true"
+        />
         <div class="card-header">
           <h1 class="m-0 text-24px leading-tight font-600 text-ink">欢迎登录</h1>
           <p class="mt-8px mb-0 text-14px text-muted">使用联盟账号登录，获取 AI 创作能力</p>

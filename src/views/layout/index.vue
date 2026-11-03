@@ -54,12 +54,15 @@ watch(
 </script>
 
 <template>
-  <div class="layout">
-    <div class="navigation-content">
+  <div class="flex">
+    <div class="flex-shrink-0">
       <Navigation />
     </div>
 
-    <div class="container">
+    <!-- min-w-0：flex 项默认 min-width:auto，会被内容的最小宽度顶住。标签开满时标签条会把容器
+         撑到视口之外（实测 14 个标签 → 容器 1604px、整页横向溢出 484px），
+         归零后多余的标签才会落到标签条自己的横向滚动里。页面底 #f5f6f7（原型 --sx-page） -->
+    <div class="relative min-w-0 flex-1 bg-page">
       <ECommerceTabs v-if="isECommerce" />
 
       <!-- keep-alive 刻意挂在 layout 这层而不是电商子布局：挂在子布局里的话，点左侧导航去
@@ -73,23 +76,3 @@ watch(
     </div>
   </div>
 </template>
-
-<style scoped lang="less">
-.layout {
-  display: flex;
-
-  > .navigation-content {
-    flex-shrink: 0;
-  }
-
-  > .container {
-    flex: 1;
-    background: #f5f6f8;
-    position: relative;
-    // flex 项默认 min-width:auto，会被内容的最小宽度顶住。标签开满时标签条会把容器
-    // 撑到视口之外（实测 14 个标签 → 容器 1604px、整页横向溢出 484px），
-    // 归零后多余的标签才会落到标签条自己的横向滚动里
-    min-width: 0;
-  }
-}
-</style>
