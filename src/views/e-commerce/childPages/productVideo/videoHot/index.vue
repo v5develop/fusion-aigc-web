@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import SettingsBar from '@/views/e-commerce/childPages/components/SettingsBar/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { computed, provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
-import SelectGroup from '@/components/SelectGroup/index.vue'
 import { regionOps, languageOps, aspectRatioVideoOps } from '@/views/e-commerce/childPages/constants.ts'
 import { localDurationOps, videoModelOpsFor, seedanceDurationOps } from '../constants.ts'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
@@ -88,18 +89,12 @@ const submit = () => {
 </script>
 
 <template>
-  <Container
-    class="commerce"
-    title="爆款视频"
-    :submit="submit"
-    :loading="loading"
-    :integral="integral"
-    :quote-status="quoteStatus"
-  >
+  <Container title="爆款视频" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">商品图</div>
+      <div>
+        <SectionTitle>商品图</SectionTitle>
         <ImageUpload
+          fromAsset
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"
           multiple
@@ -111,32 +106,13 @@ const submit = () => {
           ]"
         />
 
-        <div class="module-title">目标市场与语言</div>
-        <SelectGroup
-          v-model:data="formData"
-          :list="[
-            { field: 'region', options: regionOps },
-            { field: 'language', options: languageOps },
-            { field: 'aspectRatio', options: aspectRatioVideoOps },
-            { field: 'duration', options: currentDurationOps },
-          ]"
-        />
-
-        <!--        外面的模型只能选自己上传的达人，本地模型不做限制-->
-        <div class="module-title">选择模型</div>
-        <SelectGroup
-          v-model:data="formData"
-          :list="[{ field: 'modelCode', options: videoModelOpsFor('hitVideo') }]"
-          :col="1"
-        />
-
         <CustomModel
           v-model:personUrl="formData.personUrl"
           v-model:personUrlHs="formData.personUrlHs"
           :modelCode="formData.modelCode"
         />
 
-        <div class="module-title">商品卖点&要求</div>
+        <SectionTitle>商品卖点&要求</SectionTitle>
         <PromptAssist
           v-model:value="formData.buyPoint"
           :params="{
@@ -155,7 +131,7 @@ const submit = () => {
           placeholder="输入商品核心点、适用人群、使用场景等信息"
         />
 
-        <div class="module-title">视频类型</div>
+        <SectionTitle>视频类型</SectionTitle>
         <CheckboxGroup
           v-model="formData.checked"
           :list="checkboxOps"
@@ -167,64 +143,39 @@ const submit = () => {
       </div>
     </template>
 
+    <template #settings>
+      <!-- 外面的模型只能选自己上传的达人，本地模型不做限制 -->
+      <SettingsBar
+        v-model:data="formData"
+        :model-options="videoModelOpsFor('hitVideo')"
+        :fields="[
+          { field: 'region', label: '地区', options: regionOps },
+          { field: 'language', label: '语言', options: languageOps },
+          { field: 'aspectRatio', label: '比例', options: aspectRatioVideoOps },
+          { field: 'duration', label: '时长', options: currentDurationOps },
+        ]"
+      />
+    </template>
+
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
+      <RecordList v-if="showList" />
       <Sample
         v-else
         title="爆款视频"
         :rightDesc="`上传商品素材，一键生成短平快带货短片，适配全平台店铺短视频流量需求。`"
       >
-        <div class="video-cont">
-          <div class="item" v-for="item in videoList" :key="item.title">
-            <video class="video" controls :src="item.url"></video>
-            <div class="title">{{ item.title }}</div>
-            <div class="desc">{{ item.desc }}</div>
+        <div class="grid grid-cols-4 gap-12px p-12px rounded-lg border border-solid border-line bg-white">
+          <div
+            v-for="item in videoList"
+            :key="item.title"
+            class="flex flex-col gap-6px h-354px text-center whitespace-nowrap"
+          >
+            <video class="flex-1 min-h-0 w-full rounded-md bg-sunken" controls :src="item.url"></video>
+            <div class="text-13px font-600 leading-20px text-ink">{{ item.title }}</div>
+            <div class="text-11px leading-16px text-muted">{{ item.desc }}</div>
           </div>
         </div>
       </Sample>
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-  }
-
-  .video-cont {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 10px 0;
-    background-color: white;
-    padding: 20px;
-    border-radius: 10px;
-    > .item {
-      width: 24%;
-      height: 354px;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      white-space: nowrap;
-      > .video {
-        flex: 1;
-        border-radius: 10px;
-      }
-      > .title {
-        font-size: 16px;
-      }
-      > .desc {
-        font-size: 12px;
-        color: #999999;
-      }
-    }
-  }
-}
-</style>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SettingsBar from '@/views/e-commerce/childPages/components/SettingsBar/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref, watch } from 'vue'
 import Container from '@/views/e-commerce/childPages/components/Container/index.vue'
@@ -241,11 +243,12 @@ function useBg() {
 </script>
 
 <template>
-  <Container class="commerce" title="手持商品" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="手持商品" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">商品图</div>
+      <div>
+        <SectionTitle>商品图</SectionTitle>
         <ImageUpload
+          fromAsset
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"
           multiple
@@ -257,26 +260,8 @@ function useBg() {
           ]"
         />
 
-        <div class="module-title">生成设置</div>
-        <SelectGroup
-          v-model:data="formData"
-          :list="[
-            { field: 'platform', options: platformOps },
-            { field: 'region', options: regionOps },
-            { field: 'language', options: languageOps },
-            { field: 'aspectRatio', options: aspectRatioOps },
-          ]"
-        />
-        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
-        <SelectGroup
-          v-model:data="formData"
-          :list="[{ field: 'modelCode', options: modelOps }]"
-          :col="1"
-          style="margin-top: 8px"
-        />
-
-        <div class="module-title">手持姿势</div>
-        <div v-loading="handPagingData.modelGestures.loading" style="position: relative">
+        <SectionTitle>手持姿势</SectionTitle>
+        <div v-loading="handPagingData.modelGestures.loading" class="relative">
           <Tab
             v-model:value="handTabValue"
             :tabs="[
@@ -286,16 +271,16 @@ function useBg() {
           />
           <div v-show="handTabValue === 'modelGestures'">
             <GridImage
-              style="margin-top: 8px"
+              class="mt-8px"
               v-model:imageUrl="formData.modelGesturesUrl"
               :imgList="handListObj.modelGesturesList.map((item: any) => item.url)"
               :scrollCallBack="handScrollCallBack"
             />
           </div>
 
-          <div v-show="handTabValue === 'handGestures'" style="margin-top: 8px">
+          <div v-show="handTabValue === 'handGestures'">
             <GridImage
-              style="margin-top: 8px"
+              class="mt-8px"
               v-model:imageUrl="formData.gesturesUrl"
               :imgList="handListObj.handGesturesList.map((item: any) => item.url)"
               :scrollCallBack="handScrollCallBack"
@@ -304,8 +289,8 @@ function useBg() {
         </div>
 
         <template v-if="handTabValue === 'modelGestures'">
-          <div class="module-title">选择模特</div>
-          <div v-loading="modelPagingData.loading" style="position: relative">
+          <SectionTitle>选择模特</SectionTitle>
+          <div v-loading="modelPagingData.loading" class="relative">
             <SelectGroup
               v-model:data="modelFilterData"
               :list="[
@@ -314,12 +299,12 @@ function useBg() {
                 { field: 'skin', options: skinOps, placeholder: '肤色' },
               ]"
               :col="3"
-              style="margin-top: 12px"
+              class="mt-8px"
               clearable
               multiple
             />
             <GridImage
-              style="margin-top: 8px"
+              class="mt-8px"
               v-model:imageUrl="formData.personUrl"
               :imgList="modelList.map((item) => item.url)"
               :scrollCallBack="scrollCallBack"
@@ -327,9 +312,9 @@ function useBg() {
           </div>
         </template>
 
-        <div class="module-title">选择背景</div>
+        <SectionTitle>选择背景</SectionTitle>
         <GridImage
-          style="margin-top: 8px"
+          class="mt-8px"
           v-model:imageUrl="formData.bgImageUrl"
           :imgList="bgList.map((item) => item.url)"
           :scrollCallBack="bgScrollCallBack"
@@ -337,11 +322,21 @@ function useBg() {
       </div>
     </template>
 
+    <template #settings>
+      <SettingsBar
+        v-model:data="formData"
+        :model-options="modelOps"
+        :fields="[
+          { field: 'platform', label: '平台', options: platformOps },
+          { field: 'region', label: '地区', options: regionOps },
+          { field: 'language', label: '语言', options: languageOps },
+          { field: 'aspectRatio', label: '比例', options: aspectRatioOps },
+        ]"
+      />
+    </template>
+
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
+      <RecordList v-if="showList" />
       <Sample
         v-else
         title="手持商品"
@@ -351,13 +346,3 @@ function useBg() {
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-  }
-}
-</style>

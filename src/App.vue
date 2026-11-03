@@ -1,19 +1,9 @@
 <script setup lang="ts">
 import { NConfigProvider, zhCN, dateZhCN } from 'naive-ui'
-import type { GlobalThemeOverrides } from 'naive-ui'
 import DeviceNoticeHost from '@/components/DeviceNoticeHost'
 import BillingGuideHost from '@/components/BillingGuideHost/index.vue'
-
-const themeOverrides: GlobalThemeOverrides = {
-  common: {
-    baseColor: 'red',
-    primaryColorHover: '#8E66F9',
-    primaryColor: '#8E66F9',
-  },
-  // Button: {
-  //   textColor: '#8E66F9',
-  // },
-}
+// 主题覆盖对齐原型 v3：藤紫 #875F9A、基础字号 13、控件 r4 / 卡片 r8、输入 34 + 3px 焦点环
+import { themeOverrides } from '@/theme/naive'
 </script>
 
 <template>

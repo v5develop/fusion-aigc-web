@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref } from 'vue'
 import Container from '../../components/Container/index.vue'
@@ -41,7 +42,10 @@ if (global_formData.value.home) {
   const p = global_formData.value.ecommerce.params as ChangeBackgroundParams
   if (p.imageUrls?.length) (formData as any).imageUrls = p.imageUrls
   if (p.bgImageUrl) formData.bgImageUrl = p.bgImageUrl
-  if (p.refImageUrl?.length) { (formData as any).refImageUrl = p.refImageUrl; bgTabValue.value = 'custom' }
+  if (p.refImageUrl?.length) {
+    ;(formData as any).refImageUrl = p.refImageUrl
+    bgTabValue.value = 'custom'
+  }
   if (p.description) formData.description = p.description
   store.reset()
 }
@@ -119,11 +123,12 @@ function useBg() {
 </script>
 
 <template>
-  <Container class="commerce" title="人像换背景" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="人像换背景" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">人像图</div>
+      <div>
+        <SectionTitle>人像图</SectionTitle>
         <ImageUpload
+          fromAsset
           v-model:imgList="formData.imageUrls"
           btnName="上传人像"
           :limitNumber="1"
@@ -138,10 +143,10 @@ function useBg() {
             VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/change-background7.png',
           ]"
         >
-          <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
+          <span class="mt-12px text-11px leading-17px text-muted">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>
 
-        <div class="module-title">选择背景</div>
+        <SectionTitle>选择背景</SectionTitle>
         <Tab
           v-model:value="bgTabValue"
           :tabs="[
@@ -154,10 +159,10 @@ function useBg() {
             v-model:data="formData"
             :list="[{ field: 'platform', options: platformOptions }]"
             :col="1"
-            style="margin-top: 12px"
+            class="mt-8px"
           />-->
           <GridImage
-            style="margin-top: 8px"
+            class="mt-8px"
             v-model:imageUrl="formData.bgImageUrl"
             :imgList="bgList.map((item) => item.url)"
             :scrollCallBack="bgScrollCallBack"
@@ -167,7 +172,7 @@ function useBg() {
         </div>
 
         <div v-show="bgTabValue === 'custom'">
-          <div class="module-title">添加描述</div>
+          <SectionTitle>添加描述</SectionTitle>
           <PromptAssist
             v-model:value="formData.description"
             :params="{
@@ -186,48 +191,29 @@ function useBg() {
             placeholder="参考公式：主体对象+场景+元素/光影+风格/氛围/画质"
           />
 
-          <div class="module-title">背景风格参考</div>
+          <SectionTitle>背景风格参考</SectionTitle>
           <ImageUpload
+            fromAsset
             v-model:imgList="formData.refImageUrl"
             btnName="上传参考背景"
             :limitNumber="1"
             :topRightTips="false"
           >
-            <span style="color: #9e9e9e; margin-top: 15px">JPG/JPEG/PNG/WEBP 10M以内</span>
+            <span class="mt-12px text-11px leading-17px text-muted">JPG/JPEG/PNG/WEBP 10M以内</span>
           </ImageUpload>
         </div>
       </div>
     </template>
 
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
-      <Sample
-        v-else
-        title="人像换背景"
-        :rightDesc="`完整保留模特人像主体，一键切换室内、海景等各类拍摄场景背景。`"
-      >
-        <video class="video" controls :src="VITE_OSS_ASSET_URL + 'e-commerce/video/change-background.mp4'"></video>
+      <RecordList v-if="showList" />
+      <Sample v-else title="人像换背景" :rightDesc="`完整保留模特人像主体，一键切换室内、海景等各类拍摄场景背景。`">
+        <video
+          class="block w-full mx-auto rounded-lg"
+          controls
+          :src="VITE_OSS_ASSET_URL + 'e-commerce/video/change-background.mp4'"
+        ></video>
       </Sample>
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-  }
-
-  .video {
-    width: 100%;
-    display: block;
-    margin: 0 auto;
-    border-radius: 10px;
-  }
-}
-</style>

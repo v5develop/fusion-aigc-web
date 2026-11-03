@@ -3,11 +3,16 @@
  * AI数字人工作台：形象（上传/公共/AI定制）+ 系统音色 + 配音内容 → 口播视频。
  * 生成前必须已同意《AIGC功能使用约定》（后端 1007，前端先弹约定弹窗）。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import Workbench from '../components/Workbench/index.vue'
 import PersonSource from '../components/PersonSource/index.vue'
 import CopywritingPicker from '../components/CopywritingPicker/index.vue'
+import FormCard from '../components/FormCard/index.vue'
+import ChipGroup from '../components/ChipGroup/index.vue'
+import PromptBox from '../components/PromptBox/index.vue'
+import PromptActions from '../components/PromptActions/index.vue'
+import SettingsBar from '../components/SettingsBar/index.vue'
 import {
   llCopywritingAiWrite,
   llCreateDigitalHuman,
@@ -48,6 +53,7 @@ const activeCategory = ref<string | null>(null)
 const voices = ref<ILVoice[]>([])
 const voicesLoading = ref(false)
 const voiceId = ref<number | undefined>(undefined)
+const selectedVoice = computed(() => voices.value.find((v) => v.id === voiceId.value))
 
 async function loadVoices() {
   voicesLoading.value = true
@@ -97,6 +103,19 @@ const aiWriting = ref(false)
 const modelOptions = computed(() => (dhOptions.value?.models ?? []).map((o) => ({ label: o.label, value: o.code })))
 const selectedModel = computed(() => modelOptions.value.find((o) => o.value === scriptModel.value))
 const maxScriptLen = computed(() => dhOptions.value?.max_script_len ?? 50)
+/** 配音内容卡头说明：随出片模型档变化（原「出片模型」下拉下面那句） */
+const scriptHint = computed(() =>
+  selectedModel.value?.value === 'lite' ? 'Lite 档更省点数，配音最长 25 秒' : '默认档，配音最长 30 秒',
+)
+/** 底部设置行读写的对象：model 直接映射到 scriptModel，提交仍读 scriptModel */
+const modelSetting = reactive({
+  get model() {
+    return scriptModel.value
+  },
+  set model(value: string | undefined) {
+    scriptModel.value = value
+  },
+})
 
 async function aiWriteScript() {
   aiWriting.value = true
@@ -198,73 +217,79 @@ async function removeItem(item: ILDigitalHuman) {
         :enable-ai="true"
       />
 
-      <div class="mb-14px">
-        <div class="ll-label">音色</div>
-        <div class="flex flex-wrap gap-6px mb-8px">
-          <span class="ll-tag" :class="{ 'll-tag-active': !activeCategory }" @click="activeCategory = null">全部</span>
-          <span
-            v-for="cat in voiceCategories"
-            :key="cat.code"
-            class="ll-tag"
-            :class="{ 'll-tag-active': activeCategory === cat.code }"
-            @click="activeCategory = cat.code"
-            >{{ cat.label }}</span
-          >
-        </div>
-        <div v-loading="voicesLoading" class="max-h-220px overflow-auto flex flex-col gap-6px">
+      <FormCard title="音色" required :hint="selectedVoice ? `已选：${selectedVoice.name}` : ''">
+        <ChipGroup
+          v-model="activeCategory"
+          :options="voiceCategories.map((c) => ({ label: c.label, value: c.code }))"
+          label="音色分类"
+          empty-label="全部"
+          :empty-value="null"
+        />
+        <div
+          v-loading="voicesLoading"
+          class="max-h-232px min-h-60px overflow-auto flex flex-col gap-6px"
+          role="radiogroup"
+          aria-label="音色"
+        >
           <div
             v-for="voice in voices"
             :key="voice.id"
-            class="flex items-center justify-between gap-8px px-12px py-8px rounded-8px border border-solid cursor-pointer transition-colors"
+            role="radio"
+            :aria-checked="voiceId === voice.id"
+            tabindex="0"
+            class="flex items-center justify-between gap-8px min-h-44px box-border px-12px py-6px rounded-md border border-solid cursor-pointer sx-focus transition-[border-color,background,box-shadow] duration-mid ease-sx motion-reduce:transition-none"
             :class="
               voiceId === voice.id
-                ? 'border-violet-line bg-violet-soft'
-                : 'border-line bg-white hover:border-violet-line'
+                ? 'border-violet-line sx-grad-tint shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                : 'border-line bg-white hover:(border-violet-line shadow-raised)'
             "
             @click="voiceId = voice.id"
+            @keydown.enter.prevent="voiceId = voice.id"
+            @keydown.space.prevent="voiceId = voice.id"
           >
             <div class="min-w-0 flex flex-col gap-2px">
-              <span class="truncate text-13px leading-18px text-ink">{{ voice.name }}</span>
+              <span
+                class="truncate text-13px leading-18px"
+                :class="voiceId === voice.id ? 'font-600 text-violet-ink' : 'font-500 text-ink'"
+                >{{ voice.name }}</span
+              >
               <span class="truncate text-11px leading-16px text-muted">{{ voice.style }}</span>
             </div>
-            <span
-              class="ll-link flex-none"
-              :class="{ '!text-violet-press': playingId === voice.id }"
+            <button
+              type="button"
+              class="sx-btn !h-24px !px-8px !text-11px flex-none transition-[border-color,color] duration-fast"
+              :class="{ '!text-violet-ink !border-violet-line': playingId === voice.id }"
+              :aria-label="`${playingId === voice.id ? '停止' : '试听'}：${voice.name}`"
               @click.stop="preview(voice)"
-              >{{ playingId === voice.id ? '停止' : '试听' }}</span
             >
+              {{ playingId === voice.id ? '停止' : '试听' }}
+            </button>
           </div>
-          <div v-if="!voicesLoading && !voices.length" class="ll-empty !text-12px py-16px">该分类暂无音色</div>
+          <div
+            v-if="!voicesLoading && !voices.length"
+            class="rounded-md border border-dashed border-line-strong text-center text-11px leading-[1.65] text-muted py-16px"
+          >
+            该分类暂无音色
+          </div>
         </div>
-      </div>
+      </FormCard>
 
-      <div class="mb-14px">
-        <div class="ll-label">
-          配音内容（{{ script.length }}/{{ maxScriptLen }}字）
-          <span class="flex gap-10px">
-            <span class="ll-link" :class="{ 'opacity-60 cursor-not-allowed': aiWriting }" @click="aiWriteScript">{{
-              aiWriting ? 'AI帮写中…' : '✨ AI帮写'
-            }}</span>
-            <span class="ll-link" @click="showCopyPicker = true">选择AI文案</span>
-          </span>
-        </div>
-        <n-input
-          v-model:value="script"
-          type="textarea"
-          :rows="5"
-          :maxlength="maxScriptLen"
-          show-count
+      <FormCard title="配音内容" required :hint="modelOptions.length ? scriptHint : ''">
+        <PromptBox
+          v-model="script"
+          label="配音内容"
+          :max-length="maxScriptLen"
           placeholder="数字人要说的话，50 字以内口播效果最佳"
-        />
-      </div>
+        >
+          <template #actions>
+            <PromptActions :loading="aiWriting" @ai="aiWriteScript" @pick="showCopyPicker = true" />
+          </template>
+        </PromptBox>
+      </FormCard>
+    </template>
 
-      <div v-if="modelOptions.length" class="mb-14px">
-        <div class="ll-label">出片模型</div>
-        <n-select v-model:value="scriptModel" size="small" :options="modelOptions" />
-        <div class="mt-4px text-11px leading-16px text-placeholder">
-          {{ selectedModel?.value === 'lite' ? 'Lite 档更省点数，配音最长 25 秒' : '默认档，配音最长 30 秒' }}
-        </div>
-      </div>
+    <template #settings>
+      <SettingsBar v-model:data="modelSetting" :model-options="modelOptions" />
     </template>
 
     <template #right>
@@ -274,7 +299,11 @@ async function removeItem(item: ILDigitalHuman) {
           v-loading="listCtl.loading.value"
           class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-14px content-start"
         >
-          <div v-for="item in listCtl.items.value" :key="item.id" class="group ll-card relative overflow-hidden">
+          <div
+            v-for="item in listCtl.items.value"
+            :key="item.id"
+            class="group bg-white rounded-lg border border-solid border-line shadow-card-v3 relative overflow-hidden"
+          >
             <div class="relative cursor-pointer" @click="openPreview(item)">
               <img
                 v-if="item.cover_url || item.image_url"
@@ -282,7 +311,10 @@ async function removeItem(item: ILDigitalHuman) {
                 alt=""
                 class="block w-full aspect-[9/16] object-cover"
               />
-              <div class="ll-chip absolute top-6px left-6px" :class="`ll-chip-${DH_STATUS_MAP[item.status]?.type}`">
+              <div
+                class="sx-chip flex-shrink-0 absolute top-6px left-6px"
+                :class="`ll-chip-${DH_STATUS_MAP[item.status]?.type}`"
+              >
                 {{ DH_STATUS_MAP[item.status]?.label }}
               </div>
               <div
@@ -309,12 +341,15 @@ async function removeItem(item: ILDigitalHuman) {
               确定删除这个数字人？
             </n-popconfirm>
           </div>
-          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="col-span-full ll-empty py-80px">
+          <div
+            v-if="!listCtl.loading.value && !listCtl.items.value.length"
+            class="col-span-full sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
+          >
             还没有数字人，左侧开始生成吧
           </div>
           <div
             v-if="listCtl.hasMore.value"
-            class="col-span-full ll-link block text-center py-8px"
+            class="col-span-full ll-link transition-colors duration-fast block text-center py-8px"
             @click="listCtl.loadMore()"
           >
             加载更多

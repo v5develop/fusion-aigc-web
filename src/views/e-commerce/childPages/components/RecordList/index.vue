@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { inject, ref, type Ref } from 'vue'
+import { computed, inject, ref, unref, useId, type Ref } from 'vue'
 import Card from '../Card/index.vue'
+import { EC_SELECTED_TASK_KEY, selectedGroupOf } from '../HistoryColumn/selection'
 import { getDownloadableUrls, downloadImagesAsZip, zipNameOf } from '@/utils/download'
 import { mediaAspectRatio } from '@/utils/ratio'
-import downloadIcon from '@/assets/icons/download-single.svg'
 
-const recordsData = inject<any[]>('recordsData')
+// 页面 provide 的是 computed（taskList），这里统一解包成数组
+const recordsData = inject<Ref<any[] | undefined> | any[] | undefined>('recordsData')
+const groups = computed<any[]>(() => unref(recordsData) ?? [])
+// 中栏历史卡选中的那一批；没选时跟随最新一批
+const selectedId = inject(EC_SELECTED_TASK_KEY, ref<string | null>(null))
+const current = computed(() => selectedGroupOf(groups.value, selectedId.value))
+const titleId = `ec-result-title-${useId()}`
 const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', undefined)
 // 视频页下发 'video'（失败态没有 resultUrl 时也能判定组类型）
 const groupMediaType = inject<'image' | 'video'>('recordMediaType', 'image')
@@ -59,113 +65,68 @@ const getGroupSelectState = (group: any) => {
 </script>
 
 <template>
-  <div class="record-list">
-    <div class="record-item" v-for="item in recordsData" :key="item.taskId">
-      <div class="title-cont">
-        <div class="left-cont">
-          <i
-            v-if="selectImgUrls"
-            :class="getGroupSelectState(item).allChecked ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"
-            @click="toggleGroupAll(item)"
-          />
-          <span>{{ item.createTime }}</span>
-        </div>
-
-        <button
-          v-if="getDownloadableUrls(item).length"
-          class="group-download-btn"
-          :disabled="downloadingIds.has(item.taskId)"
-          @click="onGroupDownload(item)"
-        >
-          <img :src="downloadIcon" width="16" height="16" alt="下载" />
-          <span>{{ downloadingIds.has(item.taskId) ? '下载中' : '下载' }}</span>
-        </button>
-      </div>
-
-      <div class="card-cont" :class="{ 'card-cont--video': groupMediaType === 'video' }">
-        <Card
-          class="card-item"
-          v-for="jtem in item.contents"
-          :key="jtem.taskId"
-          :data="jtem"
-          :style="{ aspectRatio: cardAspectRatio(jtem, item) }"
+  <!-- 结果列（原型 ToolPreviewPanel，规范 §5.11）：头部 = 标题 14/600 + 时间 12/500/18 + 下载（高 28、内边距 0 8、r4、11px）；
+       下方候选网格：图片 5 列、gap 8、r6，视频沿用视频模块的 480 宽 16:9。结果卡上不放常驻操作，下载 / 选择只在悬停时出现 -->
+  <section v-if="current" :aria-labelledby="titleId" class="flex flex-col gap-10px p-12px">
+    <div class="flex items-center gap-8px min-h-28px">
+      <button
+        v-if="selectImgUrls"
+        type="button"
+        class="grid place-items-center p-0 border-none bg-transparent text-20px text-ink-2 cursor-pointer rounded-sm sx-focus"
+        :aria-pressed="getGroupSelectState(current).allChecked"
+        aria-label="全选本组"
+        @click="toggleGroupAll(current)"
+      >
+        <i
+          :class="getGroupSelectState(current).allChecked ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"
+          aria-hidden="true"
         />
-      </div>
+      </button>
+      <h2 :id="titleId" class="m-0 flex-none text-14px font-600 leading-20px text-ink">生成结果</h2>
+      <span class="min-w-0 truncate text-12px font-500 leading-18px text-muted tabular-nums">{{
+        current.createTime
+      }}</span>
+
+      <button
+        v-if="getDownloadableUrls(current).length"
+        type="button"
+        class="sx-btn !h-28px !px-8px !text-11px ml-auto flex-none"
+        :disabled="downloadingIds.has(current.taskId)"
+        :aria-busy="downloadingIds.has(current.taskId) || undefined"
+        @click="onGroupDownload(current)"
+      >
+        <svg
+          class="w-12px h-12px"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" />
+        </svg>
+        <span>{{ downloadingIds.has(current.taskId) ? '下载中' : '下载' }}</span>
+      </button>
     </div>
-  </div>
+
+    <!-- 各卡片按素材真实比例（内联 aspect-ratio）撑高，顶对齐避免被行高拉伸变形 -->
+    <div
+      class="grid gap-8px items-start"
+      :class="groupMediaType === 'video' ? 'grid-cols-[repeat(auto-fill,minmax(0,480px))]' : 'grid-cols-5'"
+    >
+      <Card
+        v-for="jtem in current.contents"
+        :key="jtem.taskId"
+        class="w-full"
+        :data="jtem"
+        :style="{ aspectRatio: cardAspectRatio(jtem, current) }"
+      />
+    </div>
+  </section>
+  <!-- 刚提交、第一轮轮询还没回来：先只放标题 -->
+  <section v-else :aria-labelledby="titleId" class="p-12px">
+    <h2 :id="titleId" class="m-0 text-14px font-600 leading-20px text-ink">生成结果</h2>
+  </section>
 </template>
-
-<style scoped lang="less">
-.record-list {
-  > .record-item {
-    margin-bottom: 50px;
-    > .title-cont {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 16px;
-      font-weight: 600;
-      line-height: 22px;
-      margin-bottom: 26px;
-      > .left-cont {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        > .icon-ic_ds_check_sel,
-        > .icon-ic_ds_check_nor {
-          font-size: 24px;
-          cursor: pointer;
-        }
-      }
-
-      > .group-download-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        height: 40px;
-        padding: 0 16px;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        /* token: AI智慧紫/AI主渐变 */
-        background: linear-gradient(0deg, #bba2ff 0%, #ccbaff 99%);
-        color: #fff;
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 20px;
-        transition: opacity 0.15s ease;
-
-        > img {
-          display: block;
-        }
-
-        &:hover {
-          opacity: 0.9;
-        }
-
-        &:disabled {
-          opacity: 0.6;
-          cursor: default;
-        }
-      }
-    }
-
-    > .card-cont {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 8px;
-      // 视频组与视频模块卡片同尺寸：固定 480px 宽（配 16:9 容器即 480×270）
-      &--video {
-        grid-template-columns: repeat(auto-fill, 480px);
-      }
-      font-size: 0;
-      // 各卡片按素材真实比例（内联 aspect-ratio）撑高，顶对齐避免被行高拉伸变形
-      align-items: start;
-      > .card-item {
-        width: 100%;
-        // aspect-ratio 由模板按素材真实比例内联下发（缺数据时回退 1/1）
-      }
-    }
-  }
-}
-</style>

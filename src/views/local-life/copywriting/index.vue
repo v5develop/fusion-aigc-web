@@ -11,6 +11,13 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import Workbench from '../components/Workbench/index.vue'
 import ShopProfileSelect from '../components/ShopProfileSelect/index.vue'
+import FormCard from '../components/FormCard/index.vue'
+import Field from '../components/Field/index.vue'
+import SegTabs from '../components/SegTabs/index.vue'
+import ChipGroup from '../components/ChipGroup/index.vue'
+import PromptBox from '../components/PromptBox/index.vue'
+import PromptActions from '../components/PromptActions/index.vue'
+import SettingsBar from '../components/SettingsBar/index.vue'
 import {
   llCopywritingAiWrite,
   llCopywritingGenerate,
@@ -37,11 +44,13 @@ const { ensureAgreed } = useAgreement()
 
 type Mode = 'AI_WRITE' | 'IMITATE' | 'MANUAL'
 const mode = ref<Mode>('AI_WRITE')
+/** desc 是写法卡的一行说明（原型 AiCopyContent MODES） */
 const modeTabs = [
-  { key: 'AI_WRITE', label: 'AI帮写' },
-  { key: 'IMITATE', label: '爆款仿写' },
-  { key: 'MANUAL', label: '自主撰写' },
-] as { key: Mode; label: string }[]
+  { key: 'AI_WRITE', label: 'AI帮写', desc: '输入需求，AI 直接生成文案' },
+  { key: 'IMITATE', label: '爆款仿写', desc: '参考范文，仿写同款风格文案' },
+  { key: 'MANUAL', label: '自主撰写', desc: '从零手写，随心调整文案细节' },
+] as { key: Mode; label: string; desc: string }[]
+const activeModeTab = computed(() => modeTabs.find((t) => t.key === mode.value) ?? modeTabs[0]!)
 
 const options = ref<ILCopywritingOptions | null>(null)
 const form = reactive({
@@ -56,8 +65,16 @@ const form = reactive({
   shop_profile_id: undefined as number | undefined,
 })
 
-const targetWordOptions = computed(() =>
-  (options.value?.word_counts ?? []).map((o) => ({ label: o.label, value: o.code })),
+const toOptions = (list?: { label: string; code: string }[]) =>
+  (list ?? []).map((o) => ({ label: o.label, value: o.code }))
+const contentTypeOptions = computed(() => toOptions(options.value?.content_types))
+const styleOptions = computed(() => toOptions(options.value?.styles))
+const industryOptions = computed(() => toOptions(options.value?.industries))
+/** 「生成设置」里的目标字数：首项「不限」= 不传 target_words（原下拉清空的效果） */
+const targetWordSettingOptions = computed(() =>
+  (options.value?.word_counts?.length ? [{ label: '不限', value: '' }] : []).concat(
+    toOptions(options.value?.word_counts),
+  ),
 )
 
 onMounted(async () => {
@@ -187,7 +204,7 @@ const { start: startDetailPoll } = usePollingWhile(
     if (!data) return true
     detail.value = data
     if (data.status === 0) return true
-    // 到终态：列表与积分同步刷一遍
+    // 到终态：列表与点数同步刷一遍
     void listCtl.refresh()
     message.success(data.status === 1 ? '文案已生成' : '文案生成失败')
     return false
@@ -267,106 +284,64 @@ function openDerivative(d: ILDerivative) {
     :submit-text="mode === 'MANUAL' ? '保存文案' : '生成文案'"
   >
     <template #default>
-      <div class="flex flex-wrap gap-8px mb-16px">
-        <div
-          v-for="tab in modeTabs"
-          :key="tab.key"
-          class="ll-pill"
-          :class="{ 'll-pill-active': mode === tab.key }"
-          @click="mode = tab.key"
-        >
-          {{ tab.label }}
-        </div>
-      </div>
+      <FormCard title="写法" :hint="activeModeTab.desc">
+        <SegTabs v-model="mode" :options="modeTabs" label="写法" size="md" />
+      </FormCard>
 
-      <template v-if="mode !== 'MANUAL'">
-        <div class="mb-14px">
-          <div class="ll-label">内容类型</div>
-          <n-select
-            v-model:value="form.content_type"
-            size="small"
-            :options="(options?.content_types ?? []).map((o) => ({ label: o.label, value: o.code }))"
-            placeholder="请选择"
-          />
-        </div>
-        <div class="mb-14px grid grid-cols-2 gap-10px">
-          <div>
-            <div class="ll-label">风格</div>
-            <n-select
-              v-model:value="form.style"
-              size="small"
-              clearable
-              :options="(options?.styles ?? []).map((o) => ({ label: o.label, value: o.code }))"
-              placeholder="选填"
-            />
-          </div>
-          <div>
-            <div class="ll-label">行业</div>
-            <n-select
-              v-model:value="form.industry"
-              size="small"
-              clearable
-              :options="(options?.industries ?? []).map((o) => ({ label: o.label, value: o.code }))"
-              placeholder="选填"
-            />
-          </div>
-        </div>
-        <div class="mb-14px">
-          <div class="ll-label">目标字数</div>
-          <n-select
-            v-model:value="form.target_words"
-            size="small"
-            clearable
-            :options="targetWordOptions"
-            placeholder="不限"
-          />
-        </div>
-      </template>
-
-      <div v-if="mode === 'AI_WRITE'" class="mb-14px">
-        <div class="ll-label">主题</div>
-        <n-input
-          v-model:value="form.topic"
-          type="textarea"
-          :maxlength="options?.max_topic_len || 500"
-          show-count
-          :rows="3"
+      <FormCard v-if="mode === 'AI_WRITE'" title="主题" required>
+        <PromptBox
+          v-model="form.topic"
+          label="主题"
+          size="lg"
+          :max-length="options?.max_topic_len || 500"
           placeholder="想写什么？如：新店开业暖场活动宣传"
         />
-      </div>
+      </FormCard>
 
-      <div v-if="mode === 'IMITATE'" class="mb-14px">
-        <div class="ll-label">爆款原文</div>
-        <n-input
-          v-model:value="form.reference_text"
-          type="textarea"
-          :maxlength="options?.max_reference_len || 2000"
-          show-count
-          :rows="6"
+      <FormCard v-if="mode === 'IMITATE'" title="爆款原文" required>
+        <PromptBox
+          v-model="form.reference_text"
+          label="爆款原文"
+          size="lg"
+          :max-length="options?.max_reference_len || 2000"
           placeholder="粘贴一篇对标爆款文案，AI 会仿写同款结构的新文案"
         />
-      </div>
+      </FormCard>
 
       <template v-if="mode === 'MANUAL'">
-        <div class="mb-14px">
-          <div class="ll-label">标题</div>
-          <n-input v-model:value="form.title" size="small" maxlength="100" placeholder="选填" />
-        </div>
-        <div class="mb-14px">
-          <div class="ll-label">
-            正文
-            <span class="ll-link" :class="{ 'opacity-60 cursor-not-allowed': aiWriting }" @click="aiWriteDraft">
-              {{ aiWriting ? 'AI帮写中…' : '✨ AI帮写' }}
-            </span>
-          </div>
-          <n-input v-model:value="form.body" type="textarea" :rows="8" placeholder="自己写，或点右上角让 AI 帮你起草" />
-        </div>
+        <FormCard title="标题" hint="选填">
+          <n-input v-model:value="form.title" size="small" maxlength="100" show-count placeholder="请输入文案标题" />
+        </FormCard>
+        <FormCard title="正文" required>
+          <PromptBox v-model="form.body" label="正文" size="lg" placeholder="自己写，或点左下角让 AI 帮你起草">
+            <template #actions>
+              <PromptActions :loading="aiWriting" :picker="false" @ai="aiWriteDraft" />
+            </template>
+          </PromptBox>
+        </FormCard>
       </template>
 
-      <div v-if="mode !== 'MANUAL'" class="mb-14px">
-        <div class="ll-label">关联店铺档案</div>
-        <ShopProfileSelect v-model:value="form.shop_profile_id" />
-      </div>
+      <FormCard v-else title="参数">
+        <Field label="内容类型">
+          <ChipGroup v-model="form.content_type" :options="contentTypeOptions" label="内容类型" />
+        </Field>
+        <Field label="风格">
+          <ChipGroup v-model="form.style" :options="styleOptions" label="风格" empty-label="不限" />
+        </Field>
+        <Field label="行业">
+          <ChipGroup v-model="form.industry" :options="industryOptions" label="行业" empty-label="不限" />
+        </Field>
+        <Field label="关联店铺档案">
+          <ShopProfileSelect v-model:value="form.shop_profile_id" />
+        </Field>
+      </FormCard>
+    </template>
+
+    <template v-if="mode !== 'MANUAL'" #settings>
+      <SettingsBar
+        v-model:data="form"
+        :fields="[{ field: 'target_words', label: '目标字数', options: targetWordSettingOptions }]"
+      />
     </template>
 
     <template #right>
@@ -374,8 +349,9 @@ function openDerivative(d: ILDerivative) {
         <!-- 列表视图 -->
         <template v-if="view === 'list'">
           <div class="flex flex-none items-center gap-10px mb-14px">
-            <div class="flex gap-6px">
-              <span
+            <div class="sx-seg" role="group">
+              <button
+                type="button"
                 v-for="opt in [
                   { value: null, label: '全部' },
                   { value: 0, label: '生成中' },
@@ -383,11 +359,13 @@ function openDerivative(d: ILDerivative) {
                   { value: 2, label: '失败' },
                 ]"
                 :key="String(opt.label)"
-                class="ll-pill"
-                :class="{ 'll-pill-active': statusFilter === opt.value }"
+                class="sx-seg-item !px-12px !text-12px bg-transparent hover:text-ink sx-focus"
+                :class="{ 'sx-seg-on': statusFilter === opt.value }"
+                :aria-pressed="statusFilter === opt.value"
                 @click="statusFilter = opt.value"
-                >{{ opt.label }}</span
               >
+                {{ opt.label }}
+              </button>
             </div>
             <n-input
               v-model:value="keyword"
@@ -398,7 +376,9 @@ function openDerivative(d: ILDerivative) {
               @keydown.enter="search"
               @clear="search"
             >
-              <template #suffix><span class="ll-link" @click="search">搜索</span></template>
+              <template #suffix
+                ><span class="ll-link transition-colors duration-fast" @click="search">搜索</span></template
+              >
             </n-input>
           </div>
 
@@ -406,19 +386,19 @@ function openDerivative(d: ILDerivative) {
             <div
               v-for="item in listCtl.items.value"
               :key="item.id"
-              class="ll-card flex-none px-16px py-12px cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex-none px-16px py-12px cursor-pointer transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)"
               @click="openDetail(item.id)"
             >
               <div class="flex items-center gap-8px mb-6px">
                 <span class="flex-1 min-w-0 truncate text-14px font-600 leading-20px text-ink">{{
                   item.title || '未命名文案'
                 }}</span>
-                <span class="ll-chip" :class="`ll-chip-${COPY_STATUS_MAP[item.status]?.type}`">
+                <span class="sx-chip flex-shrink-0" :class="`ll-chip-${COPY_STATUS_MAP[item.status]?.type}`">
                   {{ COPY_STATUS_MAP[item.status]?.label ?? '未知' }}
                 </span>
               </div>
               <div class="line-clamp-2 mb-8px text-12px leading-18px text-ink-2">{{ item.body || '生成中…' }}</div>
-              <div class="flex justify-between gap-8px text-12px text-muted">
+              <div class="flex justify-between gap-8px text-11px leading-16px text-muted tabular-nums">
                 <span
                   >{{ item.content_type_label
                   }}<template v-if="item.word_count"> · {{ item.word_count }}字</template></span
@@ -426,12 +406,15 @@ function openDerivative(d: ILDerivative) {
                 <span class="flex-none">{{ formatTime(item.create_time) }}</span>
               </div>
             </div>
-            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="ll-empty py-80px">
+            <div
+              v-if="!listCtl.loading.value && !listCtl.items.value.length"
+              class="sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
+            >
               还没有文案，左侧开始创作吧
             </div>
             <div
               v-if="listCtl.hasMore.value && !listCtl.loadingMore.value"
-              class="ll-link block text-center py-8px"
+              class="ll-link transition-colors duration-fast block text-center py-8px"
               @click="listCtl.loadMore()"
             >
               加载更多
@@ -441,20 +424,21 @@ function openDerivative(d: ILDerivative) {
 
         <!-- 详情视图 -->
         <template v-else>
-          <div
-            class="flex-none w-fit mb-12px text-13px text-ink-2 cursor-pointer hover:text-violet-ink"
+          <button
+            type="button"
+            class="flex-none w-fit mb-12px -ml-8px sx-btn-ghost !h-28px !px-8px hover:!text-violet-ink transition-colors duration-fast"
             @click="view = 'list'"
           >
             ← 返回列表
-          </div>
+          </button>
           <div v-if="detail" v-loading="detailLoading" class="flex-1 min-h-0 overflow-auto">
             <div class="flex items-center gap-10px">
-              <span class="ll-chip" :class="`ll-chip-${COPY_STATUS_MAP[detail.status]?.type}`">
+              <span class="sx-chip flex-shrink-0" :class="`ll-chip-${COPY_STATUS_MAP[detail.status]?.type}`">
                 {{ COPY_STATUS_MAP[detail.status]?.label }}
               </span>
               <h2 class="m-0 text-16px font-600 leading-22px text-ink">{{ detail.title || '未命名文案' }}</h2>
             </div>
-            <div class="mt-8px mb-16px text-12px text-muted">
+            <div class="mt-8px mb-16px text-11px leading-16px text-muted tabular-nums">
               {{ detail.content_type_label }}<template v-if="detail.style"> · {{ detail.style }}</template>
               <template v-if="detail.word_count"> · {{ detail.word_count }}字</template> ·
               {{ formatTime(detail.create_time) }}
@@ -462,20 +446,23 @@ function openDerivative(d: ILDerivative) {
 
             <div
               v-if="detail.status === 0"
-              class="ll-card flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
             >
               <n-spin size="small" />
               <span>文案生成中，请稍候…</span>
             </div>
             <div
               v-else-if="detail.status === 2"
-              class="ll-card flex items-center justify-center gap-10px p-40px text-13px text-danger"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex items-center justify-center gap-10px p-40px text-13px text-danger"
             >
               {{ detail.fail_reason || '生成失败' }}
             </div>
 
             <template v-else>
-              <div v-if="!editing" class="ll-card p-16px whitespace-pre-wrap text-14px leading-24px text-ink">
+              <div
+                v-if="!editing"
+                class="bg-white rounded-lg border border-solid border-line shadow-card-v3 p-14px whitespace-pre-wrap text-14px leading-24px text-ink"
+              >
                 {{ detail.body }}
               </div>
               <div v-else class="flex flex-col gap-10px">
@@ -500,12 +487,12 @@ function openDerivative(d: ILDerivative) {
               </div>
 
               <div v-if="derivatives.length" class="mt-20px">
-                <div class="ll-section-title">用这条文案生成过</div>
+                <div class="mb-8px sx-title-card">用这条文案生成过</div>
                 <div class="flex flex-wrap gap-10px">
                   <div
                     v-for="d in derivatives"
                     :key="d.kind + d.id"
-                    class="relative w-96px overflow-hidden rounded-8px border border-solid border-line bg-white cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+                    class="relative w-96px overflow-hidden rounded-8px border border-solid border-line bg-white cursor-pointer transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)"
                     @click="openDerivative(d)"
                   >
                     <img v-if="d.cover_url" class="block w-full aspect-square object-cover" :src="d.cover_url" alt="" />

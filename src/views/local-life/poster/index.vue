@@ -7,6 +7,12 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import Workbench from '../components/Workbench/index.vue'
 import CopywritingPicker from '../components/CopywritingPicker/index.vue'
+import FormCard from '../components/FormCard/index.vue'
+import Field from '../components/Field/index.vue'
+import ChipGroup from '../components/ChipGroup/index.vue'
+import PromptBox from '../components/PromptBox/index.vue'
+import PromptActions from '../components/PromptActions/index.vue'
+import SettingsBar from '../components/SettingsBar/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import {
   llCopywritingAiWrite,
@@ -177,99 +183,90 @@ async function removeItem(item: ILCreation) {
 <template>
   <Workbench :title="pageTitle" :submit="submit" :loading="submitting">
     <template #default>
-      <div class="mb-14px">
-        <div class="ll-label">
-          {{ isPoster ? '海报信息' : '长图内容' }}
-          <span class="flex gap-10px">
-            <span class="ll-link" :class="{ 'opacity-60 !cursor-not-allowed': aiWriting }" @click="aiWriteContent">{{
-              aiWriting ? 'AI帮写中…' : '✨ AI帮写'
-            }}</span>
-            <span class="ll-link" @click="showCopyPicker = true">选择AI文案</span>
-          </span>
-        </div>
-        <n-input
-          v-model:value="form.content"
-          type="textarea"
-          :rows="5"
-          :maxlength="options?.max_content_len || undefined"
-          show-count
+      <FormCard :title="isPoster ? '海报信息' : '长图内容'" required>
+        <PromptBox
+          v-model="form.content"
+          :label="isPoster ? '海报信息' : '长图内容'"
+          size="lg"
+          :max-length="options?.max_content_len || undefined"
           :placeholder="
             isPoster ? '活动主题、时间、优惠信息等，画在海报上的文字' : '要放进长图的分段内容，AI 会按模板排版'
           "
-        />
-      </div>
+        >
+          <template #actions>
+            <PromptActions :loading="aiWriting" @ai="aiWriteContent" @pick="showCopyPicker = true" />
+          </template>
+        </PromptBox>
+      </FormCard>
 
-      <template v-if="isPoster">
-        <div class="mb-14px grid grid-cols-2 gap-10px">
-          <div class="min-w-0">
-            <div class="ll-label">海报类型</div>
-            <n-select v-model:value="form.poster_type" size="small" :options="posterTypeOptions" />
-          </div>
-          <div class="min-w-0">
-            <div class="ll-label">风格</div>
-            <n-select
-              v-model:value="form.poster_style"
-              size="small"
-              clearable
-              :options="posterStyleOptions"
-              placeholder="选填"
-            />
-          </div>
-        </div>
-      </template>
+      <FormCard v-if="isPoster" title="海报偏好">
+        <Field label="海报类型">
+          <ChipGroup v-model="form.poster_type" :options="posterTypeOptions" label="海报类型" />
+        </Field>
+        <Field label="风格">
+          <ChipGroup v-model="form.poster_style" :options="posterStyleOptions" label="风格" empty-label="不限" />
+        </Field>
+      </FormCard>
 
-      <div class="mb-14px">
-        <div class="ll-label">模板{{ templateRequired ? '（必选）' : '（选填）' }}</div>
-        <div class="grid grid-cols-3 gap-8px max-h-300px overflow-auto" v-loading="templatesLoading">
-          <div
+      <FormCard title="模板" :required="templateRequired" :hint="templateRequired ? '必选' : '选填'">
+        <div
+          v-loading="templatesLoading"
+          class="grid grid-cols-3 gap-8px max-h-300px min-h-80px overflow-auto"
+          role="radiogroup"
+          aria-label="模板"
+        >
+          <button
             v-for="t in templates"
             :key="t.id"
-            class="relative overflow-hidden rounded-8px border-2 border-solid bg-surface2 cursor-pointer transition-colors"
-            :class="templateId === t.id ? 'border-violet' : 'border-transparent hover:border-violet-line'"
+            type="button"
+            role="radio"
+            :aria-checked="templateId === t.id"
+            class="relative block p-0 overflow-hidden rounded-lg border border-solid sx-grad-upload text-left cursor-pointer sx-focus transition-[border-color,box-shadow] duration-mid ease-sx motion-reduce:transition-none"
+            :class="
+              templateId === t.id
+                ? 'border-violet ring-1 ring-violet'
+                : 'border-line hover:(border-violet-line shadow-raised)'
+            "
             @click="templateId = t.id"
           >
             <img :src="t.url" alt="" class="block w-full aspect-[3/4] object-cover" />
-            <div class="truncate px-6px py-3px text-11px leading-16px text-ink-2">{{ t.title }}</div>
+            <span class="block truncate px-6px py-4px text-11px leading-16px text-ink-2">{{ t.title }}</span>
             <span
               v-if="templateId === t.id"
-              class="absolute top-4px right-4px w-18px h-18px flex items-center justify-center rounded-full bg-violet text-12px text-white"
+              class="absolute top-4px right-4px w-18px h-18px flex items-center justify-center rounded-full sx-grad-primary shadow-btn text-12px text-white"
               aria-hidden="true"
               >✓</span
             >
-          </div>
-          <div v-if="!templatesLoading && !templates.length" class="col-span-full ll-empty !text-12px py-24px">
+          </button>
+          <div
+            v-if="!templatesLoading && !templates.length"
+            class="col-span-full rounded-md border border-dashed border-line-strong text-center text-11px leading-[1.65] text-muted py-24px"
+          >
             暂无模板
           </div>
         </div>
-      </div>
+      </FormCard>
 
-      <div class="mb-14px">
-        <div class="ll-label">参考素材（选填，最多{{ maxMaterials }}张）</div>
+      <FormCard title="参考素材" :hint="`选填 · 最多 ${maxMaterials} 张`">
         <ImageUpload
+          fromAsset
           v-model:imgList="form.materials"
           btnName="上传素材图"
           :topRightTips="false"
           multiple
           :limitNumber="maxMaterials || undefined"
         />
-      </div>
+      </FormCard>
+    </template>
 
-      <div class="mb-14px grid grid-cols-2 gap-10px">
-        <div class="min-w-0">
-          <div class="ll-label">比例</div>
-          <n-select
-            v-model:value="form.size"
-            size="small"
-            :options="sizeOptions"
-            :disabled="!sizeOptions.length"
-            placeholder="默认"
-          />
-        </div>
-        <div class="min-w-0">
-          <div class="ll-label">生成张数</div>
-          <n-select v-model:value="form.image_count" size="small" :options="imageCountOptions" />
-        </div>
-      </div>
+    <template #settings>
+      <SettingsBar
+        v-model:data="form"
+        :fields="[
+          { field: 'size', label: '比例', options: sizeOptions },
+          { field: 'image_count', label: '生成张数', options: imageCountOptions },
+        ]"
+      />
     </template>
 
     <template #right>
@@ -279,7 +276,11 @@ async function removeItem(item: ILCreation) {
           class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] content-start gap-14px"
           v-loading="listCtl.loading.value"
         >
-          <div v-for="item in listCtl.items.value" :key="item.id" class="ll-card overflow-hidden">
+          <div
+            v-for="item in listCtl.items.value"
+            :key="item.id"
+            class="bg-white rounded-lg border border-solid border-line shadow-card-v3 overflow-hidden"
+          >
             <div class="relative cursor-pointer" @click="openPreview(item)">
               <!-- 多张取第一张做封面；视频类封面用输入图兜底 -->
               <img
@@ -288,9 +289,9 @@ async function removeItem(item: ILCreation) {
                 alt=""
                 class="block w-full aspect-[3/4] object-cover"
               />
-              <div v-else class="w-full aspect-[3/4] flex items-center justify-center bg-surface2 text-32px">🎨</div>
+              <div v-else class="w-full aspect-[3/4] flex items-center justify-center sx-grad-icon text-32px">🎨</div>
               <div
-                class="ll-chip absolute top-6px left-6px"
+                class="sx-chip flex-shrink-0 absolute top-6px left-6px"
                 :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`"
               >
                 {{ CREATION_STATUS_MAP[item.status]?.label }}
@@ -308,21 +309,26 @@ async function removeItem(item: ILCreation) {
                 {{ item.fail_reason || '生成失败' }}
               </div>
             </div>
-            <div class="flex items-center gap-8px px-10px py-8px text-11px text-muted">
+            <div
+              class="flex items-center gap-8px px-10px py-8px border-t border-t-solid border-t-line-soft text-11px leading-16px text-muted tabular-nums"
+            >
               <span class="text-ink-2">{{ item.size || '-' }}</span>
               <span class="flex-1">{{ formatTime(item.create_time) }}</span>
               <n-popconfirm @positive-click="removeItem(item)">
-                <template #trigger><span class="ll-danger-link">删除</span></template>
+                <template #trigger><span class="ll-danger-link transition-colors duration-fast">删除</span></template>
                 确定删除这条记录？
               </n-popconfirm>
             </div>
           </div>
-          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="col-span-full ll-empty py-80px">
+          <div
+            v-if="!listCtl.loading.value && !listCtl.items.value.length"
+            class="col-span-full sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
+          >
             还没有记录，左侧开始生成吧
           </div>
           <div
             v-if="listCtl.hasMore.value"
-            class="col-span-full ll-link block text-center py-8px"
+            class="col-span-full ll-link transition-colors duration-fast block text-center py-8px"
             @click="listCtl.loadMore()"
           >
             加载更多

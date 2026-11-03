@@ -1,11 +1,7 @@
-/* color palette from <https://github.com/vuejs/theme> */
+/* 全局基础样式 —— 对齐原型 v3（docs/design/ui-design-spec.md §1.6、§1.8、§8.1） */
 :root {
-  --main-color: #8e66f9;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-  }
+  /* 旧 less 页面用的主色变量，统一为藤紫 */
+  --main-color: #875f9a;
 }
 
 *,
@@ -16,12 +12,44 @@
 
 body {
   margin: 0;
-  color: #333333;
+  /* 原型 v3-theme.css:27,62 / globals.css:818 */
+  font-family: 'Smartisan Compact', 'Noto Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #4b5563;
+  background: #f5f6f7;
   line-height: normal;
 }
 
 #app {
   font-size: 14px;
+}
+
+/* 键盘焦点：可点元素统一 2px 藤紫环（原型 v3-theme.css:75-78）；:where 零特异性，组件自己的焦点样式优先 */
+:where(button, [role='button'], a[href], summary, [tabindex]:not([tabindex='-1'])):focus-visible {
+  outline: 2px solid #875f9a;
+  outline-offset: 2px;
+}
+
+/* 全局滚动条（原型 globals.css:819-823）：10px、透明轨道、滑块带 2px 透明边 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  min-height: 40px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-color: rgba(0, 0, 0, 0.18);
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.32);
 }
 
 /* 修改整个控件面板的背景 */

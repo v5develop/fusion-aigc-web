@@ -18,6 +18,8 @@ const emit = defineEmits<{ select: [item: TemplateCard]; retry: [] }>()
 
 const focusRing =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet'
+/** 小号次按钮（spec 默认按钮缩到 28 高） */
+const smallBtn = 'sx-btn !h-28px !px-10px !text-12px transition-[border-color,background,color] duration-fast ease-sx'
 
 function choose(item: TemplateCard) {
   emit('select', item)
@@ -29,9 +31,9 @@ function choose(item: TemplateCard) {
   <n-modal v-model:show="show" preset="card" title="选择模板" class="max-w-[92vw]" style="width: 760px">
     <n-spin :show="loading">
       <div class="min-h-200px flex flex-col gap-16px">
-        <div v-if="error" class="flex flex-1 flex-col items-center justify-center gap-8px py-24px text-13px text-muted">
-          <span>模板加载失败</span>
-          <button type="button" :class="['ll-pill', focusRing]" @click="emit('retry')">重试</button>
+        <div v-if="error" class="sx-empty flex-1" role="alert">
+          <span class="sx-empty-title !text-danger">模板加载失败</span>
+          <button type="button" :class="smallBtn" @click="emit('retry')">重试</button>
         </div>
         <template v-else>
           <section
@@ -43,24 +45,27 @@ function choose(item: TemplateCard) {
             class="flex flex-col gap-8px"
             :aria-label="group.title"
           >
-            <h3 class="m-0 text-13px font-600 text-ink-2">{{ group.title }}</h3>
-            <p v-if="!loading && !group.list.length" class="m-0 py-12px text-center text-12px text-muted">暂无模板</p>
+            <h3 class="m-0 text-13px font-600 leading-20px text-ink">{{ group.title }}</h3>
+            <p v-if="!loading && !group.list.length" class="sx-empty m-0 !min-h-80px !p-12px">
+              <span class="sx-empty-desc">暂无模板</span>
+            </p>
             <ul v-else class="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-10px p-0">
               <li v-for="item in group.list" :key="`${item.source}-${item.id}`">
                 <button
                   type="button"
                   :aria-pressed="current?.source === item.source && current?.id === item.id"
                   :class="[
-                    'w-full flex cursor-pointer flex-col overflow-hidden rounded-10px border bg-white p-0 text-left transition-colors',
+                    'w-full flex cursor-pointer flex-col overflow-hidden rounded-lg border border-solid p-0 text-left',
+                    'transition-[border-color,background,box-shadow] duration-mid ease-sx motion-reduce:transition-none',
                     current?.source === item.source && current?.id === item.id
-                      ? 'border-violet ring-2 ring-violet-line'
-                      : 'border-line hover:border-violet-line',
+                      ? 'border-violet-line sx-grad-tint ring-1 ring-violet'
+                      : 'border-line bg-white hover:(border-violet-line shadow-raised)',
                     focusRing,
                   ]"
                   @click="choose(item)"
                 >
                   <span
-                    class="aspect-[3/4] w-full flex items-center justify-center overflow-hidden bg-sunken text-ink/30"
+                    class="aspect-[3/4] w-full flex items-center justify-center overflow-hidden bg-sunken text-placeholder"
                   >
                     <img v-if="item.cover" :src="item.cover" alt="" class="h-full w-full object-cover" loading="lazy" />
                     <svg
@@ -77,7 +82,7 @@ function choose(item: TemplateCard) {
                       <path d="M20 15l-5-5-9 9" />
                     </svg>
                   </span>
-                  <span class="truncate px-10px py-8px text-12px font-600 text-ink">{{ item.title }}</span>
+                  <span class="truncate px-10px py-8px text-12px font-600 leading-18px text-ink">{{ item.title }}</span>
                 </button>
               </li>
             </ul>

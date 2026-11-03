@@ -9,6 +9,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import Textarea from '@/components/Textarea/index.vue'
+import FormCard from '../FormCard/index.vue'
+import Field from '../Field/index.vue'
+import SegTabs from '../SegTabs/index.vue'
+import ChipGroup from '../ChipGroup/index.vue'
 import {
   llCreatePortrait,
   llDhOptions,
@@ -20,7 +24,12 @@ import {
 import type { ILDhOptions, ILPortrait, ILPortraitSource, ILPublicDigitalHuman } from '@/api/localLifeTypes.ts'
 import { useAgreement, usePollingWhile } from '@/views/local-life/hooks.ts'
 
-const props = defineProps<{ enableAi?: boolean; title?: string }>()
+const props = defineProps<{
+  enableAi?: boolean
+  title?: string
+  /** 不包卡：嵌在别的分组卡里（探店 / 短剧的「出镜人物」） */
+  bare?: boolean
+}>()
 
 const source = defineModel<ILPortraitSource>('source', { default: 'UPLOAD' })
 const imageUrl = defineModel<string>('imageUrl', { default: '' })
@@ -37,6 +46,16 @@ const tabs = computed(
       { key: 'PUBLIC', label: '公共数字人' },
       ...(props.enableAi ? [{ key: 'AI', label: 'AI定制形象' }] : []),
     ] as { key: ILPortraitSource; label: string }[],
+)
+
+const GENDERS = [
+  { value: 'female', label: '女' },
+  { value: 'male', label: '男' },
+]
+
+/** 卡头说明：上传给张数上限（与 ImageUpload limitNumber=1 一致），另两种给选取方式 */
+const cardHint = computed(
+  () => ({ UPLOAD: '最多 1 张', PUBLIC: '选一位公共数字人', AI: '先生成，再选一张' })[source.value] ?? '',
 )
 
 // ---------------- 上传照片：数组 ↔ 单地址桥接 ----------------
@@ -150,120 +169,128 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mb-14px">
-    <div class="ll-section-title">{{ title ?? '人物形象' }}</div>
-    <div class="flex flex-wrap gap-8px mb-12px">
-      <div
-        v-for="tab in tabs"
-        :key="tab.key"
-        class="ll-pill"
-        :class="{ 'll-pill-active': source === tab.key }"
-        @click="source = tab.key"
-      >
-        {{ tab.label }}
-      </div>
-    </div>
+  <component
+    :is="bare ? 'div' : FormCard"
+    v-bind="bare ? { class: 'flex flex-col gap-12px' } : { title: title ?? '人物形象', hint: cardHint }"
+  >
+    <!-- 来源切换：整宽分段控件，选中 = 白 → 柔紫渐变 + 紫描边 -->
+    <SegTabs v-model="source" :options="tabs" :label="title ?? '人物形象'" />
 
     <!-- 上传照片 -->
     <div v-if="source === 'UPLOAD'">
-      <ImageUpload v-model:imgList="uploadList" btnName="上传人物照片" :topRightTips="false" :limitNumber="1">
-        <span class="inline-block mt-8px text-12px leading-18px text-placeholder"
+      <ImageUpload fromAsset v-model:imgList="uploadList" btnName="上传人物照片" :topRightTips="false" :limitNumber="1">
+        <span class="inline-block mt-8px text-11px leading-16px text-muted"
           >支持 jpg/png/webp，人脸清晰的正面照效果更佳</span
         >
       </ImageUpload>
     </div>
 
     <!-- 公共数字人 -->
-    <div v-else-if="source === 'PUBLIC'" v-loading="publicLoading">
-      <div class="grid grid-cols-3 gap-8px max-h-260px overflow-auto">
-        <div
+    <div v-else-if="source === 'PUBLIC'" v-loading="publicLoading" class="min-h-80px">
+      <div class="grid grid-cols-3 gap-8px max-h-260px overflow-auto" role="radiogroup" aria-label="公共数字人">
+        <button
           v-for="item in publicList"
           :key="item.id"
-          class="relative overflow-hidden rounded-8px border-2 border-solid bg-surface2 cursor-pointer transition-colors"
-          :class="publicId === item.id ? 'border-violet' : 'border-transparent'"
+          type="button"
+          role="radio"
+          :aria-checked="publicId === item.id"
+          class="relative block p-0 overflow-hidden rounded-lg border border-solid sx-grad-upload text-left cursor-pointer sx-focus transition-[border-color,box-shadow] duration-mid ease-sx motion-reduce:transition-none"
+          :class="
+            publicId === item.id
+              ? 'border-violet ring-1 ring-violet'
+              : 'border-line hover:(border-violet-line shadow-raised)'
+          "
           @click="publicId = item.id"
         >
           <img :src="item.image_url || item.avatar_url" alt="" class="block w-full aspect-[3/4] object-cover" />
-          <div class="truncate px-6px pt-4px text-12px leading-17px text-ink">{{ item.name }}</div>
-          <div class="truncate px-6px pb-6px text-11px leading-16px text-muted">{{ item.role_label }}</div>
+          <span class="block truncate px-6px pt-4px text-12px leading-17px text-ink">{{ item.name }}</span>
+          <span class="block truncate px-6px pb-6px text-11px leading-16px text-muted">{{ item.role_label }}</span>
           <span
             v-if="publicId === item.id"
-            class="absolute top-4px right-4px w-18px h-18px rounded-full bg-violet text-white text-12px flex items-center justify-center"
+            class="absolute top-4px right-4px w-18px h-18px rounded-full sx-grad-primary shadow-btn text-white text-12px flex items-center justify-center"
             aria-hidden="true"
             >✓</span
           >
-        </div>
-        <div v-if="!publicLoading && !publicList.length" class="col-span-full ll-empty !text-12px py-20px">
+        </button>
+        <div
+          v-if="!publicLoading && !publicList.length"
+          class="col-span-full rounded-md border border-dashed border-line-strong text-center text-11px leading-[1.65] text-muted py-20px"
+        >
           暂无公共数字人
         </div>
       </div>
     </div>
 
-    <!-- AI 定制形象 -->
-    <div v-else>
+    <!-- AI 定制形象（原型 StudioCustomHumanForm：每项一行「标签 + 胶囊」，纵向 gap 12） -->
+    <div v-else class="flex flex-col gap-12px">
       <template v-if="!portrait || portrait.status !== 1">
-        <div class="flex items-center gap-10px mb-10px">
-          <span class="w-56px flex-none text-13px text-ink-2">性别</span>
-          <n-radio-group v-model:value="portraitForm.gender" size="small">
-            <n-radio-button value="female">女</n-radio-button>
-            <n-radio-button value="male">男</n-radio-button>
-          </n-radio-group>
-        </div>
-        <div class="flex items-center gap-10px mb-10px">
-          <span class="w-56px flex-none text-13px text-ink-2">年龄</span>
-          <n-select
-            v-model:value="portraitForm.age"
-            size="small"
+        <Field label="性别">
+          <ChipGroup v-model="portraitForm.gender" :options="GENDERS" label="性别" />
+        </Field>
+        <Field label="年龄">
+          <ChipGroup
+            v-model="portraitForm.age"
             :options="(dhOptions?.ages ?? []).map((o) => ({ label: o.label, value: o.code }))"
-            placeholder="请选择"
+            label="年龄"
           />
-        </div>
-        <div class="flex items-center gap-10px mb-10px">
-          <span class="w-56px flex-none text-13px text-ink-2">肤色</span>
-          <n-select
-            v-model:value="portraitForm.skin_tone"
-            size="small"
+        </Field>
+        <Field label="肤色">
+          <ChipGroup
+            v-model="portraitForm.skin_tone"
             :options="(dhOptions?.skin_tones ?? []).map((o) => ({ label: o.label, value: o.code }))"
-            placeholder="请选择"
+            label="肤色"
           />
-        </div>
-        <div class="flex items-center gap-10px mb-10px">
-          <span class="w-56px flex-none text-13px text-ink-2">职业</span>
-          <n-select
-            v-model:value="portraitForm.role"
-            size="small"
-            clearable
+        </Field>
+        <Field label="职业">
+          <ChipGroup
+            v-model="portraitForm.role"
             :options="(dhOptions?.roles ?? []).map((o) => ({ label: o.label, value: o.code }))"
-            placeholder="选填"
+            label="职业"
+            empty-label="不限"
           />
-        </div>
-        <div class="flex items-start gap-10px mb-10px">
-          <span class="w-56px flex-none text-13px leading-28px text-ink-2">外貌描述</span>
+        </Field>
+        <Field label="外貌描述">
           <Textarea v-model:value="portraitForm.description" placeholder="补充外貌细节，如：短发、圆脸、爱笑（选填）" />
-        </div>
-        <div
-          class="mt-4px h-36px flex items-center justify-center rounded-full border border-solid border-violet-line bg-white text-13px text-violet-ink cursor-pointer select-none transition-colors"
-          :class="generating ? 'opacity-60 cursor-not-allowed' : 'hover:(bg-violet-soft border-violet)'"
+        </Field>
+        <button
+          type="button"
+          class="sx-btn-tint w-full !h-34px transition-[border-color,background,opacity] duration-fast ease-sx motion-reduce:transition-none disabled:(opacity-60 cursor-not-allowed)"
+          :disabled="generating"
+          :aria-busy="generating || undefined"
           @click="generatePortrait"
         >
-          <span>{{ generating ? '形象生成中…' : '生成形象' }}</span>
-        </div>
+          {{ generating ? '形象生成中…' : '生成形象' }}
+        </button>
       </template>
 
       <template v-else>
-        <div class="grid grid-cols-4 gap-8px">
-          <div
+        <div class="grid grid-cols-4 gap-8px" role="radiogroup" aria-label="定制形象">
+          <button
             v-for="(url, index) in portrait.image_urls"
             :key="url"
-            class="overflow-hidden rounded-8px border-2 border-solid cursor-pointer transition-colors"
-            :class="portraitId === portrait.id && imageIndex === index ? 'border-violet' : 'border-transparent'"
+            type="button"
+            role="radio"
+            :aria-checked="portraitId === portrait.id && imageIndex === index"
+            class="block p-0 overflow-hidden rounded-lg border border-solid bg-white cursor-pointer sx-focus transition-[border-color,box-shadow] duration-mid ease-sx motion-reduce:transition-none"
+            :class="
+              portraitId === portrait.id && imageIndex === index
+                ? 'border-violet ring-1 ring-violet'
+                : 'border-line hover:(border-violet-line shadow-raised)'
+            "
             @click="pickPortraitImage(index)"
           >
             <img :src="url" alt="" class="block w-full aspect-[9/16] object-cover" />
-          </div>
+          </button>
         </div>
-        <div class="ll-link block mt-10px text-center" @click="regeneratePortrait">不满意？重新生成</div>
+        <button
+          type="button"
+          class="sx-btn-ghost !h-28px !px-8px !text-12px !text-violet-ink self-center transition-colors duration-fast"
+          :disabled="generating"
+          @click="regeneratePortrait"
+        >
+          不满意？重新生成
+        </button>
       </template>
     </div>
-  </div>
+  </component>
 </template>

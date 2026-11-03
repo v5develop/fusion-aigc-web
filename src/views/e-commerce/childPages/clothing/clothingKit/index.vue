@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SettingsBar from '@/views/e-commerce/childPages/components/SettingsBar/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
@@ -50,7 +52,7 @@ if (global_formData.value.home) {
   if (p.imageUrls?.length) (formData as any).imageUrls = p.imageUrls
   if (p.personUrl) formData.personUrl = p.personUrl
   if (p.uploadPersonUrl?.length) {
-    (formData as any).uploadPersonUrl = p.uploadPersonUrl
+    ;(formData as any).uploadPersonUrl = p.uploadPersonUrl
     tabValue.value = 'uploadModel'
   }
   if (p.aspectRatio) formData.aspectRatio = p.aspectRatio
@@ -162,16 +164,16 @@ function useModelList() {
 </script>
 
 <template>
-  <Container class="commerce" title="AI穿戴套图" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="AI穿戴套图" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">商品图</div>
-        <ImageUpload v-model:imgList="formData.imageUrls" btnName="服装图片" :limitNumber="7" multiple>
-          <span style="color: #9e9e9e; margin-top: 15px">建议使用服饰白底图、服饰平铺图，识别效果更佳</span>
+      <div>
+        <SectionTitle>商品图</SectionTitle>
+        <ImageUpload fromAsset v-model:imgList="formData.imageUrls" btnName="服装图片" :limitNumber="7" multiple>
+          <span class="mt-12px text-11px leading-17px text-muted">建议使用服饰白底图、服饰平铺图，识别效果更佳</span>
         </ImageUpload>
 
-        <div class="module-title">选择模特</div>
-        <div v-loading="pagingData.loading" style="position: relative">
+        <SectionTitle>选择模特</SectionTitle>
+        <div v-loading="pagingData.loading" class="relative">
           <Tab
             v-model:value="tabValue"
             :tabs="[
@@ -188,12 +190,12 @@ function useModelList() {
                 { field: 'skin', options: skinOps, placeholder: '肤色' },
               ]"
               :col="3"
-              style="margin-top: 12px"
+              class="mt-8px"
               clearable
               multiple
             />
             <GridImage
-              style="margin-top: 8px"
+              class="mt-8px"
               ratio="3:4"
               v-model:imageUrl="formData.personUrl"
               :imgList="modelList.map((item) => item.url)"
@@ -202,32 +204,30 @@ function useModelList() {
             />
           </div>
 
-          <div v-show="tabValue === 'uploadModel'" style="margin-top: 8px">
+          <div v-show="tabValue === 'uploadModel'" class="mt-8px">
             <ImageUpload
+              fromAsset
               v-model:imgList="formData.uploadPersonUrl"
               btnName="上传模特图"
               :limitNumber="1"
               :topRightTips="false"
             >
-              <span style="color: #9e9e9e; margin-top: 15px">建议上传模特全身图</span>
-              <span style="color: #9e9e9e; margin-top: 4px">图片大小20k-15M，分辨率大于400*400</span>
+              <span class="mt-12px text-11px leading-17px text-muted">建议上传模特全身图</span>
+              <span class="mt-4px text-11px leading-17px text-muted">图片大小20k-15M，分辨率大于400*400</span>
             </ImageUpload>
           </div>
         </div>
 
         <!-- 「图片比例」栏已隐藏，画幅固定按 formData.aspectRatio 默认值 3:4 提交 -->
 
-        <div class="module-title">选择模型</div>
-        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
-
-        <div class="module-title">拍摄场景（多选）</div>
+        <SectionTitle>拍摄场景（多选）</SectionTitle>
         <!--        <div class="switch-cont">-->
         <!--          <span>AI推荐</span>-->
         <!--          <n-switch v-model:value="switchValue" />-->
         <!--        </div>-->
         <template v-if="switchValue">
           <CheckboxGroup v-model="formData.scenePhoto" :list="sceneOps" :col="2" gap="8px" />
-<!--          <div class="textarea-cont">
+          <!--          <div class="textarea-cont">
             <div class="label">或自定义描述场景（可选）</div>
             <Textarea
               v-model:value="formData.prompt"
@@ -238,67 +238,26 @@ function useModelList() {
       </div>
     </template>
 
+    <template #settings>
+      <SettingsBar v-model:data="formData" :model-options="modelOps" />
+    </template>
+
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
-      <Sample
-        v-else
-        title="AI穿戴套图"
-        :rightDesc="`同款服饰搭配同一模特，批量生成居家、户外等多种场景穿搭成片。`"
-      >
+      <RecordList v-if="showList" />
+      <Sample v-else title="AI穿戴套图" :rightDesc="`同款服饰搭配同一模特，批量生成居家、户外等多种场景穿搭成片。`">
+        <!-- 指示条颜色取色板 token（line-strong / violet），不在 theme-overrides 里写死色值 -->
         <n-carousel
-          style="height: 384px; width: 100%"
+          class="h-384px w-full rounded-lg overflow-hidden [&_.n-carousel\_\_dot]:!bg-line-strong [&_.n-carousel\_\_dot--active]:!bg-violet"
           dot-type="line"
           autoplay
           :interval="3000"
-          :theme-overrides="{ dotColor: '#c4c4c4', dotColorActive: '#8e66f9' }"
         >
-          <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit1.webp'" alt="" />
-          <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit2.webp'" alt="" />
-          <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit3.webp'" alt="" />
-          <img class="carousel-img" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit4.webp'" alt="" />
+          <img class="w-full h-full object-cover" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit1.webp'" alt="" />
+          <img class="w-full h-full object-cover" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit2.webp'" alt="" />
+          <img class="w-full h-full object-cover" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit3.webp'" alt="" />
+          <img class="w-full h-full object-cover" :src="VITE_OSS_ASSET_URL + 'e-commerce/clothing-kit4.webp'" alt="" />
         </n-carousel>
       </Sample>
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-    > .switch-cont {
-      height: 52px;
-      border-radius: 12px;
-      border: 1px solid #f0f0f0;
-      padding: 0 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    > .textarea-cont {
-      margin: 12px 0;
-      > .label {
-        line-height: 20px;
-        color: #9e9e9e;
-        margin-bottom: 12px;
-      }
-    }
-  }
-  :deep(.n-carousel) {
-    border-radius: 24px;
-    // 指示器颜色改用 n-carousel 的 theme-overrides（dotColor/dotColorActive）设置，
-    // 避免自定义 CSS 与 naive 运行时规则同权重打架导致非激活点仍是半透明白而"看不见"
-  }
-  .carousel-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-}
-</style>

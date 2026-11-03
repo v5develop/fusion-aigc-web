@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import SettingsBar from '@/views/e-commerce/childPages/components/SettingsBar/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
-import { provide, reactive, ref } from 'vue'
+import { provide, reactive, ref, useId } from 'vue'
 import Container from '@/views/e-commerce/childPages/components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import ImageRequirement from './ImageRequirement/index.vue'
@@ -8,7 +10,6 @@ import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../const
 // 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
 import { modelOps } from '@/views/picture/constants.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
-import SelectGroup from '@/components/SelectGroup/index.vue'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'
@@ -39,6 +40,9 @@ const formData = reactive({
   allStyle: '',
 })
 const refImageLimit = 5
+// 描述类统一上限 3000（规范 §5.4）
+const ALL_STYLE_MAX = 3000
+const allStyleCountId = `ec-clone-style-count-${useId()}`
 const { pricePoints: integral, status: quoteStatus } = useQuotePreview(
   () => ({ entryCode: 'hitReplication', modelCode: formData.modelCode }),
   [() => formData.modelCode],
@@ -79,11 +83,12 @@ const customResultHandle = (urls: string[]) => {
 </script>
 
 <template>
-  <Container class="commerce" title="爆款图复刻" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="爆款图复刻" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">商品图</div>
+      <div>
+        <SectionTitle>商品图</SectionTitle>
         <ImageUpload
+          fromAsset
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"
           multiple
@@ -95,38 +100,21 @@ const customResultHandle = (urls: string[]) => {
           ]"
         />
 
-        <div class="module-title">参考内容</div>
+        <SectionTitle>参考内容</SectionTitle>
         <ImageUpload
+          fromAsset
           v-model:imgList="formData.refImageUrl"
           :limitNumber="refImageLimit"
           multiple
           btnName="上传参考图"
           :customResultHandle="customResultHandle"
         >
-          <div style="margin-top: 16px">
+          <div class="mt-16px">
             <ImageRequirement v-model:list="formData.refImageUrl" />
           </div>
         </ImageUpload>
 
-        <div class="module-title">生成设置</div>
-        <SelectGroup
-          v-model:data="formData"
-          :list="[
-            { field: 'platform', options: platformOps },
-            { field: 'region', options: regionOps },
-            { field: 'language', options: languageOps },
-            { field: 'aspectRatio', options: aspectRatioOps },
-          ]"
-        />
-        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
-        <SelectGroup
-          v-model:data="formData"
-          :list="[{ field: 'modelCode', options: modelOps }]"
-          :col="1"
-          style="margin-top: 8px"
-        />
-
-        <div class="module-title">复刻程度</div>
+        <SectionTitle>复刻程度</SectionTitle>
         <CheckboxGroup
           v-model="formData.level"
           :list="[
@@ -137,20 +125,45 @@ const customResultHandle = (urls: string[]) => {
           :customHandle="(value) => (formData.level = [value])"
         />
 
-        <div class="module-title">复刻要求（选填）</div>
-        <textarea
-          class="textarea"
-          v-model="formData.allStyle"
-          placeholder="例如：文案统一用英文、模特保持不变、参考图不变只是替换商品。"
-        ></textarea>
+        <SectionTitle>复刻要求（选填）</SectionTitle>
+        <!-- 提示词框（原型 `.op-prompt`）：r6、line 描边、常驻内影，聚焦只加深内影；右下角计数 N / 3000 -->
+        <div
+          class="flex flex-col p-12px rounded-md border border-solid border-line bg-white shadow-well transition-shadow duration-mid ease-sx motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.18),inset_0_1px_0_rgba(31,35,41,0.08)]"
+        >
+          <textarea
+            v-model="formData.allStyle"
+            class="block w-full h-84px box-border m-0 p-0 resize-none border-none outline-none bg-transparent text-13px leading-20px text-ink placeholder:text-placeholder"
+            aria-label="复刻要求（选填）"
+            :aria-describedby="allStyleCountId"
+            :maxlength="ALL_STYLE_MAX"
+            placeholder="例如：文案统一用英文、模特保持不变、参考图不变只是替换商品。"
+          ></textarea>
+          <span
+            :id="allStyleCountId"
+            class="self-end mt-6px text-11px leading-16px tabular-nums select-none"
+            :class="formData.allStyle.length >= ALL_STYLE_MAX ? 'text-warning' : 'text-placeholder'"
+            >{{ formData.allStyle.length >= ALL_STYLE_MAX ? '已达字数上限 · ' : '' }}{{ formData.allStyle.length }} /
+            {{ ALL_STYLE_MAX }}</span
+          >
+        </div>
       </div>
     </template>
 
+    <template #settings>
+      <SettingsBar
+        v-model:data="formData"
+        :model-options="modelOps"
+        :fields="[
+          { field: 'platform', label: '平台', options: platformOps },
+          { field: 'region', label: '地区', options: regionOps },
+          { field: 'language', label: '语言', options: languageOps },
+          { field: 'aspectRatio', label: '比例', options: aspectRatioOps },
+        ]"
+      />
+    </template>
+
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
+      <RecordList v-if="showList" />
       <Sample
         v-else
         title="爆款图复刻"
@@ -160,29 +173,3 @@ const customResultHandle = (urls: string[]) => {
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-    .textarea {
-      width: 100%;
-      height: 108px;
-      border: 1px solid #f0f0f0;
-      outline: none;
-      resize: none;
-      padding: 16px;
-      border-radius: 5px;
-      transition: all 0.3s;
-      &:focus {
-        border-color: var(--main-color);
-      }
-    }
-  }
-
-  .sample-cont {
-  }
-}
-</style>

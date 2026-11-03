@@ -16,7 +16,7 @@ import {
   genderOps,
   localModelValue,
 } from '@/views/e-commerce/childPages/productVideo/constants.ts'
-import Textarea from '@/components/Textarea/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import Tab from '@/components/Tab/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import SelectGroup from '@/components/SelectGroup/index.vue'
@@ -246,21 +246,40 @@ watch([switchValue, modelPollingType], () => {
 </script>
 
 <template>
-  <div class="module-title">
+  <SectionTitle>
     定制专属模特
-    <n-switch class="switch-pos" v-model:value="switchValue" />
-  </div>
+    <!-- 液态开关 sm 档（原型 SxLiquidSwitch）：34×20、滑块 14；开启为藤紫渐变 -->
+    <button
+      type="button"
+      role="switch"
+      :aria-checked="switchValue"
+      aria-label="定制专属模特"
+      class="relative flex-none w-34px h-20px box-border p-0 rounded-pill border border-solid cursor-pointer transition-[background,border-color] duration-mid ease-sx motion-reduce:transition-none sx-focus"
+      :class="
+        switchValue
+          ? 'border-violet-border sx-grad-primary'
+          : 'border-control sx-grad-sunk shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]'
+      "
+      @click="switchValue = !switchValue"
+    >
+      <span
+        class="absolute top-2px w-14px h-14px rounded-full bg-white shadow-[0_1px_3px_rgba(31,35,41,0.2)] transition-[left] duration-mid ease-sx motion-reduce:transition-none"
+        :class="switchValue ? 'left-16px' : 'left-2px'"
+        aria-hidden="true"
+      />
+    </button>
+  </SectionTitle>
 
-  <div class="custom-model-cont" v-show="switchValue">
+  <div v-show="switchValue">
     <Tab
       v-model:value="modelTabValue"
       :tabs="[
         { label: '定制达人', value: 'customModel' },
         { label: '上传我的达人', value: 'myModel' },
       ]"
-      style="margin-bottom: 12px"
+      class="mb-8px"
     />
-    <div v-if="modelTabValue === 'customModel'" class="custom-model">
+    <div v-if="modelTabValue === 'customModel'">
       <SelectGroup
         v-model:data="modelData"
         :list="[
@@ -287,19 +306,35 @@ watch([switchValue, modelPollingType], () => {
         ]"
         gap="4px"
       />
-      <div class="textarea-area">
-        <div class="title">外貌细节补充</div>
-        <Textarea v-model:value="modelData.userInput" placeholder="例如：白皙肤色、长头发、微笑唇等" />
-      </div>
-      <div v-loading="btnLoading" class="generate-btn" @click="generateModel">
-        <i class="icon-ic_ds_ljsc"></i>
+      <label class="block">
+        <span class="block mt-12px mb-6px sx-label leading-16px">外貌细节补充</span>
+        <textarea
+          v-model="modelData.userInput"
+          class="sx-input block w-full !h-108px box-border py-8px leading-20px resize-none"
+          placeholder="例如：白皙肤色、长头发、微笑唇等"
+        ></textarea>
+      </label>
+      <button
+        v-loading="btnLoading"
+        type="button"
+        class="sx-btn relative w-full my-12px"
+        :aria-busy="btnLoading || undefined"
+        @click="generateModel"
+      >
+        <i class="icon-ic_ds_ljsc" aria-hidden="true"></i>
         <span>生成我的达人</span>
-      </div>
+      </button>
     </div>
 
-    <div v-else class="my-model" v-observer-scroll="{ callback: getModelData }">
-      <div class="model-card">
+    <!-- 卡片 116×155、间距 10：三列排满左栏内容区 -->
+    <div
+      v-else
+      class="grid grid-cols-3 gap-10px max-h-500px overflow-auto [scrollbar-width:thin]"
+      v-observer-scroll="{ callback: getModelData }"
+    >
+      <div class="h-155px">
         <ImageUpload
+          fromAsset
           v-model:imgList="uploadImage"
           type="card"
           btnName="上传达人"
@@ -311,7 +346,7 @@ watch([switchValue, modelPollingType], () => {
       <ImagePopover
         v-model="personUrl"
         :imgList="modelData.images.map((item) => item.coverUrl)"
-        style="height: 155px; border-radius: 8px"
+        :style="{ height: '155px', borderRadius: '8px' }"
       />
     </div>
   </div>
@@ -319,8 +354,7 @@ watch([switchValue, modelPollingType], () => {
   <n-modal
     v-model:show="faceAuthDialog.show"
     preset="dialog"
-    title="人脸认证"
-    :style="{ width: '600px' }"
+    :style="{ width: '600px', borderRadius: '12px' }"
     :on-after-leave="
       () => {
         faceAuthDialog.qrCode = ''
@@ -328,101 +362,26 @@ watch([switchValue, modelPollingType], () => {
       }
     "
   >
-    <div class="face-auth-cont">
+    <!-- 对话框（规范 §3）：r12、标题 16/600 -->
+    <template #header>
+      <span class="text-16px font-600 leading-22px text-ink">人脸认证</span>
+    </template>
+    <div class="pt-18px pb-12px text-13px leading-20px text-ink-2">
       <div>
         <span>电脑端认证：电脑上有摄像头可以点击此按钮，在电脑上进行人脸认证</span>
-        <div class="auth-btn" @click="windowOpen">开始认证</div>
+        <button type="button" class="sx-btn-primary block mt-12px" @click="windowOpen">开始认证</button>
       </div>
 
-      <div class="split-line"></div>
+      <div class="h-1px my-24px bg-line"></div>
 
-      <div style="display: flex; flex-direction: column; align-items: center">
+      <div class="flex flex-col items-center">
         <span>手机端认证：手机扫描此二维码</span>
         <n-qr-code :size="300" :value="faceAuthDialog.qrCode" />
       </div>
 
-      <div style="color: #f30000; margin-top: 40px; text-align: center">{{ faceAuthDialog.errorMsg }}</div>
+      <div class="mt-24px text-center text-danger" role="alert">{{ faceAuthDialog.errorMsg }}</div>
     </div>
   </n-modal>
 
   <CustomModelNotice v-model:data="modelNoticeObj" />
 </template>
-
-<style scoped lang="less">
-@import '../../../common.less';
-
-.switch-pos {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.custom-model-cont {
-  > .custom-model {
-    > .textarea-area {
-      font-size: 0;
-      > .title {
-        font-size: 14px;
-        line-height: 20px;
-        color: #9e9e9e;
-        margin: 12px 0 8px;
-      }
-    }
-    > .generate-btn {
-      height: 32px;
-      margin: 12px 0;
-      border-radius: 8px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-      background: #f5f6f8;
-      cursor: pointer;
-      position: relative;
-      &:hover {
-        background: #ebecef;
-      }
-    }
-  }
-
-  // 设计稿：卡片 116×155、间距 10；左侧内容区宽 368（400 - 16*2），116*3 + 10*2 = 368 恰好三列
-  > .my-model {
-    max-height: 500px;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    overflow: auto;
-    .active {
-      border: 1px solid var(--main-color);
-    }
-
-    > .model-card {
-      height: 155px;
-    }
-  }
-}
-
-.face-auth-cont {
-  padding: 30px 0 10px;
-  .auth-btn {
-    width: 80px;
-    height: 32px;
-    line-height: 32px;
-    text-align: center;
-    margin-top: 10px;
-    border-radius: 5px;
-    background-color: var(--main-color);
-    color: #fff;
-    cursor: pointer;
-    &:hover {
-      opacity: 0.8;
-    }
-  }
-  > .split-line {
-    height: 1px;
-    margin: 30px 0;
-    background-color: #dcdcdc;
-  }
-}
-</style>

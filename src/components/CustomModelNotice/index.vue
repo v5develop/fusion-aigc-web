@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useId } from 'vue'
 /**
  * CustomModelNotice - 自定义模型须知弹窗
  *
@@ -7,6 +8,7 @@
  *
  * 点击"同意"后会自动保存 customModelNoticeConfirmed 到 localStorage
  */
+const titleId = `custom-model-notice-${useId()}`
 const data = defineModel<{ show: boolean; customModelNoticeConfirmed: boolean }>('data', { required: true })
 
 /** 点击遮罩关闭 */
@@ -25,144 +27,60 @@ function onAgree() {
 </script>
 
 <template>
+  <!-- 对话框（规范 §3 / §5）：遮罩 50% 黑；r12、line 描边、shadow-pop；标题 16/600；只做淡入淡出，不缩放 -->
   <Teleport to="body">
-    <Transition name="fade">
-      <div v-if="data.show" class="modal-mask" @click.self="onMaskClick">
-        <div class="modal">
-          <!-- Header -->
-          <div class="modal-header">
-            <span class="modal-title">视频主体功能使用须知</span>
-            <i class="icon-close" @click="onMaskClick" />
+    <Transition
+      enter-active-class="transition-opacity duration-mid ease-sx motion-reduce:transition-none"
+      leave-active-class="transition-opacity duration-fast ease-sx motion-reduce:transition-none"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="data.show"
+        class="fixed inset-0 z-1000 flex items-center justify-center p-16px box-border bg-black/50"
+        @click.self="onMaskClick"
+        @keydown.esc="onMaskClick"
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          :aria-labelledby="titleId"
+          class="flex flex-col w-1000px max-w-full overflow-hidden rounded-dialog border border-solid border-line bg-white shadow-pop"
+        >
+          <div class="flex items-center justify-between gap-12px h-56px px-24px pt-12px box-border">
+            <h2 :id="titleId" class="m-0 text-16px font-600 leading-22px text-ink">视频主体功能使用须知</h2>
+            <button
+              type="button"
+              class="grid place-items-center w-26px h-26px p-0 rounded-sm border-none bg-transparent text-muted cursor-pointer hover:(bg-surface3 text-ink) sx-focus"
+              aria-label="关闭"
+              @click="onMaskClick"
+            >
+              <svg
+                class="w-14px h-14px"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
-          <!-- Body -->
           <iframe
-            class="modal-body"
+            class="block w-full h-[80vh] box-border px-24px py-12px border-none"
+            title="视频主体功能使用须知"
             src="https://aigc.pengqiwl.com/agreements/ai-generate-terms-of-use.pdf"
-            frameborder="0"
           ></iframe>
 
-          <!-- Footer -->
-          <div class="modal-footer">
-            <button class="btn-cancel" @click="onMaskClick">取消</button>
-            <button class="btn-agree" @click="onAgree">同意</button>
+          <div class="flex items-center justify-end gap-8px px-24px pt-12px pb-24px">
+            <button type="button" class="sx-btn" @click="onMaskClick">取消</button>
+            <button type="button" class="sx-btn-primary" @click="onAgree">同意</button>
           </div>
         </div>
       </div>
     </Transition>
   </Teleport>
 </template>
-
-<style scoped lang="less">
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  //width: 520px;
-  width: 1000px;
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow:
-    0px 9px 28px 8px rgba(0, 0, 0, 0.05),
-    0px 6px 16px 0px rgba(0, 0, 0, 0.08),
-    0px 3px 6px -4px rgba(0, 0, 0, 0.12);
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 8px;
-  height: 56px;
-  box-sizing: border-box;
-}
-
-.modal-title {
-  font-family: 'PingFang SC', sans-serif;
-  font-size: 20px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.88);
-  line-height: 28px;
-}
-
-.icon-close {
-  width: 20px;
-  height: 20px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%233A3A3A'%3E%3Cpath d='M16.48 3.52a1.2 1.2 0 0 1 0 1.7L11.7 9.5l4.78 4.78a1.2 1.2 0 0 1-1.7 1.7L10 11.2l-4.78 4.78a1.2 1.2 0 0 1-1.7-1.7L8.3 9.5 3.52 4.72a1.2 1.2 0 0 1 1.7-1.7L10 7.8l4.78-4.78a1.2 1.2 0 0 1 1.7 0z'/%3E%3C/svg%3E")
-    no-repeat center / contain;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.modal-body {
-  width: 100%;
-  height: 80vh;
-  padding: 12px 24px;
-  overflow-y: auto;
-}
-
-.modal-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 24px 24px;
-}
-
-.btn-cancel,
-.btn-agree {
-  height: 40px;
-  padding: 0 16px;
-  border: none;
-  border-radius: 999px;
-  font-family: 'PingFang SC', sans-serif;
-  font-size: 14px;
-  line-height: 22px;
-  cursor: pointer;
-  transition: opacity 0.2s;
-
-  &:hover {
-    opacity: 0.85;
-  }
-}
-
-.btn-cancel {
-  background: #f0ebff;
-  color: #8e66f9;
-}
-
-.btn-agree {
-  background: linear-gradient(0deg, #bba2ff 0%, #ccbaff 99%);
-  color: #ffffff;
-}
-
-/* 过渡动画 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-
-  .modal {
-    transition:
-      transform 0.2s ease,
-      opacity 0.2s ease;
-  }
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-
-  .modal {
-    transform: scale(0.95);
-    opacity: 0;
-  }
-}
-</style>

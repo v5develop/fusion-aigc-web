@@ -78,7 +78,11 @@ export function useAgreement() {
  * onTick 返回 true 继续下一轮，返回 false 收掉。单轮失败不中断（网络抖动）。
  * 组件卸载自动停。
  */
-export function usePollingWhile<T>(fetcher: () => Promise<{ data?: T }>, onTick: (data: T | undefined) => boolean, interval = 3000) {
+export function usePollingWhile<T>(
+  fetcher: () => Promise<{ data?: T }>,
+  onTick: (data: T | undefined) => boolean,
+  interval = 3000,
+) {
   let timer: ReturnType<typeof setTimeout> | null = null
   const stop = () => {
     if (timer) {
@@ -109,7 +113,7 @@ export function usePollingWhile<T>(fetcher: () => Promise<{ data?: T }>, onTick:
 // ---------------- 列表加载与轮询 ----------------
 
 /**
- * 本地生活通用列表：分页加载 + 「有任务在跑就自动轮询」+ 跑完刷新积分。
+ * 本地生活通用列表：分页加载 + 「有任务在跑就自动轮询」+ 跑完刷新点数。
  *
  * <p>与电商模块的 sessionId 恢复不同，本地生活的任务都是服务端记录：
  * 刷新页面后靠「列表里还有在跑的」自然恢复轮询，前端无需持久化任何状态。
@@ -135,7 +139,7 @@ export function useLLList<T extends { id: number }>(
 
   const hasMore = computed(() => items.value.length < total.value)
   const hasRunning = computed(() => items.value.some(isRunning))
-  // 上一轮的是否有在跑任务：从有到无的那一刻说明有任务到终态（扣点/退点），刷一次积分
+  // 上一轮的是否有在跑任务：从有到无的那一刻说明有任务到终态（扣点/退点），刷一次点数
   let lastRunning = false
   let timer: ReturnType<typeof setTimeout> | null = null
 
@@ -143,7 +147,7 @@ export function useLLList<T extends { id: number }>(
     const res = await fetcher({ page, page_size: pageSize })
     total.value = res.data?.total ?? 0
     return res.data?.list ?? []
-  }  /** 首屏 / 手动刷新。加载完按需进入轮询 */
+  } /** 首屏 / 手动刷新。加载完按需进入轮询 */
   async function reload() {
     loading.value = true
     try {

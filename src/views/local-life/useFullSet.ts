@@ -298,7 +298,7 @@ export function useFullSet() {
         // 产物取不到不影响终态判定；历史页签可手动刷新
       }
     }
-    // 到终态（扣点 / 退点）刷一次积分
+    // 到终态（扣点 / 退点）刷一次点数
     updateUserInfo()
     return { done: true }
   }

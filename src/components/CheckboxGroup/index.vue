@@ -17,6 +17,20 @@ interface IProps {
 const { list, col = 2, gap = '8px', vertical = false, customHandle } = defineProps<IProps>()
 const modelValue = defineModel<(string | number)[]>('modelValue', { required: true })
 
+/**
+ * 选项卡片（原型选中配方，规范 §4.1）：内边距 12、1px line、r8、白底；hover 描边 control + 短影；
+ * 选中 violet-line + 白→#f8f3fc 渐变。标签 13/600/20，说明 11/17 muted。
+ */
+const itemCls =
+  'group flex gap-8px p-12px box-border rounded-lg border border-solid cursor-pointer text-left outline-none ' +
+  'transition-[border-color,background,box-shadow] duration-fast ease-sx motion-reduce:transition-none ' +
+  'focus-visible:(outline outline-2 outline-solid outline-violet outline-offset-2)'
+const isOn = (value: CheckboxItem['value']) => modelValue.value.includes(value)
+const stateCls = (value: CheckboxItem['value']) =>
+  isOn(value)
+    ? 'border-violet-line sx-grad-tint shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+    : 'border-line bg-white hover:(border-control shadow-[0_1px_2px_rgba(31,35,41,0.05)])'
+
 function toggle(value: CheckboxItem['value']) {
   if (customHandle) {
     customHandle(value)
@@ -32,83 +46,35 @@ function toggle(value: CheckboxItem['value']) {
 </script>
 
 <template>
-  <div class="container" :style="{ '--col': col, '--gap': gap }">
-    <template v-if="vertical">
-      <div v-for="item in list" :key="item.value" class="checkbox-item" @click="toggle(item.value)">
-        <div class="checkbox-wrap">
-          <i :class="modelValue.includes(item.value) ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"></i>
-        </div>
-        <div class="content">
-          <div class="label">{{ item.label }}</div>
-          <div v-if="item.desc" class="desc">{{ item.desc }}</div>
-        </div>
+  <div class="grid" :style="{ gridTemplateColumns: `repeat(${col}, minmax(0, 1fr))`, gap }">
+    <div
+      v-for="item in list"
+      :key="item.value"
+      role="checkbox"
+      tabindex="0"
+      :aria-checked="isOn(item.value)"
+      :class="[itemCls, stateCls(item.value), vertical ? 'flex-col' : 'flex-row']"
+      @click="toggle(item.value)"
+      @keydown.self.enter.prevent="toggle(item.value)"
+      @keydown.self.space.prevent="toggle(item.value)"
+    >
+      <i
+        v-if="vertical"
+        class="text-20px leading-none"
+        :class="isOn(item.value) ? 'icon-ic_ds_check_sel text-violet' : 'icon-ic_ds_check_nor text-control'"
+        aria-hidden="true"
+      ></i>
+      <div class="flex-1 min-w-0 flex flex-col justify-center gap-4px">
+        <div class="text-13px font-600 leading-20px text-ink">{{ item.label }}</div>
+        <div v-if="item.desc" class="text-11px leading-17px text-muted">{{ item.desc }}</div>
+        <slot v-if="!vertical && item.slotName" :name="item.slotName"></slot>
       </div>
-    </template>
-
-    <template v-else>
-      <div v-for="item in list" :key="item.value" class="checkbox-item horizontal" @click="toggle(item.value)">
-        <div class="content">
-          <div class="label">{{ item.label }}</div>
-          <div v-if="item.desc" class="desc">{{ item.desc }}</div>
-          <slot v-if="item.slotName" :name="item.slotName"></slot>
-        </div>
-        <div class="checkbox-wrap">
-          <i :class="modelValue.includes(item.value) ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"></i>
-        </div>
-      </div>
-    </template>
+      <i
+        v-if="!vertical"
+        class="flex-none text-20px leading-none"
+        :class="isOn(item.value) ? 'icon-ic_ds_check_sel text-violet' : 'icon-ic_ds_check_nor text-control'"
+        aria-hidden="true"
+      ></i>
+    </div>
   </div>
 </template>
-
-<style scoped lang="less">
-.container {
-  display: grid;
-  grid-template-columns: repeat(var(--col), 1fr);
-  gap: var(--gap);
-}
-
-.checkbox-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 16px;
-  background: #ffffff;
-  border: 1px solid #f0f0f0;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  &.horizontal {
-    flex-direction: row;
-    //align-items: center;
-  }
-  &:hover {
-    background: #fafafa;
-  }
-
-  .checkbox-wrap {
-    > .icon-ic_ds_check_sel,
-    > .icon-ic_ds_check_nor {
-      font-size: 20px;
-    }
-  }
-
-  .content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-    .label {
-      font-size: 14px;
-      font-weight: 600;
-      color: #333333;
-    }
-
-    .desc {
-      font-size: 12px;
-      color: #999999;
-      line-height: 1.5;
-    }
-  }
-}
-</style>

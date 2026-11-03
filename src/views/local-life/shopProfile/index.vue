@@ -5,7 +5,8 @@
  */
 import { onMounted, reactive, ref } from 'vue'
 import { useMessage, NConfigProvider } from 'naive-ui'
-import { llTheme } from '../theme.ts'
+import { llFormSkin, llTheme } from '../theme.ts'
+import Field from '../components/Field/index.vue'
 import { llShopProfileCreate, llShopProfileList, llShopProfileRemove, llShopProfileSave } from '@/api/localLife.ts'
 import type { ILShopProfile } from '@/api/localLifeTypes.ts'
 import { charLen, formatTime } from '../constants.ts'
@@ -124,11 +125,11 @@ async function removeItem(item: ILShopProfile) {
 
 <template>
   <n-config-provider :theme-overrides="llTheme" abstract>
-    <div class="h-full overflow-y-auto bg-page text-ink">
+    <div :class="['h-full overflow-y-auto bg-page text-ink', llFormSkin]">
       <div class="max-w-1180px box-border pt-14px pb-24px pl-16px pr-24px">
         <header class="flex items-center justify-between gap-16px">
           <div class="min-w-0">
-            <h1 class="m-0 text-22px font-600 leading-30px text-ink">店铺档案</h1>
+            <h1 class="m-0 sx-title-page">店铺档案</h1>
             <p class="m-0 mt-2px text-12px leading-18px text-muted">
               一次录入，AI文案、图文笔记、探店视频、带货短剧都能关联引用（最多 20 条）
             </p>
@@ -138,16 +139,16 @@ async function removeItem(item: ILShopProfile) {
 
         <div
           v-loading="loading"
-          class="mt-12px grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-10px min-h-200px"
+          class="mt-16px grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-12px min-h-200px"
         >
           <div
             v-for="item in list"
             :key="item.id"
-            class="ll-card flex flex-col p-16px transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+            class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex flex-col p-14px transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)"
           >
             <div class="flex items-center gap-8px mb-10px min-w-0">
-              <span class="truncate text-16px font-600 leading-22px text-ink">{{ item.name }}</span>
-              <span v-if="item.self_title" class="ll-chip ll-chip-running">{{ item.self_title }}</span>
+              <span class="truncate sx-title-card">{{ item.name }}</span>
+              <span v-if="item.self_title" class="sx-chip flex-shrink-0 ll-chip-running">{{ item.self_title }}</span>
             </div>
             <div v-if="item.address" class="mb-4px text-12px leading-20px text-ink-2 line-clamp-2">
               📍 {{ item.address }}
@@ -159,28 +160,35 @@ async function removeItem(item: ILShopProfile) {
               <span
                 v-for="(p, i) in item.selling_points.split('\n').filter(Boolean).slice(0, 3)"
                 :key="i"
-                class="ll-chip text-ink-2 bg-surface2 border border-line"
+                class="sx-chip flex-shrink-0 text-ink-2 bg-surface2 border border-solid border-line"
                 >{{ p }}</span
               >
             </div>
             <div v-if="item.target_audience" class="mb-4px text-12px leading-20px text-ink-2 line-clamp-2">
               👥 {{ item.target_audience }}
             </div>
-            <div class="mt-auto pt-10px flex items-center justify-between text-12px text-placeholder">
+            <div
+              class="mt-auto pt-10px flex items-center justify-between border-t border-t-solid border-t-line-soft text-11px leading-16px text-placeholder tabular-nums"
+            >
               <span>{{ formatTime(item.update_time || item.create_time) }}</span>
               <div class="flex gap-12px">
-                <span class="ll-link" @click="openEdit(item)">编辑</span>
+                <span class="ll-link transition-colors duration-fast" @click="openEdit(item)">编辑</span>
                 <n-popconfirm @positive-click="removeItem(item)">
-                  <template #trigger><span class="ll-danger-link text-12px">删除</span></template>
+                  <template #trigger
+                    ><span class="ll-danger-link transition-colors duration-fast text-12px">删除</span></template
+                  >
                   删除后已生成的历史内容不受影响，确定删除？
                 </n-popconfirm>
               </div>
             </div>
           </div>
 
-          <div v-if="!loading && !list.length" class="ll-card col-span-full flex flex-col items-center py-60px">
-            <div class="mb-10px text-40px leading-none" aria-hidden="true">🏪</div>
-            <p class="ll-empty m-0 mb-14px">还没有店铺档案</p>
+          <div
+            v-if="!loading && !list.length"
+            class="sx-empty col-span-full !min-h-280px !gap-10px bg-white shadow-card-v3"
+          >
+            <div class="text-40px leading-none" aria-hidden="true">🏪</div>
+            <p class="m-0 sx-empty-title">还没有店铺档案</p>
             <n-button type="primary" ghost size="small" @click="openCreate">新建第一条档案</n-button>
           </div>
         </div>
@@ -192,17 +200,16 @@ async function removeItem(item: ILShopProfile) {
         :title="editingId ? '编辑店铺档案' : '新建店铺档案'"
         style="width: 520px"
       >
-        <div>
-          <div v-for="field in FIELDS" :key="field.key" class="mb-14px">
-            <div class="ll-label">
-              {{ field.label }}
+        <div class="flex flex-col gap-16px">
+          <Field v-for="field in FIELDS" :key="field.key" :label="field.label" :required="field.required">
+            <template #extra>
               <span
-                class="text-12px"
+                class="text-11px font-400 leading-16px tabular-nums"
                 :class="charLen(form[field.key]) > field.max ? 'text-danger' : 'text-placeholder'"
               >
                 {{ charLen(form[field.key]) }}/{{ field.max }}
               </span>
-            </div>
+            </template>
             <n-input
               v-if="field.type === 'textarea'"
               v-model:value="form[field.key]"
@@ -211,9 +218,8 @@ async function removeItem(item: ILShopProfile) {
               :placeholder="field.placeholder"
             />
             <n-input v-else v-model:value="form[field.key]" :placeholder="field.placeholder" />
-          </div>
-          <div class="mb-14px">
-            <div class="ll-label">开店时间</div>
+          </Field>
+          <Field label="开店时间">
             <n-date-picker
               v-model:formatted-value="openDate"
               type="date"
@@ -222,7 +228,7 @@ async function removeItem(item: ILShopProfile) {
               placeholder="选填"
               class="w-full"
             />
-          </div>
+          </Field>
         </div>
         <template #footer>
           <div class="flex justify-end gap-10px">

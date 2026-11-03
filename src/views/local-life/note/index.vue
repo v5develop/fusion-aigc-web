@@ -4,10 +4,17 @@
  * 刷新页面后从列表恢复：构思中/生成中的自动续轮询，待确认的点击进规划页。
  */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import Workbench from '../components/Workbench/index.vue'
 import ShopProfileSelect from '../components/ShopProfileSelect/index.vue'
 import CopywritingPicker from '../components/CopywritingPicker/index.vue'
+import FormCard from '../components/FormCard/index.vue'
+import Field from '../components/Field/index.vue'
+import ChipGroup from '../components/ChipGroup/index.vue'
+import PromptBox from '../components/PromptBox/index.vue'
+import PromptActions from '../components/PromptActions/index.vue'
+import SettingsBar from '../components/SettingsBar/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import {
   llCopywritingAiWrite,
@@ -238,6 +245,12 @@ async function confirmGenerate() {
 
 // 成品后的文字编辑
 const editingResult = ref(false)
+
+/** 进入「编辑文案」：打开编辑态并把当前笔记回填到表单 */
+function beginEditResult() {
+  editingResult.value = true
+  if (activeNote.value) fillEditForm(activeNote.value)
+}
 const savingResult = ref(false)
 async function saveResult() {
   if (!activeNote.value || savingResult.value) return
@@ -283,72 +296,74 @@ watch(view, (v) => {
 <template>
   <Workbench title="图文笔记" :submit="submit" :loading="submitting" submit-text="开始构思">
     <template #default>
-      <div class="mb-14px">
-        <div class="ll-label">笔记类型</div>
-        <n-select
-          v-model:value="form.note_type"
-          size="small"
+      <FormCard title="笔记类型">
+        <ChipGroup
+          v-model="form.note_type"
           :options="typeOptions"
-          @update:value="form.materials = []"
+          label="笔记类型"
+          @update:model-value="form.materials = []"
         />
-        <div v-if="activeType?.material_hint" class="mt-4px text-11px leading-16px text-placeholder">
-          {{ activeType.material_hint }}
-        </div>
-      </div>
+      </FormCard>
 
-      <div class="mb-14px">
-        <div class="ll-label">
-          主题
-          <span class="flex gap-10px">
-            <span class="ll-link" :class="{ 'opacity-60 !cursor-not-allowed': aiWriting }" @click="aiWriteTopic">{{
-              aiWriting ? 'AI帮写中…' : '✨ AI帮写'
-            }}</span>
-            <span class="ll-link" @click="showCopyPicker = true">选择AI文案</span>
-          </span>
-        </div>
-        <n-input
-          v-model:value="form.topic"
-          type="textarea"
-          :rows="3"
-          :maxlength="noteOptions?.max_topic_len || 500"
-          show-count
+      <FormCard title="主题" required>
+        <PromptBox
+          v-model="form.topic"
+          label="主题"
+          size="lg"
+          :max-length="noteOptions?.max_topic_len || 500"
           placeholder="这条笔记想写什么"
-        />
-      </div>
+        >
+          <template #actions>
+            <PromptActions :loading="aiWriting" @ai="aiWriteTopic" @pick="showCopyPicker = true" />
+          </template>
+        </PromptBox>
+      </FormCard>
 
-      <div class="mb-14px">
-        <div class="ll-label">
-          {{ activeType?.material_label ?? '素材图' }}（选填，最多{{ noteOptions?.max_materials ?? 3 }}张）
-        </div>
+      <FormCard
+        :title="activeType?.material_label ?? '素材图'"
+        :hint="`选填 · 最多 ${noteOptions?.max_materials ?? 3} 张`"
+      >
         <ImageUpload
+          fromAsset
           v-model:imgList="form.materials"
           btnName="上传素材"
           :topRightTips="false"
           multiple
           :limitNumber="noteOptions?.max_materials ?? 3"
         />
-      </div>
+        <p v-if="activeType?.material_hint" class="m-0 -mt-4px text-11px leading-16px text-muted">
+          {{ activeType.material_hint }}
+        </p>
+      </FormCard>
 
-      <div class="mb-14px">
-        <div class="ll-label">出镜数字人</div>
-        <n-select
-          v-model:value="form.digital_human_id"
-          size="small"
-          clearable
-          :options="myDhOptions"
-          placeholder="选填，用已生成的数字人出镜"
-        />
-      </div>
+      <FormCard title="参数">
+        <Field label="出镜数字人">
+          <n-select
+            v-model:value="form.digital_human_id"
+            size="small"
+            clearable
+            :options="myDhOptions"
+            placeholder="选填，用已生成的数字人出镜"
+          >
+            <template #empty>
+              <span class="flex items-center gap-8px py-4px text-12px leading-18px text-muted">
+                还没有数字人，可先去「数字人」创建一个
+                <RouterLink to="/local-life/digital-human" class="ll-link no-underline">去创建</RouterLink>
+              </span>
+            </template>
+          </n-select>
+        </Field>
+        <Field label="关联店铺档案">
+          <ShopProfileSelect v-model:value="form.shop_profile_id" />
+        </Field>
+      </FormCard>
+    </template>
 
-      <div class="mb-14px">
-        <div class="ll-label">关联店铺档案</div>
-        <ShopProfileSelect v-model:value="form.shop_profile_id" />
-      </div>
-
-      <div class="mb-14px">
-        <div class="ll-label">套图数量</div>
-        <n-select v-model:value="form.image_count" size="small" :options="imageCountOptions" />
-      </div>
+    <template #settings>
+      <SettingsBar
+        v-model:data="form"
+        :fields="[{ field: 'image_count', label: '套图数量', options: imageCountOptions }]"
+      />
     </template>
 
     <template #right>
@@ -357,13 +372,15 @@ watch(view, (v) => {
         <template v-if="view === 'list'">
           <div class="flex flex-none items-baseline gap-8px mb-14px text-16px font-600 leading-22px text-ink">
             我的笔记
-            <span v-if="pendingCount" class="ll-chip ll-chip-warning self-center">{{ pendingCount }} 条待确认</span>
+            <span v-if="pendingCount" class="sx-chip flex-shrink-0 ll-chip-warning self-center"
+              >{{ pendingCount }} 条待确认</span
+            >
           </div>
           <div class="flex-1 min-h-0 overflow-auto" v-loading="listCtl.loading.value">
             <div
               v-for="item in listCtl.items.value"
               :key="item.id"
-              class="ll-card flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)"
               @click="openDetail(item.id)"
             >
               <img
@@ -374,7 +391,7 @@ watch(view, (v) => {
               />
               <div
                 v-else
-                class="w-64px h-64px flex-none flex items-center justify-center rounded-8px border border-solid border-line bg-surface2 text-24px"
+                class="w-64px h-64px flex-none flex items-center justify-center rounded-8px border border-solid border-violet-soft-2 sx-grad-icon shadow-[inset_0_1px_0_#fff] text-24px"
               >
                 📝
               </div>
@@ -383,7 +400,7 @@ watch(view, (v) => {
                   <span class="flex-1 truncate text-14px font-600 leading-20px text-ink">{{
                     item.title || item.topic
                   }}</span>
-                  <span class="ll-chip" :class="`ll-chip-${NOTE_STATUS_MAP[item.status]?.type}`">{{
+                  <span class="sx-chip flex-shrink-0" :class="`ll-chip-${NOTE_STATUS_MAP[item.status]?.type}`">{{
                     NOTE_STATUS_MAP[item.status]?.label
                   }}</span>
                 </div>
@@ -395,10 +412,17 @@ watch(view, (v) => {
                 </div>
               </div>
             </div>
-            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="ll-empty py-80px">
+            <div
+              v-if="!listCtl.loading.value && !listCtl.items.value.length"
+              class="sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
+            >
               还没有笔记，左侧开始构思吧
             </div>
-            <div v-if="listCtl.hasMore.value" class="ll-link block text-center py-8px" @click="listCtl.loadMore()">
+            <div
+              v-if="listCtl.hasMore.value"
+              class="ll-link transition-colors duration-fast block text-center py-8px"
+              @click="listCtl.loadMore()"
+            >
               加载更多
             </div>
           </div>
@@ -406,26 +430,31 @@ watch(view, (v) => {
 
         <!-- 详情 / 规划 / 成果 -->
         <template v-else>
-          <div
-            class="flex-none w-fit mb-12px text-13px text-ink-2 cursor-pointer hover:text-violet-ink"
+          <button
+            type="button"
+            class="flex-none w-fit mb-12px -ml-8px sx-btn-ghost !h-28px !px-8px hover:!text-violet-ink transition-colors duration-fast"
             @click="view = 'list'"
           >
             ← 返回列表
-          </div>
+          </button>
           <div v-if="activeNote" class="flex-1 min-h-0 overflow-auto" v-loading="detailLoading">
             <div class="flex items-center gap-10px">
-              <span class="ll-chip" :class="`ll-chip-${NOTE_STATUS_MAP[activeNote.status]?.type}`">{{
+              <span class="sx-chip flex-shrink-0" :class="`ll-chip-${NOTE_STATUS_MAP[activeNote.status]?.type}`">{{
                 NOTE_STATUS_MAP[activeNote.status]?.label
               }}</span>
               <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
                 {{ activeNote.title || activeNote.topic }}
               </h2>
               <n-popconfirm @positive-click="removeItem(activeNote!)">
-                <template #trigger><span class="ll-danger-link flex-none text-12px">删除</span></template>
+                <template #trigger
+                  ><span class="ll-danger-link transition-colors duration-fast flex-none text-12px"
+                    >删除</span
+                  ></template
+                >
                 确定删除这条笔记？
               </n-popconfirm>
             </div>
-            <div class="mt-8px mb-14px text-12px text-muted">
+            <div class="mt-8px mb-14px text-11px leading-16px text-muted tabular-nums">
               {{ activeNote.note_type_label }} · 套图 {{ activeNote.image_count }}张 ·
               {{ formatTime(activeNote.create_time) }}
             </div>
@@ -433,7 +462,7 @@ watch(view, (v) => {
             <!-- 构思中 / 生成中 -->
             <div
               v-if="activeNote.status === 0 || activeNote.status === 3"
-              class="ll-card flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
             >
               <n-spin size="small" />
               <span>{{ activeNote.status === 0 ? 'AI 构思中，标题正文马上就来…' : '图片生成中，请稍候…' }}</span>
@@ -442,7 +471,7 @@ watch(view, (v) => {
             <!-- 构思失败 / 生成失败 -->
             <div
               v-else-if="activeNote.status === 2 || activeNote.status === 5"
-              class="ll-card flex flex-col items-center justify-center gap-12px p-40px text-13px text-ink-2"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex flex-col items-center justify-center gap-12px p-40px text-13px text-ink-2"
             >
               <p class="m-0 text-danger">
                 {{ activeNote.fail_reason || (activeNote.status === 2 ? '构思失败' : '生成失败') }}
@@ -460,13 +489,14 @@ watch(view, (v) => {
             <!-- 待确认：规划页 -->
             <template v-else-if="activeNote.status === 1">
               <div
-                class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px leading-18px text-warning"
+                class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px leading-18px text-alert-warning"
               >
                 以下是 AI 构思的内容，可以修改后确认生成；也可以换个思路重新构思。
               </div>
-              <div class="ll-card p-16px">
-                <div class="mb-14px">
-                  <div class="ll-label">标题</div>
+              <div
+                class="flex flex-col gap-12px p-16px rounded-lg border border-solid border-line bg-white shadow-card-v3"
+              >
+                <Field label="标题">
                   <n-input
                     v-model:value="editForm.title"
                     size="small"
@@ -474,40 +504,36 @@ watch(view, (v) => {
                     show-count
                     placeholder="笔记标题"
                   />
-                </div>
-                <div class="mb-14px">
-                  <div class="ll-label">正文</div>
+                </Field>
+                <Field label="正文">
                   <n-input
                     v-model:value="editForm.content"
                     type="textarea"
                     :rows="8"
                     placeholder="笔记正文，话题用 # 或空格分隔写在下面"
                   />
-                </div>
-                <div class="mb-14px">
-                  <div class="ll-label">话题</div>
+                </Field>
+                <Field label="话题">
                   <n-input
                     v-model:value="editForm.tags"
                     size="small"
                     placeholder="用空格分隔，如：探店 咖啡 周末去哪儿"
                   />
-                </div>
-                <div class="mb-14px">
-                  <div class="ll-label">套图数量（最多 {{ activeNote.image_count }} 张，只能改少）</div>
-                  <n-select v-model:value="genCount" size="small" :options="genCountOptions" />
-                </div>
-                <div v-if="activeNote.material_urls?.length">
-                  <div class="ll-label">参考素材</div>
+                </Field>
+                <Field :label="`套图数量（最多 ${activeNote.image_count} 张，只能改少）`">
+                  <ChipGroup v-model="genCount" :options="genCountOptions" label="套图数量" />
+                </Field>
+                <Field v-if="activeNote.material_urls?.length" label="参考素材">
                   <div class="flex flex-wrap gap-8px">
                     <img
                       v-for="url in activeNote.material_urls"
                       :key="url"
                       :src="url"
                       alt=""
-                      class="w-64px h-64px rounded-8px object-cover"
+                      class="w-64px h-64px rounded-md object-cover border border-solid border-line-soft"
                     />
                   </div>
-                </div>
+                </Field>
               </div>
               <div class="flex gap-8px mt-14px">
                 <n-button size="small" :loading="replanning" @click="replan">重新构思</n-button>
@@ -517,7 +543,7 @@ watch(view, (v) => {
 
             <!-- 已完成 -->
             <template v-else-if="activeNote.status === 4">
-              <div class="ll-card p-16px">
+              <div class="bg-white rounded-lg border border-solid border-line shadow-card-v3 p-14px">
                 <template v-if="!editingResult">
                   <div class="mb-8px text-16px font-600 leading-22px text-ink">{{ activeNote.title }}</div>
                   <div class="mb-10px whitespace-pre-wrap text-13px leading-22px text-ink">
@@ -527,20 +553,23 @@ watch(view, (v) => {
                     <span v-for="tag in activeNote.tags" :key="tag" class="text-12px text-violet-ink">#{{ tag }}</span>
                   </div>
                 </template>
-                <template v-else>
-                  <div class="mb-14px">
-                    <div class="ll-label">标题</div>
-                    <n-input v-model:value="editForm.title" size="small" maxlength="30" show-count />
-                  </div>
-                  <div class="mb-14px">
-                    <div class="ll-label">正文</div>
-                    <n-input v-model:value="editForm.content" type="textarea" :rows="8" />
-                  </div>
-                  <div class="mb-14px">
-                    <div class="ll-label">话题</div>
+                <div v-else class="flex flex-col gap-12px">
+                  <Field label="标题">
+                    <n-input
+                      v-model:value="editForm.title"
+                      size="small"
+                      maxlength="30"
+                      show-count
+                      placeholder="笔记标题"
+                    />
+                  </Field>
+                  <Field label="正文">
+                    <n-input v-model:value="editForm.content" type="textarea" :rows="8" placeholder="笔记正文" />
+                  </Field>
+                  <Field label="话题">
                     <n-input v-model:value="editForm.tags" size="small" placeholder="空格分隔" />
-                  </div>
-                </template>
+                  </Field>
+                </div>
 
                 <div class="grid grid-cols-3 gap-10px mt-14px">
                   <div
@@ -559,14 +588,7 @@ watch(view, (v) => {
               </div>
               <div class="flex gap-8px mt-14px">
                 <template v-if="!editingResult">
-                  <n-button
-                    size="small"
-                    @click="
-                      editingResult = true
-                      fillEditForm(activeNote)
-                    "
-                    >编辑文案</n-button
-                  >
+                  <n-button size="small" @click="beginEditResult">编辑文案</n-button>
                   <n-button size="small" :loading="replanning" @click="replan">重新生成</n-button>
                 </template>
                 <template v-else>

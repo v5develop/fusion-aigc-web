@@ -20,6 +20,9 @@ const emit = defineEmits<{ confirm: [urls: string[]] }>()
 const ROLE_LABEL: Record<BrandProfileImage['role'], string> = { feature: '特色菜图', store: '门店图', logo: 'Logo' }
 const focusRing =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet'
+/** spec 按钮过渡：0.11s */
+const btnTr =
+  'transition-[background,border-color,box-shadow,color] duration-fast ease-sx motion-reduce:transition-none'
 
 const picked = ref<string[]>([])
 watch(show, (v) => {
@@ -41,7 +44,9 @@ function confirm() {
 <template>
   <n-modal v-model:show="show" preset="card" title="设计素材" class="max-w-[92vw]" style="width: 640px">
     <div class="flex flex-col gap-12px">
-      <p v-if="!images.length" class="m-0 py-24px text-center text-13px text-muted">品牌档案中暂无图片</p>
+      <p v-if="!images.length" class="sx-empty m-0">
+        <span class="sx-empty-title">品牌档案中暂无图片</span>
+      </p>
       <ul
         v-else
         class="m-0 grid max-h-420px list-none grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-8px overflow-y-auto p-0"
@@ -53,22 +58,23 @@ function confirm() {
             :aria-label="`${ROLE_LABEL[img.role]}${img.name ? `：${img.name}` : ''}`"
             :disabled="!picked.includes(img.url) && picked.length >= max"
             :class="[
-              'relative w-full flex cursor-pointer flex-col overflow-hidden rounded-8px border bg-white p-0 text-left',
-              'disabled:(cursor-not-allowed opacity-50)',
+              'relative w-full flex cursor-pointer flex-col overflow-hidden rounded-lg border border-solid p-0 text-left',
+              'transition-[border-color,background,box-shadow] duration-mid ease-sx motion-reduce:transition-none',
+              'disabled:(cursor-not-allowed opacity-50 shadow-none)',
               picked.includes(img.url)
-                ? 'border-violet ring-2 ring-violet-line'
-                : 'border-line hover:border-violet-line',
+                ? 'border-violet-line sx-grad-tint ring-1 ring-violet'
+                : 'border-line bg-white hover:(border-violet-line shadow-raised)',
               focusRing,
             ]"
             @click="toggle(img.url)"
           >
             <img :src="img.url" alt="" class="aspect-square w-full bg-sunken object-cover" loading="lazy" />
-            <span class="truncate px-6px py-4px text-11px text-muted">
+            <span class="truncate px-6px py-4px text-11px leading-16px text-muted">
               {{ ROLE_LABEL[img.role] }}{{ img.name ? ` · ${img.name}` : '' }}
             </span>
             <span
               v-if="picked.includes(img.url)"
-              class="absolute right-4px top-4px h-18px min-w-18px flex items-center justify-center rounded-full bg-violet px-4px text-11px text-white font-600"
+              class="absolute right-4px top-4px h-18px min-w-18px box-border flex items-center justify-center rounded-full border border-solid border-white sx-grad-primary px-4px text-11px text-white font-600 tabular-nums shadow-btn"
               aria-hidden="true"
             >
               {{ picked.indexOf(img.url) + 1 }}
@@ -77,18 +83,9 @@ function confirm() {
         </li>
       </ul>
       <footer class="flex items-center justify-end gap-8px">
-        <span class="mr-auto text-12px text-muted">{{ picked.length }}/{{ max }}</span>
-        <button type="button" :class="['ll-pill', focusRing]" @click="show = false">取消</button>
-        <button
-          type="button"
-          :class="[
-            'h-30px cursor-pointer rounded-full border-none bg-ink px-16px text-12px font-600 text-white hover:bg-ink-2',
-            focusRing,
-          ]"
-          @click="confirm"
-        >
-          确定
-        </button>
+        <span class="mr-auto text-11px leading-16px text-placeholder tabular-nums">{{ picked.length }}/{{ max }}</span>
+        <button type="button" :class="btnTr" class="sx-btn" @click="show = false">取消</button>
+        <button type="button" :class="btnTr" class="sx-btn-primary !px-16px" @click="confirm">确定</button>
       </footer>
     </div>
   </n-modal>

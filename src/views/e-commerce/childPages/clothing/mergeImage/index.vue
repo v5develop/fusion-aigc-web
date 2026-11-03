@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SettingsBar from '@/views/e-commerce/childPages/components/SettingsBar/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { reactive, ref, provide, watch, computed } from 'vue'
 import Container from '../../components/Container/index.vue'
@@ -133,11 +135,11 @@ function useModelList() {
 </script>
 
 <template>
-  <Container class="commerce" title="搭配融图" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="搭配融图" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">选择模特</div>
-        <div v-loading="pagingData.loading" style="position: relative">
+      <div>
+        <SectionTitle>选择模特</SectionTitle>
+        <div v-loading="pagingData.loading" class="relative">
           <Tab
             v-model:value="tabValue"
             :tabs="[
@@ -154,54 +156,39 @@ function useModelList() {
                 { field: 'skin', options: skinOps, placeholder: '肤色' },
               ]"
               :col="3"
-              style="margin-top: 12px"
+              class="mt-8px"
               clearable
               multiple
             />
             <GridImage
-              style="margin-top: 8px"
+              class="mt-8px"
               v-model:imageUrl="formData.personUrl"
               :imgList="modelList.map((item) => item.url)"
               :scrollCallBack="scrollCallBack"
             />
           </div>
 
-          <div v-show="tabValue === 'uploadModel'" style="margin-top: 8px">
+          <div v-show="tabValue === 'uploadModel'" class="mt-8px">
             <ImageUpload
+              fromAsset
               v-model:imgList="formData.uploadPersonUrl"
               btnName="上传模特图"
               :limitNumber="1"
               :topRightTips="false"
             >
-              <span style="color: #9e9e9e; margin-top: 15px">建议上传模特全身图</span>
-              <span style="color: #9e9e9e; margin-top: 4px">图片大小20k-15M，分辨率大于400*400</span>
+              <span class="mt-12px text-11px leading-17px text-muted">建议上传模特全身图</span>
+              <span class="mt-4px text-11px leading-17px text-muted">图片大小20k-15M，分辨率大于400*400</span>
             </ImageUpload>
           </div>
         </div>
 
-        <div class="module-title">选择搭配图</div>
-        <ImageUpload v-model:imgList="formData.imageUrls" :limitNumber="7" btnName="上传搭配图">
-          <span style="color: #9e9e9e; margin-top: 15px">建议使用服饰白底图、服饰平铺图，识别效果更佳</span>
+        <SectionTitle>选择搭配图</SectionTitle>
+        <ImageUpload fromAsset v-model:imgList="formData.imageUrls" :limitNumber="7" btnName="上传搭配图">
+          <span class="mt-12px text-11px leading-17px text-muted">建议使用服饰白底图、服饰平铺图，识别效果更佳</span>
         </ImageUpload>
 
-        <div class="module-title">生成设置</div>
-        <SelectGroup
-          v-model:data="formData"
-          :list="[{ field: 'aspectRatio', options: aspectRatioOps }]"
-          style="margin-top: 12px"
-          :col="1"
-        />
-        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
-        <SelectGroup
-          v-model:data="formData"
-          :list="[{ field: 'modelCode', options: modelOps }]"
-          :col="1"
-          style="margin-top: 8px"
-        />
-
-        <div class="module-title">生成要求</div>
+        <SectionTitle>生成要求</SectionTitle>
         <PromptAssist
-          style="margin-bottom: 15px"
           v-model:value="formData.userInput"
           :params="{
             prompt: 'aiMergeClothes',
@@ -231,11 +218,16 @@ function useModelList() {
       </div>
     </template>
 
+    <template #settings>
+      <SettingsBar
+        v-model:data="formData"
+        :model-options="modelOps"
+        :fields="[{ field: 'aspectRatio', label: '比例', options: aspectRatioOps }]"
+      />
+    </template>
+
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
+      <RecordList v-if="showList" />
       <Sample
         v-else
         title="搭配融图"
@@ -246,34 +238,3 @@ function useModelList() {
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-    > .switch-cont {
-      height: 52px;
-      border-radius: 12px;
-      border: 1px solid #f0f0f0;
-      padding: 0 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    > .textarea-cont {
-      margin: 12px 0;
-      > .label {
-        line-height: 20px;
-        color: #9e9e9e;
-        margin-bottom: 12px;
-      }
-    }
-  }
-
-  .sample-cont {
-  }
-}
-</style>

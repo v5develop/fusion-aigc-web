@@ -13,6 +13,8 @@ export interface EcTab {
   title: string
   /** 同类目内序号，1 不显示后缀 */
   ordinal: number
+  /** 钉住：固定在标签条最前面，不参与批量关闭；取消钉住后回到钉住区之后 */
+  pinned?: boolean
 }
 
 /** 标签展示名：第一个不带序号，之后带 */
@@ -110,9 +112,51 @@ export const useEcTabsStore = defineStore('ecTabs', () => {
     return tabs.value[index] ?? tabs.value[index - 1] ?? null
   }
 
+  /** 批量移除（右键菜单用）。调用方负责导航和会话清理 */
+  function removeTabs(ids: string[]) {
+    const drop = new Set(ids)
+    tabs.value = tabs.value.filter((t) => !drop.has(t.id))
+    for (const id of ids) delete runningMap.value[id]
+  }
+
+  /** 钉住 / 取消钉住。钉住的标签排到钉住区末尾，取消的排到钉住区之后 */
+  function togglePin(id: string) {
+    const target = tabs.value.find((t) => t.id === id)
+    if (!target) return
+    target.pinned = !target.pinned
+    const pinned = tabs.value.filter((t) => t.pinned)
+    const rest = tabs.value.filter((t) => !t.pinned)
+    tabs.value = [...pinned, ...rest]
+  }
+
+  /** 左移 / 右移一位。只在同为钉住或同为未钉住的标签之间移动 */
+  function moveTab(id: string, dir: -1 | 1) {
+    const index = tabs.value.findIndex((t) => t.id === id)
+    const to = index + dir
+    if (index === -1 || to < 0 || to >= tabs.value.length) return
+    const current = tabs.value[index]
+    const neighbor = tabs.value[to]
+    if (!current || !neighbor || Boolean(current.pinned) !== Boolean(neighbor.pinned)) return
+    const next = [...tabs.value]
+    next[index] = neighbor
+    next[to] = current
+    tabs.value = next
+  }
+
   function setRunning(id: string, running: boolean) {
     runningMap.value[id] = running
   }
 
-  return { tabs, runningMap, cachedNames, nextTabId, openTab, closeTab, setRunning }
+  return {
+    tabs,
+    runningMap,
+    cachedNames,
+    nextTabId,
+    openTab,
+    closeTab,
+    removeTabs,
+    togglePin,
+    moveTab,
+    setRunning,
+  }
 })

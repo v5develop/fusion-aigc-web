@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SettingsBar from '@/views/e-commerce/childPages/components/SettingsBar/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref } from 'vue'
 import { useHomeStore } from '@/stores/home'
@@ -6,7 +8,6 @@ import { storeToRefs } from 'pinia'
 import type { ProductKitParams } from '@/views/home/ChatInputBox/targetParams'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import SelectGroup from '@/components/SelectGroup/index.vue'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import Sample from '../../components/Sample/index.vue'
@@ -129,11 +130,12 @@ function useCheckbox() {
 </script>
 
 <template>
-  <Container class="commerce" title="AI商品套图" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="AI商品套图" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">商品图</div>
+      <div>
+        <SectionTitle>商品图</SectionTitle>
         <ImageUpload
+          fromAsset
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"
           multiple
@@ -145,25 +147,7 @@ function useCheckbox() {
           ]"
         />
 
-        <div class="module-title">生成设置</div>
-        <SelectGroup
-          v-model:data="formData"
-          :list="[
-            { field: 'platform', options: platformOps },
-            { field: 'region', options: regionOps },
-            { field: 'language', options: languageOps },
-            { field: 'aspectRatio', options: aspectRatioOps },
-          ]"
-        />
-        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
-        <SelectGroup
-          v-model:data="formData"
-          :list="[{ field: 'modelCode', options: modelOps }]"
-          :col="1"
-          style="margin-top: 8px"
-        />
-
-        <div class="module-title">商品卖点&要求</div>
+        <SectionTitle>商品卖点&要求</SectionTitle>
         <PromptAssist
           v-model:value="formData.buyPoint"
           :params="{
@@ -182,7 +166,7 @@ function useCheckbox() {
           placeholder="建议填写产品名称、核心卖点、适用人群、使用场景、尺寸参数，生成高清写实电商详情图，自然光质感，完整展示产品细节，画面干净简约，符合电商商用标准画质。"
         />
 
-        <div class="module-title">套图结构配置</div>
+        <SectionTitle>套图结构配置</SectionTitle>
         <CheckboxGroup
           v-model="formData.checked"
           :list="[
@@ -193,16 +177,41 @@ function useCheckbox() {
           :customHandle="checkboxClickHandle"
         >
           <template #custom>
-            <div v-if="formData.checked.includes('custom')" class="checkbox-custom-slot">
-              <div class="item" v-for="item in checkboxCustomImageList" :key="item.field">
-                <div class="label-cont">
-                  <div>{{ item.label }}</div>
-                  <div>{{ item.desc }}</div>
+            <div v-if="formData.checked.includes('custom')" class="w-full flex flex-col gap-8px mt-10px cursor-default">
+              <div
+                v-for="item in checkboxCustomImageList"
+                :key="item.field"
+                class="flex items-center justify-between gap-12px p-12px rounded-md border border-solid border-line-soft bg-surface2"
+              >
+                <div class="min-w-0">
+                  <div class="text-13px font-500 leading-20px text-ink">{{ item.label }}</div>
+                  <div class="text-11px leading-17px text-muted">{{ item.desc }}</div>
                 </div>
-                <div class="operation-cont">
-                  <span class="icon" @click="sub(item)">-</span>
-                  <span class="value">{{ customData[item.field] }}</span>
-                  <span class="icon" @click="add(item)">+</span>
+                <!-- 数量步进（原型 NumberStepper：高 34、line 描边、r4、内凹输入影；数值宽 64、加减按钮宽 30） -->
+                <div
+                  class="flex-none flex items-stretch h-34px rounded-sm border border-solid border-line bg-white shadow-inset-input overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    class="w-30px p-0 border-none bg-transparent text-16px text-ink-2 cursor-pointer select-none hover:(bg-surface3 text-ink) sx-focus"
+                    :aria-label="`减少${item.label}`"
+                    @click="sub(item)"
+                  >
+                    -
+                  </button>
+                  <span
+                    class="flex items-center justify-center w-64px border-x border-solid border-line text-12px text-ink tabular-nums"
+                    aria-live="polite"
+                    >{{ customData[item.field] }}</span
+                  >
+                  <button
+                    type="button"
+                    class="w-30px p-0 border-none bg-transparent text-16px text-ink-2 cursor-pointer select-none hover:(bg-surface3 text-ink) sx-focus"
+                    :aria-label="`增加${item.label}`"
+                    @click="add(item)"
+                  >
+                    +
+                  </button>
                 </div>
               </div>
             </div>
@@ -211,11 +220,21 @@ function useCheckbox() {
       </div>
     </template>
 
+    <template #settings>
+      <SettingsBar
+        v-model:data="formData"
+        :model-options="modelOps"
+        :fields="[
+          { field: 'platform', label: '平台', options: platformOps },
+          { field: 'region', label: '地区', options: regionOps },
+          { field: 'language', label: '语言', options: languageOps },
+          { field: 'aspectRatio', label: '比例', options: aspectRatioOps },
+        ]"
+      />
+    </template>
+
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
+      <RecordList v-if="showList" />
       <Sample
         v-else
         title="AI商品套图"
@@ -225,49 +244,3 @@ function useCheckbox() {
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-    .checkbox-custom-slot {
-      width: 108%;
-      cursor: default;
-      > .item {
-        margin-top: 10px;
-        padding: 15px;
-        border-radius: 5px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background-color: #f3f5f7;
-        > .label-cont {
-        }
-        > .operation-cont {
-          background-color: white;
-          border-radius: 4px;
-          display: flex;
-          align-items: center;
-          padding: 2px;
-          > .icon {
-            width: 25px;
-            height: 100%;
-            text-align: center;
-            font-size: 22px;
-            cursor: pointer;
-            user-select: none;
-            &:hover {
-              background-color: #f6f2ff;
-            }
-          }
-          > .value {
-            padding: 8px;
-          }
-        }
-      }
-    }
-  }
-}
-</style>

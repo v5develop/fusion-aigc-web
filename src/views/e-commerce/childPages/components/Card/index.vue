@@ -3,7 +3,6 @@ import { computed, inject, ref, watch, type Ref } from 'vue'
 import { downloadImage } from '@/utils/download'
 import { withWatermark } from '@/utils/oss'
 import { isTimeout, isVideoUrl } from '@/utils/utils'
-import downloadSingleIcon from '@/assets/icons/download-single.svg'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
 
@@ -15,9 +14,7 @@ const selectImgUrls = inject<Ref<Set<string>> | undefined>('selectImgUrls', unde
 
 // 素材类型：URL 后缀优先；失败态没有 resultUrl，退回页面下发的组类型（视频页 provide 'video'）
 const groupMediaType = inject<'image' | 'video'>('recordMediaType', 'image')
-const mediaType = computed<'image' | 'video'>(() =>
-  isVideoUrl(data.resultUrl) ? 'video' : groupMediaType,
-)
+const mediaType = computed<'image' | 'video'>(() => (isVideoUrl(data.resultUrl) ? 'video' : groupMediaType))
 
 // 视频加载失败：以占位图替换。data 变化（同一实例复用）时重置失败态
 const videoError = ref(false)
@@ -43,14 +40,16 @@ const onDownload = () => downloadImage(data.resultUrl)
 </script>
 
 <template>
-  <div class="card" :class="{ cursor: selectImgUrls }">
+  <!-- 圆角由容器裁切（缩略图 r6），图片、视频、占位态统一生效 -->
+  <div class="group relative overflow-hidden rounded-md bg-surface3" :class="{ 'cursor-pointer': selectImgUrls }">
     <!-- 违规优先：白卡占位 -->
     <MediaFallback v-if="data.blocked" :type="mediaType" reason="blocked" />
     <template v-else-if="data.resultUrl">
       <n-image
         v-if="mediaType === 'image'"
+        class="block w-full h-full"
         :src="withWatermark(data.resultUrl)"
-        alt=""
+        alt="生成结果"
         width="100%"
         height="100%"
         object-fit="cover"
@@ -60,9 +59,10 @@ const onDownload = () => downloadImage(data.resultUrl)
           <MediaFallback type="image" reason="loadFailed" />
         </template>
       </n-image>
+      <!-- 容器固定 16:9（见 RecordList），contain 即「高度撑满、宽度自适应」：横视频满铺，竖视频左右留白居中 -->
       <video
         v-else-if="!videoError"
-        class="video"
+        class="block w-full h-full object-contain bg-sunken"
         :src="data.resultUrl"
         controls
         controlsList="nodownload"
@@ -81,82 +81,37 @@ const onDownload = () => downloadImage(data.resultUrl)
     <!-- 生成中（排队中 0 / 处理中 1）：AI 生成加载动画 -->
     <GenerateLoading v-else />
 
-    <i
+    <button
       v-if="selectImgUrls && !data.blocked"
-      :class="isImgChecked() ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"
-      class="icon"
+      type="button"
+      class="absolute top-6px right-6px grid place-items-center p-0 border-none bg-transparent text-20px text-white cursor-pointer rounded-sm opacity-0 transition-opacity duration-mid [text-shadow:0_1px_2px_rgba(0,0,0,0.3)] group-hover:opacity-100 focus-visible:opacity-100 sx-focus"
+      :aria-pressed="isImgChecked()"
+      aria-label="选择这张图片"
       @click="toggleImage"
-    />
+    >
+      <i :class="isImgChecked() ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'" aria-hidden="true" />
+    </button>
 
-    <!-- 单个下载仅图片有：视频同视频模块，只保留分组的「下载」按钮，避免遮挡播放控件 -->
-    <div
+    <!-- 单个下载仅图片有、只在悬停 / 聚焦时出现（结果卡不放常驻浮层）；视频只保留结果头部的「下载」，避免遮挡播放控件 -->
+    <button
       v-if="mediaType === 'image' && data.resultUrl && data.status === 2 && !data.blocked"
-      class="download-pill"
+      type="button"
+      class="sx-btn absolute right-6px bottom-6px !w-24px !h-24px !p-0 opacity-0 transition-opacity duration-mid group-hover:opacity-100 focus-visible:opacity-100"
+      aria-label="下载这张图片"
       @click.stop="onDownload"
     >
-      <img :src="downloadSingleIcon" width="24" height="24" alt="下载" />
-    </div>
+      <svg
+        class="w-12px h-12px"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" />
+      </svg>
+    </button>
   </div>
 </template>
-
-<style scoped lang="less">
-.card {
-  position: relative;
-  // 同图片/视频模块的卡片：圆角由容器裁切，图片、视频、占位态统一生效
-  border-radius: 4px;
-  overflow: hidden;
-  &:hover {
-    > .icon,
-    > .download-pill {
-      opacity: 1;
-    }
-  }
-  :deep(.n-image) {
-    width: 100%;
-    height: 100%;
-  }
-  > .video {
-    width: 100%;
-    height: 100%;
-    // 容器固定 16:9（见 RecordList），此时 contain 即「高度撑满、宽度自适应」：
-    // 16:9 横视频满铺（与 cover 渲染一致），9:16 等更高的素材左右留白居中，底色同图片模块。
-    // 不做 cover/contain 切换——cover 只会裁掉非 16:9 素材，没有任何场景优于 contain。
-    object-fit: contain;
-    background: #e5e2ed;
-  }
-  &.cursor {
-    cursor: pointer;
-  }
-
-  > .icon {
-    font-size: 28px;
-    position: absolute;
-    top: 10px;
-    right: 20px;
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-
-  > .download-pill {
-    position: absolute;
-    left: 50%;
-    bottom: 12px;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 12px;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.2s;
-
-    img {
-      display: block;
-      width: 24px;
-      height: 24px;
-    }
-  }
-}
-</style>

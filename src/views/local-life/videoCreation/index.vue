@@ -11,6 +11,12 @@ import Workbench from '../components/Workbench/index.vue'
 import PersonSource from '../components/PersonSource/index.vue'
 import ShopProfileSelect from '../components/ShopProfileSelect/index.vue'
 import CopywritingPicker from '../components/CopywritingPicker/index.vue'
+import FormCard from '../components/FormCard/index.vue'
+import Field from '../components/Field/index.vue'
+import SegTabs from '../components/SegTabs/index.vue'
+import PromptBox from '../components/PromptBox/index.vue'
+import PromptActions from '../components/PromptActions/index.vue'
+import SettingsBar from '../components/SettingsBar/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import {
   llCopywritingAiWrite,
@@ -57,6 +63,10 @@ const portraitSource = ref<'UPLOAD' | 'PUBLIC'>('UPLOAD')
 const personImage = ref('')
 const personPublicId = ref<number | undefined>(undefined)
 const withPerson = ref(false) // 出镜人物选填，开关控制
+const PERSON_SEGMENTS = [
+  { key: false, label: '不出现人物' },
+  { key: true, label: '指定人物' },
+]
 
 const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: o.label, value: o.code })))
 const sizeOptions = computed(() => (options.value?.sizes ?? []).map((o) => ({ label: o.label, value: o.code })))
@@ -233,84 +243,95 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
 <template>
   <Workbench :title="pageTitle" :submit="submit" :loading="submitting" submit-text="生成分镜剧本">
     <template #default>
-      <div class="mb-14px">
-        <div class="ll-label">
-          {{ isExplore ? '视频文案' : '短剧主题' }}
-          <span class="flex gap-10px">
-            <span class="ll-link" :class="{ 'opacity-60 !cursor-not-allowed': aiWriting }" @click="aiWriteText">{{
-              aiWriting ? 'AI帮写中…' : '✨ AI帮写'
-            }}</span>
-            <span class="ll-link" @click="showCopyPicker = true">选择AI文案</span>
-          </span>
-        </div>
-        <n-input
-          v-model:value="form.user_text"
-          type="textarea"
-          :rows="4"
-          :maxlength="maxTextLen"
-          show-count
+      <FormCard :title="isExplore ? '视频文案' : '短剧主题'" required>
+        <PromptBox
+          v-model="form.user_text"
+          :label="isExplore ? '视频文案' : '短剧主题'"
+          size="lg"
+          :max-length="maxTextLen"
           :placeholder="isExplore ? '想拍一条什么样的探店视频？' : '想拍一个什么样的带货小剧场？'"
-        />
-      </div>
+        >
+          <template #actions>
+            <PromptActions :loading="aiWriting" @ai="aiWriteText" @pick="showCopyPicker = true" />
+          </template>
+        </PromptBox>
+      </FormCard>
 
-      <div v-if="!isExplore" class="mb-14px">
-        <div class="ll-label">商品卖点（选填）</div>
+      <FormCard v-if="!isExplore" title="商品卖点" hint="选填">
         <n-input
           v-model:value="form.selling_points"
           size="small"
           :maxlength="options?.max_selling_points_len || 200"
+          show-count
           placeholder="如：便携榨汁杯、30秒出汁、USB充电"
         />
-      </div>
+      </FormCard>
 
-      <div class="mb-14px">
-        <div class="ll-label">{{ isExplore ? '道具图（选填）' : '商品图（必填）' }}</div>
-        <ImageUpload v-model:imgList="form.prop_url" btnName="上传图片" :topRightTips="false" :limitNumber="1" />
-      </div>
+      <FormCard title="素材图" hint="每类最多 1 张">
+        <Field :label="isExplore ? '道具图' : '商品图'" :required="!isExplore">
+          <template #extra>
+            <span class="text-11px leading-16px text-muted">{{ isExplore ? '选填 · 1 张' : '必填 · 1 张' }}</span>
+          </template>
+          <ImageUpload
+            fromAsset
+            v-model:imgList="form.prop_url"
+            btnName="上传图片"
+            :topRightTips="false"
+            :limitNumber="1"
+          />
+        </Field>
+        <Field :label="isExplore ? '门店图' : '环境图'">
+          <template #extra>
+            <span class="text-11px leading-16px text-muted">选填 · 1 张</span>
+          </template>
+          <ImageUpload
+            fromAsset
+            v-model:imgList="form.env1_url"
+            btnName="上传图片"
+            :topRightTips="false"
+            :limitNumber="1"
+          />
+        </Field>
+        <Field v-if="isExplore" label="店内图">
+          <template #extra>
+            <span class="text-11px leading-16px text-muted">选填 · 1 张</span>
+          </template>
+          <ImageUpload
+            fromAsset
+            v-model:imgList="form.env2_url"
+            btnName="上传图片"
+            :topRightTips="false"
+            :limitNumber="1"
+          />
+        </Field>
+      </FormCard>
 
-      <div class="mb-14px">
-        <div class="ll-label">{{ isExplore ? '门店图（选填）' : '环境图（选填）' }}</div>
-        <ImageUpload v-model:imgList="form.env1_url" btnName="上传图片" :topRightTips="false" :limitNumber="1" />
-      </div>
-
-      <div v-if="isExplore" class="mb-14px">
-        <div class="ll-label">店内图（选填）</div>
-        <ImageUpload v-model:imgList="form.env2_url" btnName="上传图片" :topRightTips="false" :limitNumber="1" />
-      </div>
-
-      <div class="mb-14px">
-        <div class="ll-label">出镜人物（选填）</div>
-        <div class="flex flex-wrap gap-8px">
-          <span class="ll-pill" :class="{ 'll-pill-active': !withPerson }" @click="withPerson = false">不出现人物</span>
-          <span class="ll-pill" :class="{ 'll-pill-active': withPerson }" @click="withPerson = true">指定人物</span>
-        </div>
+      <FormCard title="出镜人物" hint="选填">
+        <SegTabs v-model="withPerson" :options="PERSON_SEGMENTS" label="出镜人物" />
         <PersonSource
           v-if="withPerson"
           v-model:source="portraitSource"
           v-model:image-url="personImage"
           v-model:public-id="personPublicId"
+          title="出镜人物来源"
+          bare
         />
-      </div>
+      </FormCard>
 
-      <div class="mb-14px">
-        <div class="ll-label">关联店铺档案</div>
+      <FormCard title="关联店铺档案" hint="选填">
         <ShopProfileSelect v-model:value="form.shop_profile_id" />
-      </div>
+      </FormCard>
+    </template>
 
-      <div class="mb-14px flex gap-10px">
-        <div v-if="durationOptions.length" class="flex-1 min-w-0">
-          <div class="ll-label">时长</div>
-          <n-select v-model:value="form.duration" size="small" :options="durationOptions" />
-        </div>
-        <div v-if="sizeOptions.length" class="flex-1 min-w-0">
-          <div class="ll-label">比例</div>
-          <n-select v-model:value="form.size" size="small" :options="sizeOptions" />
-        </div>
-        <div v-if="modelOptions.length" class="flex-1 min-w-0">
-          <div class="ll-label">模型</div>
-          <n-select v-model:value="form.model" size="small" :options="modelOptions" />
-        </div>
-      </div>
+    <template #settings>
+      <SettingsBar
+        v-model:data="form"
+        :model-options="modelOptions"
+        :fields="[
+          { field: 'duration', label: '时长', options: durationOptions },
+          { field: 'size', label: '比例', options: sizeOptions },
+        ]"
+      />
     </template>
 
     <template #right>
@@ -322,7 +343,7 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
             <div
               v-for="item in listCtl.items.value"
               :key="item.id"
-              class="ll-card flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)"
               @click="openDetail(item.id)"
             >
               <img
@@ -333,26 +354,33 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
               />
               <div
                 v-else
-                class="w-64px h-64px flex-none rounded-8px flex items-center justify-center text-24px bg-surface2"
+                class="w-64px h-64px flex-none rounded-8px flex items-center justify-center text-24px sx-grad-icon border border-solid border-violet-soft-2 shadow-[inset_0_1px_0_#fff]"
               >
                 🎬
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-8px">
                   <span class="flex-1 truncate text-14px font-600 text-ink">{{ item.user_text || '未命名' }}</span>
-                  <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[item.status]?.type}`">{{
+                  <span class="sx-chip flex-shrink-0" :class="`ll-chip-${VIDEO_STATUS_MAP[item.status]?.type}`">{{
                     VIDEO_STATUS_MAP[item.status]?.label
                   }}</span>
                 </div>
-                <div class="mt-4px text-11px text-muted">
+                <div class="mt-4px text-11px leading-16px text-muted tabular-nums">
                   {{ item.duration }}s · {{ item.size }} · {{ formatTime(item.create_time) }}
                 </div>
               </div>
             </div>
-            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="ll-empty py-80px">
+            <div
+              v-if="!listCtl.loading.value && !listCtl.items.value.length"
+              class="sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
+            >
               还没有记录，左侧开始创作吧
             </div>
-            <div v-if="listCtl.hasMore.value" class="ll-link block text-center py-8px" @click="listCtl.loadMore()">
+            <div
+              v-if="listCtl.hasMore.value"
+              class="ll-link transition-colors duration-fast block text-center py-8px"
+              @click="listCtl.loadMore()"
+            >
               加载更多
             </div>
           </div>
@@ -360,33 +388,38 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
 
         <!-- 详情：剧本确认 / 成片 -->
         <template v-else>
-          <div
-            class="flex-none w-fit mb-12px text-13px text-ink-2 cursor-pointer hover:text-violet-ink"
+          <button
+            type="button"
+            class="flex-none w-fit mb-12px -ml-8px sx-btn-ghost !h-28px !px-8px hover:!text-violet-ink transition-colors duration-fast"
             @click="view = 'list'"
           >
             ← 返回列表
-          </div>
+          </button>
           <div v-if="activeVideo" v-loading="detailLoading" class="flex-1 min-h-0 overflow-auto">
             <div class="flex items-center gap-10px">
-              <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{
+              <span class="sx-chip flex-shrink-0" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{
                 VIDEO_STATUS_MAP[activeVideo.status]?.label
               }}</span>
               <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
                 {{ activeVideo.user_text || '未命名' }}
               </h2>
               <n-popconfirm @positive-click="removeItem(activeVideo!)">
-                <template #trigger><span class="flex-none text-12px ll-danger-link">删除</span></template>
+                <template #trigger
+                  ><span class="flex-none text-12px ll-danger-link transition-colors duration-fast"
+                    >删除</span
+                  ></template
+                >
                 确定删除这条记录？
               </n-popconfirm>
             </div>
-            <div class="mt-8px mb-14px text-12px text-muted">
+            <div class="mt-8px mb-14px text-11px leading-16px text-muted tabular-nums">
               {{ activeVideo.duration }}s · {{ activeVideo.size }} · {{ formatTime(activeVideo.create_time) }}
             </div>
 
             <!-- 构思中 / 生成中 -->
             <div
               v-if="activeVideo.status === 0 || activeVideo.status === 2"
-              class="ll-card flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
             >
               <n-spin size="small" />
               <span>{{ activeVideo.status === 0 ? 'AI 正在构思分镜剧本…' : '视频生成中，预计 2~10 分钟…' }}</span>
@@ -395,7 +428,7 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
             <!-- 失败 -->
             <div
               v-else-if="activeVideo.status === 4"
-              class="ll-card flex flex-col items-center justify-center gap-10px p-40px text-13px text-ink-2"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex flex-col items-center justify-center gap-10px p-40px text-13px text-ink-2"
             >
               <p class="m-0 text-danger">{{ activeVideo.fail_reason || '生成失败' }}</p>
               <div class="flex gap-10px">
@@ -407,13 +440,17 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
             <!-- 待确认：分镜剧本 -->
             <template v-else-if="activeVideo.status === 1">
               <div
-                class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px text-warning"
+                class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px text-alert-warning"
               >
                 分镜剧本已出（剧本只读）。不满意就重新构思；满意就确认生成。
               </div>
 
               <template v-if="scriptScenes">
-                <div v-for="(scene, i) in scriptScenes" :key="i" class="ll-card px-16px py-14px mb-10px">
+                <div
+                  v-for="(scene, i) in scriptScenes"
+                  :key="i"
+                  class="bg-white rounded-lg border border-solid border-line shadow-card-v3 px-16px py-14px mb-10px"
+                >
                   <div class="flex items-baseline justify-between gap-8px mb-8px">
                     <span class="text-14px font-600 text-ink">{{ scene.scene_name || `分镜 ${i + 1}` }}</span>
                     <span v-if="sceneTime(scene)" class="text-12px text-violet-ink">{{ sceneTime(scene) }}</span>
@@ -431,7 +468,7 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
               </template>
               <div
                 v-else-if="scriptRaw"
-                class="ll-card p-16px text-13px leading-22px text-ink whitespace-pre-wrap"
+                class="bg-white rounded-lg border border-solid border-line shadow-card-v3 p-14px text-13px leading-22px text-ink whitespace-pre-wrap"
                 v-text="scriptRaw"
               />
 
@@ -450,7 +487,7 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
                 :src="activeVideo.video_url"
                 controls
                 autoplay
-                class="block w-full max-h-70vh rounded-10px bg-black"
+                class="block w-full max-h-70vh rounded-lg bg-black"
               />
               <div class="flex gap-10px mt-14px">
                 <n-button size="small" @click="replan" :loading="replanning">换个剧本重新拍</n-button>

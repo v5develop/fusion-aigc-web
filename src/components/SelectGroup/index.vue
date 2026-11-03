@@ -66,7 +66,9 @@ function renderLabel(field: string, option: DropdownOption) {
 </script>
 
 <template>
-  <div class="container" :style="{ '--col': col, '--gap': gap }">
+  <!-- 筛选下拉组（原型 `.sx-input`，规范 §4.1）：高 34、内边距 0 10、1px control 描边、r4、白底 + 内凹输入影；
+       hover 描边加深，键盘聚焦 violet 描边 + 3px 焦点环。下拉面板与触发器等宽 -->
+  <div class="grid" :style="{ gridTemplateColumns: `repeat(${col}, minmax(0, 1fr))`, gap }">
     <template v-for="(item, i) in list" :key="i">
       <n-dropdown
         :options="toDropdownOptions(item.options)"
@@ -81,76 +83,51 @@ function renderLabel(field: string, option: DropdownOption) {
       >
         <div
           :ref="(el) => setTriggerRef(el, i)"
-          class="trigger"
+          role="button"
+          tabindex="0"
+          aria-haspopup="menu"
+          :aria-label="`${item.placeholder ?? ''}：${selectedLabel(item.field, item.options) || '未选择'}`"
+          class="group flex items-center gap-4px h-34px px-10px box-border rounded-sm border border-solid border-control bg-white shadow-inset-input cursor-pointer outline-none transition-[border-color,box-shadow] duration-fast ease-sx motion-reduce:transition-none hover:border-control-hover focus-visible:(border-violet shadow-focus)"
           :style="item.style"
-          :class="{ placeholder: !selectedLabel(item.field, item.options) }"
+          @keydown.enter.prevent="($event.currentTarget as HTMLElement).click()"
+          @keydown.space.prevent="($event.currentTarget as HTMLElement).click()"
         >
-          <span class="trigger-label">
+          <span
+            class="flex-1 min-w-0 truncate text-13px leading-20px"
+            :class="selectedLabel(item.field, item.options) ? 'text-ink' : 'text-placeholder'"
+          >
             {{ selectedLabel(item.field, item.options) || item.placeholder || '' }}
           </span>
           <span
-            v-if="(item.clearable === undefined ? clearable : item.clearable) && selectedLabel(item.field, item.options)"
-            class="trigger-clear"
+            v-if="
+              (item.clearable === undefined ? clearable : item.clearable) && selectedLabel(item.field, item.options)
+            "
+            role="button"
+            tabindex="0"
+            :aria-label="`清除${item.placeholder ?? ''}`"
+            class="flex-none grid place-items-center w-16px h-16px rounded-full text-placeholder cursor-pointer hover:text-ink-2 sx-focus"
             @click="(e: Event) => onClear(item.field, item.options, e)"
-          />
-          <span class="trigger-arrow" />
+            @keydown.enter.stop.prevent="(e: Event) => onClear(item.field, item.options, e)"
+          >
+            <svg class="w-14px h-14px" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="8" r="7" fill="currentColor" />
+              <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" class="stroke-white" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </span>
+          <svg
+            class="flex-none w-12px h-12px text-muted"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
         </div>
       </n-dropdown>
     </template>
   </div>
 </template>
-
-<style scoped lang="less">
-.container {
-  display: grid;
-  grid-template-columns: repeat(var(--col), 1fr);
-  gap: var(--gap);
-}
-
-.trigger {
-  display: flex;
-  align-items: center;
-  height: 34px;
-  padding: 0 12px;
-  background-color: #f5f6f8;
-  border-radius: 3px;
-  cursor: pointer;
-
-  .trigger-label {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 14px;
-    color: #333;
-  }
-
-  &.placeholder .trigger-label {
-    color: #c2c2c2;
-  }
-
-  .trigger-clear {
-    flex-shrink: 0;
-    width: 16px;
-    height: 16px;
-    margin-right: 2px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23ccc'/%3E%3Cpath d='M5 5l6 6M11 5l-6 6' stroke='white' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
-    background-size: contain;
-    cursor: pointer;
-    &:hover {
-      opacity: 0.7;
-    }
-  }
-
-  .trigger-arrow {
-    flex-shrink: 0;
-    width: 0;
-    height: 0;
-    margin-left: 6px;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid #b0b0b0;
-    transition: transform 0.2s;
-  }
-}
-</style>

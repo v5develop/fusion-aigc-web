@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref } from 'vue'
 import Container from '../../components/Container/index.vue'
@@ -35,25 +36,27 @@ const submit = () => {
   }
   execute(params, loading)
 }
-
 </script>
 
 <template>
-  <Container class="commerce" title="服装去皱" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="服装去皱" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">商品图</div>
-        <ImageUpload v-model:imgList="formData.imageUrls" btnName="上传产品图" :topRightTips="false" :limitNumber="1">
-          <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
+      <div>
+        <SectionTitle>商品图</SectionTitle>
+        <ImageUpload
+          fromAsset
+          v-model:imgList="formData.imageUrls"
+          btnName="上传产品图"
+          :topRightTips="false"
+          :limitNumber="1"
+        >
+          <span class="mt-12px text-11px leading-17px text-muted">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>
       </div>
     </template>
 
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
+      <RecordList v-if="showList" />
       <Sample
         v-else
         title="服装去皱"
@@ -64,13 +67,3 @@ const submit = () => {
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-  }
-}
-</style>

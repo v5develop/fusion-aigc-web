@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SettingsBar from '@/views/e-commerce/childPages/components/SettingsBar/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
@@ -47,7 +49,7 @@ if (global_formData.value.home) {
   if (p.imageUrls?.length) (formData as any).imageUrls = p.imageUrls
   if (p.personUrl) formData.personUrl = p.personUrl
   if (p.uploadPersonUrl?.length) {
-    (formData as any).uploadPersonUrl = p.uploadPersonUrl
+    ;(formData as any).uploadPersonUrl = p.uploadPersonUrl
     tabValue.value = 'uploadModel'
   }
   if (p.poseUrl) formData.poseUrl = p.poseUrl
@@ -253,11 +255,12 @@ function useBg() {
 </script>
 
 <template>
-  <Container class="commerce" title="AI试衣" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="AI试衣" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">商品图</div>
+      <div>
+        <SectionTitle>商品图</SectionTitle>
         <ImageUpload
+          fromAsset
           v-model:imgList="formData.imageUrls"
           btnName="上传产品图"
           :limitNumber="1"
@@ -272,14 +275,11 @@ function useBg() {
             VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/clothing-try7.png',
           ]"
         >
-          <span style="color: #9e9e9e; margin-top: 15px">图片大小20k-15M，分辨率大于400*400</span>
+          <span class="mt-12px text-11px leading-17px text-muted">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>
 
-        <div class="module-title">选择模型</div>
-        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
-
-        <div class="module-title">选择模特</div>
-        <div v-loading="pagingData.loading" style="position: relative">
+        <SectionTitle>选择模特</SectionTitle>
+        <div v-loading="pagingData.loading" class="relative">
           <Tab
             v-model:value="tabValue"
             :tabs="[
@@ -296,11 +296,11 @@ function useBg() {
                 { field: 'skin', options: skinOps, placeholder: '肤色' },
               ]"
               :col="3"
-              style="margin-top: 12px"
+              class="mt-8px"
               clearable
             />
             <GridImage
-              style="margin-top: 8px"
+              class="mt-8px"
               v-model:imageUrl="formData.personUrl"
               :imgList="modelList.map((item) => item.url)"
               :scrollCallBack="scrollCallBack"
@@ -308,8 +308,9 @@ function useBg() {
             />
           </div>
 
-          <div v-show="tabValue === 'uploadModel'" style="margin-top: 8px">
+          <div v-show="tabValue === 'uploadModel'" class="mt-8px">
             <ImageUpload
+              fromAsset
               v-model:imgList="formData.uploadPersonUrl"
               btnName="上传模特图"
               :limitNumber="1"
@@ -318,8 +319,8 @@ function useBg() {
           </div>
         </div>
 
-        <div class="module-title">试衣模版</div>
-        <div v-loading="posePagingData.loading" style="position: relative">
+        <SectionTitle>试衣模版</SectionTitle>
+        <div v-loading="posePagingData.loading" class="relative">
           <Tab
             v-model:value="poseTabValue"
             :tabs="[
@@ -332,11 +333,11 @@ function useBg() {
               v-model:data="poseFilterData"
               :list="[{ field: 'clothStyle', options: clothStyleOps, placeholder: '款式模版' }]"
               :col="1"
-              style="margin-top: 12px"
+              class="mt-8px"
               clearable
             />
             <GridImage
-              style="margin-top: 8px"
+              class="mt-8px"
               ratio="3:4"
               v-model:imageUrl="formData.poseUrl"
               :imgList="poseList.map((item) => item.url)"
@@ -345,8 +346,9 @@ function useBg() {
             />
           </div>
 
-          <div v-show="poseTabValue === 'uploadPose'" style="margin-top: 8px">
+          <div v-show="poseTabValue === 'uploadPose'" class="mt-8px">
             <ImageUpload
+              fromAsset
               v-model:imgList="formData.uploadPoseUrl"
               btnName="上传模板"
               :limitNumber="1"
@@ -355,9 +357,9 @@ function useBg() {
           </div>
         </div>
 
-        <div class="module-title">选择背景</div>
+        <SectionTitle>选择背景</SectionTitle>
         <GridImage
-          style="margin-top: 8px"
+          class="mt-8px"
           v-model:imageUrl="formData.bgImageUrl"
           :imgList="bgList.map((item) => item.url)"
           :scrollCallBack="bgScrollCallBack"
@@ -365,11 +367,12 @@ function useBg() {
       </div>
     </template>
 
+    <template #settings>
+      <SettingsBar v-model:data="formData" :model-options="modelOps" />
+    </template>
+
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
+      <RecordList v-if="showList" />
       <Sample
         v-else
         title="AI试衣"
@@ -380,31 +383,3 @@ function useBg() {
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-    > .switch-cont {
-      height: 52px;
-      border-radius: 12px;
-      border: 1px solid #f0f0f0;
-      padding: 0 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    > .textarea-cont {
-      margin: 12px 0;
-      > .label {
-        line-height: 20px;
-        color: #9e9e9e;
-        margin-bottom: 12px;
-      }
-    }
-  }
-}
-</style>

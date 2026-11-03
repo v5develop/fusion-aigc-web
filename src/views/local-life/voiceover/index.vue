@@ -8,6 +8,11 @@ import { useMessage } from 'naive-ui'
 import Workbench from '../components/Workbench/index.vue'
 import PersonSource from '../components/PersonSource/index.vue'
 import CopywritingPicker from '../components/CopywritingPicker/index.vue'
+import FormCard from '../components/FormCard/index.vue'
+import SegTabs from '../components/SegTabs/index.vue'
+import PromptBox from '../components/PromptBox/index.vue'
+import PromptActions from '../components/PromptActions/index.vue'
+import SettingsBar from '../components/SettingsBar/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
 import {
   llCopywritingAiWrite,
@@ -171,18 +176,13 @@ watch(bgSource, () => {
 <template>
   <Workbench title="数字人口播" :submit="submit" :loading="submitting" submit-text="生成口播视频">
     <template #default>
-      <div class="mb-14px">
-        <div class="ll-label">
-          口播文案
-          <span class="flex gap-10px">
-            <span class="ll-link" :class="{ 'opacity-60 cursor-not-allowed': aiWriting }" @click="aiWriteContent">{{
-              aiWriting ? 'AI帮写中…' : '✨ AI帮写'
-            }}</span>
-            <span class="ll-link" @click="showCopyPicker = true">选择AI文案</span>
-          </span>
-        </div>
-        <n-input v-model:value="form.content" type="textarea" :rows="6" placeholder="数字人要播报的内容，字数不限" />
-      </div>
+      <FormCard title="口播文案" required>
+        <PromptBox v-model="form.content" label="口播文案" size="lg" placeholder="数字人要播报的内容，字数不限">
+          <template #actions>
+            <PromptActions :loading="aiWriting" @ai="aiWriteContent" @pick="showCopyPicker = true" />
+          </template>
+        </PromptBox>
+      </FormCard>
 
       <PersonSource
         v-model:source="portraitSource"
@@ -191,58 +191,59 @@ watch(bgSource, () => {
         title="人物形象"
       />
 
-      <div class="mb-14px">
-        <div class="ll-label">背景</div>
-        <div class="flex flex-wrap gap-8px mb-10px">
-          <span
-            v-for="seg in BG_SEGMENTS"
-            :key="seg.key"
-            class="ll-pill"
-            :class="{ 'll-pill-active': bgSource === seg.key }"
-            @click="bgSource = seg.key"
-          >
-            {{ seg.label }}
-          </span>
-        </div>
+      <FormCard title="背景" :hint="bgSource === 'AI' ? '不选背景，AI 按文案内容自动匹配场景' : ''">
+        <SegTabs v-model="bgSource" :options="BG_SEGMENTS" label="背景" />
         <div
           v-if="bgSource === 'PRESET'"
           v-loading="bgLoading"
-          class="grid grid-cols-3 gap-8px max-h-220px overflow-auto"
+          class="grid grid-cols-3 gap-8px max-h-220px min-h-80px overflow-auto"
+          role="radiogroup"
+          aria-label="预设背景"
         >
-          <div
+          <button
             v-for="b in bgList"
             :key="b.id"
-            class="relative overflow-hidden rounded-8px border-2 border-solid cursor-pointer bg-white transition-colors"
-            :class="bgId === b.id ? 'border-violet' : 'border-transparent'"
+            type="button"
+            role="radio"
+            :aria-checked="bgId === b.id"
+            class="relative block p-0 overflow-hidden rounded-lg border border-solid bg-white text-left cursor-pointer sx-focus transition-[border-color,box-shadow] duration-mid ease-sx motion-reduce:transition-none"
+            :class="
+              bgId === b.id
+                ? 'border-violet ring-1 ring-violet'
+                : 'border-line hover:(border-violet-line shadow-raised)'
+            "
             @click="bgId = b.id"
           >
             <img :src="b.url" alt="" class="block w-full aspect-[9/16] object-cover" />
-            <div class="truncate px-6px py-3px text-11px leading-16px text-ink-2">{{ b.title }}</div>
+            <span class="block truncate px-6px py-4px text-11px leading-16px text-ink-2">{{ b.title }}</span>
+          </button>
+          <div
+            v-if="!bgLoading && !bgList.length"
+            class="col-span-full rounded-md border border-dashed border-line-strong text-center text-11px leading-[1.65] text-muted py-24px"
+          >
+            暂无预设背景
           </div>
-          <div v-if="!bgLoading && !bgList.length" class="col-span-full ll-empty !text-12px py-24px">暂无预设背景</div>
         </div>
-        <template v-if="bgSource === 'UPLOAD'">
-          <ImageUpload v-model:imgList="bgImageList" btnName="上传背景图" :topRightTips="false" :limitNumber="1" />
-        </template>
-        <div v-if="bgSource === 'AI'" class="mt-6px text-11px leading-16px text-placeholder">
-          不选背景，AI 按文案内容自动匹配场景
-        </div>
-      </div>
+        <ImageUpload
+          fromAsset
+          v-if="bgSource === 'UPLOAD'"
+          v-model:imgList="bgImageList"
+          btnName="上传背景图"
+          :topRightTips="false"
+          :limitNumber="1"
+        />
+      </FormCard>
+    </template>
 
-      <div class="mb-14px flex gap-10px">
-        <div v-if="modelOptions.length" class="flex-1 min-w-0">
-          <div class="ll-label">出片模型</div>
-          <n-select v-model:value="form.model" size="small" :options="modelOptions" />
-        </div>
-        <div v-if="durationOptions.length" class="flex-1 min-w-0">
-          <div class="ll-label">时长</div>
-          <n-select v-model:value="form.duration" size="small" :options="durationOptions" />
-        </div>
-        <div v-if="sizeOptions.length" class="flex-1 min-w-0">
-          <div class="ll-label">比例</div>
-          <n-select v-model:value="form.size" size="small" :options="sizeOptions" />
-        </div>
-      </div>
+    <template #settings>
+      <SettingsBar
+        v-model:data="form"
+        :model-options="modelOptions"
+        :fields="[
+          { field: 'duration', label: '时长', options: durationOptions },
+          { field: 'size', label: '比例', options: sizeOptions },
+        ]"
+      />
     </template>
 
     <template #right>
@@ -252,7 +253,11 @@ watch(bgSource, () => {
           v-loading="listCtl.loading.value"
           class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-14px content-start"
         >
-          <div v-for="item in listCtl.items.value" :key="item.id" class="ll-card overflow-hidden">
+          <div
+            v-for="item in listCtl.items.value"
+            :key="item.id"
+            class="bg-white rounded-lg border border-solid border-line shadow-card-v3 overflow-hidden"
+          >
             <div class="relative cursor-pointer" @click="openPreview(item)">
               <img
                 v-if="item.input_image_url"
@@ -260,9 +265,9 @@ watch(bgSource, () => {
                 alt=""
                 class="block w-full aspect-[9/16] object-cover"
               />
-              <div v-else class="w-full aspect-[9/16] flex items-center justify-center text-32px bg-surface2">🎙️</div>
+              <div v-else class="w-full aspect-[9/16] flex items-center justify-center text-32px sx-grad-icon">🎙️</div>
               <div
-                class="ll-chip absolute top-6px left-6px"
+                class="sx-chip flex-shrink-0 absolute top-6px left-6px"
                 :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`"
               >
                 {{ CREATION_STATUS_MAP[item.status]?.label }}
@@ -280,17 +285,22 @@ watch(bgSource, () => {
                 >{{ item.duration ? item.duration + 's' : '' }} {{ item.size }} {{ formatTime(item.create_time) }}</span
               >
               <n-popconfirm @positive-click="removeItem(item)">
-                <template #trigger><span class="ll-danger-link w-fit text-11px">删除</span></template>
+                <template #trigger
+                  ><span class="ll-danger-link transition-colors duration-fast w-fit text-11px">删除</span></template
+                >
                 确定删除这条记录？
               </n-popconfirm>
             </div>
           </div>
-          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="col-span-full ll-empty py-80px">
+          <div
+            v-if="!listCtl.loading.value && !listCtl.items.value.length"
+            class="col-span-full sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
+          >
             还没有记录，左侧开始生成吧
           </div>
           <div
             v-if="listCtl.hasMore.value"
-            class="col-span-full ll-link block text-center py-8px"
+            class="col-span-full ll-link transition-colors duration-fast block text-center py-8px"
             @click="listCtl.loadMore()"
           >
             加载更多

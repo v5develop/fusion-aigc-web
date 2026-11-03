@@ -46,10 +46,12 @@ const mealLabels = ['套餐二连图', '套餐图']
 <template>
   <div class="min-w-0 flex flex-col items-center gap-8px" role="img" :aria-label="ariaLabel">
     <div
-      class="aspect-[440/956] w-[min(100%,360px)] rounded-30px bg-ink p-6px shadow-[0_12px_28px_rgba(31,35,41,0.16)]"
+      class="aspect-[440/956] w-[min(100%,360px)] box-border rounded-30px border border-solid border-violet-border/40 bg-ink p-6px shadow-preview"
       aria-hidden="true"
     >
-      <div class="h-full flex flex-col overflow-hidden rounded-24px bg-page">
+      <div
+        class="h-full flex flex-col overflow-hidden rounded-24px bg-page shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
+      >
         <!-- 状态栏 -->
         <div class="h-26px shrink-0 flex items-center justify-between bg-white px-16px text-10px text-ink font-600">
           <span class="font-mono">9:41</span>
@@ -223,6 +225,6 @@ const mealLabels = ['套餐二连图', '套餐图']
         </div>
       </div>
     </div>
-    <p class="m-0 text-center text-11px text-muted">预览仅供参考，实际呈现以平台为准</p>
+    <p class="m-0 text-center sx-hint">预览仅供参考，实际呈现以平台为准</p>
   </div>
 </template>

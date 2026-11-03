@@ -3,10 +3,13 @@
  * 动作迁移：把一段动作视频里的肢体动作迁移给指定人物。
  * 动作视频二选一：预置（运营维护）/ 我导入的（上传后登记，可删）。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import Workbench from '../components/Workbench/index.vue'
 import PersonSource from '../components/PersonSource/index.vue'
+import FormCard from '../components/FormCard/index.vue'
+import Field from '../components/Field/index.vue'
+import SettingsBar from '../components/SettingsBar/index.vue'
 import VideoUpload from '@/components/VideoUpload/index.vue'
 import {
   llActionVideoImport,
@@ -88,6 +91,15 @@ async function removeMine(item: ILActionVideo) {
 const options = ref<ILCreationOptions | null>(null)
 const model = ref<string | undefined>(undefined)
 const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: o.label, value: o.code })))
+/** 底部设置行读写的对象：model 直接映射到 model ref，提交仍读 model */
+const modelSetting = reactive({
+  get model() {
+    return model.value
+  },
+  set model(value: string | undefined) {
+    model.value = value
+  },
+})
 
 // ---------------- 提交 ----------------
 
@@ -162,74 +174,90 @@ async function removeItem(item: ILCreation) {
         title="人物形象"
       />
 
-      <div class="mb-14px">
-        <div class="ll-label">动作视频（二选一）</div>
-        <div v-loading="loadingVideos">
-          <div class="my-8px text-12px text-muted">预置动作</div>
-          <div class="grid grid-cols-3 gap-8px max-h-200px overflow-auto mb-10px">
-            <div
-              v-for="v in presets"
-              :key="'p' + v.id"
-              class="group relative overflow-hidden rounded-8px border-2 border-solid bg-surface2 cursor-pointer transition-colors"
-              :class="selectedKey === 'p' + v.id ? 'border-violet' : 'border-transparent'"
-              @click="selectedKey = 'p' + v.id"
-            >
-              <video
-                :src="v.url"
-                :poster="v.cover_url"
-                muted
-                preload="metadata"
-                class="block w-full aspect-[9/16] object-cover pointer-events-none"
-              />
-              <div class="truncate px-6px py-3px text-11px text-ink-2">{{ v.name }}</div>
+      <FormCard title="动作视频" required hint="二选一">
+        <div v-loading="loadingVideos" class="flex flex-col gap-12px">
+          <Field label="预置动作">
+            <div class="grid grid-cols-3 gap-8px max-h-200px overflow-auto" role="radiogroup" aria-label="预置动作">
+              <button
+                v-for="v in presets"
+                :key="'p' + v.id"
+                type="button"
+                role="radio"
+                :aria-checked="selectedKey === 'p' + v.id"
+                class="group relative block w-full p-0 overflow-hidden rounded-lg border border-solid sx-grad-upload text-left cursor-pointer sx-focus transition-[border-color,box-shadow] duration-mid ease-sx motion-reduce:transition-none"
+                :class="
+                  selectedKey === 'p' + v.id
+                    ? 'border-violet ring-1 ring-violet'
+                    : 'border-line hover:(border-violet-line shadow-raised)'
+                "
+                @click="selectedKey = 'p' + v.id"
+              >
+                <video
+                  :src="v.url"
+                  :poster="v.cover_url"
+                  muted
+                  preload="metadata"
+                  class="block w-full aspect-[9/16] object-cover pointer-events-none"
+                />
+                <span class="block truncate px-6px py-4px text-11px leading-16px text-ink-2">{{ v.name }}</span>
+              </button>
+              <div
+                v-if="!loadingVideos && !presets.length"
+                class="col-span-full rounded-md border border-dashed border-line-strong text-center text-11px leading-[1.65] text-muted py-8px"
+              >
+                暂无预置动作
+              </div>
             </div>
-            <div v-if="!loadingVideos && !presets.length" class="col-span-full ll-empty !text-12px py-8px">
-              暂无预置动作
-            </div>
-          </div>
+          </Field>
 
-          <div class="my-8px text-12px text-muted">
-            我导入的
-            <span v-if="mine.length" class="text-placeholder">（{{ mine.length }}）</span>
-          </div>
-          <div class="grid grid-cols-3 gap-8px max-h-200px overflow-auto mb-10px">
-            <div
-              v-for="v in mine"
-              :key="'m' + v.id"
-              class="group relative overflow-hidden rounded-8px border-2 border-solid bg-surface2 cursor-pointer transition-colors"
-              :class="selectedKey === 'm' + v.id ? 'border-violet' : 'border-transparent'"
-              @click="selectedKey = 'm' + v.id"
-            >
-              <video
-                :src="v.url"
-                :poster="v.cover_url"
-                muted
-                preload="metadata"
-                class="block w-full aspect-[9/16] object-cover pointer-events-none"
-              />
-              <div class="truncate px-6px py-3px text-11px text-ink-2">{{ v.name }}</div>
-              <n-popconfirm @positive-click="removeMine(v)">
-                <template #trigger>
-                  <span
-                    class="absolute top-4px right-4px w-18px h-18px flex items-center justify-center rounded-full bg-black/50 text-10px text-white cursor-pointer opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                    @click.stop
-                    >删</span
-                  >
-                </template>
-                删除这个动作视频？
-              </n-popconfirm>
+          <Field :label="mine.length ? `我导入的（${mine.length}）` : '我导入的'">
+            <div class="grid grid-cols-3 gap-8px max-h-200px overflow-auto" role="radiogroup" aria-label="我导入的">
+              <div v-for="v in mine" :key="'m' + v.id" class="group relative">
+                <button
+                  type="button"
+                  role="radio"
+                  :aria-checked="selectedKey === 'm' + v.id"
+                  class="group relative block w-full p-0 overflow-hidden rounded-lg border border-solid sx-grad-upload text-left cursor-pointer sx-focus transition-[border-color,box-shadow] duration-mid ease-sx motion-reduce:transition-none"
+                  :class="
+                    selectedKey === 'm' + v.id
+                      ? 'border-violet ring-1 ring-violet'
+                      : 'border-line hover:(border-violet-line shadow-raised)'
+                  "
+                  @click="selectedKey = 'm' + v.id"
+                >
+                  <video
+                    :src="v.url"
+                    :poster="v.cover_url"
+                    muted
+                    preload="metadata"
+                    class="block w-full aspect-[9/16] object-cover pointer-events-none"
+                  />
+                  <span class="block truncate px-6px py-4px text-11px leading-16px text-ink-2">{{ v.name }}</span>
+                </button>
+                <n-popconfirm @positive-click="removeMine(v)">
+                  <template #trigger>
+                    <button
+                      type="button"
+                      class="absolute top-4px right-4px w-20px h-20px flex items-center justify-center p-0 rounded-full border-none bg-black/50 text-11px text-white cursor-pointer opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100 sx-focus"
+                      :aria-label="`删除动作视频：${v.name}`"
+                    >
+                      ×
+                    </button>
+                  </template>
+                  删除这个动作视频？
+                </n-popconfirm>
+              </div>
+              <div class="flex items-center justify-center min-h-80px">
+                <VideoUpload fromAsset v-model:videoList="importList" btnName="+ 导入动作视频" :limitNumber="1" />
+              </div>
             </div>
-            <div class="flex items-center justify-center">
-              <VideoUpload v-model:videoList="importList" btnName="+ 导入动作视频" :limitNumber="1" />
-            </div>
-          </div>
+          </Field>
         </div>
-      </div>
+      </FormCard>
+    </template>
 
-      <div v-if="modelOptions.length" class="mb-14px">
-        <div class="ll-label">模型</div>
-        <n-select v-model:value="model" size="small" :options="modelOptions" />
-      </div>
+    <template #settings>
+      <SettingsBar v-model:data="modelSetting" :model-options="modelOptions" />
     </template>
 
     <template #right>
@@ -239,7 +267,11 @@ async function removeItem(item: ILCreation) {
           v-loading="listCtl.loading.value"
           class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-14px content-start"
         >
-          <div v-for="item in listCtl.items.value" :key="item.id" class="ll-card overflow-hidden">
+          <div
+            v-for="item in listCtl.items.value"
+            :key="item.id"
+            class="bg-white rounded-lg border border-solid border-line shadow-card-v3 overflow-hidden"
+          >
             <div class="relative cursor-pointer" @click="openPreview(item)">
               <img
                 v-if="item.input_image_url"
@@ -247,9 +279,9 @@ async function removeItem(item: ILCreation) {
                 alt=""
                 class="block w-full aspect-[9/16] object-cover"
               />
-              <div v-else class="w-full aspect-[9/16] flex items-center justify-center text-32px bg-surface2">🕺</div>
+              <div v-else class="w-full aspect-[9/16] flex items-center justify-center text-32px sx-grad-icon">🕺</div>
               <div
-                class="ll-chip absolute top-6px left-6px"
+                class="sx-chip flex-shrink-0 absolute top-6px left-6px"
                 :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`"
               >
                 {{ CREATION_STATUS_MAP[item.status]?.label }}
@@ -261,21 +293,26 @@ async function removeItem(item: ILCreation) {
                 {{ item.fail_reason || '生成失败' }}
               </div>
             </div>
-            <div class="flex items-center gap-8px px-10px py-8px text-11px text-muted">
+            <div
+              class="flex items-center gap-8px px-10px py-8px border-t border-t-solid border-t-line-soft text-11px leading-16px text-muted tabular-nums"
+            >
               <span class="text-ink-2">{{ item.model || '-' }}</span>
               <span class="flex-1">{{ formatTime(item.create_time) }}</span>
               <n-popconfirm @positive-click="removeItem(item)">
-                <template #trigger><span class="ll-danger-link">删除</span></template>
+                <template #trigger><span class="ll-danger-link transition-colors duration-fast">删除</span></template>
                 确定删除这条记录？
               </n-popconfirm>
             </div>
           </div>
-          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="col-span-full ll-empty py-80px">
+          <div
+            v-if="!listCtl.loading.value && !listCtl.items.value.length"
+            class="col-span-full sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
+          >
             还没有记录，左侧开始生成吧
           </div>
           <div
             v-if="listCtl.hasMore.value"
-            class="col-span-full ll-link block text-center py-8px"
+            class="col-span-full ll-link transition-colors duration-fast block text-center py-8px"
             @click="listCtl.loadMore()"
           >
             加载更多

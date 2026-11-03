@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
@@ -119,31 +120,46 @@ function useModelList() {
 </script>
 
 <template>
-  <Container class="commerce" title="模特替换" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="模特替换" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #titleExtra>
-      <n-popover trigger="click" placement="bottom-start" :show-arrow="false" :style="{ padding: '16px', borderRadius: '12px', maxWidth: '234px' }">
+      <!-- 使用说明弹层：raw + sx-pop（line 描边、r10、shadow-pop），与触发钮隔 8 -->
+      <n-popover raw trigger="click" placement="bottom-start" :show-arrow="false">
         <template #trigger>
-          <svg class="title-help" viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor">
-            <path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z" />
-            <path d="M623.6 316.7C593.6 290.4 554 276 512 276s-81.6 14.5-111.6 40.7C369.2 344 352 380.7 352 420v7.6c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V420c0-44.1 43.1-80 96-80s96 35.9 96 80c0 31.1-22 59.6-56.1 72.7-21.2 8.1-39.2 22.3-52.1 40.9-13.1 19-19.9 41.8-19.9 64.9V620c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8v-22.7a48.3 48.3 0 0130.9-44.8c59-22.7 97.1-74.7 97.1-132.5.1-39.3-17.1-76-48.3-103.3zM472 732a40 40 0 1080 0 40 40 0 10-80 0z" />
-          </svg>
+          <button
+            type="button"
+            class="grid place-items-center p-0 border-none rounded-sm bg-transparent text-placeholder cursor-pointer hover:text-ink-2 sx-focus"
+            aria-label="使用说明"
+          >
+            <svg class="block" viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor" aria-hidden="true">
+              <path
+                d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z"
+              />
+              <path
+                d="M623.6 316.7C593.6 290.4 554 276 512 276s-81.6 14.5-111.6 40.7C369.2 344 352 380.7 352 420v7.6c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V420c0-44.1 43.1-80 96-80s96 35.9 96 80c0 31.1-22 59.6-56.1 72.7-21.2 8.1-39.2 22.3-52.1 40.9-13.1 19-19.9 41.8-19.9 64.9V620c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8v-22.7a48.3 48.3 0 0130.9-44.8c59-22.7 97.1-74.7 97.1-132.5.1-39.3-17.1-76-48.3-103.3zM472 732a40 40 0 1080 0 40 40 0 10-80 0z"
+              />
+            </svg>
+          </button>
         </template>
-        <div class="title-help-pop">
-          <div class="pop-title">上传单人正面站立图，一键生成视频</div>
-          <div class="pop-desc">拍摄：必须露出人脸，只有一人不能多人，正面站立，露出完整人体，背景简单更佳。</div>
+        <div class="my-8px sx-pop max-w-234px p-14px box-border" role="note" aria-label="使用说明">
+          <div class="text-14px font-600 leading-20px text-ink">上传单人正面站立图，一键生成视频</div>
+          <div class="mt-6px text-11px leading-17px text-muted">
+            拍摄：必须露出人脸，只有一人不能多人，正面站立，露出完整人体，背景简单更佳。
+          </div>
         </div>
       </n-popover>
     </template>
     <template #default>
-      <div class="default-content">
-        <div class="module-title">参考视频</div>
-        <div style="color: #9e9e9e; margin: -8px 0 12px">上传参考样片，AI 精准复刻镜头运镜、色调与画面整体风格</div>
-        <VideoUpload v-model:videoList="formData.videoUrl" btnName="上传参考视频">
-          <span style="color: #9e9e9e; margin-top: 15px">视频过长时，将自动压缩至15秒，确保最佳效果。</span>
+      <div>
+        <SectionTitle>参考视频</SectionTitle>
+        <p class="-mt-4px mb-8px text-11px leading-17px text-muted">
+          上传参考样片，AI 精准复刻镜头运镜、色调与画面整体风格
+        </p>
+        <VideoUpload fromAsset v-model:videoList="formData.videoUrl" btnName="上传参考视频">
+          <span class="mt-12px text-11px leading-17px text-muted">视频过长时，将自动压缩至15秒，确保最佳效果。</span>
         </VideoUpload>
 
-        <div v-loading="pagingData.loading" style="position: relative">
-          <div class="module-title">选择模特</div>
+        <div v-loading="pagingData.loading" class="relative">
+          <SectionTitle>选择模特</SectionTitle>
           <Tab
             v-model:value="tabValue"
             :tabs="[
@@ -160,20 +176,21 @@ function useModelList() {
                 { field: 'skin', options: skinOps, placeholder: '肤色' },
               ]"
               :col="3"
-              style="margin-top: 12px"
+              class="mt-8px"
               clearable
               multiple
             />
             <GridImage
-              style="margin-top: 8px"
+              class="mt-8px"
               v-model:imageUrl="formData.personUrl"
               :imgList="modelList.map((item) => item.url)"
               :scrollCallBack="scrollCallBack"
             />
           </div>
 
-          <div v-show="tabValue === 'uploadModel'" style="margin-top: 8px">
+          <div v-show="tabValue === 'uploadModel'" class="mt-8px">
             <ImageUpload
+              fromAsset
               v-model:imgList="formData.uploadPersonUrl"
               btnName="上传模特图"
               :limitNumber="1"
@@ -191,7 +208,7 @@ function useModelList() {
           </div>
         </div>
 
-        <div class="module-title">替换区域</div>
+        <SectionTitle>替换区域</SectionTitle>
         <Tab
           v-model:value="formData.target"
           :tabs="[
@@ -204,97 +221,14 @@ function useModelList() {
     </template>
 
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
-      <Sample
-        v-else
-        title="模特替换"
-        :rightDesc="`锁定画面场景灯光不变，自由更换出镜模特，快速更新商品人像展示素材。`"
-      >
-        <video class="video" controls :src="VITE_OSS_ASSET_URL + 'e-commerce/video/model-replace.mp4'"></video>
+      <RecordList v-if="showList" />
+      <Sample v-else title="模特替换" :rightDesc="`锁定画面场景灯光不变，自由更换出镜模特，快速更新商品人像展示素材。`">
+        <video
+          class="block w-full mx-auto rounded-lg"
+          controls
+          :src="VITE_OSS_ASSET_URL + 'e-commerce/video/model-replace.mp4'"
+        ></video>
       </Sample>
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-    > .checkbox-cont {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      > .item {
-        flex: 1;
-        min-width: 40%;
-      }
-    }
-    .switch-pos {
-      position: absolute;
-      right: 0;
-      top: 50%;
-      transform: translateY(-50%);
-    }
-    .model-diy-cont {
-      > .model-diy {
-        > .textarea-area {
-          font-size: 0;
-          > .title {
-            font-size: 14px;
-            line-height: 20px;
-            color: #9e9e9e;
-            margin: 12px 0 8px;
-          }
-        }
-        > .generate-btn {
-          height: 32px;
-          margin: 12px 0;
-          border-radius: 8px;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          gap: 8px;
-          background: #f5f6f8;
-          cursor: pointer;
-          &:hover {
-            background: #ebecef;
-          }
-        }
-      }
-    }
-  }
-
-  .video {
-    width: 100%;
-    display: block;
-    margin: 0 auto;
-    border-radius: 5px;
-  }
-}
-
-.title-help {
-  color: rgba(0, 0, 0, 0.45);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.title-help-pop {
-  .pop-title {
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 20px;
-    color: #1f1f1f;
-  }
-  .pop-desc {
-    margin-top: 8px;
-    font-size: 12px;
-    line-height: 16px;
-    color: #9e9e9e;
-  }
-}
-</style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, useId } from 'vue'
 import { optimizePromptStream } from '@/api/methods.ts'
 
 interface IProps {
@@ -10,9 +10,15 @@ interface IProps {
     imageUrls: string[]
   }
   validate: () => boolean // 验证是否可提交，true可，false不可
+  ariaLabel?: string // 输入框无障碍名称（分组标题不是 label 元素）
 }
-const { placeholder, params, validate } = defineProps<IProps>()
+const { placeholder, params, validate, ariaLabel = '描述与要求' } = defineProps<IProps>()
+const countId = `ec-prompt-count-${useId()}`
 const value = defineModel<string>('value', { required: true })
+
+// 提示词、描述类统一上限 3000（规范 §5.4 PROMPT_LIMITS.standard）；到上限时计数变警告色并写明
+const MAX_LENGTH = 3000
+const atLimit = computed(() => value.value.length >= MAX_LENGTH)
 
 const loading = ref(false)
 let abort: (() => void) | null = null
@@ -31,10 +37,10 @@ const getPrompt = () => {
   abort = optimizePromptStream(
     { ...params, userInput },
     {
-      onDelta: delta => {
+      onDelta: (delta) => {
         value.value += delta
       },
-      onDone: fullText => {
+      onDone: (fullText) => {
         loading.value = false
         abort = null
         // 以整段字节权威解码的全文为准覆盖增量结果，纠正部分宿主 webview 增量解码的丢字/乱码
@@ -55,69 +61,48 @@ onBeforeUnmount(() => abort?.())
 </script>
 
 <template>
-  <div class="prompt-assist">
+  <!-- 原型提示词框（规范 §5.4）：r6、line 描边、常驻内影；聚焦时只加深内影，不改描边、不加外环 -->
+  <div
+    class="flex flex-col p-12px rounded-md border border-solid border-line bg-white shadow-well transition-shadow duration-mid ease-sx motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.18),inset_0_1px_0_rgba(31,35,41,0.08)]"
+  >
     <n-spin :show="loading">
-      <textarea class="textarea-box" v-model="value" maxlength="2000" :placeholder="placeholderText"></textarea>
+      <textarea
+        v-model="value"
+        class="block w-full h-162px box-border m-0 p-0 resize-none border-none outline-none bg-transparent text-13px leading-20px text-ink placeholder:text-placeholder"
+        :maxlength="MAX_LENGTH"
+        :placeholder="placeholderText"
+        :aria-label="ariaLabel"
+        :aria-describedby="countId"
+      ></textarea>
     </n-spin>
 
-    <div class="bottom-cont">
-      <div class="ai-btn" @click="getPrompt">
-        <span>AI帮写</span>
-      </div>
+    <div class="flex items-center justify-between gap-8px min-h-28px mt-6px">
+      <button
+        type="button"
+        class="sx-btn-tint !h-28px !px-10px !text-11px"
+        :aria-busy="loading || undefined"
+        @click="getPrompt"
+      >
+        AI帮写
+      </button>
 
-      <div class="right-cont">
-        <span class="text-number">{{ value.length }}/2000</span>
-        <i class="icon-ic_ds_Delete1" @click="value = ''"></i>
+      <div class="flex items-center gap-4px min-w-0">
+        <span
+          :id="countId"
+          class="text-11px leading-16px tabular-nums select-none whitespace-nowrap"
+          :class="atLimit ? 'text-warning' : 'text-placeholder'"
+          >{{ atLimit ? '已达字数上限 · ' : '' }}{{ value.length }} / {{ MAX_LENGTH }}</span
+        >
+        <span class="sr-only" aria-live="polite">{{ atLimit ? '已达字数上限' : '' }}</span>
+        <button
+          type="button"
+          class="sx-btn-ghost !w-24px !h-24px !p-0 !text-14px"
+          aria-label="清空内容"
+          @click="value = ''"
+        >
+          <i class="icon-ic_ds_Delete1" aria-hidden="true"></i>
+        </button>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped lang="less">
-.prompt-assist {
-  height: 192px;
-  border-radius: 12px;
-  border: 1px solid #f0f0f0;
-  padding: 16px 12px;
-  display: flex;
-  flex-direction: column;
-  .textarea-box {
-    width: 100%;
-    height: 120px;
-    outline: none;
-    border: none;
-    resize: none;
-  }
-  > .bottom-cont {
-    margin-top: auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    > .ai-btn {
-      width: 69px;
-      height: 28px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--main-color);
-      background: linear-gradient(116deg, #f0ebff -7%, #e8e4ff 84%);
-      cursor: pointer;
-    }
-    > .right-cont {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      > .text-number {
-        color: #9e9e9e;
-      }
-      > .icon-ic_ds_Delete1 {
-        cursor: pointer;
-        &:hover {
-          opacity: 0.7;
-        }
-      }
-    }
-  }
-}
-</style>

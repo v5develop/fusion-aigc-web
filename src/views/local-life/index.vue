@@ -16,7 +16,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NConfigProvider, NSpin, NTooltip } from 'naive-ui'
-import { llTheme } from './theme.ts'
+import { llFormSkin, llTheme } from './theme.ts'
 import EntryPhone from './components/EntryPhone/index.vue'
 import EntryTypeColumn from './components/EntryTypeColumn/index.vue'
 import ProfilePicker from './components/ProfilePicker/index.vue'
@@ -234,20 +234,44 @@ const ICONS = {
 const focusRing =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet'
 const pill =
-  'h-30px inline-flex shrink-0 cursor-pointer items-center gap-6px border border-line rounded-full bg-white px-10px text-ink-2 no-underline transition-colors hover:(border-violet-line bg-violet-soft text-violet-ink)'
+  'h-30px inline-flex shrink-0 cursor-pointer items-center gap-6px border border-solid border-control rounded-full sx-grad-plate shadow-plate px-10px text-ink-2 no-underline ' +
+  'transition-[border-color,background,color] duration-fast ease-sx motion-reduce:transition-none hover:(border-violet-line from-white to-violet-tint text-violet-ink)'
+/** 面板卡（同电商功能页 Container / 工具页三栏）：r8、1px line、面板投影 */
+const panelCls = 'bg-white rounded-lg border border-solid border-line shadow-panel'
+/** 区块卡（spec §3 section 卡）：r8、1px line、v3 卡投影 */
+const sectionCls = 'bg-white rounded-lg border border-solid border-line shadow-card-v3'
+/** 卡头图标底板（工具页目录图标同款：135° 柔紫渐变 + 紫描边） */
+const tileCls =
+  'h-24px w-24px flex shrink-0 items-center justify-center box-border rounded-md border border-solid border-violet-soft-2 sx-grad-icon shadow-[inset_0_1px_0_#fff] text-violet-ink'
+/** 小号次按钮（预览 / 重试 / 继续生成）：spec 默认按钮缩到 28 高 */
+const smallBtn = 'sx-btn !h-28px !px-10px !text-12px transition-[border-color,background,color] duration-fast ease-sx'
+const smallTintBtn =
+  'sx-btn-tint !h-28px !px-10px !text-12px transition-[border-color,background,color] duration-fast ease-sx'
+/** 状态徽标：spec chip 20 高、r3、11px */
+const chipCls = 'sx-chip flex-shrink-0 border border-solid'
+/** 四步条：已完成 = 柔紫，当前 = 主色渐变，未到 = 灰 */
+function stepState(index: number): 'done' | 'current' | 'todo' {
+  if (index < stepCurrent.value) return 'done'
+  return index === stepCurrent.value ? 'current' : 'todo'
+}
 </script>
 
 <template>
   <n-config-provider :theme-overrides="llTheme" abstract>
-    <div class="h-full min-h-0 flex flex-col overflow-y-auto bg-page text-ink min-[1200px]:overflow-hidden">
+    <div
+      :class="[
+        'h-full min-h-0 flex flex-col overflow-y-auto bg-page text-ink min-[1200px]:overflow-hidden',
+        llFormSkin,
+      ]"
+    >
       <div class="min-w-0 flex flex-1 flex-col gap-16px p-16px min-[1200px]:(min-h-0 flex-row overflow-hidden)">
         <!-- 左：预览 / 历史 -->
         <aside
-          class="ll-card min-h-0 min-w-0 flex flex-col p-10px min-[1200px]:(w-384px shrink-0)"
+          :class="[panelCls, 'min-h-0 min-w-0 flex flex-col p-12px min-[1200px]:(w-384px shrink-0)']"
           aria-label="预览与历史"
         >
           <div
-            class="grid grid-cols-2 shrink-0 gap-4px rounded-6px bg-page p-3px"
+            class="grid grid-cols-2 shrink-0 gap-2px rounded-md bg-surface3 p-3px shadow-inset-input"
             role="tablist"
             aria-label="预览与历史"
           >
@@ -262,11 +286,11 @@ const pill =
               :aria-controls="`ll-side-${tab.key}`"
               :tabindex="activeTab === tab.key ? 0 : -1"
               :class="[
-                'h-28px cursor-pointer rounded-6px border-none px-8px text-13px transition-colors',
+                'h-30px cursor-pointer rounded-sm border border-solid px-8px text-13px transition-[background,border-color,color] duration-mid ease-sx motion-reduce:transition-none',
                 focusRing,
                 activeTab === tab.key
-                  ? 'bg-white font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.08)]'
-                  : 'bg-transparent font-500 text-muted hover:text-ink',
+                  ? 'sx-grad-tint border-violet-line font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                  : 'border-transparent bg-transparent font-500 text-muted hover:text-ink',
               ]"
               @click="activeTab = tab.key"
               @keydown="onTabKeydown($event, index)"
@@ -279,15 +303,12 @@ const pill =
             <div
               v-if="offline"
               role="alert"
-              class="absolute left-1/2 top-12px z-10 flex items-center gap-12px rounded-8px bg-danger-soft px-16px py-6px text-13px text-danger shadow -translate-x-1/2"
+              class="absolute left-1/2 top-12px z-10 flex items-center gap-12px whitespace-nowrap rounded-lg border border-solid border-danger-line bg-danger-soft px-12px py-6px text-12px leading-18px text-alert-danger shadow-toast -translate-x-1/2"
             >
               <span>网络异常，已暂停轮询</span>
               <button
                 type="button"
-                :class="[
-                  'cursor-pointer rounded-4px border border-danger bg-transparent px-8px py-2px text-12px text-danger',
-                  focusRing,
-                ]"
+                :class="['sx-btn-danger !h-24px !px-8px !text-11px', focusRing]"
                 @click="fs.retryPolling"
               >
                 重试
@@ -307,7 +328,7 @@ const pill =
               />
               <p
                 v-if="previewHistoryId == null && runFailed"
-                class="m-0 text-center text-12px text-danger"
+                class="m-0 text-center text-12px leading-18px text-danger"
                 role="alert"
               >
                 {{ STATUS_LABEL[run!.status] }}{{ run!.error ? `：${run!.error}` : '' }}
@@ -315,7 +336,7 @@ const pill =
               <button
                 v-if="previewHistoryId != null && run"
                 type="button"
-                :class="['ll-pill self-center', focusRing]"
+                :class="[smallBtn, 'self-center']"
                 @click="previewHistoryId = null"
               >
                 预览
@@ -329,33 +350,31 @@ const pill =
               class="min-h-160px min-w-0 flex flex-1 flex-col gap-8px overflow-y-auto"
             >
               <n-spin :show="historyLoading" class="min-h-160px flex flex-1 flex-col">
-                <div
-                  v-if="historyError"
-                  class="min-h-160px flex flex-1 flex-col items-center justify-center gap-8px text-13px text-muted"
-                >
-                  <span>加载失败</span>
-                  <button type="button" :class="['ll-pill', focusRing]" @click="fs.loadHistory">重试</button>
+                <div v-if="historyError" class="sx-empty min-h-160px flex-1" role="alert">
+                  <span class="sx-empty-title !text-danger">加载失败</span>
+                  <button type="button" :class="smallBtn" @click="fs.loadHistory">重试</button>
                 </div>
-                <p
-                  v-else-if="!historyLoading && !history.length"
-                  class="ll-empty m-0 min-h-160px flex flex-1 items-center justify-center"
-                >
-                  还没有生成记录
+                <p v-else-if="!historyLoading && !history.length" class="sx-empty m-0 min-h-160px flex-1">
+                  <span class="sx-empty-title">还没有生成记录</span>
                 </p>
                 <ul v-else class="m-0 flex flex-col list-none gap-8px p-0" aria-label="生成记录">
                   <li
                     v-for="row in history"
                     :key="row.workflowHistoryId"
                     :class="[
-                      'flex flex-col gap-6px border rounded-8px bg-white p-10px',
-                      previewHistoryId === row.workflowHistoryId ? 'border-violet-line' : 'border-line',
+                      'flex flex-col gap-8px border border-solid rounded-lg p-10px transition-[border-color,background,box-shadow] duration-mid ease-sx motion-reduce:transition-none',
+                      previewHistoryId === row.workflowHistoryId
+                        ? 'border-violet-line sx-grad-tint shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                        : 'border-line bg-white hover:(border-violet-line shadow-raised)',
                     ]"
                   >
-                    <div class="flex items-center gap-8px text-12px">
-                      <span class="text-muted font-mono">{{ formatTime(row.createdAt) }}</span>
+                    <div class="flex items-center gap-8px">
+                      <span class="text-11px leading-16px text-muted font-mono tabular-nums">{{
+                        formatTime(row.createdAt)
+                      }}</span>
                       <span
                         :class="[
-                          'll-chip',
+                          chipCls,
                           row.status === 'SUCCEED' || row.status === 'PARTIAL_SUCCEED'
                             ? 'll-chip-success'
                             : isLLTerminal(row.status)
@@ -375,7 +394,7 @@ const pill =
                       <span
                         v-for="url in Object.values(rowResults(row)).flat().slice(0, 5)"
                         :key="url"
-                        class="aspect-square overflow-hidden rounded-4px bg-sunken"
+                        class="aspect-square overflow-hidden rounded-sm border border-solid border-line-soft bg-sunken"
                       >
                         <img :src="url" alt="" class="h-full w-full object-cover" loading="lazy" />
                       </span>
@@ -384,9 +403,8 @@ const pill =
                       v-if="row.status === 'SUCCEED'"
                       type="button"
                       :class="[
-                        'll-pill self-start',
-                        continueFrom?.historyId === row.workflowHistoryId ? 'll-pill-active' : '',
-                        focusRing,
+                        continueFrom?.historyId === row.workflowHistoryId ? smallTintBtn : smallBtn,
+                        'self-start',
                       ]"
                       :aria-pressed="continueFrom?.historyId === row.workflowHistoryId"
                       @click="onContinue(row.workflowHistoryId)"
@@ -404,7 +422,7 @@ const pill =
         <section class="min-h-0 min-w-0 flex flex-1 flex-col gap-16px" aria-label="全案配置">
           <header class="flex shrink-0 flex-wrap items-center justify-between gap-x-20px gap-y-8px pr-4px">
             <div class="min-w-0 flex items-center gap-10px">
-              <h1 class="m-0 whitespace-nowrap text-20px font-600 leading-28px">全案设计</h1>
+              <h1 class="m-0 whitespace-nowrap sx-title-page">全案设计</h1>
               <button
                 type="button"
                 :class="[pill, focusRing, 'max-w-280px text-12px']"
@@ -425,22 +443,38 @@ const pill =
               <template v-for="(label, index) in STEP_LABELS" :key="label">
                 <li
                   :class="[
-                    'flex items-center gap-8px whitespace-nowrap text-12px',
-                    stepCurrent === index ? 'font-600 text-ink' : 'text-ink/45',
+                    'flex items-center gap-8px whitespace-nowrap text-12px leading-18px',
+                    {
+                      done: 'font-500 text-violet-ink',
+                      current: 'font-600 text-ink',
+                      todo: 'font-400 text-placeholder',
+                    }[stepState(index)],
                   ]"
                   :aria-current="stepCurrent === index ? 'step' : undefined"
                 >
                   <span
                     :class="[
-                      'h-28px w-28px flex shrink-0 items-center justify-center rounded-full border text-11px font-600 font-mono',
-                      stepCurrent === index ? 'border-ink bg-ink text-white' : 'border-ink/10 bg-surface2 text-ink/30',
+                      'h-24px w-24px flex shrink-0 items-center justify-center box-border rounded-full border border-solid text-11px font-600 font-mono tabular-nums',
+                      'transition-[background,border-color,color] duration-mid ease-sx motion-reduce:transition-none',
+                      {
+                        done: 'border-violet-line bg-violet-soft text-violet-ink',
+                        current: 'sx-grad-primary border-violet-border text-white shadow-btn',
+                        todo: 'border-line bg-surface2 text-placeholder',
+                      }[stepState(index)],
                     ]"
                   >
                     {{ index + 1 }}
                   </span>
                   <span>{{ label }}</span>
                 </li>
-                <li v-if="index < STEP_LABELS.length - 1" class="mx-10px h-1px w-28px bg-ink/12" aria-hidden="true" />
+                <li
+                  v-if="index < STEP_LABELS.length - 1"
+                  :class="[
+                    'mx-10px h-1px w-28px transition-colors duration-mid',
+                    index < stepCurrent ? 'bg-violet-line' : 'bg-line',
+                  ]"
+                  aria-hidden="true"
+                />
               </template>
             </ol>
           </header>
@@ -449,24 +483,21 @@ const pill =
             class="min-h-0 min-w-0 flex flex-1 flex-col gap-16px pr-2px min-[1200px]:(overflow-y-auto overscroll-contain)"
           >
             <!-- 卡 A：选择品牌档案 -->
-            <section class="ll-card flex shrink-0 flex-col gap-14px p-16px" aria-labelledby="ll-card-setup">
+            <section :class="[sectionCls, 'flex shrink-0 flex-col gap-12px p-16px']" aria-labelledby="ll-card-setup">
               <header class="min-w-0 flex items-center gap-8px">
-                <span
-                  class="h-24px w-24px flex shrink-0 items-center justify-center border border-line rounded-6px bg-surface2 text-muted"
-                  aria-hidden="true"
-                >
+                <span :class="tileCls" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path v-for="d in ICONS.sparkle" :key="d" :d="d" />
                   </svg>
                 </span>
-                <h2 id="ll-card-setup" class="m-0 text-14px font-600 leading-20px">选择品牌档案</h2>
+                <h2 id="ll-card-setup" class="m-0 sx-title-card">选择品牌档案</h2>
                 <button
                   type="button"
                   :class="[
                     pill,
                     focusRing,
                     'ml-auto max-w-220px text-11px',
-                    template ? '!border-violet-line !bg-violet-soft !text-violet-ink' : '',
+                    template ? '!border-violet-line sx-grad-tint !text-violet-ink' : '',
                   ]"
                   :aria-label="template ? `设计模板：${template.title}（点击更换）` : '选择模板'"
                   @click="openTemplatePicker"
@@ -486,9 +517,9 @@ const pill =
                   v-if="!profile"
                   type="button"
                   :class="[
-                    'h-56px w-full flex cursor-pointer items-center justify-center gap-8px rounded-8px border-2 border-dashed border-ink/12 bg-ink/2',
-                    'text-13px text-ink/55 transition-colors',
-                    'hover:(border-violet/45 bg-violet/5 text-violet-ink)',
+                    'h-56px w-full flex cursor-pointer items-center justify-center gap-8px rounded-lg border border-dashed border-line-strong sx-grad-upload',
+                    'text-13px text-muted transition-[border-color,background,color] duration-mid ease-sx motion-reduce:transition-none',
+                    'hover:(border-violet-line to-#fbf7fd text-violet-ink)',
                     focusRing,
                   ]"
                   @click="openProfilePicker"
@@ -510,19 +541,23 @@ const pill =
                   <button
                     type="button"
                     :class="[
-                      'w-full flex cursor-pointer items-center gap-10px rounded-8px border border-line bg-surface2 px-12px py-10px text-left transition-colors',
-                      'hover:(border-violet-line bg-violet-soft)',
+                      'w-full flex cursor-pointer items-center gap-10px rounded-lg border border-solid border-violet-line sx-grad-tint px-12px py-10px text-left',
+                      'transition-[border-color,box-shadow] duration-mid ease-sx motion-reduce:transition-none hover:shadow-raised',
                       focusRing,
                     ]"
                     :aria-label="`品牌档案：${profile.title}（点击更换）`"
                     @click="openProfilePicker"
                   >
-                    <span class="h-36px w-36px shrink-0 overflow-hidden rounded-6px bg-sunken">
+                    <span
+                      class="h-36px w-36px shrink-0 overflow-hidden rounded-md border border-solid border-line-soft bg-sunken"
+                    >
                       <img v-if="profile.logoUrl" :src="profile.logoUrl" alt="" class="h-full w-full object-cover" />
                     </span>
                     <span class="min-w-0 flex flex-1 flex-col gap-2px">
-                      <span class="truncate text-13px font-600 text-ink">{{ profile.title }}</span>
-                      <span class="text-11px text-muted">设计素材 {{ profile.images.length }}</span>
+                      <span class="truncate text-13px font-600 leading-20px text-ink">{{ profile.title }}</span>
+                      <span class="text-11px leading-16px text-muted tabular-nums"
+                        >设计素材 {{ profile.images.length }}</span
+                      >
                     </span>
                     <svg
                       class="shrink-0 text-placeholder"
@@ -539,21 +574,21 @@ const pill =
                   </button>
                   <p
                     v-if="profileSource !== 'java'"
-                    class="m-0 rounded-6px bg-warning-soft px-10px py-6px text-12px text-warning"
+                    class="m-0 rounded-md border border-solid border-warning-line bg-warning-soft px-10px py-6px text-12px leading-18px text-alert-warning"
                     role="note"
                   >
                     全案生成需要使用品牌档案
                   </p>
                   <div
                     v-if="continueFrom"
-                    class="flex items-center gap-8px rounded-6px bg-violet-soft px-10px py-6px text-12px text-violet-ink"
+                    class="flex items-center gap-8px rounded-md border border-solid border-violet-line bg-info-soft px-10px py-6px text-12px leading-18px text-alert-info"
                     role="status"
                   >
                     <span>继续生成 #{{ continueFrom.historyId }}</span>
                     <button
                       type="button"
                       :class="[
-                        'ml-auto cursor-pointer border-none bg-transparent p-0 text-12px text-violet-ink underline',
+                        'ml-auto cursor-pointer rounded-sm border-none bg-transparent p-0 text-12px text-violet-ink underline underline-offset-3 transition-colors duration-fast hover:text-violet-press',
                         focusRing,
                       ]"
                       @click="cancelContinue"
@@ -566,18 +601,22 @@ const pill =
             </section>
 
             <!-- 卡 B：本次内容 -->
-            <section class="ll-card flex shrink-0 flex-col gap-12px p-16px" aria-labelledby="ll-card-board">
+            <section :class="[sectionCls, 'flex shrink-0 flex-col gap-12px p-16px']" aria-labelledby="ll-card-board">
               <header class="min-w-0 flex items-center gap-8px">
-                <span
-                  class="h-24px w-24px flex shrink-0 items-center justify-center border border-line rounded-6px bg-surface2 text-muted"
-                  aria-hidden="true"
-                >
+                <span :class="tileCls" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path v-for="d in ICONS.grid" :key="d" :d="d" />
                   </svg>
                 </span>
-                <h2 id="ll-card-board" class="m-0 text-14px font-600 leading-20px">选择本次需要制作的内容</h2>
-                <span class="ml-auto rounded-full border border-line bg-surface3 px-10px py-3px text-11px text-muted">
+                <h2 id="ll-card-board" class="m-0 sx-title-card">选择本次需要制作的内容</h2>
+                <span
+                  :class="[
+                    'ml-auto inline-flex h-22px items-center rounded-full border border-solid px-10px text-11px tabular-nums',
+                    selectedCount
+                      ? 'border-violet-line bg-violet-soft text-violet-ink'
+                      : 'border-line bg-surface3 text-muted',
+                  ]"
+                >
                   已选 {{ selectedCount }}/{{ SECTIONS.length }} 种
                 </span>
               </header>
@@ -603,33 +642,30 @@ const pill =
             </section>
 
             <!-- 原型没有这一块：原入口页的单项工具，路径不变 -->
-            <section
-              class="flex shrink-0 flex-col gap-12px border border-line rounded-10px border-dashed bg-surface2 p-16px"
-              aria-labelledby="ll-card-tools"
-            >
+            <section :class="[sectionCls, 'flex shrink-0 flex-col gap-12px p-16px']" aria-labelledby="ll-card-tools">
               <header class="flex flex-wrap items-baseline gap-x-8px gap-y-2px">
-                <h2 id="ll-card-tools" class="m-0 text-14px font-600 leading-20px">单项工具</h2>
-                <span class="text-12px text-muted">可从这里进入各模块逐个制作</span>
+                <h2 id="ll-card-tools" class="m-0 sx-title-card">单项工具</h2>
+                <span class="sx-hint">可从这里进入各模块逐个制作</span>
               </header>
               <div v-for="group in toolGroups" :key="group.title" class="flex flex-col gap-8px">
-                <h3 class="m-0 text-12px font-500 leading-18px text-ink-2">{{ group.title }}</h3>
+                <h3 class="m-0 sx-caption leading-16px">{{ group.title }}</h3>
                 <ul class="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-8px p-0">
                   <li v-for="item in group.items" :key="item.path" class="flex">
                     <RouterLink
                       :to="item.path"
                       :aria-label="`${item.title}：${item.desc}`"
                       :class="[
-                        'group w-full flex items-center gap-8px rounded-8px border border-line bg-white px-12px py-10px no-underline',
-                        'transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])',
+                        'group w-full flex items-center gap-8px rounded-lg border border-solid border-line bg-white px-12px py-10px no-underline',
+                        'transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)',
                         focusRing,
                       ]"
                     >
                       <span class="min-w-0 flex flex-1 flex-col gap-2px">
                         <span class="truncate text-13px font-600 leading-20px text-ink">{{ item.title }}</span>
-                        <span class="truncate text-12px leading-18px text-muted">{{ item.desc }}</span>
+                        <span class="truncate text-11px leading-16px text-muted">{{ item.desc }}</span>
                       </span>
                       <svg
-                        class="shrink-0 text-placeholder group-hover:text-violet-ink"
+                        class="shrink-0 text-placeholder transition-colors duration-fast group-hover:text-violet-ink"
                         viewBox="0 0 24 24"
                         width="14"
                         height="14"
@@ -648,9 +684,9 @@ const pill =
           </div>
 
           <!-- 底栏 -->
-          <footer class="ll-card flex shrink-0 items-center justify-between gap-16px p-16px">
+          <footer :class="[panelCls, 'flex shrink-0 items-center justify-between gap-16px px-16px py-12px']">
             <div class="min-w-0 flex items-center gap-8px text-muted">
-              <span class="text-12px leading-18px text-ink/45">预计消耗</span>
+              <span class="text-12px leading-18px text-muted">预计消耗</span>
               <svg
                 class="text-violet"
                 viewBox="0 0 24 24"
@@ -663,14 +699,14 @@ const pill =
               >
                 <path v-for="d in ICONS.sparkle" :key="d" :d="d" />
               </svg>
-              <b class="text-16px font-600 leading-22px text-ink font-mono">{{ estimatedCost ?? 0 }}</b>
-              <span class="text-12px text-ink/55">星币</span>
+              <b class="text-16px font-600 leading-22px text-ink font-mono tabular-nums">{{ estimatedCost ?? 0 }}</b>
+              <span class="text-12px leading-18px text-muted">点数</span>
               <n-tooltip :show="billingTipShow" placement="top">
                 <template #trigger>
                   <button
                     type="button"
                     :class="[
-                      'h-20px w-20px flex cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-0 text-ink/40 hover:text-ink',
+                      'h-20px w-20px flex cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-0 text-placeholder transition-colors duration-fast hover:text-violet-ink',
                       focusRing,
                     ]"
                     aria-label="查看计费明细"
@@ -696,7 +732,7 @@ const pill =
                   <span v-if="estimatedCost == null">勾选图种并添加内容后显示</span>
                   <template v-else>
                     <span v-for="line in costLines" :key="line.key">
-                      {{ line.title }}：{{ line.unit }} × {{ line.count }} = {{ (line.unit ?? 0) * line.count }} 星币
+                      {{ line.title }}：{{ line.unit }} × {{ line.count }} = {{ (line.unit ?? 0) * line.count }} 点数
                     </span>
                   </template>
                 </span>
@@ -708,9 +744,8 @@ const pill =
               :disabled="submitDisabled"
               :aria-busy="submitting || running"
               :class="[
-                'h-44px shrink-0 cursor-pointer rounded-full border-none bg-ink px-40px text-14px font-600 text-white transition-colors hover:bg-ink-2',
-                'disabled:(cursor-not-allowed bg-ink/40 hover:bg-ink/40)',
-                focusRing,
+                'sx-btn-primary shrink-0 !h-44px !px-40px !rounded-xl !text-14px',
+                'transition-[background,border-color,box-shadow,color] duration-fast ease-sx motion-reduce:transition-none',
               ]"
               @click="fs.submit"
             >

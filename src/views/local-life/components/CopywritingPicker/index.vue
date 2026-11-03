@@ -69,24 +69,34 @@ function pick(item: ILCopywriting) {
     </div>
 
     <div v-loading="loading" class="max-h-420px overflow-auto flex flex-col gap-8px">
-      <div
+      <button
         v-for="item in items"
         :key="item.id"
-        class="flex-none rounded-8px border border-solid border-line bg-white px-12px py-10px cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+        type="button"
+        class="flex-none block w-full box-border rounded-lg border border-solid border-line bg-white px-12px py-10px text-left cursor-pointer transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised) sx-focus"
         @click="pick(item)"
       >
-        <div class="flex items-center gap-8px mb-6px">
+        <span class="flex items-center gap-8px mb-6px">
           <span class="flex-1 min-w-0 truncate text-13px font-600 leading-20px text-ink">{{
             item.title || '未命名文案'
           }}</span>
-          <span class="flex-none text-12px text-muted"
+          <span class="flex-none text-11px leading-16px text-muted tabular-nums"
             >{{ item.content_type_label }}<template v-if="item.word_count"> · {{ item.word_count }}字</template></span
           >
-        </div>
-        <div class="line-clamp-2 text-12px leading-18px text-ink-2">{{ item.body }}</div>
+        </span>
+        <span class="block line-clamp-2 text-12px leading-18px text-ink-2">{{ item.body }}</span>
+      </button>
+      <div v-if="!loading && !items.length" class="sx-empty">
+        <span class="sx-empty-desc">暂无已完成文案，先去「AI文案」生成一条吧</span>
       </div>
-      <div v-if="!loading && !items.length" class="ll-empty py-40px">暂无已完成文案，先去「AI文案」生成一条吧</div>
-      <div v-if="hasMore && !loading" class="ll-link block text-center py-8px" @click="load()">加载更多</div>
+      <button
+        v-if="hasMore && !loading"
+        type="button"
+        class="ll-link self-center my-4px rounded-sm border-none bg-transparent px-8px py-4px transition-colors duration-fast sx-focus"
+        @click="load()"
+      >
+        加载更多
+      </button>
     </div>
   </n-modal>
 </template>

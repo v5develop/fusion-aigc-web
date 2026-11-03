@@ -1,86 +1,40 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useEcTabsStore } from '@/stores/e-commerce/tabs'
+import type { EcEntry } from '../entries'
 
-const { data, title } = defineProps<{ data: any; title: string }>()
+const { data, title } = defineProps<{ data: EcEntry[]; title: string }>()
 
 const router = useRouter()
 const tabsStore = useEcTabsStore()
 
 // 点卡片总是新开一个标签：每次发一个新实例 id 带进 URL，同类目因此可以并存多个。
 // 标签本身仍由 layout 的路由监听建出来，这里只负责发号
-function goChildPages(item: any) {
+function goChildPages(item: EcEntry) {
   router.push({ name: item.pathName, query: { tab: tabsStore.nextTabId() } })
 }
 </script>
 
 <template>
-  <div class="row">
-    <div class="container">
-      <div class="title">{{ title }}</div>
+  <!-- 入口卡片对齐原型工具箱首页（规范 §6）：网格 minmax(240px,1fr) gap 12；卡片 r8、line 描边，
+       hover 上抬 2px + 8% 投影 -->
+  <section :aria-label="title">
+    <h2 class="m-0 mb-12px sx-title-section">{{ title }}</h2>
 
-      <div class="cardList">
-        <div class="card" v-for="(item, index) in data" :key="index" @click="goChildPages(item)">
-                    <img class="imageArea" :src="item.url" alt="" />
-          <div class="content">
-            <div class="cardTitle">{{ item.title }}</div>
-            <div class="cardDesc">{{ item.desc }}</div>
-          </div>
-        </div>
-      </div>
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-12px">
+      <button
+        v-for="item in data"
+        :key="item.pathName"
+        type="button"
+        class="flex flex-col p-0 overflow-hidden text-left rounded-lg border border-solid border-line bg-white cursor-pointer transition-[transform,box-shadow,border-color] duration-mid ease-sx motion-reduce:transition-none hover:(-translate-y-2px border-control shadow-[0_4px_16px_rgba(31,35,41,0.08)]) motion-reduce:hover:translate-y-0 sx-focus"
+        @click="goChildPages(item)"
+      >
+        <img class="block w-full aspect-[97/52] object-cover" :src="item.url" alt="" />
+        <span class="flex flex-col gap-4px p-12px">
+          <span class="text-14px font-600 leading-20px text-ink">{{ item.title }}</span>
+          <span class="text-11px leading-17px text-muted">{{ item.desc }}</span>
+        </span>
+      </button>
     </div>
-  </div>
+  </section>
 </template>
-
-<style scoped lang="less">
-.row {
-  > .container {
-    margin: 0 auto;
-    > .title {
-      font-size: 18px;
-      font-weight: bold;
-      color: #333;
-      margin-bottom: 20px;
-    }
-
-    > .cardList {
-      display: flex;
-      gap: 20px;
-      flex-wrap: wrap;
-      > .card {
-        width: 15%;
-        min-width: 194px;
-        max-width: 308px;
-        border-radius: 12px;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        background: #fff;
-        cursor: pointer;
-        transition: all 0.3s;
-        &:hover {
-          box-shadow: 0 5px 10px 0 rgba(0, 0, 0, 0.1);
-        }
-        .imageArea {
-          width: 100%;
-          aspect-ratio: 97/52;
-          object-fit: cover;
-        }
-        .content {
-          flex: 1;
-          padding: 20px 12px;
-          .cardTitle {
-            font-weight: 600;
-            margin-bottom: 4px;
-          }
-          .cardDesc {
-            font-size: 12px;
-            color: #8f8f8f;
-            line-height: 16px;
-          }
-        }
-      }
-    }
-  }
-}
-</style>

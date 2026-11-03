@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import SettingsBar from '@/views/e-commerce/childPages/components/SettingsBar/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { useQuotePreview } from '@/utils/hooks'
 import { provide, reactive, ref } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
-import SelectGroup from '@/components/SelectGroup/index.vue'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import PromptAssist from '../../components/PromptAssist/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
@@ -77,15 +78,15 @@ const submit = () => {
   }
   execute(params, loading)
 }
-
 </script>
 
 <template>
-  <Container class="commerce" title="AI详情页" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="AI详情页" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">商品图</div>
+      <div>
+        <SectionTitle>商品图</SectionTitle>
         <ImageUpload
+          fromAsset
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"
           multiple
@@ -97,25 +98,7 @@ const submit = () => {
           ]"
         />
 
-        <div class="module-title">生成设置</div>
-        <SelectGroup
-          v-model:data="formData"
-          :list="[
-            { field: 'platform', options: platformOps },
-            { field: 'region', options: regionOps },
-            { field: 'language', options: languageOps },
-            { field: 'aspectRatio', options: aspectRatioOps },
-          ]"
-        />
-        <!-- 模型选择：紧接生成设置、独占一行、无独立标题 -->
-        <SelectGroup
-          v-model:data="formData"
-          :list="[{ field: 'modelCode', options: modelOps }]"
-          :col="1"
-          style="margin-top: 8px"
-        />
-
-        <div class="module-title">商品卖点&要求</div>
+        <SectionTitle>商品卖点&要求</SectionTitle>
         <PromptAssist
           v-model:value="formData.buyPoint"
           :params="{
@@ -134,7 +117,7 @@ const submit = () => {
           placeholder="1、商品名称：LYCOCELLE绽家303丝绸桑蚕丝专用丝毛洗涤剂\n2、核心卖点：\n专用丝净配方，呵护丝织物纤维柔顺\n温和清洁成分，去污同时护衣不发硬\n典雅香调留香，洗净衣物自带淡香氛"
         />
 
-        <div class="module-title">包含模块（多选）</div>
+        <SectionTitle>包含模块（多选）</SectionTitle>
         <CheckboxGroup
           v-model="formData.image_types"
           :list="[
@@ -148,11 +131,21 @@ const submit = () => {
         />
       </div>
     </template>
+    <template #settings>
+      <SettingsBar
+        v-model:data="formData"
+        :model-options="modelOps"
+        :fields="[
+          { field: 'platform', label: '平台', options: platformOps },
+          { field: 'region', label: '地区', options: regionOps },
+          { field: 'language', label: '语言', options: languageOps },
+          { field: 'aspectRatio', label: '比例', options: aspectRatioOps },
+        ]"
+      />
+    </template>
+
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
+      <RecordList v-if="showList" />
       <Sample
         v-else
         title="AI详情页"
@@ -162,13 +155,3 @@ const submit = () => {
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-  }
-}
-</style>

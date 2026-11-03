@@ -9,7 +9,7 @@
  */
 import { get, post } from './index.ts'
 import { createSafeUuid } from '@/utils/utils'
-import { deleteWithBody } from './tools.ts'
+import { deleteWithBody, type SubmittedToolRequest } from './tools.ts'
 
 /** 工作流提交凭据（CoreToolWorkflowSubmissionAdapter.Submission：workflows 路由只回 workflowHistoryIds） */
 export interface WorkflowSubmission {
@@ -67,6 +67,8 @@ export interface WorkflowHistoryItem {
     inputVideoUrls?: string[] | null
     resultImageUrls?: string[] | null
     resultVideoUrls?: string[] | null
+    /** 原始提交体（CompatV1HistoryView.WorkflowData.requestParams），「重新编辑」回填用；老记录为 null */
+    requestParams?: SubmittedToolRequest | null
   } | null
 }
 

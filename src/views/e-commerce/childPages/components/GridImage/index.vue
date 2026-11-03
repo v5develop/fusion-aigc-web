@@ -15,7 +15,6 @@ import { useMessage } from 'naive-ui'
 import ColorPicker from './ColorPicker/index.vue'
 import { upload } from '@/api/ossUpload.ts'
 import { ossThumbnail } from '@/utils/oss.ts'
-import EMPTY_IMG from '@/assets/icons/empty-material.svg'
 
 // 网格为 3 列，面板内单元格约 240px；取 260 略大保证清晰，DPR 由 ossThumbnail 内部换算
 const CELL = 260
@@ -102,7 +101,7 @@ const colorToPngFile = (hex: string) =>
 
 <template>
   <div
-    class="grid-container"
+    class="grid grid-cols-3 gap-8px max-h-400px overflow-auto [scrollbar-width:thin]"
     v-observer-scroll="{
       callback: scrollCallBack,
     }"
@@ -117,95 +116,62 @@ const colorToPngFile = (hex: string) =>
       @select-custom="onSelectCustom"
     />
 
-    <!-- 无数据（加载中/空态）：占位容器，保持默认高度不塌陷（取色器网格除外） -->
-    <div v-if="isPlaceholder" class="grid-placeholder">
+    <!-- 无数据（加载中/空态）：占位容器，保持默认高度（150）不塌陷（取色器网格除外）；
+         loading 时留空，加载动画由父级 v-loading 遮罩展示 -->
+    <div
+      v-if="isPlaceholder"
+      class="col-span-full flex flex-col items-center justify-center gap-6px min-h-150px p-18px box-border rounded-lg text-center"
+      :class="loading ? '' : 'border border-dashed border-line-strong'"
+    >
+      <!-- 空态（原型 .sx-empty / C-22）：图标 40 + 标题 13/600 + 说明 11 -->
       <template v-if="!loading">
-        <img class="grid-placeholder__img" :src="EMPTY_IMG" alt="" />
-        <div class="grid-placeholder__title">暂无数据</div>
-        <div class="grid-placeholder__desc">当前暂无数据，平台将持续补充素材</div>
+        <svg
+          class="w-40px h-40px text-placeholder"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+          <circle cx="9" cy="10" r="1.6" />
+          <path d="m20.5 15.5-4.6-4.6a1.2 1.2 0 0 0-1.7 0L6 19.5" />
+        </svg>
+        <div class="sx-empty-title">素材还在补充中</div>
+        <div class="sx-empty-desc">平台会持续上新这类素材，稍后再来看看</div>
       </template>
-      <!-- loading 时留空：高度由容器撑起，加载动画由父级 v-loading 遮罩展示 -->
     </div>
 
     <template v-else>
+      <!-- 用 padding-bottom 百分比撑出目标比例，不依赖 aspect-ratio
+           （旧内核不支持、部分 Chromium 在非整数缩放下行高传播有 bug，会导致图片叠加） -->
       <div
-        class="item"
-        :class="imageUrl === item ? 'active' : ''"
-        :style="{ paddingBottom: dims.paddingBottom }"
         v-for="item in imgList"
         :key="item"
+        role="button"
+        tabindex="0"
+        :aria-pressed="imageUrl === item"
+        aria-label="选择这张素材"
+        class="relative h-0 overflow-hidden rounded-lg bg-surface3 border border-solid cursor-pointer transition-[border-color,box-shadow] duration-fast ease-sx motion-reduce:transition-none outline-none focus-visible:(border-violet shadow-focus)"
+        :class="
+          imageUrl === item
+            ? 'border-violet shadow-[0_0_0_1px_#875f9a]'
+            : 'border-raised-line hover:(border-raised-hover shadow-raised)'
+        "
+        :style="{ paddingBottom: dims.paddingBottom }"
         @click="selectImg(item)"
+        @keydown.enter.prevent="selectImg(item)"
+        @keydown.space.prevent="selectImg(item)"
       >
         <!-- 展示走缩略图消噪；选中/去重/提交仍用原始 item -->
-        <img class="img" :src="ossThumbnail(item, dims.cellW, dims.cellH)" alt="" />
+        <img
+          class="absolute inset-0 w-full h-full object-cover"
+          :src="ossThumbnail(item, dims.cellW, dims.cellH)"
+          alt=""
+        />
       </div>
     </template>
   </div>
 </template>
-
-<style scoped lang="less">
-@import '@/assets/variables.less';
-.grid-container {
-  max-height: 400px;
-  overflow: auto;
-  .scrollbar(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  // 占位容器高度 = 空态自然高度（40 顶距 + 108 插画 + 16 + 20 标题 + 4 + 16 副文案）
-  @placeholder-h: 204px;
-  > .grid-placeholder {
-    grid-column: 1 / -1;
-    // 加载中/空态共用同一默认高度：首次请求不塌陷，父级 v-loading 动画居中于正常高度
-    min-height: @placeholder-h;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 40px 0 0;
-    > .grid-placeholder__img {
-      width: 200px;
-      height: 108px;
-      margin-bottom: 16px;
-    }
-    > .grid-placeholder__title {
-      font-size: 14px;
-      font-weight: 500;
-      color: #3a3a3a; /* token: 中性色/正文文字 */
-      line-height: 20px;
-    }
-    > .grid-placeholder__desc {
-      margin-top: 4px;
-      font-size: 12px;
-      color: #8f8f8f; /* token: 中性色/辅助文字 */
-      line-height: 16px;
-    }
-  }
-  > .item {
-    // 用 padding-bottom 百分比撑出目标比例，不依赖 aspect-ratio
-    // （旧内核不支持、部分 Chromium 在非整数缩放下行高传播有 bug，会导致图片叠加）
-    // 具体比例由内联 style 动态设置（默认 1:1 → 100%）
-    position: relative;
-    height: 0;
-    background: #f5f6f8;
-    border-radius: 8px;
-    border: 2px solid transparent;
-    overflow: hidden;
-    cursor: pointer;
-    transition: all 0.1s;
-    &:hover {
-      border-color: var(--main-color);
-    }
-    &.active {
-      border-color: var(--main-color);
-    }
-    > .img {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-  }
-}
-</style>

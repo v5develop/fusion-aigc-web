@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SettingsBar from '@/views/e-commerce/childPages/components/SettingsBar/index.vue'
+import SectionTitle from '@/views/e-commerce/childPages/components/SectionTitle/index.vue'
 import { provide, reactive, ref, watch } from 'vue'
 import Container from '../../components/Container/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
@@ -122,11 +124,12 @@ function useShoeList() {
 </script>
 
 <template>
-  <Container class="commerce" title="AI试鞋" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="AI试鞋" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
     <template #default>
-      <div class="default-content">
-        <div class="module-title">商品图</div>
+      <div>
+        <SectionTitle>商品图</SectionTitle>
         <ImageUpload
+          fromAsset
           v-model:imgList="formData.imageUrls"
           btnName="上传产品图"
           :limitNumber="1"
@@ -141,17 +144,14 @@ function useShoeList() {
             VITE_OSS_ASSET_URL + 'e-commerce/uploadExample/try/try-shoe7.png',
           ]"
         >
-          <span style="color: #9e9e9e; margin-top: 15px; padding: 0 20px; text-align: center"
+          <span class="mt-12px px-20px text-center text-11px leading-17px text-muted"
             >建议上传白底、无杂物的单独鞋子素材，复杂背景会影响试鞋合成效果</span
           >
-          <span style="color: #9e9e9e; margin-top: 4px; padding: 0 20px">图片大小20k-15M，分辨率大于400*400</span>
+          <span class="mt-4px px-20px text-11px leading-17px text-muted">图片大小20k-15M，分辨率大于400*400</span>
         </ImageUpload>
 
-        <div class="module-title">选择模型</div>
-        <SelectGroup v-model:data="formData" :list="[{ field: 'modelCode', options: modelOps }]" :col="1" />
-
-        <div class="module-title">试鞋模版</div>
-        <div v-loading="pagingData.loading" style="position: relative">
+        <SectionTitle>试鞋模版</SectionTitle>
+        <div v-loading="pagingData.loading" class="relative">
           <Tab
             v-model:value="tabValue"
             :tabs="[
@@ -168,11 +168,11 @@ function useShoeList() {
                 { field: 'shoeStyle', options: shoeStyleOps, placeholder: '款式' },
               ]"
               :col="3"
-              style="margin-top: 12px"
+              class="mt-8px"
               clearable
             />
             <GridImage
-              style="margin-top: 8px"
+              class="mt-8px"
               ratio="3:4"
               v-model:imageUrl="formData.personUrl"
               :imgList="shoeList.map((item) => item.url)"
@@ -181,8 +181,9 @@ function useShoeList() {
             />
           </div>
 
-          <div v-show="tabValue === 'uploadShoe'" style="margin-top: 8px">
+          <div v-show="tabValue === 'uploadShoe'" class="mt-8px">
             <ImageUpload
+              fromAsset
               v-model:imgList="formData.uploadPersonUrl"
               btnName="上传模版图"
               :limitNumber="1"
@@ -193,11 +194,12 @@ function useShoeList() {
       </div>
     </template>
 
+    <template #settings>
+      <SettingsBar v-model:data="formData" :model-options="modelOps" />
+    </template>
+
     <template #rightContent>
-      <div v-if="showList" class="result-cont">
-        <div class="right-content-title">生成结果</div>
-        <RecordList />
-      </div>
+      <RecordList v-if="showList" />
       <Sample
         v-else
         title="AI试鞋"
@@ -208,34 +210,3 @@ function useShoeList() {
     </template>
   </Container>
 </template>
-
-<style scoped lang="less">
-@import '../../common.less';
-
-.commerce {
-  height: calc(100vh - @ec-tab-bar-height);
-  .default-content {
-    > .switch-cont {
-      height: 52px;
-      border-radius: 12px;
-      border: 1px solid #f0f0f0;
-      padding: 0 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    > .textarea-cont {
-      margin: 12px 0;
-      > .label {
-        line-height: 20px;
-        color: #9e9e9e;
-        margin-bottom: 12px;
-      }
-    }
-  }
-
-  .sample-cont {
-  }
-}
-</style>

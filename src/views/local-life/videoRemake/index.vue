@@ -9,6 +9,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import Workbench from '../components/Workbench/index.vue'
+import FormCard from '../components/FormCard/index.vue'
+import SegTabs from '../components/SegTabs/index.vue'
+import PromptBox from '../components/PromptBox/index.vue'
 import VideoUpload from '@/components/VideoUpload/index.vue'
 import {
   llIdempotencyHeaders,
@@ -34,6 +37,10 @@ const { ensureAgreed } = useAgreement()
 const options = ref<ILVideoOptions | null>(null)
 const source = ref<'upload' | 'link'>('upload')
 const link = ref('')
+const SOURCE_SEGMENTS = [
+  { key: 'upload', label: '上传视频' },
+  { key: 'link', label: '链接查视频' },
+] as const
 const videoList = ref<{ url: string; thumbnail?: string; name?: string }[]>([])
 
 const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: o.label, value: o.code })))
@@ -193,45 +200,30 @@ async function confirmGenerate() {
 <template>
   <Workbench title="爆款视频复刻" :submit="submit" :loading="submitting" submit-text="解析视频">
     <template #default>
-      <div class="mb-14px">
-        <div class="ll-label">视频来源</div>
-        <div class="flex flex-wrap gap-8px mb-10px">
-          <span class="ll-pill" :class="{ 'll-pill-active': source === 'upload' }" @click="source = 'upload'"
-            >上传视频</span
-          >
-          <span
-            v-if="linkEnabled"
-            class="ll-pill"
-            :class="{ 'll-pill-active': source === 'link' }"
-            @click="source = 'link'"
-            >链接查视频</span
-          >
-        </div>
-        <div v-if="source === 'upload'">
-          <VideoUpload v-model:videoList="videoList" btnName="上传视频" :limitNumber="1" />
-          <div v-if="limitHint" class="mt-6px text-11px text-placeholder">
+      <FormCard title="视频来源" required :hint="source === 'upload' ? '最多 1 个' : ''">
+        <SegTabs v-if="linkEnabled" v-model="source" :options="SOURCE_SEGMENTS" label="视频来源" />
+        <div v-if="source === 'upload'" class="flex flex-col gap-6px">
+          <VideoUpload fromAsset v-model:videoList="videoList" btnName="上传视频" :limitNumber="1" />
+          <p v-if="limitHint" class="m-0 text-11px leading-16px text-muted">
             {{ limitHint }}，支持 {{ (options?.video_formats ?? []).join(' / ') }}
-          </div>
+          </p>
         </div>
-        <template v-else>
-          <n-input
-            v-model:value="link"
-            type="textarea"
-            :rows="4"
+        <div v-else class="flex flex-col gap-6px">
+          <PromptBox
+            v-model="link"
+            label="视频分享链接"
+            size="sm"
             placeholder="粘贴抖音 / 快手 / 小红书 / B站的分享文案即可（带口令、表情都能识别）"
           />
-          <div class="mt-6px text-11px text-placeholder">提交后自动解析标题与原片；仅支持 3 分钟、50M 以内的视频</div>
-        </template>
-      </div>
-
-      <div class="mb-14px">
-        <div class="ll-label">说明</div>
-        <div
-          class="rounded-8px border border-solid border-line bg-surface2 px-12px py-10px text-12px leading-20px text-muted"
-        >
-          AI 会解析原片的分镜与节奏，产出剧情分析；确认后按分析结果复刻同款视频。 可在确认时调整模型与比例。
+          <p class="m-0 text-11px leading-16px text-muted">提交后自动解析标题与原片；仅支持 3 分钟、50M 以内的视频</p>
         </div>
-      </div>
+      </FormCard>
+
+      <FormCard title="说明">
+        <p class="m-0 text-12px leading-20px text-muted">
+          AI 会解析原片的分镜与节奏，产出剧情分析；确认后按分析结果复刻同款视频。可在确认时调整模型与比例。
+        </p>
+      </FormCard>
     </template>
 
     <template #right>
@@ -243,7 +235,7 @@ async function confirmGenerate() {
             <div
               v-for="item in listCtl.items.value"
               :key="item.id"
-              class="ll-card flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)"
               @click="openDetail(item.id)"
             >
               <img
@@ -254,26 +246,33 @@ async function confirmGenerate() {
               />
               <div
                 v-else
-                class="w-64px h-64px flex-none rounded-8px flex items-center justify-center text-24px bg-surface2"
+                class="w-64px h-64px flex-none rounded-8px flex items-center justify-center text-24px sx-grad-icon border border-solid border-violet-soft-2 shadow-[inset_0_1px_0_#fff]"
               >
                 🔥
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-8px">
                   <span class="flex-1 truncate text-14px font-600 text-ink">{{ item.title || '未命名复刻' }}</span>
-                  <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[item.status]?.type}`">{{
+                  <span class="sx-chip flex-shrink-0" :class="`ll-chip-${VIDEO_STATUS_MAP[item.status]?.type}`">{{
                     VIDEO_STATUS_MAP[item.status]?.label
                   }}</span>
                 </div>
-                <div class="mt-4px text-11px text-muted">
+                <div class="mt-4px text-11px leading-16px text-muted tabular-nums">
                   {{ item.source === 'link' ? '链接解析' : '本地上传' }} · {{ formatTime(item.create_time) }}
                 </div>
               </div>
             </div>
-            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="ll-empty py-80px">
+            <div
+              v-if="!listCtl.loading.value && !listCtl.items.value.length"
+              class="sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
+            >
               还没有复刻记录，左侧开始吧
             </div>
-            <div v-if="listCtl.hasMore.value" class="ll-link block text-center py-8px" @click="listCtl.loadMore()">
+            <div
+              v-if="listCtl.hasMore.value"
+              class="ll-link transition-colors duration-fast block text-center py-8px"
+              @click="listCtl.loadMore()"
+            >
               加载更多
             </div>
           </div>
@@ -281,33 +280,41 @@ async function confirmGenerate() {
 
         <!-- 详情 -->
         <template v-else>
-          <div
-            class="flex-none w-fit mb-12px text-13px text-ink-2 cursor-pointer hover:text-violet-ink"
+          <button
+            type="button"
+            class="flex-none w-fit mb-12px -ml-8px sx-btn-ghost !h-28px !px-8px hover:!text-violet-ink transition-colors duration-fast"
             @click="view = 'list'"
           >
             ← 返回列表
-          </div>
+          </button>
           <div v-if="activeVideo" v-loading="detailLoading" class="flex-1 min-h-0 overflow-auto">
             <div class="flex items-center gap-10px">
-              <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{
+              <span class="sx-chip flex-shrink-0" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{
                 VIDEO_STATUS_MAP[activeVideo.status]?.label
               }}</span>
               <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
                 {{ activeVideo.title || '未命名复刻' }}
               </h2>
               <n-popconfirm @positive-click="removeItem(activeVideo!)">
-                <template #trigger><span class="flex-none text-12px ll-danger-link">删除</span></template>
+                <template #trigger
+                  ><span class="flex-none text-12px ll-danger-link transition-colors duration-fast"
+                    >删除</span
+                  ></template
+                >
                 确定删除这条记录？
               </n-popconfirm>
             </div>
-            <div v-if="activeVideo.source_url" class="mt-8px mb-14px text-12px text-muted break-all">
+            <div
+              v-if="activeVideo.source_url"
+              class="mt-8px mb-14px text-11px leading-16px text-muted tabular-nums break-all"
+            >
               原片：{{ activeVideo.source_url }}
             </div>
 
             <!-- 解析中 / 生成中 -->
             <div
               v-if="activeVideo.status === 0 || activeVideo.status === 2"
-              class="ll-card mt-14px flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 mt-14px flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
             >
               <n-spin size="small" />
               <span>{{
@@ -318,7 +325,7 @@ async function confirmGenerate() {
             <!-- 失败 -->
             <div
               v-else-if="activeVideo.status === 4"
-              class="ll-card mt-14px flex flex-col items-center justify-center gap-10px p-40px text-13px text-ink-2"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 mt-14px flex flex-col items-center justify-center gap-10px p-40px text-13px text-ink-2"
             >
               <p class="m-0 text-danger">{{ activeVideo.fail_reason || '解析失败' }}</p>
               <n-button size="small" @click="view = 'list'">换个视频重试</n-button>
@@ -333,25 +340,29 @@ async function confirmGenerate() {
                   :poster="activeVideo.cover_url"
                   controls
                   muted
-                  class="block w-full max-h-320px rounded-10px bg-black"
+                  class="block w-full max-h-320px rounded-lg bg-black"
                 />
               </div>
 
               <div
-                class="mt-14px mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px text-warning"
+                class="mt-14px mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px text-alert-warning"
               >
                 以下是原片的剧情分析（只读）。确认后按此复刻；也可以改写剧情再复刻。
               </div>
               <div
-                class="ll-card p-16px text-13px leading-22px text-ink whitespace-pre-wrap"
+                class="bg-white rounded-lg border border-solid border-line shadow-card-v3 p-14px text-13px leading-22px text-ink whitespace-pre-wrap"
                 v-text="activeVideo.script"
               />
 
-              <div class="ll-card mt-14px px-16px pt-14px pb-2px">
+              <div
+                class="bg-white rounded-lg border border-solid border-line shadow-card-v3 mt-14px px-16px pt-14px pb-2px"
+              >
                 <div class="mb-12px">
-                  <div class="ll-label">
+                  <div
+                    class="flex items-center justify-between gap-8px mb-8px text-13px font-600 leading-20px text-ink"
+                  >
                     改写剧情（选填）
-                    <span class="ll-link" @click="editingPrompt = !editingPrompt">{{
+                    <span class="ll-link transition-colors duration-fast" @click="editingPrompt = !editingPrompt">{{
                       editingPrompt ? '收起' : '展开'
                     }}</span>
                   </div>
@@ -365,11 +376,19 @@ async function confirmGenerate() {
                 </div>
                 <div class="mb-12px flex gap-10px">
                   <div v-if="modelOptions.length" class="flex-1 min-w-0">
-                    <div class="ll-label">模型</div>
+                    <div
+                      class="flex items-center justify-between gap-8px mb-8px text-13px font-600 leading-20px text-ink"
+                    >
+                      模型
+                    </div>
                     <n-select v-model:value="remakeModel" size="small" :options="modelOptions" />
                   </div>
                   <div v-if="sizeOptions.length" class="flex-1 min-w-0">
-                    <div class="ll-label">比例</div>
+                    <div
+                      class="flex items-center justify-between gap-8px mb-8px text-13px font-600 leading-20px text-ink"
+                    >
+                      比例
+                    </div>
                     <n-select
                       v-model:value="remakeSize"
                       size="small"
@@ -394,7 +413,7 @@ async function confirmGenerate() {
                 :src="activeVideo.video_url"
                 controls
                 autoplay
-                class="mt-14px block w-full max-h-70vh rounded-10px bg-black"
+                class="mt-14px block w-full max-h-70vh rounded-lg bg-black"
               />
               <div class="flex gap-10px mt-14px">
                 <n-button size="small" @click="view = 'list'">再复刻一条</n-button>
