@@ -41,24 +41,27 @@ function onTabKeydown(e: KeyboardEvent, index: number) {
 }
 
 // 本项目 UnoCSS 未启用 transformerVariantGroup：变体分组写法不生效，hover / focus-visible 必须逐条写
+// 样式逐值对齐原型 ToolsView / CreationPillTabs：#f1ecf3 = color-mix(#875f9a 12%, #fff)，rgba(31,35,41,0.08) = color-mix(#1f2329 8%, transparent)
 const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2'
 const cardBase =
-  'flex flex-col items-start gap-12px w-full h-full p-16px rounded-12px bg-white text-left border border-transparent ' +
+  'flex flex-col items-start gap-12px w-full h-full p-16px rounded-16px bg-white text-left border-none ' +
+  'transition-[box-shadow,transform] duration-200 ease ' +
+  'focus-visible:-translate-y-2px focus-visible:shadow-[0_4px_16px_rgba(31,35,41,0.08)] ' +
   focusRing
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-page">
-    <div class="px-24px pt-24px pb-24px">
+  <div class="h-full flex flex-col bg-page">
+    <div class="shrink-0 flex flex-col gap-16px pt-24px pl-24px pr-34px pb-8px">
       <header>
         <h1 class="m-0 text-20px font-600 leading-28px text-ink">工具箱</h1>
-        <p class="m-0 mt-4px text-13px leading-20px text-muted">
+        <p class="m-0 mt-4px text-14px font-500 leading-20px text-muted">
           覆盖图片与视频创作能力，每个工具独立提交、结果进各自的历史记录
         </p>
       </header>
 
-      <div role="tablist" aria-label="工具分类" class="mt-16px flex flex-wrap gap-8px">
+      <div role="tablist" aria-label="工具分类" class="flex flex-wrap gap-8px">
         <button
           v-for="(tab, i) in tabs"
           :id="`home-tool-tab-${tab.key}`"
@@ -69,12 +72,10 @@ const cardBase =
           :aria-selected="active === tab.key"
           aria-controls="home-tool-panel"
           :tabindex="active === tab.key ? 0 : -1"
-          class="px-12px py-6px rounded-6px text-13px leading-20px cursor-pointer border-none transition-colors"
+          class="h-32px px-12px rounded-8px text-14px leading-20px cursor-pointer border-none transition-[background-color,color] duration-200 ease"
           :class="[
             focusRing,
-            active === tab.key
-              ? 'bg-violet-soft text-violet-ink font-500 shadow-[inset_0_1px_2px_rgba(80,55,95,0.12)]'
-              : 'bg-white text-ink-2 hover:bg-surface3 hover:text-ink',
+            active === tab.key ? 'bg-[#f1ecf3] text-violet font-600' : 'bg-white text-ink-2 font-500 hover:text-violet',
           ]"
           @click="active = tab.key"
           @keydown="onTabKeydown($event, i)"
@@ -82,12 +83,14 @@ const cardBase =
           {{ tab.label }}
         </button>
       </div>
+    </div>
 
+    <div class="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-24px pt-8px pb-24px">
       <ul
         id="home-tool-panel"
         role="tabpanel"
         :aria-labelledby="`home-tool-tab-${active}`"
-        class="mt-16px mb-0 p-0 list-none grid gap-12px grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6"
+        class="m-0 p-0 list-none grid gap-12px grid-cols-[repeat(auto-fill,minmax(240px,1fr))]"
       >
         <li v-for="tool in list" :key="tool.id">
           <component
@@ -98,13 +101,13 @@ const cardBase =
             :class="[
               cardBase,
               tool.route
-                ? 'no-underline cursor-pointer transition-all duration-200 hover:-translate-y-2px hover:border-line hover:shadow-[0_4px_16px_rgba(31,35,41,0.08)]'
+                ? 'no-underline cursor-pointer hover:-translate-y-2px hover:shadow-[0_4px_16px_rgba(31,35,41,0.08)]'
                 : 'cursor-not-allowed',
             ]"
           >
             <span class="w-full flex items-center gap-12px">
               <span
-                class="shrink-0 flex items-center justify-center w-44px h-44px rounded-10px bg-violet-soft text-violet"
+                class="shrink-0 flex items-center justify-center w-44px h-44px rounded-12px bg-[#f1ecf3] text-violet"
                 :class="tool.route ? '' : 'opacity-60'"
               >
                 <svg
@@ -121,7 +124,7 @@ const cardBase =
                 />
               </span>
               <span
-                class="min-w-0 flex-1 truncate text-15px font-600 leading-22px"
+                class="min-w-0 flex-1 truncate text-16px font-600 leading-22px"
                 :class="tool.route ? 'text-ink' : 'text-muted'"
               >
                 {{ tool.name }}
@@ -130,10 +133,13 @@ const cardBase =
                 >即将开放</span
               >
             </span>
-            <span :id="`home-tool-desc-${tool.id}`" class="line-clamp-2 min-h-40px text-13px leading-20px text-muted">
+            <span
+              :id="`home-tool-desc-${tool.id}`"
+              class="line-clamp-2 min-h-40px text-14px font-500 leading-20px text-muted"
+            >
               {{ tool.description }}
             </span>
-            <span class="mt-auto text-12px leading-18px text-placeholder">
+            <span class="text-12px leading-16px text-placeholder">
               {{ toolInputShapeLabels[tool.inputShape] }}
             </span>
           </component>

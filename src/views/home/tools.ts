@@ -120,6 +120,10 @@ const ICONS = {
   videoGenerate: `
     <path d="M3 6v12l7.4-6z" fill="currentColor" stroke="none"/>
     <path d="M17.6 7.4c.39 3.02 1.78 4.41 4.8 4.8-3.02.39-4.41 1.78-4.8 4.8-.39-3.02-1.78-4.41-4.8-4.8 3.02-.39 4.41-1.78 4.8-4.8z" fill="currentColor" stroke="none"/>`,
+  videoClone: `
+    <rect x="3.1" y="3.2" width="17.8" height="12.4" rx="2.6"/>
+    <path d="M10.1 6.4 14.6 9.4 10.1 12.4z" fill="currentColor" stroke="none"/>
+    <path d="M7.4 19.6h9.2M9.1 17.9 7.4 19.6l1.7 1.7M14.9 17.9l1.7 1.7-1.7 1.7"/>`,
 }
 
 export const tools: ToolItem[] = [
@@ -209,7 +213,7 @@ export const tools: ToolItem[] = [
     id: 'ai-digital-model',
     name: '商拍换装',
     category: 'edit',
-    description: '上传商品图与模特图，AI 把商品穿到模特身上，快速生成试衣效果展示。',
+    description: '选单品、传服装与模特，AI 把衣服穿到模特身上；细节裁切与提示词由系统完成。',
     inputShape: 'dual-image',
     route: '/studio/tryon',
     icon: ICONS.changeClothes,
@@ -218,7 +222,7 @@ export const tools: ToolItem[] = [
     id: 'ai-posture-fission',
     name: '姿态复刻',
     category: 'edit',
-    description: '上传人物图后快速探索不同动作版本，支持发散、参考姿势图与文字模仿三种方式。',
+    description: '上传一张人物图，再放最多 9 张姿势参考图；身份与服装不变，只换动作与神态表情。',
     inputShape: 'single-image',
     route: '/studio/pose',
     icon: ICONS.pose,
@@ -277,5 +281,15 @@ export const tools: ToolItem[] = [
     inputShape: 'text-image-video',
     route: '/video',
     icon: ICONS.videoGenerate,
+  },
+  {
+    // 原型的视频复刻是「识别画面 → 标保持/替换 → 出多家模型提示词」；/e-commerce/video-clone 是商品图 + 参考视频的带货生成，
+    // 不是同一能力，所以不接，先显示「即将开放」
+    id: 'ai-video-clone',
+    name: '视频复刻',
+    category: 'video',
+    description: '上传一条现成的短视频，机器先认画面，你只标哪几项保持、哪几项替换；四家视频模型的提示词一次出齐。',
+    inputShape: 'video',
+    icon: ICONS.videoClone,
   },
 ]

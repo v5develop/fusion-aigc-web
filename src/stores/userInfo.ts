@@ -5,6 +5,7 @@ import { getUserInfo } from '@/api/methods.ts'
 interface IUserInfo {
   availablePoints: number // 可用点数（不含冻结）
   avatar: string
+  phone: string // 手机号（明文，仅用于本地脱敏展示，不得打日志）
 }
 
 export const useUserInfoStore = defineStore('useUserInfoStore', () => {
@@ -25,6 +26,7 @@ export const useUserInfoStore = defineStore('useUserInfoStore', () => {
           userInfo.value = {
             availablePoints: data.availablePoints, // 可用点数（不含冻结）
             avatar: data.avatar,
+            phone: data.phone ?? '',
           }
         }
       })
