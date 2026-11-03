@@ -13,16 +13,18 @@ import { useCanvasEditor } from '../useCanvasEditor.ts'
 import type { CanvasNodeData } from '../types.ts'
 import { portClass, portLabelClass } from '../ports.ts'
 import {
-  CHECKER_BG,
+  CANVAS_OK,
   NODE_CARD,
   NODE_CARD_SELECTED,
-  NODE_HEAD,
+  NODE_HEAD_PLAIN,
+  NODE_NOTICE,
   NODE_RUN_BTN,
   NODE_TITLE,
-  type QuickAddKind,
+  type IQuickAddRequest,
 } from '../ui.ts'
 import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
+import NodeResize from '../NodeResize.vue'
 
 const props = defineProps<{
   id: string
@@ -30,7 +32,7 @@ const props = defineProps<{
   selected?: boolean
 }>()
 
-const emit = defineEmits<{ remove: []; quickAdd: [kind: QuickAddKind] }>()
+const emit = defineEmits<{ remove: []; quickAdd: [request: IQuickAddRequest] }>()
 
 const store = useCanvasEditor()
 
@@ -39,7 +41,8 @@ const isI2p = computed(() => props.data.tool === 'i2p')
 const isTryon = computed(() => props.data.tool === 'tryon')
 /** catalog 里 ready=false 的工具：灰显并禁止执行（目录未加载时不拦） */
 const notReady = computed(() => store.catalog.value?.tools?.find((t) => t.tool === props.data.tool)?.ready === false)
-const width = computed(() => props.data.width ?? 300)
+/** 原型 useNodeResize 默认 340 宽 */
+const width = computed(() => props.data.width ?? 340)
 
 const resultImage = computed(() => props.data.resultImage ?? props.data.image)
 const resultText = computed(() => props.data.resultText ?? '')
@@ -67,10 +70,10 @@ const summary = computed(() => {
 <template>
   <div
     :class="[NODE_CARD, { 'is-selected': selected, 'opacity-55': notReady, [NODE_CARD_SELECTED]: selected }]"
-    :style="{ width: `${width}px` }"
+    :style="{ width: `${width}px`, minHeight: data.height ? `${data.height}px` : undefined }"
   >
-    <header :class="NODE_HEAD">
-      <span class="shrink-0 w-8px h-8px rounded-full bg-placeholder" />
+    <header :class="NODE_HEAD_PLAIN">
+      <span class="shrink-0 w-9px h-9px rounded-full bg-violet" />
       <span class="flex-1" :class="NODE_TITLE">{{ data.title || toolLabel(data.tool) }}</span>
       <div class="flex shrink-0 items-center gap-2px">
         <button
@@ -83,35 +86,39 @@ const summary = computed(() => {
         >
           <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
         </button>
-        <NodeMenu :title="data.title || toolLabel(data.tool)" @remove="emit('remove')" />
+        <NodeMenu
+          :title="data.title || toolLabel(data.tool)"
+          :image-actions-for="isI2p ? undefined : id"
+          @remove="emit('remove')"
+        />
       </div>
     </header>
 
-    <div class="px-10px pt-8px pb-10px">
-      <div class="mb-6px text-muted text-11px">{{ summary }}</div>
+    <!-- 原型 .wf-tool-node__body：内边距 0 12 12、gap 8 -->
+    <div class="flex flex-col gap-8px px-12px pb-12px">
+      <div class="m-0 text-[#7f7f7f] text-12px">{{ summary }}</div>
 
       <div
         v-if="isI2p && resultText"
-        class="max-h-120px overflow-auto px-10px py-8px border border-solid border-line-soft rounded-6px bg-surface2 text-ink text-11px leading-17px whitespace-pre-wrap break-all nodrag nowheel"
+        class="max-h-136px overflow-auto px-9px py-7px border border-solid border-[#e3e6ee] rounded-6px bg-[#f7f8fb] text-ink-2 text-11px leading-[1.55] whitespace-pre-wrap break-all nodrag nowheel"
       >
         {{ resultText }}
       </div>
       <div
         v-else-if="resultImage"
-        class="grid w-full place-items-center overflow-hidden rounded-6px min-h-110px"
-        :class="CHECKER_BG"
+        class="grid w-full place-items-center overflow-hidden min-h-110px border border-solid border-[#e9ecf2] rounded-6px bg-[#f4f6fa]"
       >
         <img :src="resultImage" :alt="data.title" draggable="false" class="block w-full max-h-240px object-contain" />
       </div>
       <div
         v-else
-        class="flex flex-col items-center gap-6px justify-center border border-dashed border-line-strong rounded-6px text-placeholder text-11px bg-surface2 min-h-100px"
+        class="flex flex-col items-center gap-6px justify-center min-h-80px border border-dashed border-[#d9d9d9] rounded-6px text-[#9d9d9d] text-12px"
       >
         <EditorIcon name="tool" :size="20" />
         <span>{{ isRunning ? '处理中…' : '连一条图片输入后执行' }}</span>
       </div>
 
-      <div v-if="isRunning" class="h-3px mt-6px overflow-hidden rounded-999px bg-#ede3f2">
+      <div v-if="isRunning" class="h-3px overflow-hidden rounded-999px bg-violet-soft-2">
         <i
           class="block h-full rounded-999px bg-gradient-to-b from-violet-top to-violet-bottom transition-[width] duration-400"
           :style="{ width: `${data.progress ?? 0}%` }"
@@ -119,15 +126,13 @@ const summary = computed(() => {
       </div>
       <div
         v-if="isRunning"
-        class="flex items-center gap-6px mt-6px px-8px py-5px border border-solid border-line-soft rounded-4px bg-surface2 text-muted text-11px"
+        :class="NODE_NOTICE"
+        class="!mt-0 border border-solid border-line-soft bg-surface2 text-muted"
       >
         {{ data.status === 'queued' ? '排队中…' : `处理中 ${data.progress ?? 0}%` }}
       </div>
-      <RunErrorNotice v-else-if="data.status === 'error'" :node-id="id" :data="data" />
-      <div
-        v-else-if="data.status === 'done'"
-        class="flex items-center gap-6px mt-6px px-8px py-5px border border-solid border-success-line rounded-4px text-11px bg-success-soft text-success"
-      >
+      <RunErrorNotice v-else-if="data.status === 'error'" class="!mt-0" :node-id="id" :data="data" />
+      <div v-else-if="data.status === 'done'" :class="[NODE_NOTICE, CANVAS_OK]" class="!mt-0 border border-solid">
         已完成
       </div>
     </div>
@@ -163,7 +168,8 @@ const summary = computed(() => {
     />
     <NodeQuickAdd
       :kinds="isI2p ? ['image-model', 'video-model'] : ['image-model', 'video-model', 'tool']"
-      @pick="emit('quickAdd', $event)"
+      @open="emit('quickAdd', $event)"
     />
+    <NodeResize :id="id" kind="tool" :title="data.title || toolLabel(data.tool)" />
   </div>
 </template>

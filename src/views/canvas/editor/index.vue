@@ -2,11 +2,11 @@
 /**
  * 画布节点编辑器（对齐原型 CanvasView + canvas-v31 皮肤）：
  * 顶栏（返回 / 标题✎ / 保存状态 / 运行数 / 模板 · 保存 · 另存为 · 执行模型）
- * + 左侧「画布资产」栏 + Vue Flow 画布（左竖工具条 / 底横工具条）+ 右侧参数面板（选中节点时出现）。
+ * + 左侧「画布资产」栏 + Vue Flow 画布（左竖工具条 / 底横工具条）+ 浮动控制台（选中节点时出现在节点下方）
+ * + 添加节点面板（工具条「+」/ 双击空白画布 / 端口「+」）+ 多选操作条 + 节点缩放 + 模块删除。
  * 接口契约见 fusion_aigc_go/docs/api/api-canvas.md；快照 {nodes, edges} 整段存取 + 乐观锁保存。
  */
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { DropdownOption } from 'naive-ui'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ConnectionMode, VueFlow, useVueFlow, type EdgeMouseEvent, type NodeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -23,15 +23,31 @@ import EditorModelNode from './nodes/EditorModelNode.vue'
 import EditorToolNode from './nodes/EditorToolNode.vue'
 import EditorModuleNode from './nodes/EditorModuleNode.vue'
 import NodeParamsPanel from './NodeParamsPanel.vue'
+import NodeAddPanel from './NodeAddPanel.vue'
+import ImageActionPanel from './ImageActionPanel.vue'
+import { activeImageAction } from './imageActions.ts'
 import EditorAssetPanel from './EditorAssetPanel.vue'
 import TitleModal from '../TitleModal.vue'
 import TemplatePicker from '../TemplatePicker.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { canvasSaveAs } from '@/api/canvasHome.ts'
-import { normalizeHandle, validateConnection } from './graph.ts'
+import { downloadImage } from '@/utils/download.ts'
+import { takeCanvasImport } from '@/utils/canvasImportHandoff.ts'
+import { normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
 import { editorDialog, editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
-import type { CanvasEditorNode } from './types.ts'
-import { FOCUS_RING, TOOLBAR, TOOLBAR_BTN, TOP_BTN, TOP_BTN_PRIMARY, type QuickAddKind } from './ui.ts'
+import type { CanvasEditorNode, CanvasToolKind } from './types.ts'
+import {
+  FOCUS_RING,
+  POP_FADE,
+  SELECTION_BTN,
+  TOOLBAR,
+  TOOLBAR_BTN,
+  TOP_BTN,
+  TOP_BTN_PRIMARY,
+  type AddPanelKind,
+  type IQuickAddRequest,
+  type QuickAddKind,
+} from './ui.ts'
 
 defineOptions({ name: 'canvas-editor' })
 
@@ -39,7 +55,28 @@ const route = useRoute()
 const router = useRouter()
 const store = useCanvasEditor()
 const FLOW_ID = 'canvas-editor-flow'
-const { fitView, zoomIn, zoomOut, setCenter } = useVueFlow(FLOW_ID)
+const {
+  fitView,
+  zoomIn,
+  zoomOut,
+  setCenter,
+  viewport,
+  getSelectedNodes,
+  removeSelectedElements,
+  screenToFlowCoordinate,
+} = useVueFlow(FLOW_ID)
+
+/**
+ * 点阵背景（原型 CanvasView dotGrid）：基准间距 24，按缩放翻倍 / 减半，使屏幕间距保持在 13–42px；
+ * 点径 1.15px（除以缩放，屏幕上恒定）。
+ */
+const dotGrid = computed(() => {
+  const zoom = viewport.value.zoom || 1
+  let gap = 24
+  while (gap * zoom < 13) gap *= 2
+  while (gap * zoom > 42) gap /= 2
+  return { gap, size: 1.15 / zoom }
+})
 
 const canvasId = computed(() => String(route.params.id ?? ''))
 
@@ -55,14 +92,37 @@ const {
   dirty,
   selectedNode,
   runningCount,
+  canUndo,
+  canRedo,
 } = store
 
 // ---------------- 加载 ----------------
 
 onMounted(() => {
   void store.loadCatalog()
-  void store.init(canvasId.value)
+  const id = canvasId.value
+  void store.init(id).then((ok) => {
+    if (ok) importFromHandoff(id)
+  })
 })
+
+/** 智能体「在画布中打开」的交接：首次加载完取走一次，一张图一个图片节点排成一行，交给自动保存 */
+function importFromHandoff(id: string) {
+  const handoff = takeCanvasImport(id)
+  if (!handoff) return
+  const base = spawnPosition(nodes.value)
+  let last: CanvasEditorNode | undefined
+  handoff.urls.forEach((url, i) => {
+    const created = store.addNode('image', undefined, { x: base.x + i * 300, y: base.y })
+    if (!created) return
+    store.updateNodeData(created.id, { image: url })
+    last = created
+  })
+  if (last) {
+    const at = last.position
+    void nextTick(() => setCenter(at.x + 120, at.y + 100, { zoom: 0.86, duration: 220 }))
+  }
+}
 
 watch(
   () => route.params.id,
@@ -84,11 +144,13 @@ const selectedEdgeId = ref('')
 
 function onNodeClick(event: NodeMouseEvent) {
   selectedEdgeId.value = ''
+  closeAddPanel()
   store.selectNode(event.node.id)
 }
 
 function onPaneClick() {
   selectedEdgeId.value = ''
+  closeAddPanel()
   store.selectNode('')
 }
 
@@ -186,13 +248,11 @@ function outputHandleOf(node: CanvasEditorNode): string {
   return node.data.inputOnly ? 'video' : 'image-out'
 }
 
-/** 输出口旁「+」：新建下游节点并自动连线（新建 / 连线 / 校验全走 store 既有方法） */
-function quickAdd(sourceId: string, kind: QuickAddKind) {
+/** 新建节点后自动从来源节点连过去（端口「+」→ 添加面板；新建 / 连线 / 校验全走 store 既有方法） */
+function connectFrom(sourceId: string, targetId: string) {
   const source = store.findNode(sourceId)
-  if (!source) return
-  const created = spawn(kind)
-  const target = created ? store.findNode(created.id) : undefined
-  if (!target) return
+  const target = store.findNode(targetId)
+  if (!source || !target) return
   store.connect({
     source: source.id,
     target: target.id,
@@ -204,6 +264,10 @@ function quickAdd(sourceId: string, kind: QuickAddKind) {
 // ---------------- 删除 / 快捷键 ----------------
 
 function deleteSelection() {
+  if (selectedFlowNodes.value.length > 1) {
+    confirmDeleteNodes()
+    return
+  }
   if (selectedEdgeId.value) {
     store.removeEdgeById(selectedEdgeId.value)
     selectedEdgeId.value = ''
@@ -220,14 +284,70 @@ function onKeydown(event: KeyboardEvent) {
   }
   const target = event.target as HTMLElement | null
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+  // 控制台 / 添加面板里的下拉、开关等控件聚焦时，按键归控件（避免 Backspace 误删节点）
+  if (target?.closest('[data-canvas-console], [data-canvas-popover]')) return
   if (event.key === 'Escape') {
+    if (addPanel.value) {
+      closeAddPanel()
+      return
+    }
     selectedEdgeId.value = ''
+    clearFlowSelection()
     store.selectNode('')
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+    event.preventDefault()
+    if (event.shiftKey) void redoCanvas()
+    else void undoCanvas()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+    event.preventDefault()
+    void redoCanvas()
     return
   }
   if (event.key === 'Delete' || event.key === 'Backspace') {
     event.preventDefault()
     deleteSelection()
+  }
+}
+
+// ---------------- 撤销 / 重做 / 批量下载（对齐原型 CanvasView undoCanvas / redoCanvas / downloadAll） ----------------
+
+async function undoCanvas() {
+  if (!(await store.undo())) return
+  if (selectedEdgeId.value && !edges.value.some((edge) => edge.id === selectedEdgeId.value)) selectedEdgeId.value = ''
+  editorMessage.success('已撤销')
+}
+
+async function redoCanvas() {
+  if (!(await store.redo())) return
+  if (selectedEdgeId.value && !edges.value.some((edge) => edge.id === selectedEdgeId.value)) selectedEdgeId.value = ''
+  editorMessage.success('已重做')
+}
+
+const downloading = ref(false)
+
+/** 原型 downloadAll：画布上所有带图片 / 视频的节点逐个下载（视频节点优先下视频） */
+async function downloadAll() {
+  if (downloading.value) return
+  const urls = nodes.value
+    .map((node) => node.data.video || node.data.image || '')
+    .filter((url): url is string => Boolean(url))
+  if (!urls.length) {
+    editorMessage.warning('画布上还没有图片或视频输出')
+    return
+  }
+  downloading.value = true
+  editorMessage.success(`开始批量下载 ${urls.length} 个输出`)
+  try {
+    for (const url of urls) {
+      await downloadImage(url)
+      await new Promise((resolve) => setTimeout(resolve, 180))
+    }
+  } finally {
+    downloading.value = false
   }
 }
 
@@ -277,6 +397,8 @@ function onBeforeUnload(event: BeforeUnloadEvent) {
 
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onBeforeUnmount(() => {
+  consoleObserver?.disconnect()
+  cancelAnimationFrame(consoleFrame)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('beforeunload', onBeforeUnload)
   store.dispose()
@@ -304,8 +426,8 @@ const saveText = computed(() => {
 
 /** 保存状态小标（原型 .wf-save-state：surface-3 底 / muted / 11px；失败红、冲突琥珀、待存琥珀字） */
 const saveStateClass = computed(() => {
-  if (saveState.value === 'error') return 'bg-danger-soft text-danger'
-  if (saveState.value === 'conflict') return 'bg-warning-soft text-warning'
+  if (saveState.value === 'error') return 'bg-[#fbeeed] text-danger'
+  if (saveState.value === 'conflict') return 'bg-[#f8f1e4] text-warning'
   if (saveState.value === 'saving' || saveState.value === 'dirty') return 'bg-surface3 text-warning'
   return 'bg-surface3 text-muted'
 })
@@ -411,27 +533,244 @@ function addLibraryImages(urls: string[]) {
 const toolMode = ref<'select' | 'pan'>('select')
 const snapEnabled = ref(false)
 
-function spawn(kind: 'text' | 'image' | 'video' | 'image-model' | 'video-model' | 'tool') {
-  const created = store.addNode(kind)
+/**
+ * 新建节点：不给落点时沿用 spawnPosition 自动排布并把视图移过去；
+ * 给了落点（双击画布 / 端口「+」打开的添加面板）就落在那里，视图不动（同原型 addFromPanel）。
+ */
+function spawn(kind: AddPanelKind, tool?: CanvasToolKind, at?: { x: number; y: number }) {
+  const created = store.addNode(kind, tool, at)
   if (!created) return undefined
-  void nextTick(() => {
-    setCenter(created.position.x + 170, created.position.y + 160, { zoom: 0.86, duration: 220 })
-  })
+  if (!at) {
+    void nextTick(() => {
+      setCenter(created.position.x + 170, created.position.y + 160, { zoom: 0.86, duration: 220 })
+    })
+  }
   return created
 }
 
-const addOptions: DropdownOption[] = [
-  { key: 'text', label: '提示词' },
-  { key: 'image', label: '图片' },
-  { key: 'video', label: '视频' },
-  { key: 'image-model', label: '图片生成' },
-  { key: 'video-model', label: '视频生成' },
-  { key: 'tool', label: '工具' },
-]
+// ---------------- 添加节点面板（原型 CanvasAddPanel：工具条「+」/ 双击空白画布 / 端口「+」） ----------------
 
-function onAddSelect(key: string | number) {
-  spawn(key as 'text' | 'image' | 'video' | 'image-model' | 'video-model' | 'tool')
+const stageRef = ref<HTMLElement | null>(null)
+/** 面板位置（相对舞台）+ 新节点落点（画布坐标）+ 端口「+」的来源节点与可选种类 */
+const addPanel = ref<{
+  x: number
+  y: number
+  spawnAt?: { x: number; y: number }
+  anchorId?: string
+  kinds?: QuickAddKind[]
+} | null>(null)
+
+const ADD_PANEL_W = 300
+
+/** 把视口坐标换成舞台内的面板左上角，并夹在舞台里 */
+function panelPoint(clientX: number, clientY: number): { x: number; y: number } {
+  const rect = stageRef.value?.getBoundingClientRect()
+  if (!rect) return { x: 60, y: 28 }
+  const panelH = Math.min(640, rect.height - 40)
+  return {
+    x: Math.round(Math.max(12, Math.min(clientX - rect.left + 8, rect.width - ADD_PANEL_W - 12))),
+    y: Math.round(Math.max(12, Math.min(clientY - rect.top - 24, rect.height - panelH - 20))),
+  }
 }
+
+/** 左工具条「+」：面板贴着工具条，新节点按自动排布 */
+function openAddPanel() {
+  selectedEdgeId.value = ''
+  addPanel.value = addPanel.value && !addPanel.value.spawnAt ? null : { x: 60, y: 28 }
+}
+
+/** 双击空白画布：面板与新节点都落在双击处 */
+function onStageDblClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  if (!target?.closest('.vue-flow__pane')) return
+  if (target.closest('.vue-flow__node, .vue-flow__edge, [data-canvas-console], [data-canvas-popover]')) return
+  if (loading.value || !store.ready.value) return
+  selectedEdgeId.value = ''
+  addPanel.value = {
+    ...panelPoint(event.clientX, event.clientY),
+    spawnAt: screenToFlowCoordinate({ x: event.clientX, y: event.clientY }),
+  }
+}
+
+/** 端口「+」：面板开在「+」旁，只列可接到下游的种类；新节点落在「+」右侧并自动连线 */
+function openQuickAdd(sourceId: string, request: IQuickAddRequest) {
+  selectedEdgeId.value = ''
+  store.selectNode(sourceId)
+  const flow = screenToFlowCoordinate({ x: request.clientX + 60, y: request.clientY })
+  addPanel.value = {
+    ...panelPoint(request.clientX + 8, request.clientY),
+    spawnAt: { x: flow.x, y: flow.y - 40 },
+    anchorId: sourceId,
+    kinds: request.kinds,
+  }
+}
+
+function closeAddPanel() {
+  addPanel.value = null
+}
+
+function addFromPanel(kind: AddPanelKind, tool?: CanvasToolKind) {
+  const panel = addPanel.value
+  closeAddPanel()
+  const created = spawn(kind, tool, panel?.spawnAt)
+  if (created && panel?.anchorId) connectFrom(panel.anchorId, created.id)
+}
+
+// ---------------- 多选操作条（原型 .wf-selection-bar：执行 / 复制 / 删除 / 取消选择） ----------------
+
+/** Vue Flow 框选 / 多选出来的节点（只认仍在画布上的） */
+const selectedFlowNodes = computed(() =>
+  (getSelectedNodes.value ?? [])
+    .map((node) => store.findNode(node.id))
+    .filter((node): node is CanvasEditorNode => Boolean(node)),
+)
+
+function clearFlowSelection() {
+  removeSelectedElements()
+}
+
+/** 选中节点里可执行的（生成 / 工具，参考素材节点除外），有上下游时按拓扑顺序 */
+function executableInOrder(list: CanvasEditorNode[]): string[] {
+  const ids = list
+    .filter((node) => (node.type === 'model' && !node.data.inputOnly) || node.type === 'tool')
+    .map((node) => node.id)
+  const set = new Set(ids)
+  const indegree = new Map(ids.map((id) => [id, 0]))
+  for (const edge of edges.value) {
+    if (set.has(edge.source) && set.has(edge.target)) indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1)
+  }
+  const queue = ids.filter((id) => !indegree.get(id))
+  const order: string[] = []
+  while (queue.length) {
+    const id = queue.shift() ?? ''
+    order.push(id)
+    for (const edge of edges.value) {
+      if (edge.source !== id || !set.has(edge.target)) continue
+      const left = (indegree.get(edge.target) ?? 0) - 1
+      indegree.set(edge.target, left)
+      if (left === 0) queue.push(edge.target)
+    }
+  }
+  return [...order, ...ids.filter((id) => !order.includes(id))]
+}
+
+async function runSelectionNodes() {
+  const order = executableInOrder(selectedFlowNodes.value)
+  if (!order.length) {
+    editorMessage.warning('选中的节点里没有可执行的生成或工具节点')
+    return
+  }
+  for (const id of order) await store.runNode(id)
+}
+
+function duplicateSelectionNodes() {
+  const created = store.duplicateNodes(selectedFlowNodes.value.map((node) => node.id))
+  if (!created.length) return
+  clearFlowSelection()
+  editorMessage.success(`已复制 ${created.length} 个节点`)
+}
+
+function confirmDeleteNodes() {
+  const ids = selectedFlowNodes.value.map((node) => node.id)
+  if (!ids.length) return
+  editorDialog.warning({
+    title: `删除 ${ids.length} 个节点？`,
+    content: '与这些节点相连的连线也会一起删除，可以用 Ctrl+Z 撤销。',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: () => {
+      const removed = store.removeNodes(ids)
+      clearFlowSelection()
+      editorMessage.success(`已删除 ${removed} 个节点`)
+    },
+  })
+}
+
+// ---------------- 模块删除（底板 + 模块内节点） ----------------
+
+function confirmRemoveModule(id: string) {
+  const module = store.findNode(id)
+  if (!module || module.type !== 'module') return
+  const count = store.moduleChildren(id).length
+  const name = module.data.title || '模块'
+  editorDialog.warning({
+    title: `删除模块「${name}」？`,
+    content: count
+      ? `模块内的 ${count} 个节点及相连连线会一起删除，可以用 Ctrl+Z 撤销。`
+      : '模块内没有节点，只删除底板，可以用 Ctrl+Z 撤销。',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: () => {
+      const removed = store.removeModule(id)
+      if (removed) editorMessage.success(removed > 1 ? `已删除模块及 ${removed - 1} 个节点` : '已删除模块')
+    },
+  })
+}
+
+// ---------------- 浮动控制台定位（原型 consoleFlowStyle：节点下方 12px、放不下翻到上方、左右夹在舞台内） ----------------
+
+const CONSOLE_W = 520
+const CONSOLE_H = 360
+const consoleBox = ref<{ left: number; top: number; width: number; height: number } | null>(null)
+
+function placeConsole() {
+  const node = selectedNode.value
+  const stage = stageRef.value
+  if (!node || !stage) {
+    consoleBox.value = null
+    return
+  }
+  const s = stage.getBoundingClientRect()
+  const width = Math.max(280, Math.min(CONSOLE_W, s.width - 16))
+  const height = Math.max(220, Math.min(CONSOLE_H, s.height - 16))
+  // 底部留出底横工具条（bottom 16 + 40 高）
+  const bottomLimit = s.height - 64
+  const el = stage.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(node.id)}"]`)
+  let top = bottomLimit - height
+  let left = (s.width - width) / 2
+  if (el) {
+    const r = el.getBoundingClientRect()
+    top = r.bottom - s.top + 12
+    if (top + height > bottomLimit) {
+      const above = r.top - s.top - 12 - height
+      top = above >= 8 ? above : Math.max(8, bottomLimit - height)
+    }
+    left = r.left - s.left + r.width / 2 - width / 2
+  }
+  left = Math.max(8, Math.min(s.width - 8 - width, left))
+  consoleBox.value = { left: Math.round(left), top: Math.round(Math.max(8, top)), width, height }
+}
+
+let consoleFrame = 0
+function schedulePlaceConsole() {
+  cancelAnimationFrame(consoleFrame)
+  consoleFrame = requestAnimationFrame(placeConsole)
+}
+
+watch(
+  () => {
+    const node = selectedNode.value
+    const vp = viewport.value
+    return [node?.id, node?.position.x, node?.position.y, node?.data.width, node?.data.height, vp.x, vp.y, vp.zoom]
+  },
+  () => void nextTick(schedulePlaceConsole),
+  { flush: 'post' },
+)
+
+/** 节点自身高度会变（图片加载后按比例撑开、缩放）、舞台也会随窗口变：都要重新定位 */
+let consoleObserver: ResizeObserver | null = null
+watch(
+  () => selectedNode.value?.id,
+  async (id) => {
+    consoleObserver?.disconnect()
+    if (!id || typeof ResizeObserver === 'undefined') return
+    await nextTick()
+    consoleObserver = new ResizeObserver(schedulePlaceConsole)
+    if (stageRef.value) consoleObserver.observe(stageRef.value)
+    const el = stageRef.value?.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"]`)
+    if (el) consoleObserver.observe(el)
+  },
+)
 
 function openPromptLibrary() {
   window.open(router.resolve({ name: 'prompt-library' }).href, '_blank', 'noopener')
@@ -471,7 +810,7 @@ function openHelp() {
           v-if="titleEditing"
           ref="titleInputRef"
           v-model="title"
-          class="w-240px h-30px px-8px border border-solid border-violet rounded-4px bg-white text-ink text-14px font-600 leading-20px outline-none shadow-[0_0_0_3px_rgba(135,95,154,0.14)]"
+          class="w-240px h-30px px-8px border border-solid border-violet rounded-4px bg-white text-ink text-14px font-600 leading-20px outline-none shadow-[0_0_0_3px_rgba(135,95,154,0.14),inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
           maxlength="100"
           placeholder="未命名画布"
           aria-label="画布标题"
@@ -538,12 +877,13 @@ function openHelp() {
       <div class="flex flex-1 min-h-0">
         <EditorAssetPanel @locate="locateNode" @add-from-library="showAssetPicker = true" />
 
-        <div v-loading="loading" class="relative flex-1 min-w-0 overflow-hidden bg-page">
+        <!-- 舞台：原型 .wf-canvas 底色 #f5f5f5；框选框藤紫描边 + 8% 浅底；非法连线红色虚线 -->
+        <div ref="stageRef" class="relative flex-1 min-w-0 overflow-hidden bg-[#f5f5f5]" @dblclick="onStageDblClick">
           <VueFlow
             :id="FLOW_ID"
             v-model:nodes="nodes"
             v-model:edges="edges"
-            class="w-full h-full"
+            class="w-full h-full [&_.vue-flow\_\_pane]:cursor-default [&_.vue-flow\_\_selection]:border [&_.vue-flow\_\_selection]:border-solid [&_.vue-flow\_\_selection]:border-violet [&_.vue-flow\_\_selection]:bg-[rgba(135,95,154,0.08)] [&_.vue-flow\_\_connection-path.invalid]:!stroke-[#b4433e] [&_.vue-flow\_\_connection-path.invalid]:[stroke-dasharray:5_4]"
             :default-viewport="{ x: 40, y: 20, zoom: 0.86 }"
             :min-zoom="0.2"
             :max-zoom="2"
@@ -566,7 +906,7 @@ function openHelp() {
             @connect-start="onConnectStart"
             @connect-end="onConnectEnd"
           >
-            <Background :gap="24" :size="1.2" pattern-color="rgba(31, 35, 41, 0.20)" />
+            <Background :gap="dotGrid.gap" :size="dotGrid.size" pattern-color="rgba(31, 35, 41, 0.20)" />
 
             <template #edge-canvas-bezier="edgeProps">
               <EditorBezierEdge v-bind="edgeProps" />
@@ -576,52 +916,147 @@ function openHelp() {
                 v-bind="nodeProps"
                 @remove="store.removeNode(nodeProps.id)"
                 @locate="locateNode"
-                @quick-add="(kind: QuickAddKind) => quickAdd(nodeProps.id, kind)"
+                @quick-add="(request: IQuickAddRequest) => openQuickAdd(nodeProps.id, request)"
               />
             </template>
             <template #node-image="nodeProps">
               <EditorImageNode
                 v-bind="nodeProps"
                 @remove="store.removeNode(nodeProps.id)"
-                @quick-add="(kind: QuickAddKind) => quickAdd(nodeProps.id, kind)"
+                @quick-add="(request: IQuickAddRequest) => openQuickAdd(nodeProps.id, request)"
               />
             </template>
             <template #node-video="nodeProps">
               <EditorVideoNode
                 v-bind="nodeProps"
                 @remove="store.removeNode(nodeProps.id)"
-                @quick-add="(kind: QuickAddKind) => quickAdd(nodeProps.id, kind)"
+                @quick-add="(request: IQuickAddRequest) => openQuickAdd(nodeProps.id, request)"
               />
             </template>
             <template #node-model="nodeProps">
               <EditorModelNode
                 v-bind="nodeProps"
                 @remove="store.removeNode(nodeProps.id)"
-                @quick-add="(kind: QuickAddKind) => quickAdd(nodeProps.id, kind)"
+                @quick-add="(request: IQuickAddRequest) => openQuickAdd(nodeProps.id, request)"
               />
             </template>
             <template #node-tool="nodeProps">
               <EditorToolNode
                 v-bind="nodeProps"
                 @remove="store.removeNode(nodeProps.id)"
-                @quick-add="(kind: QuickAddKind) => quickAdd(nodeProps.id, kind)"
+                @quick-add="(request: IQuickAddRequest) => openQuickAdd(nodeProps.id, request)"
               />
             </template>
             <template #node-module="nodeProps">
-              <EditorModuleNode v-bind="nodeProps" />
+              <EditorModuleNode v-bind="nodeProps" @remove="confirmRemoveModule(nodeProps.id)" />
             </template>
           </VueFlow>
 
+          <!-- 空态 / 加载态（原型 .wf-canvas-empty + v3.1：虚线 r8、白 94%、轻投影，按钮藤紫浅底） -->
           <div
-            v-if="!loading && !nodes.length"
-            class="absolute top-50% left-50% -translate-x-50% -translate-y-50% px-36px py-24px border border-dashed border-line-strong rounded-8px bg-white/90 text-center pointer-events-auto"
+            v-if="loading || !nodes.length"
+            class="absolute top-50% left-50% z-6 flex flex-col items-center gap-6px px-24px py-20px border border-dashed border-line-strong rounded-8px bg-white/94 text-muted text-center shadow-[0_1px_2px_rgba(16,24,40,0.06)] -translate-x-50% -translate-y-50% pointer-events-none"
+            :role="loading ? 'status' : undefined"
           >
-            <strong class="block mb-6px text-ink text-14px">{{ loadError ? '画布加载失败' : '这是一张新画布' }}</strong>
-            <p v-if="loadError" class="m-0 mb-10px text-muted text-13px">{{ loadError }}</p>
-            <p v-else class="m-0 mb-10px text-muted text-13px">
-              点左侧工具条「+」添加节点，或「从素材库添加」放入素材。
-            </p>
-            <n-button v-if="loadError" size="small" @click="store.init(canvasId)">重试</n-button>
+            <strong class="text-ink text-14px">{{
+              loading ? '正在加载画布…' : loadError ? '画布加载失败' : '这是一张新画布'
+            }}</strong>
+            <template v-if="!loading">
+              <p v-if="loadError" class="m-0 text-13px">{{ loadError }}</p>
+              <p v-else class="m-0 text-13px">双击空白处或点左侧工具条「+」添加节点，也可「从素材库添加」放入素材。</p>
+              <button
+                v-if="loadError"
+                type="button"
+                class="h-30px mt-4px px-12px border border-solid border-violet-line rounded-4px bg-violet-soft text-violet-ink text-13px cursor-pointer pointer-events-auto hover:border-[#c9b2d8] hover:bg-violet-soft-2"
+                :class="FOCUS_RING"
+                @click="store.init(canvasId)"
+              >
+                重试
+              </button>
+            </template>
+          </div>
+
+          <!-- 连线选中条（原型 .wf-selection-bar--edge：顶部居中 36px、r8、浮层投影） -->
+          <div
+            v-if="selectedEdgeId"
+            class="absolute top-10px left-50% z-6 flex h-36px items-center gap-2px px-6px py-4px border border-solid border-line rounded-8px bg-white/98 text-ink-2 text-13px shadow-[0_12px_28px_rgba(58,38,72,0.14),0_2px_6px_rgba(31,35,41,0.06)] -translate-x-50%"
+            :class="POP_FADE"
+            role="toolbar"
+            aria-label="连线操作"
+            @click.stop
+          >
+            <span class="px-5px text-ink-2 text-13px whitespace-nowrap">已选中连线</span>
+            <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
+            <button
+              type="button"
+              class="h-28px px-8px border border-solid border-transparent rounded-4px bg-transparent text-danger text-13px cursor-pointer hover:bg-[#fbeeed] hover:text-[#9b3935]"
+              :class="FOCUS_RING"
+              @click="deleteSelection"
+            >
+              断开
+            </button>
+            <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
+            <button
+              type="button"
+              class="grid w-28px h-28px p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted text-14px cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
+              :class="FOCUS_RING"
+              aria-label="取消选中"
+              title="取消选中"
+              @click="selectedEdgeId = ''"
+            >
+              ×
+            </button>
+          </div>
+
+          <!-- 多选操作条（原型 .wf-selection-bar：顶部居中 36px、r8；执行 / 复制 / 删除 / 取消选择） -->
+          <div
+            v-else-if="selectedFlowNodes.length > 1"
+            class="absolute top-10px left-50% z-6 flex h-36px items-center gap-2px px-6px py-4px border border-solid border-line rounded-8px bg-white/98 text-ink-2 text-13px shadow-[0_12px_28px_rgba(58,38,72,0.14),0_2px_6px_rgba(31,35,41,0.06)] -translate-x-50%"
+            :class="POP_FADE"
+            role="toolbar"
+            aria-label="多选节点操作"
+            @click.stop
+          >
+            <span class="px-5px text-ink-2 text-13px whitespace-nowrap" aria-live="polite"
+              >已选中 {{ selectedFlowNodes.length }} 个节点</span
+            >
+            <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
+            <button
+              type="button"
+              :class="SELECTION_BTN"
+              title="按上下游顺序执行选中的生成 / 工具节点"
+              @click="runSelectionNodes"
+            >
+              <EditorIcon name="play" :size="12" /> 执行
+            </button>
+            <button
+              type="button"
+              :class="SELECTION_BTN"
+              title="复制选中节点（含它们之间的连线）"
+              @click="duplicateSelectionNodes"
+            >
+              <EditorIcon name="copy" :size="12" /> 复制
+            </button>
+            <button
+              type="button"
+              :class="SELECTION_BTN"
+              class="!text-danger hover:!border-[#e4b7b4] hover:!bg-[#fbeeed] hover:!text-[#9b3935]"
+              title="删除选中节点（Delete）"
+              @click="confirmDeleteNodes"
+            >
+              <EditorIcon name="trash" :size="12" /> 删除
+            </button>
+            <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
+            <button
+              type="button"
+              class="grid w-28px h-28px p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted text-14px cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
+              :class="FOCUS_RING"
+              aria-label="取消选择"
+              title="取消选择（Esc）"
+              @click="clearFlowSelection"
+            >
+              ×
+            </button>
           </div>
 
           <!-- 左竖工具条（原型 .wf-toolbar-left：left 12 / 垂直居中） -->
@@ -652,11 +1087,17 @@ function openHelp() {
               <EditorIcon name="pointer" :size="18" />
             </button>
             <span class="h-1px mx-6px my-2px bg-line" aria-hidden="true" />
-            <n-dropdown trigger="click" placement="right-start" :options="addOptions" @select="onAddSelect">
-              <button type="button" :class="TOOLBAR_BTN" title="添加节点" aria-label="添加节点">
-                <EditorIcon name="plus" :size="20" />
-              </button>
-            </n-dropdown>
+            <button
+              type="button"
+              :class="[TOOLBAR_BTN, { 'is-on': addPanel && !addPanel.spawnAt }]"
+              title="添加节点（也可双击空白画布）"
+              aria-label="添加节点"
+              aria-haspopup="dialog"
+              :aria-expanded="Boolean(addPanel)"
+              @click="openAddPanel"
+            >
+              <EditorIcon name="plus" :size="20" />
+            </button>
             <span class="h-1px mx-6px my-2px bg-line" aria-hidden="true" />
             <button
               type="button"
@@ -723,27 +1164,31 @@ function openHelp() {
             <button
               type="button"
               :class="TOOLBAR_BTN"
-              aria-disabled="true"
-              title="撤销（暂未支持）"
-              aria-label="撤销（暂未支持）"
+              :aria-disabled="!canUndo || undefined"
+              title="撤销（Ctrl/Cmd+Z）"
+              aria-label="撤销"
+              @click.stop="canUndo && undoCanvas()"
             >
               <EditorIcon name="undo" :size="16" />
             </button>
             <button
               type="button"
               :class="TOOLBAR_BTN"
-              aria-disabled="true"
-              title="重做（暂未支持）"
-              aria-label="重做（暂未支持）"
+              :aria-disabled="!canRedo || undefined"
+              title="重做（Shift+Ctrl/Cmd+Z）"
+              aria-label="重做"
+              @click.stop="canRedo && redoCanvas()"
             >
               <EditorIcon name="redo" :size="16" />
             </button>
             <button
               type="button"
               :class="TOOLBAR_BTN"
-              aria-disabled="true"
-              title="批量下载所有图片 / 视频输出（暂未支持）"
-              aria-label="批量下载（暂未支持）"
+              :aria-disabled="downloading || undefined"
+              :aria-busy="downloading || undefined"
+              title="批量下载所有图片/视频输出"
+              aria-label="批量下载所有图片/视频输出"
+              @click.stop="downloadAll"
             >
               <EditorIcon name="download" :size="16" />
             </button>
@@ -751,9 +1196,33 @@ function openHelp() {
               <EditorIcon name="help" :size="16" />
             </button>
           </div>
-        </div>
 
-        <NodeParamsPanel v-if="selectedNode" :node="selectedNode" />
+          <!-- 浮动控制台（原型 CanvasConsolePanel：约 520×360，节点下方，放不下翻到上方） -->
+          <div
+            v-if="selectedNode && consoleBox && selectedFlowNodes.length <= 1"
+            class="absolute z-15"
+            :style="{
+              left: `${consoleBox.left}px`,
+              top: `${consoleBox.top}px`,
+              width: `${consoleBox.width}px`,
+              height: `${consoleBox.height}px`,
+            }"
+          >
+            <NodeParamsPanel :key="selectedNode.id" :node="selectedNode" @locate="locateNode" />
+          </div>
+
+          <NodeAddPanel
+            v-if="addPanel"
+            :x="addPanel.x"
+            :y="addPanel.y"
+            :kinds="addPanel.kinds"
+            @close="closeAddPanel"
+            @add="addFromPanel"
+          />
+
+          <!-- 图片动作面板（节点「…」菜单：识别 / 图片编辑 / 多视图 / 图层） -->
+          <ImageActionPanel v-if="activeImageAction" :key="activeImageAction.nodeId" />
+        </div>
       </div>
 
       <TitleModal
@@ -770,3 +1239,22 @@ function openHelp() {
     </div>
   </n-config-provider>
 </template>
+
+<!--
+  浮层淡入关键帧（原型 canvas-v31 §9 canvas-v31-fade：140ms ease-out、2px 下落）。
+  UnoCSS 只能引用关键帧（animate-[canvas-editor-fade_140ms_ease-out]，见 ui.ts POP_FADE），定义不了 @keyframes；
+  scoped 样式会把关键帧改名，所以放在非 scoped 块里并用画布专属名字。用独立的 translate 属性而非 transform，
+  不覆盖操作条自身的 -translate-x-50% 居中。减少动态效果时由 motion-reduce:animate-none 关掉。
+-->
+<style>
+@keyframes canvas-editor-fade {
+  from {
+    opacity: 0;
+    translate: 0 -2px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+</style>

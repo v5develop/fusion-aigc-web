@@ -10,7 +10,7 @@ import EditorIcon from '../EditorIcon.vue'
 import RunErrorNotice from '../RunErrorNotice.vue'
 import { useCanvasEditor } from '../useCanvasEditor.ts'
 import type { CanvasNodeData } from '../types.ts'
-import { portClass, portLabelClass } from '../ports.ts'
+import { PORT_UNWIRED, portClass, portLabelClass } from '../ports.ts'
 import { normalizeHandle } from '../graph.ts'
 import {
   CHECKER_BG,
@@ -20,13 +20,16 @@ import {
   NODE_CARD_SELECTED,
   NODE_HEAD,
   NODE_ICON_BTN,
+  NODE_NOTICE,
   NODE_RUN_BTN,
   NODE_TITLE,
   PORT_COUNT,
-  type QuickAddKind,
+  PORT_COUNT_VIDEO,
+  type IQuickAddRequest,
 } from '../ui.ts'
 import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
+import NodeResize from '../NodeResize.vue'
 
 const props = defineProps<{
   id: string
@@ -34,7 +37,7 @@ const props = defineProps<{
   selected?: boolean
 }>()
 
-const emit = defineEmits<{ remove: []; quickAdd: [kind: QuickAddKind] }>()
+const emit = defineEmits<{ remove: []; quickAdd: [request: IQuickAddRequest] }>()
 
 const store = useCanvasEditor()
 
@@ -42,6 +45,8 @@ const isVideo = computed(() => props.data.kind === 'video')
 const isRunning = computed(() => props.data.status === 'running' || props.data.status === 'queued')
 const width = computed(() => props.data.width ?? (isVideo.value ? 338 : 318))
 const candidates = computed(() => props.data.candidates ?? [])
+/** 提示词口位置：图片模型 30%、视频模型 20%（原型 CanvasModelNode） */
+const promptTop = computed(() => (isVideo.value ? '20%' : '30%'))
 const selectedIdx = computed(() => props.data.selectedCandidate ?? 0)
 
 /** 头部副标题：模型名（与标题相同时不重复，同原型） */
@@ -72,6 +77,22 @@ function onMediaLoad(event: Event) {
   const w = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth
   const h = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight
   if (w && h) naturalRatio.value = w / h
+}
+
+/** 已接线的输入口（原文 targetHandle 与归一化后的口名都记上），未接线的口常驻半透明 */
+const wired = computed(() => {
+  const set = new Set<string>()
+  for (const edge of store.edges.value) {
+    if (edge.target !== props.id) continue
+    if (edge.targetHandle) set.add(edge.targetHandle)
+    const normalized = normalizeHandle(edge.targetHandle)
+    if (normalized) set.add(normalized)
+  }
+  return set
+})
+
+function portCls(tone: 'prompt' | 'image' | 'video', handle: string) {
+  return [portClass(tone), wired.value.has(handle) ? '' : PORT_UNWIRED]
 }
 
 const partial = computed(() => {
@@ -117,9 +138,13 @@ function onSelectCandidate(index: number) {
           :aria-label="`${data.title} 参数设置`"
           @click.stop="store.selectNode(id)"
         >
-          <EditorIcon name="settings" :size="14" />
+          <EditorIcon name="settings" :size="13" />
         </button>
-        <NodeMenu :title="data.title || '生成节点'" @remove="emit('remove')" />
+        <NodeMenu
+          :title="data.title || '生成节点'"
+          :image-actions-for="isVideo || data.inputOnly ? undefined : id"
+          @remove="emit('remove')"
+        />
       </div>
     </header>
 
@@ -147,7 +172,7 @@ function onSelectCandidate(index: number) {
           class="block w-full h-full object-contain"
           @load="onMediaLoad"
         />
-        <div v-else class="flex flex-col items-center justify-center gap-8px text-placeholder text-11px">
+        <div v-else class="flex flex-col items-center justify-center gap-8px text-muted text-11px">
           <span class="grid w-40px h-40px place-items-center border border-solid border-line rounded-full text-ink-2">
             <EditorIcon :name="isVideo ? 'video' : 'play'" :size="18" />
           </span>
@@ -155,19 +180,16 @@ function onSelectCandidate(index: number) {
         </div>
       </div>
 
-      <div
-        v-if="isRunning"
-        class="flex items-center gap-6px mt-6px px-8px py-5px border border-solid border-line-soft rounded-4px bg-surface2 text-muted text-11px"
-      >
+      <div v-if="isRunning" :class="NODE_NOTICE" class="border border-solid border-line-soft bg-surface2 text-muted">
         <span
-          class="shrink-0 w-12px h-12px border-[1.5px] border-solid border-violet-line border-t-violet rounded-full animate-spin"
+          class="shrink-0 w-12px h-12px border-[1.5px] border-solid border-violet-line border-t-violet rounded-full animate-spin animate-duration-800"
         />
         {{ data.status === 'queued' ? '排队中…' : `生成中…${data.progress ? ` ${data.progress}%` : ''}` }}
       </div>
       <RunErrorNotice v-else-if="data.status === 'error'" :node-id="id" :data="data" />
       <div
         v-else-if="partial"
-        class="flex items-center gap-6px mt-6px px-8px py-5px border border-solid border-success-line rounded-4px text-11px bg-success-soft text-success"
+        class="mt-6px px-8px py-3px rounded-5px bg-[#fff7e6] text-[#b45309] text-10px font-500 text-center"
       >
         成功 {{ candidates.length }}/{{ data.requestedCount }} · 只计成功张数
       </div>
@@ -189,26 +211,70 @@ function onSelectCandidate(index: number) {
       </div>
     </div>
 
-    <span :class="portLabelClass('prompt')" :style="{ top: '26%' }">提示词</span>
-    <Handle id="prompt" type="target" :position="Position.Left" :class="portClass('prompt')" :style="{ top: '26%' }" />
+    <span :class="portLabelClass('prompt')" :style="{ top: promptTop }"
+      >提示词<span class="ml-2px text-11px">*</span></span
+    >
+    <Handle
+      id="prompt"
+      type="target"
+      :position="Position.Left"
+      :class="portCls('prompt', 'prompt')"
+      :style="{ top: promptTop }"
+      aria-label="提示词输入"
+    />
 
     <template v-if="isVideo">
       <span :class="portLabelClass('image')" :style="{ top: '42%' }">首帧</span>
-      <Handle id="image1" type="target" :position="Position.Left" :class="portClass('image')" :style="{ top: '42%' }" />
-      <span :class="portLabelClass('image')" :style="{ top: '56%' }">尾帧</span>
-      <Handle id="image2" type="target" :position="Position.Left" :class="portClass('image')" :style="{ top: '56%' }" />
+      <Handle
+        id="image1"
+        type="target"
+        :position="Position.Left"
+        :class="portCls('image', 'image1')"
+        :style="{ top: '42%' }"
+        aria-label="首帧输入"
+      />
+      <span :class="portLabelClass('image')" :style="{ top: '60%' }">尾帧</span>
+      <Handle
+        id="image2"
+        type="target"
+        :position="Position.Left"
+        :class="portCls('image', 'image2')"
+        :style="{ top: '60%' }"
+        aria-label="尾帧输入"
+      />
       <!-- 参考图 / 参考视频口（契约 4.2 元素替换模板、6.1 规则表）：缺了这两个口，模板里的连线渲染不出来 -->
-      <span :class="portLabelClass('image')" :style="{ top: '70%' }">参考图</span>
-      <Handle id="image" type="target" :position="Position.Left" :class="portClass('image')" :style="{ top: '70%' }" />
-      <span :class="portLabelClass('video')" :style="{ top: '84%' }">参考视频</span>
-      <Handle id="video" type="target" :position="Position.Left" :class="portClass('video')" :style="{ top: '84%' }" />
+      <span :class="portLabelClass('image')" :style="{ top: '75%' }">参考图</span>
+      <Handle
+        id="image"
+        type="target"
+        :position="Position.Left"
+        :class="portCls('image', 'image')"
+        :style="{ top: '75%' }"
+        aria-label="参考图输入"
+      />
+      <span :class="portLabelClass('video')" :style="{ top: '89%' }">参考视频</span>
+      <Handle
+        id="video"
+        type="target"
+        :position="Position.Left"
+        :class="portCls('video', 'video')"
+        :style="{ top: '89%' }"
+        aria-label="参考视频输入"
+      />
     </template>
     <template v-else>
-      <span :class="portLabelClass('image')" :style="{ top: '62%' }"
+      <span :class="portLabelClass('image')" :style="{ top: '66%' }"
         >参考图 · {{ imageRefCount }}{{ data.maxImageRefs ? `/${data.maxImageRefs}` : '' }}</span
       >
-      <Handle id="image" type="target" :position="Position.Left" :class="portClass('image')" :style="{ top: '62%' }" />
-      <span :class="PORT_COUNT" class="left-12px" :style="{ top: '62%' }" aria-hidden="true">{{ imageRefCount }}</span>
+      <Handle
+        id="image"
+        type="target"
+        :position="Position.Left"
+        :class="portCls('image', 'image')"
+        :style="{ top: '66%' }"
+        aria-label="参考图输入"
+      />
+      <span :class="PORT_COUNT" class="left-12px" :style="{ top: '66%' }" aria-hidden="true">{{ imageRefCount }}</span>
     </template>
 
     <!-- 参考视频素材节点（inputOnly）在模板里以 sourceHandle=video 连出 -->
@@ -216,14 +282,20 @@ function onSelectCandidate(index: number) {
       :id="data.inputOnly ? 'video' : 'image-out'"
       type="source"
       :position="Position.Right"
-      :class="portClass(data.inputOnly ? 'video' : 'out')"
+      :class="portClass(data.inputOnly || isVideo ? 'video' : 'out')"
     />
-    <span v-if="!data.inputOnly" :class="PORT_COUNT" class="right-10px" :style="{ top: '50%' }" aria-hidden="true"
+    <span
+      v-if="!data.inputOnly"
+      :class="[PORT_COUNT, isVideo ? PORT_COUNT_VIDEO : '']"
+      class="right-10px"
+      :style="{ top: '50%' }"
+      aria-hidden="true"
       >1</span
     >
     <NodeQuickAdd
       :kinds="data.inputOnly ? ['video-model'] : ['image-model', 'video-model', 'tool']"
-      @pick="emit('quickAdd', $event)"
+      @open="emit('quickAdd', $event)"
     />
+    <NodeResize :id="id" kind="model" :title="data.title || '生成节点'" />
   </div>
 </template>

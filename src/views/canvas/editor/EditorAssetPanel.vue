@@ -92,7 +92,7 @@ function thumbOf(node: CanvasEditorNode) {
 
     <template v-if="!collapsed">
       <label
-        class="flex shrink-0 h-32px items-center gap-6px mx-12px mt-10px px-8px border border-solid border-line-strong rounded-4px bg-white text-placeholder shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)] focus-within:border-violet"
+        class="flex shrink-0 h-32px items-center gap-6px mx-12px mt-10px px-8px border border-solid border-control rounded-4px bg-white text-placeholder shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] focus-within:border-violet focus-within:shadow-[0_0_0_3px_rgba(135,95,154,0.14),inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
       >
         <EditorIcon name="search" :size="13" />
         <input
@@ -122,7 +122,7 @@ function thumbOf(node: CanvasEditorNode) {
           :class="[
             FOCUS_RING,
             {
-              '!border-violet-line !bg-violet-soft shadow-[inset_0_1px_2px_rgba(31,35,41,0.1)]':
+              '!border-violet-line !bg-violet-soft shadow-[inset_0_1px_2px_rgba(31,35,41,0.1),inset_0_0_0_1px_rgba(31,35,41,0.03)]':
                 selectedNodeId === node.id,
             },
           ]"
@@ -157,7 +157,7 @@ function thumbOf(node: CanvasEditorNode) {
 
       <button
         type="button"
-        class="flex shrink-0 h-32px items-center justify-center gap-6px mx-12px mt-8px px-9px border border-solid border-line-strong rounded-4px bg-white text-ink-2 text-13px cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(31,35,41,0.05)] hover:border-violet-line hover:bg-violet-soft hover:text-violet-ink"
+        class="flex shrink-0 h-32px items-center justify-center gap-6px mx-12px mt-8px px-9px border border-solid border-control rounded-4px bg-gradient-to-b from-white to-#fbfcfc text-ink-2 text-13px cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] hover:border-violet-line hover:from-violet-soft hover:to-violet-soft hover:text-violet-ink"
         :class="FOCUS_RING"
         @click="emit('addFromLibrary')"
       >

@@ -87,6 +87,8 @@ export interface CanvasNodeData {
   maskBox?: { x: number; y: number; w: number; h: number }
   resultText?: string
   resultImage?: string
+  // ---- 图片动作产物（编辑 / 多视图 / 图层写回的结果图节点；有值即可删除，不同于模板承接的结果图） ----
+  actionOrigin?: 'edit' | 'multiview' | 'layer'
   // ---- 模板分组框 ----
   color?: string
   // ---- 运行态（服务端回填 / 本地轮询写回，保存时被剥离） ----

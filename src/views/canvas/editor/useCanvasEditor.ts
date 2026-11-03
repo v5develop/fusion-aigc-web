@@ -35,6 +35,7 @@ import {
   makeToolNode,
   makeVideoNode,
   nextEdgeId,
+  nextNodeId,
   normalizeHandle,
   renumberDefaultTitles,
   spawnPosition,
@@ -159,6 +160,154 @@ function signature(): string {
 
 const dirty = computed(() => ready.value && signature() !== lastSignature)
 
+// ---------------- 撤销 / 重做（对齐原型 useCanvasStore history：past / future 两栈，上限 60） ----------------
+
+/** 原型 pushHistory 的栈上限 */
+const HISTORY_LIMIT = 60
+/** 连续输入 / 拖拽合并成一步的静默时长 */
+const HISTORY_SETTLE_MS = 400
+
+interface IHistoryEntry {
+  snapshot: CanvasEditorSnapshot
+  signature: string
+}
+
+const historyPast = ref<IHistoryEntry[]>([])
+const historyFuture = ref<IHistoryEntry[]>([])
+/** 最近一次「稳定」的内容：下一次用户改动落定时把它压入 past */
+let historyBase: IHistoryEntry | null = null
+let historyTimer: ReturnType<typeof setTimeout> | null = null
+/** 有尚未落定的用户改动（静默期内）：撤销按钮也应可点，点击时先落定再撤销 */
+const historyPending = ref(false)
+/** 撤销 / 重做回填中（节点、连线分两拍写入）：期间的变化不记历史 */
+let historyRestoring = false
+
+/** 用户内容签名：与脏检测同口径排除运行态 / 成品字段（轮询、执行、自动保存都不产生历史），标题不进历史（原型撤销不回退标题） */
+function contentSignature(): string {
+  return JSON.stringify({
+    nodes: nodes.value.map((node) => ({ id: node.id, type: node.type, p: node.position, d: slimData(node) })),
+    edges: edges.value.map((edge) => ({
+      id: edge.id,
+      s: edge.source,
+      t: edge.target,
+      sh: edge.sourceHandle ?? '',
+      th: edge.targetHandle ?? '',
+      d: edge.data ?? null,
+    })),
+  })
+}
+
+function captureHistory(): IHistoryEntry {
+  return { snapshot: buildSnapshot(), signature: contentSignature() }
+}
+
+function clearHistoryTimer(): void {
+  historyPending.value = false
+  if (historyTimer) {
+    clearTimeout(historyTimer)
+    historyTimer = null
+  }
+}
+
+/** 清空两栈并以当前内容为基线（加载 / 切换画布时调用；ready 为假时只清空） */
+function resetHistory(): void {
+  clearHistoryTimer()
+  historyPast.value = []
+  historyFuture.value = []
+  historyBase = ready.value ? captureHistory() : null
+}
+
+/** 把待落定的用户改动记为一步：基线压入 past，清空 future */
+function commitHistory(): void {
+  clearHistoryTimer()
+  if (!historyBase || historyRestoring || !ready.value) return
+  const current = captureHistory()
+  if (current.signature === historyBase.signature) return
+  historyPast.value.push(historyBase)
+  if (historyPast.value.length > HISTORY_LIMIT) historyPast.value.shift()
+  historyFuture.value = []
+  historyBase = current
+}
+
+const historySignature = computed(() => (ready.value ? contentSignature() : ''))
+
+watch(historySignature, (sig) => {
+  if (!sig || historyRestoring || !historyBase) return
+  clearHistoryTimer()
+  historyPending.value = sig !== historyBase.signature
+  historyTimer = setTimeout(commitHistory, HISTORY_SETTLE_MS)
+})
+
+/** 回填历史快照：节点上的运行态 / 成品沿用当前值（不打断轮询、不回退执行结果），节点先挂载、连线下一拍再补 */
+async function restoreHistory(entry: IHistoryEntry): Promise<void> {
+  historyRestoring = true
+  const targetId = canvasId
+  try {
+    const live = new Map(nodes.value.map((node) => [node.id, node]))
+    const snap = JSON.parse(JSON.stringify(entry.snapshot)) as CanvasEditorSnapshot
+    const restored = snap.nodes.map((node) => {
+      const current = live.get(node.id)
+      if (current) {
+        const from = current.data as unknown as Record<string, unknown>
+        const to = node.data as unknown as Record<string, unknown>
+        const keepProduct = (node.type === 'model' || node.type === 'tool') && !node.data.inputOnly
+        for (const key of [...RUNTIME_KEYS, ...(keepProduct ? PRODUCT_KEYS : [])]) {
+          if (from[key] === undefined) delete to[key]
+          else to[key] = JSON.parse(JSON.stringify(from[key]))
+        }
+      }
+      return node as CanvasEditorNode
+    })
+    nodes.value = restored
+    await nextTick()
+    if (targetId !== canvasId) return
+    edges.value = snap.edges as CanvasEditorEdge[]
+    if (selectedNodeId.value && !findNode(selectedNodeId.value)) selectedNodeId.value = ''
+    await nextTick()
+    if (targetId !== canvasId) return
+    resumePollers()
+  } finally {
+    historyRestoring = false
+    if (targetId === canvasId && ready.value) historyBase = captureHistory()
+  }
+}
+
+let historyBusy = false
+
+async function undo(): Promise<boolean> {
+  if (!ready.value || historyBusy) return false
+  commitHistory()
+  const previous = historyPast.value.pop()
+  if (!previous || !historyBase) return false
+  historyBusy = true
+  try {
+    historyFuture.value.push(historyBase)
+    await restoreHistory(previous)
+    return true
+  } finally {
+    historyBusy = false
+  }
+}
+
+async function redo(): Promise<boolean> {
+  if (!ready.value || historyBusy) return false
+  commitHistory()
+  const next = historyFuture.value.pop()
+  if (!next || !historyBase) return false
+  historyBusy = true
+  try {
+    historyPast.value.push(historyBase)
+    if (historyPast.value.length > HISTORY_LIMIT) historyPast.value.shift()
+    await restoreHistory(next)
+    return true
+  } finally {
+    historyBusy = false
+  }
+}
+
+const canUndo = computed(() => historyPast.value.length > 0 || historyPending.value)
+const canRedo = computed(() => historyFuture.value.length > 0)
+
 function findNode(id: string): CanvasEditorNode | undefined {
   return nodes.value.find((node) => node.id === id)
 }
@@ -252,6 +401,7 @@ async function init(id: string): Promise<boolean> {
   submittingNodes.clear()
   cancelRequested.clear()
   selectedNodeId.value = ''
+  resetHistory()
   try {
     const res = await canvasGet(id)
     if (seq !== initSeq) return false
@@ -271,6 +421,7 @@ async function init(id: string): Promise<boolean> {
     saveState.value = 'saved'
     saveError.value = ''
     reconcileCatalogLimits()
+    resetHistory()
     resumePollers()
     return true
   } catch (error) {
@@ -449,12 +600,16 @@ function selectNode(id: string): void {
 
 const selectedNode = computed(() => (selectedNodeId.value ? findNode(selectedNodeId.value) : undefined))
 
+/**
+ * @param position 指定落点（添加面板：双击画布 / 端口「+」的位置）；不传沿用 spawnPosition 自动排布
+ */
 function addNode(
   kind: 'text' | 'image' | 'video' | 'image-model' | 'video-model' | 'tool',
   tool?: CanvasToolKind,
+  position?: { x: number; y: number },
 ): CanvasEditorNode | undefined {
   if (!ready.value) return undefined
-  const at = spawnPosition(nodes.value)
+  const at = position ? { x: Math.round(position.x), y: Math.round(position.y) } : spawnPosition(nodes.value)
   let created: CanvasEditorNode
   if (kind === 'text') created = makeTextNode(at)
   else if (kind === 'image') created = makeImageNode(at)
@@ -558,6 +713,95 @@ function removeNode(id: string): void {
   edges.value = edges.value.filter((edge) => edge.source !== id && edge.target !== id)
   if (selectedNodeId.value === id) selectedNodeId.value = ''
   renumberDefaultTitles(nodes.value)
+}
+
+/** 批量删除（多选操作条 / 模块删除）：节点与相连连线一次性移除，撤销时作为一步回退 */
+function removeNodes(ids: string[]): number {
+  const drop = new Set(ids.filter((id) => findNode(id)))
+  if (!drop.size) return 0
+  nodes.value = nodes.value.filter((node) => !drop.has(node.id))
+  edges.value = edges.value.filter((edge) => !drop.has(edge.source) && !drop.has(edge.target))
+  if (drop.has(selectedNodeId.value)) selectedNodeId.value = ''
+  renumberDefaultTitles(nodes.value)
+  return drop.size
+}
+
+/** 模块底板的范围内节点（左上角落在底板矩形里即算模块内；模块本身不算） */
+function moduleChildren(moduleId: string): CanvasEditorNode[] {
+  const module = findNode(moduleId)
+  if (!module || module.type !== 'module') return []
+  const { x, y } = module.position
+  const w = module.data.width ?? 760
+  const h = module.data.height ?? 520
+  return nodes.value.filter(
+    (node) =>
+      node.id !== moduleId &&
+      node.type !== 'module' &&
+      node.position.x >= x &&
+      node.position.x <= x + w &&
+      node.position.y >= y &&
+      node.position.y <= y + h,
+  )
+}
+
+/** 删除模块：底板与其范围内的节点（含相连连线）一起移除 */
+function removeModule(moduleId: string): number {
+  if (findNode(moduleId)?.type !== 'module') return 0
+  return removeNodes([moduleId, ...moduleChildren(moduleId).map((node) => node.id)])
+}
+
+const ID_PREFIX: Record<CanvasEditorNode['type'], string> = {
+  text: 't',
+  image: 'n',
+  video: 'v',
+  model: 'm',
+  tool: 'tool',
+  module: 'mod',
+}
+
+/**
+ * 复制节点（多选操作条）：只复制用户内容（剔除运行态，生成 / 工具节点的成品也不带），
+ * 位置错开 40；被复制节点之间的连线一并复制。返回新节点 id。
+ */
+function duplicateNodes(ids: string[]): string[] {
+  const sources = ids.map((id) => findNode(id)).filter((node): node is CanvasEditorNode => Boolean(node))
+  if (!sources.length) return []
+  const idMap = new Map<string, string>()
+  const created: CanvasEditorNode[] = sources.map((node) => {
+    const id = nextNodeId(ID_PREFIX[node.type])
+    idMap.set(node.id, id)
+    const data = JSON.parse(JSON.stringify(slimData(node))) as CanvasEditorNodeData
+    if (node.type === 'model' || node.type === 'tool') data.status = 'idle'
+    return {
+      id,
+      type: node.type,
+      position: { x: node.position.x + 40, y: node.position.y + 40 },
+      data,
+      ...(node.draggable === false ? { draggable: false } : {}),
+      ...(node.selectable === false ? { selectable: false } : {}),
+      ...(typeof node.zIndex === 'number' ? { zIndex: node.zIndex } : {}),
+    }
+  })
+  const copiedEdges: CanvasEditorEdge[] = edges.value
+    .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+    .map((edge) => ({
+      id: nextEdgeId(),
+      source: idMap.get(edge.source) ?? edge.source,
+      target: idMap.get(edge.target) ?? edge.target,
+      sourceHandle: edge.sourceHandle ?? undefined,
+      targetHandle: edge.targetHandle ?? undefined,
+      type: 'canvas-bezier' as const,
+      data: edge.data ? { ...edge.data } : undefined,
+    }))
+  nodes.value = [...nodes.value, ...created]
+  renumberDefaultTitles(nodes.value)
+  // 节点先挂载（Handle 就绪）再补连线，同加载时的顺序
+  if (copiedEdges.length) {
+    void nextTick(() => {
+      edges.value = [...edges.value, ...copiedEdges.filter((edge) => findNode(edge.source) && findNode(edge.target))]
+    })
+  }
+  return created.map((node) => node.id)
 }
 
 // ---------------- 执行节点（幂等提交 + 轮询 + 取消） ----------------
@@ -1069,10 +1313,17 @@ async function loadCatalog(): Promise<void> {
  */
 function reconcileCatalogLimits(): void {
   if (!catalog.value || !ready.value) return
+  // 目录收窄是系统修正、不是用户操作：先落定待记的改动，修正后重设基线，不产生撤销步
+  commitHistory()
+  let changed = false
   for (const node of nodes.value) {
     const cap = catalogOf(node)?.max_image_refs ?? 0
-    if (cap > 0 && (node.data.maxImageRefs ?? 0) > cap) node.data.maxImageRefs = cap
+    if (cap > 0 && (node.data.maxImageRefs ?? 0) > cap) {
+      node.data.maxImageRefs = cap
+      changed = true
+    }
   }
+  if (changed && historyBase) historyBase = captureHistory()
 }
 
 export function useCanvasEditor() {
@@ -1093,6 +1344,8 @@ export function useCanvasEditor() {
     selectedNode,
     runningCount,
     catalog,
+    canUndo,
+    canRedo,
     // 生命周期
     init,
     loadCatalog,
@@ -1105,6 +1358,7 @@ export function useCanvasEditor() {
       stopAllPollers()
       ready.value = false
       selectedNodeId.value = ''
+      resetHistory()
     },
     // 选择 / 编辑
     selectNode,
@@ -1115,6 +1369,13 @@ export function useCanvasEditor() {
     connect,
     removeEdgeById,
     removeNode,
+    removeNodes,
+    moduleChildren,
+    removeModule,
+    duplicateNodes,
+    // 撤销 / 重做
+    undo,
+    redo,
     // 保存
     saveNow: () => enqueueSave(),
     overwriteSave: () => enqueueSave(true),

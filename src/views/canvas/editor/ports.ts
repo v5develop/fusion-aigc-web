@@ -15,11 +15,11 @@ const PORT_BASE = 'w-10px h-10px min-w-10px min-h-10px rounded-full border-[1.5p
  * 外圈 1px 浅色环同原型 canvas-v31 `.wf-model-port` 的 box-shadow。
  */
 const PORT_TONE: Record<PortTone, string> = {
-  prompt: 'bg-success shadow-[0_0_0_1px_#c7e3d5]',
-  text: 'bg-success shadow-[0_0_0_1px_#c7e3d5]',
+  prompt: 'bg-success shadow-[0_0_0_1px_#bcd8c9]',
+  text: 'bg-success shadow-[0_0_0_1px_#bcd8c9]',
   image: 'bg-violet shadow-[0_0_0_1px_#d9c7e3]',
   out: 'bg-violet shadow-[0_0_0_1px_#d9c7e3]',
-  video: 'bg-danger shadow-[0_0_0_1px_#ecc9c6]',
+  video: 'bg-danger shadow-[0_0_0_1px_#e4b7b4]',
   garment: 'bg-violet-deep shadow-[0_0_0_1px_#d9c7e3]',
   models: 'bg-[#2f80ed] shadow-[0_0_0_1px_#d9c7e3]',
 }
@@ -30,11 +30,11 @@ export function portClass(tone: PortTone): string {
 
 /** 端口标签：原型 v3.1 `.wf-port-label.is-*` 浅底 + 同色字 + 细描边（r4 / 11px / 600） */
 const LABEL_TONE: Record<PortTone, string> = {
-  prompt: 'bg-success-soft text-success border-success-line',
-  text: 'bg-success-soft text-success border-success-line',
+  prompt: 'bg-[#eaf3ee] text-success border-[#bcd8c9]',
+  text: 'bg-[#eaf3ee] text-success border-[#bcd8c9]',
   image: 'bg-violet-soft text-violet-ink border-violet-line',
   out: 'bg-violet-soft text-violet-ink border-violet-line',
-  video: 'bg-danger-soft text-danger border-danger-line',
+  video: 'bg-[#fbeeed] text-danger border-[#e4b7b4]',
   garment: 'bg-violet-soft text-violet-deep border-violet-line',
   models: 'bg-violet-soft text-[#2f80ed] border-violet-line',
 }
@@ -45,6 +45,12 @@ const LABEL_BASE =
 export function portLabelClass(tone: PortTone): string {
   return `${LABEL_BASE} ${LABEL_TONE[tone]}`
 }
+
+/**
+ * 生成节点的输入口：未接线时常驻 55% 透明，悬停 / 选中节点或已接线时不透明
+ * （原型 CanvasModelNode `.wf-model-port:not(.is-wired)`）。
+ */
+export const PORT_UNWIRED = 'opacity-55 group-hover:opacity-100 [.is-selected_&]:opacity-100'
 
 /** 连线显示色：快照里 data.color 仍存原始色值（与原型、服务端一致），渲染时映射到主题色 */
 const EDGE_DEFAULT = '#875f9a'

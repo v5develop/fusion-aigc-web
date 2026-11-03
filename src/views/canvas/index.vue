@@ -17,22 +17,25 @@ import CanvasDetail from './CanvasDetail.vue'
 
 defineOptions({ name: 'canvas-page' })
 
-/** 首页模板卡（原型文案）：仅展示，点击统一打开「从模板创建」弹层，实际模板仍取自接口 */
+/** 首页模板卡（原型文案）：仅展示，点击统一打开「从模板创建」弹层，实际模板仍取自接口；色块取自原型 canvasTemplates（v3 外壳） */
 const HOME_TEMPLATES = [
-  { title: '模特换装', desc: '人物图 + 单品图，保脸保姿势，只换衣服', tint: 'bg-surface3' },
-  { title: '商品三视图', desc: '一张商品图，生成正/侧/背三视图，白底一致', tint: 'bg-success-soft' },
-  { title: '元素替换', desc: '参考视频 + 3 张元素图，只换局部元素', tint: 'bg-warning-soft' },
+  { title: '模特换装', desc: '人物图 + 单品图，保脸保姿势，只换衣服', tint: 'bg-[rgba(135,95,154,0.09)]' },
+  { title: '商品三视图', desc: '一张商品图，生成正/侧/背三视图，白底一致', tint: 'bg-[rgba(20,184,166,0.10)]' },
+  { title: '元素替换', desc: '参考视频 + 3 张元素图，只换局部元素', tint: 'bg-[rgba(249,115,22,0.10)]' },
 ]
 
-/** 原型装饰小卡：阴影取自原型计算样式；旋转角原型未导出，按截图估算 */
+/** 原型装饰小卡（CanvasHomeView .ch-mini-node + canvas-v31 覆盖）：宽 148、内边距 9/11、r8、11px；旋转角取自原型源码 */
 const DECO_CLS =
-  'absolute flex flex-col gap-6px w-146px px-12px py-12px rounded-6px border border-solid border-line bg-white text-ink-2 text-11px leading-[1.4] text-left shadow-[0_1px_2px_0_rgba(16,24,40,0.06)] [&_small]:(text-10px text-muted)'
+  'absolute flex flex-col gap-3px w-148px px-11px py-9px rounded-8px border border-solid border-line bg-white/90 text-ink-2 text-11px text-left shadow-[0_1px_2px_rgba(16,24,40,0.06)] [&_small]:(text-11px text-muted)'
 
-/** 原型白底按钮：白渐变 + 内高光 / 内底线 + 短投影，过渡 0.12s ease */
-const BTN_WHITE_SHADOW =
-  'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),inset_0_-1px_0_0_rgba(31,35,41,0.04),0_1px_2px_0_rgba(31,35,41,0.05)]'
+/** 原型 .ch-btn（v3）：高 30、r4、13px/500，白渐变 + 内高光 / 内底线 + 短投影，过渡 0.12s ease */
+const BTN_SHADOW =
+  'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]'
 const BTN_BASE =
-  'inline-flex items-center justify-center gap-6px rounded-6px border border-solid cursor-pointer transition-[background,border-color,box-shadow] duration-120 ease-[ease] focus-visible:(outline outline-2 outline-violet outline-offset-2)'
+  'inline-flex items-center justify-center gap-6px rounded-4px border border-solid text-13px font-500 cursor-pointer transition-[background,border-color,box-shadow] duration-120 ease-[ease] focus-visible:(outline outline-2 outline-violet outline-offset-2)'
+const BTN_DEFAULT = `${BTN_BASE} ${BTN_SHADOW} h-30px px-10px border-#c9cfd6 bg-gradient-to-b from-white to-#fbfcfc text-ink-2 hover:(border-#aeb6bf from-surface2 to-surface2 text-ink)`
+/** 原型 .ch-btn.is-lg：高 34、内边距 16 */
+const BTN_LG = `${BTN_BASE} ${BTN_SHADOW} h-34px px-16px`
 
 const ACTION_CLS =
   'p-0 border-none bg-transparent text-12px text-violet cursor-pointer hover:text-violet-press focus-visible:(outline outline-2 outline-violet outline-offset-2)'
@@ -216,12 +219,14 @@ async function doSaveAs(title: string) {
 
 <template>
   <n-config-provider :theme-overrides="llTheme" abstract>
-    <div class="canvas-page flex flex-col h-full bg-page text-ink">
-      <header class="flex items-center gap-10px shrink-0 h-48px px-18px bg-white border-b border-b-solid border-line">
-        <div class="flex items-center gap-10px text-ink-2">
-          <span class="grid place-items-center w-22px h-22px rounded-6px border border-solid border-line bg-surface3">
+    <div class="canvas-page flex flex-col h-full bg-page text-ink-2">
+      <header class="flex items-center gap-10px shrink-0 h-48px px-16px bg-white border-b border-b-solid border-line">
+        <div class="flex items-center gap-8px text-ink">
+          <span
+            class="grid place-items-center w-26px h-26px rounded-6px border border-solid border-line bg-surface2 text-ink-2"
+          >
             <svg
-              class="w-14px h-14px"
+              class="w-18px h-18px"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -238,15 +243,7 @@ async function doSaveAs(title: string) {
           <h1 class="m-0 text-14px font-600 text-ink">画布</h1>
         </div>
         <div class="flex items-center gap-8px ml-auto">
-          <button
-            type="button"
-            :class="[
-              BTN_BASE,
-              BTN_WHITE_SHADOW,
-              'h-30px px-12px border-line-strong bg-gradient-to-b from-white to-#fbfcfc text-ink-2 text-13px hover:(border-#aeb6bf text-ink)',
-            ]"
-            @click="showTemplates = true"
-          >
+          <button type="button" :class="BTN_DEFAULT" @click="showTemplates = true">
             <svg
               class="w-15px h-15px"
               viewBox="0 0 24 24"
@@ -266,7 +263,7 @@ async function doSaveAs(title: string) {
             type="button"
             :class="[
               BTN_BASE,
-              'h-30px px-12px border-violet-border bg-gradient-to-b from-violet-top to-violet-bottom text-white text-13px shadow-[inset_0_1px_0_0_rgba(255,255,255,0.16),0_1px_1px_0_rgba(90,60,110,0.18),0_2px_4px_0_rgba(90,60,110,0.18)] hover:(from-#9a6fae to-#875c9a border-violet-press) active:(from-violet-press to-violet-press shadow-[inset_0_1px_3px_rgba(40,24,48,0.35)])',
+              'h-30px px-10px border-violet-border bg-gradient-to-b from-violet-top to-violet-bottom text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_1px_rgba(90,60,110,0.18),0_2px_4px_rgba(90,60,110,0.18)] hover:(from-#926ba6 to-#835a96) active:(border-violet-press from-violet-deep to-violet-press shadow-[inset_0_1px_3px_rgba(31,35,41,0.24)])',
             ]"
             @click="showCreate = true"
           >
@@ -277,15 +274,15 @@ async function doSaveAs(title: string) {
       </header>
 
       <main class="canvas-scroll flex-1 min-h-0 overflow-auto">
-        <div class="w-[min(1240px,calc(100%-48px))] mx-auto pt-22px pb-56px">
+        <div class="w-[min(1240px,calc(100%-48px))] mx-auto pt-24px pb-48px">
           <section
-            class="relative flex flex-col items-center justify-center min-h-246px px-20px py-24px rounded-10px border border-dashed border-line-strong bg-white text-center"
+            class="relative flex flex-col items-center justify-center min-h-188px px-20px pt-22px pb-26px text-center"
           >
             <span
-              class="inline-flex items-center gap-6px h-24px px-10px rounded-999px border border-solid border-violet-line bg-violet-soft text-violet-ink text-11px tracking-[0.08em] uppercase"
+              class="inline-flex items-center gap-5px px-9px py-3px rounded-999px border border-solid border-violet-line bg-violet-soft text-violet-ink text-11px tracking-[0.06em]"
             >
               <svg
-                class="w-12px h-12px"
+                class="w-13px h-13px"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -301,161 +298,193 @@ async function doSaveAs(title: string) {
               </svg>
               AI CREATION · CANVAS
             </span>
-            <h2 class="mt-14px mb-12px text-20px leading-[1.4] font-700 text-ink">从一张画布开始</h2>
-            <p class="m-0 max-w-560px text-13px leading-[1.6] text-muted">
+            <h2 class="mt-12px mb-7px text-20px font-600 tracking-[0.01em] text-ink">从一张画布开始</h2>
+            <p class="m-0 max-w-560px text-13px leading-[1.65] text-muted">
               把提示词、素材和模型串成一条链路，也可以直接从模板复制一套。
             </p>
-            <div class="flex gap-8px mt-20px">
+            <div class="flex gap-8px mt-18px">
               <button
                 type="button"
                 :class="[
-                  BTN_BASE,
-                  BTN_WHITE_SHADOW,
-                  'h-32px px-16px border-line-strong bg-gradient-to-b from-white to-#fbfcfc text-violet-ink text-13px hover:(border-violet-line bg-violet-soft)',
+                  BTN_LG,
+                  'border-violet-line bg-gradient-to-b from-white to-#fbfcfc text-violet-ink hover:(border-#c9b2d8 from-violet-soft to-violet-soft)',
                 ]"
                 @click="showCreate = true"
               >
-                <span aria-hidden="true" class="text-16px leading-none">+</span>
+                <span aria-hidden="true" class="text-17px leading-none">+</span>
                 构建画布
               </button>
               <button
                 type="button"
-                :class="[
-                  BTN_BASE,
-                  BTN_WHITE_SHADOW,
-                  'h-32px px-16px border-transparent bg-violet-soft text-violet-ink text-13px hover:(border-violet-line bg-violet-soft-2)',
-                ]"
+                :class="[BTN_LG, 'border-transparent bg-transparent text-violet-ink hover:bg-violet-soft']"
                 @click="showTemplates = true"
               >
                 从模板开始
               </button>
             </div>
             <div class="flex flex-wrap items-center justify-center gap-8px mt-18px" aria-label="常用模板">
-              <span class="mr-2px text-12px text-ink-2">快速开始</span>
+              <span class="text-12px text-muted">快速开始</span>
               <button
                 v-for="t in HOME_TEMPLATES"
                 :key="t.title"
                 type="button"
-                class="inline-flex items-center gap-7px h-30px px-12px rounded-999px border border-solid border-line bg-white text-ink-2 text-12px cursor-pointer transition-[background,border-color,box-shadow] duration-120 ease-[ease] hover:(border-violet-line bg-violet-soft text-violet-ink) focus-visible:(outline outline-2 outline-violet outline-offset-2)"
+                class="inline-flex items-center gap-7px h-32px px-12px rounded-999px border border-solid border-line bg-white text-ink-2 text-12px cursor-pointer transition-[background,border-color,color] duration-120 ease-[ease] hover:(border-violet-line bg-violet-soft text-violet-ink) focus-visible:(outline outline-2 outline-violet outline-offset-2)"
                 @click="showTemplates = true"
               >
-                <i class="w-6px h-6px rounded-full border border-solid border-line" :class="t.tint" />
+                <i class="w-7px h-7px rounded-full" :class="t.tint" />
                 {{ t.title }}
               </button>
             </div>
-            <div class="hidden xl:block absolute inset-0 pointer-events-none" aria-hidden="true">
-              <span :class="[DECO_CLS, 'top-24px left-2px -rotate-3']"
+            <div class="absolute inset-0 overflow-hidden pointer-events-none max-[980px]:hidden" aria-hidden="true">
+              <span :class="[DECO_CLS, 'top-24px left-0 -rotate-4']"
                 >TEXT INPUT<small>A close-up of the woman.</small></span
               >
-              <span :class="[DECO_CLS, 'bottom-30px left-62px rotate-2']">图片<small>点击上传</small></span>
-              <span :class="[DECO_CLS, 'top-38px right-2px rotate-3']">Nano Banana<small>参考图 · 2/5</small></span>
-              <span :class="[DECO_CLS, 'right-72px bottom-20px -rotate-2']">图片<small>输出</small></span>
+              <span :class="[DECO_CLS, 'bottom-28px left-62px rotate-3']">图片<small>点击上传</small></span>
+              <span :class="[DECO_CLS, 'top-38px right-0 rotate-4']">Nano Banana<small>参考图 · 2/5</small></span>
+              <span :class="[DECO_CLS, 'right-72px bottom-18px -rotate-3']">图片<small>输出</small></span>
             </div>
           </section>
 
           <section class="mt-24px">
-            <header class="flex items-end gap-16px mb-10px">
+            <header class="flex items-end gap-14px mb-10px">
               <div>
                 <h2 class="m-0 text-16px font-600 text-ink">从模板开始</h2>
-                <p class="mt-6px mb-0 text-13px text-muted">每个模板是一块可继续改的底板，插入后节点和连线都能编辑。</p>
+                <p class="mt-3px mb-0 text-13px text-muted">每个模板是一块可继续改的底板，插入后节点和连线都能编辑。</p>
               </div>
-              <span class="ml-auto text-12px text-muted">{{ HOME_TEMPLATES.length }} 个模板</span>
+              <span class="ml-auto text-11px text-muted">{{ HOME_TEMPLATES.length }} 个模板</span>
             </header>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-12px">
+            <div class="grid grid-cols-3 max-[980px]:grid-cols-1 gap-12px">
               <button
                 v-for="t in HOME_TEMPLATES"
                 :key="t.title"
                 type="button"
-                class="flex items-center gap-12px min-w-0 min-h-92px p-10px pr-12px rounded-8px border border-solid border-line bg-white text-left cursor-pointer transition-[border-color,box-shadow] duration-120 ease-[ease] hover:(border-violet-line shadow-[0_4px_12px_0_rgba(31,35,41,0.12)]) focus-visible:(outline outline-2 outline-violet outline-offset-2)"
+                class="flex items-center gap-12px min-w-0 p-10px rounded-8px border border-solid border-line bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.06)] cursor-pointer transition-[border-color,box-shadow] duration-120 ease-[ease] hover:(border-violet-line shadow-[0_2px_6px_rgba(135,95,154,0.12)]) focus-visible:(outline outline-2 outline-violet outline-offset-2)"
                 @click="showTemplates = true"
               >
                 <span
-                  class="relative shrink-0 w-108px h-72px rounded-6px overflow-hidden flex items-end gap-4px p-8px"
+                  class="relative shrink-0 w-108px h-72px rounded-6px overflow-hidden [&>i]:(absolute block rounded-3px border-[0.8px] border-solid border-[rgba(51,51,51,0.08)] bg-white/92)"
                   :class="t.tint"
                   aria-hidden="true"
                 >
-                  <i class="absolute top-8px left-8px w-52px h-6px rounded-3px bg-white/80" />
-                  <i class="w-26px h-30px rounded-3px bg-white/90" />
-                  <i class="w-26px h-30px rounded-3px bg-white/90" />
-                  <i class="ml-auto w-30px h-40px rounded-3px bg-white" />
+                  <i class="top-10px left-9px w-1/2 h-8px" />
+                  <i class="bottom-9px left-9px w-24% h-32px" />
+                  <i class="bottom-9px left-36% w-24% h-32px" />
+                  <i class="right-8px bottom-9px w-28% h-40px" />
                 </span>
-                <span class="flex flex-col gap-6px min-w-0 flex-1">
+                <span class="flex flex-col gap-3px min-w-0">
                   <strong class="text-14px font-600 text-ink">{{ t.title }}</strong>
-                  <small class="text-13px leading-[1.5] text-muted">{{ t.desc }}</small>
+                  <small class="text-13px leading-[1.45] text-muted">{{ t.desc }}</small>
                 </span>
-                <span class="text-14px text-ink-2 shrink-0" aria-hidden="true">→</span>
+                <span class="ml-auto shrink-0 text-14px leading-none text-placeholder" aria-hidden="true">→</span>
               </button>
             </div>
           </section>
 
           <section class="mt-24px">
-            <header class="flex items-end gap-16px mb-10px">
+            <header class="flex items-end gap-14px mb-10px">
               <div>
                 <h2 class="m-0 text-16px font-600 text-ink">已保存的画布</h2>
-                <p class="mt-6px mb-0 text-13px text-muted">
+                <p class="mt-3px mb-0 text-13px text-muted">
                   打开继续编辑；每次生成成功都会自动进资产库，不会覆盖旧结果。
                 </p>
               </div>
-              <span class="ml-auto text-12px text-muted">{{ total }} 个画布</span>
+              <span class="ml-auto text-11px text-muted">{{ total }} 个画布</span>
             </header>
 
-            <div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-14px min-h-200px" v-loading="loading">
+            <!-- 加载态：原型 .ch-state「正在加载画布…」虚线卡 -->
+            <div
+              v-if="loading && !items.length"
+              class="flex flex-col items-center gap-8px px-20px py-32px rounded-8px border border-dashed border-line-strong bg-white text-13px text-muted text-center"
+              role="status"
+            >
+              正在加载画布…
+            </div>
+            <div
+              v-else
+              class="grid gap-10px max-[980px]:grid-cols-1"
+              :class="[items.length <= 2 ? 'grid-cols-1' : 'grid-cols-2', { 'opacity-60': loading }]"
+              :aria-busy="loading || undefined"
+            >
               <div
                 v-for="item in items"
                 :key="item.id"
                 role="button"
                 tabindex="0"
-                class="ll-card p-0 overflow-hidden cursor-pointer flex flex-col transition-shadow duration-200 hover:shadow-[0_4px_12px_0_rgba(31,35,41,0.12)] focus-visible:(outline outline-2 outline-violet outline-offset-2)"
+                class="flex items-center gap-12px min-w-0 p-10px rounded-8px border border-solid border-line bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.06)] cursor-pointer transition-[background,border-color] duration-120 ease-[ease] hover:(border-violet-line bg-surface2) focus-visible:(outline outline-2 outline-violet outline-offset-2)"
                 @click="openCanvas(item)"
                 @keydown.enter.self.prevent="openCanvas(item)"
                 @keydown.space.self.prevent="openCanvas(item)"
               >
-                <div class="h-140px bg-violet-soft">
+                <span class="grid place-items-center shrink-0 w-88px h-58px rounded-6px overflow-hidden bg-surface3">
                   <img v-if="item.cover_url" :src="item.cover_url" alt="" class="block w-full h-full object-cover" />
-                  <div v-else class="h-full flex items-center justify-center text-13px text-violet-ink">画布</div>
-                </div>
-                <div class="px-14px py-12px">
-                  <div class="text-14px font-600 text-ink mb-4px overflow-hidden text-ellipsis whitespace-nowrap">
+                  <span
+                    v-else
+                    class="relative w-54px h-34px [&>i]:(absolute block w-14px h-9px rounded-2px border-[0.8px] border-solid border-#d9dde5 bg-white)"
+                    aria-hidden="true"
+                  >
+                    <i class="top-2px left-2px" />
+                    <i class="top-2px left-22px" />
+                    <i class="bottom-2px left-12px" />
+                    <i class="bottom-2px right-0" />
+                  </span>
+                </span>
+                <span class="flex flex-col gap-4px min-w-0 flex-1">
+                  <strong class="text-14px font-600 text-ink overflow-hidden text-ellipsis whitespace-nowrap">
                     {{ item.title || '未命名画布' }}
-                  </div>
-                  <div class="text-12px text-placeholder">
-                    {{ item.node_count }} 个节点 · 更新于 {{ formatTime(item.updated_at) }}
-                  </div>
-                </div>
-                <div class="flex gap-12px px-14px pb-12px text-12px" @click.stop>
-                  <button type="button" :class="ACTION_CLS" @click="openDetail(item)">详情</button>
-                  <button type="button" :class="ACTION_CLS" @click="openRename(item)">重命名</button>
-                  <button type="button" :class="ACTION_CLS" @click="openSaveAs(item)">另存为</button>
-                  <n-popconfirm @positive-click="removeItem(item)">
-                    <template #trigger>
-                      <button
-                        type="button"
-                        class="ll-danger-link p-0 border-none bg-transparent text-12px focus-visible:(outline outline-2 outline-violet outline-offset-2)"
-                      >
-                        删除
-                      </button>
-                    </template>
-                    删除后画布及其运行历史不可恢复，确定删除？
-                  </n-popconfirm>
-                </div>
+                  </strong>
+                  <span class="flex items-center gap-4px text-11px text-muted">
+                    <svg
+                      class="w-12px h-12px shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 7v5l3 2" />
+                    </svg>
+                    更新于 {{ formatTime(item.updated_at) }} · {{ item.node_count }} 个节点
+                  </span>
+                  <span class="flex gap-12px text-12px" @click.stop>
+                    <button type="button" :class="ACTION_CLS" @click="openDetail(item)">详情</button>
+                    <button type="button" :class="ACTION_CLS" @click="openRename(item)">重命名</button>
+                    <button type="button" :class="ACTION_CLS" @click="openSaveAs(item)">另存为</button>
+                    <n-popconfirm @positive-click="removeItem(item)">
+                      <template #trigger>
+                        <button
+                          type="button"
+                          class="ll-danger-link p-0 border-none bg-transparent text-12px focus-visible:(outline outline-2 outline-violet outline-offset-2)"
+                        >
+                          删除
+                        </button>
+                      </template>
+                      删除后画布及其运行历史不可恢复，确定删除？
+                    </n-popconfirm>
+                  </span>
+                </span>
+                <svg
+                  class="ml-auto w-15px h-15px shrink-0 text-placeholder"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
               </div>
 
               <div
                 v-if="!loading && !items.length"
-                class="col-span-full flex flex-col items-center justify-center gap-10px min-h-154px py-32px rounded-10px border border-dashed border-line-strong bg-white text-center"
+                class="col-span-full flex flex-col items-center gap-8px px-20px py-32px rounded-8px border border-dashed border-line-strong bg-white text-13px text-muted text-center"
               >
-                <strong class="text-14px font-600 text-ink">还没有保存的画布</strong>
-                <p class="m-0 text-13px text-muted">从模板开始，或者新建一张空白画布。</p>
-                <button
-                  type="button"
-                  :class="[
-                    BTN_BASE,
-                    'h-28px px-10px border-line-strong bg-gradient-to-b from-white to-#fbfcfc text-ink text-13px hover:(border-#aeb6bf bg-surface2)',
-                  ]"
-                  @click="showCreate = true"
-                >
-                  新建画布
-                </button>
+                <strong class="text-14px text-ink">还没有保存的画布</strong>
+                <p class="m-0">从模板开始，或者新建一张空白画布。</p>
+                <button type="button" :class="BTN_DEFAULT" @click="showCreate = true">新建画布</button>
               </div>
             </div>
 
