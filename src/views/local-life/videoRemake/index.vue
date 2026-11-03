@@ -10,7 +10,16 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import Workbench from '../components/Workbench/index.vue'
 import VideoUpload from '@/components/VideoUpload/index.vue'
-import { llIdempotencyHeaders, llVideoCreate, llVideoDetail, llVideoGenerate, llVideoList, llVideoOptions, llVideoRemove, llVideoReplan } from '@/api/localLife.ts'
+import {
+  llIdempotencyHeaders,
+  llVideoCreate,
+  llVideoDetail,
+  llVideoGenerate,
+  llVideoList,
+  llVideoOptions,
+  llVideoRemove,
+  llVideoReplan,
+} from '@/api/localLife.ts'
 import type { ILVideoCreation, ILVideoOptions } from '@/api/localLifeTypes.ts'
 import { useAgreement, useLLList, usePollingWhile } from '../hooks.ts'
 import { VIDEO_STATUS_MAP, formatBytes, formatTime, isVideoRunning } from '../constants.ts'
@@ -184,15 +193,25 @@ async function confirmGenerate() {
 <template>
   <Workbench title="爆款视频复刻" :submit="submit" :loading="submitting" submit-text="解析视频">
     <template #default>
-      <div class="field">
-        <div class="label">视频来源</div>
-        <div class="seg">
-          <span class="ll-pill" :class="{ 'll-pill-active': source === 'upload' }" @click="source = 'upload'">上传视频</span>
-          <span v-if="linkEnabled" class="ll-pill" :class="{ 'll-pill-active': source === 'link' }" @click="source = 'link'">链接查视频</span>
+      <div class="mb-14px">
+        <div class="ll-label">视频来源</div>
+        <div class="flex flex-wrap gap-8px mb-10px">
+          <span class="ll-pill" :class="{ 'll-pill-active': source === 'upload' }" @click="source = 'upload'"
+            >上传视频</span
+          >
+          <span
+            v-if="linkEnabled"
+            class="ll-pill"
+            :class="{ 'll-pill-active': source === 'link' }"
+            @click="source = 'link'"
+            >链接查视频</span
+          >
         </div>
-        <div v-if="source === 'upload'" class="upload-wrap">
+        <div v-if="source === 'upload'">
           <VideoUpload v-model:videoList="videoList" btnName="上传视频" :limitNumber="1" />
-          <div v-if="limitHint" class="hint">{{ limitHint }}，支持 {{ (options?.video_formats ?? []).join(' / ') }}</div>
+          <div v-if="limitHint" class="mt-6px text-11px text-placeholder">
+            {{ limitHint }}，支持 {{ (options?.video_formats ?? []).join(' / ') }}
+          </div>
         </div>
         <template v-else>
           <n-input
@@ -201,88 +220,140 @@ async function confirmGenerate() {
             :rows="4"
             placeholder="粘贴抖音 / 快手 / 小红书 / B站的分享文案即可（带口令、表情都能识别）"
           />
-          <div class="hint">提交后自动解析标题与原片；仅支持 3 分钟、50M 以内的视频</div>
+          <div class="mt-6px text-11px text-placeholder">提交后自动解析标题与原片；仅支持 3 分钟、50M 以内的视频</div>
         </template>
       </div>
 
-      <div class="field">
-        <div class="label">说明</div>
-        <div class="desc-box">
-          AI 会解析原片的分镜与节奏，产出剧情分析；确认后按分析结果复刻同款视频。
-          可在确认时调整模型与比例。
+      <div class="mb-14px">
+        <div class="ll-label">说明</div>
+        <div
+          class="rounded-8px border border-solid border-line bg-surface2 px-12px py-10px text-12px leading-20px text-muted"
+        >
+          AI 会解析原片的分镜与节奏，产出剧情分析；确认后按分析结果复刻同款视频。 可在确认时调整模型与比例。
         </div>
       </div>
     </template>
 
     <template #right>
-      <div class="right-inner">
+      <div class="h-full min-h-0 flex flex-col">
         <!-- 列表 -->
         <template v-if="view === 'list'">
-          <div class="list-title">我的复刻</div>
-          <div class="video-list" v-loading="listCtl.loading.value">
-            <div v-for="item in listCtl.items.value" :key="item.id" class="video-item" @click="openDetail(item.id)">
-              <img v-if="item.cover_url" class="cover" :src="item.cover_url" alt="" />
-              <div v-else class="cover placeholder">🔥</div>
-              <div class="info">
-                <div class="head">
-                  <span class="name">{{ item.title || '未命名复刻' }}</span>
-                  <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[item.status]?.type}`">{{ VIDEO_STATUS_MAP[item.status]?.label }}</span>
+          <h2 class="m-0 flex-none mb-14px text-16px font-600 leading-22px text-ink">我的复刻</h2>
+          <div v-loading="listCtl.loading.value" class="flex-1 min-h-0 overflow-auto">
+            <div
+              v-for="item in listCtl.items.value"
+              :key="item.id"
+              class="ll-card flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+              @click="openDetail(item.id)"
+            >
+              <img
+                v-if="item.cover_url"
+                class="w-64px h-64px flex-none rounded-8px object-cover"
+                :src="item.cover_url"
+                alt=""
+              />
+              <div
+                v-else
+                class="w-64px h-64px flex-none rounded-8px flex items-center justify-center text-24px bg-surface2"
+              >
+                🔥
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-8px">
+                  <span class="flex-1 truncate text-14px font-600 text-ink">{{ item.title || '未命名复刻' }}</span>
+                  <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[item.status]?.type}`">{{
+                    VIDEO_STATUS_MAP[item.status]?.label
+                  }}</span>
                 </div>
-                <div class="sub">{{ item.source === 'link' ? '链接解析' : '本地上传' }} · {{ formatTime(item.create_time) }}</div>
+                <div class="mt-4px text-11px text-muted">
+                  {{ item.source === 'link' ? '链接解析' : '本地上传' }} · {{ formatTime(item.create_time) }}
+                </div>
               </div>
             </div>
-            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="empty">还没有复刻记录，左侧开始吧</div>
-            <div v-if="listCtl.hasMore.value" class="more" @click="listCtl.loadMore()">加载更多</div>
+            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="ll-empty py-80px">
+              还没有复刻记录，左侧开始吧
+            </div>
+            <div v-if="listCtl.hasMore.value" class="ll-link block text-center py-8px" @click="listCtl.loadMore()">
+              加载更多
+            </div>
           </div>
         </template>
 
         <!-- 详情 -->
         <template v-else>
-          <div class="back" @click="view = 'list'">← 返回列表</div>
-          <div v-if="activeVideo" class="detail" v-loading="detailLoading">
-            <div class="detail-head">
-              <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{ VIDEO_STATUS_MAP[activeVideo.status]?.label }}</span>
-              <h2>{{ activeVideo.title || '未命名复刻' }}</h2>
+          <div
+            class="flex-none w-fit mb-12px text-13px text-ink-2 cursor-pointer hover:text-violet-ink"
+            @click="view = 'list'"
+          >
+            ← 返回列表
+          </div>
+          <div v-if="activeVideo" v-loading="detailLoading" class="flex-1 min-h-0 overflow-auto">
+            <div class="flex items-center gap-10px">
+              <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{
+                VIDEO_STATUS_MAP[activeVideo.status]?.label
+              }}</span>
+              <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
+                {{ activeVideo.title || '未命名复刻' }}
+              </h2>
               <n-popconfirm @positive-click="removeItem(activeVideo!)">
-                <template #trigger><span class="del">删除</span></template>
+                <template #trigger><span class="flex-none text-12px ll-danger-link">删除</span></template>
                 确定删除这条记录？
               </n-popconfirm>
             </div>
-            <div v-if="activeVideo.source_url" class="meta">原片：{{ activeVideo.source_url }}</div>
+            <div v-if="activeVideo.source_url" class="mt-8px mb-14px text-12px text-muted break-all">
+              原片：{{ activeVideo.source_url }}
+            </div>
 
             <!-- 解析中 / 生成中 -->
-            <div v-if="activeVideo.status === 0 || activeVideo.status === 2" class="running-box">
+            <div
+              v-if="activeVideo.status === 0 || activeVideo.status === 2"
+              class="ll-card mt-14px flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+            >
               <n-spin size="small" />
-              <span>{{ activeVideo.status === 0 ? '正在解析原片，几十秒到几分钟…' : '复刻视频生成中，预计 2~10 分钟…' }}</span>
+              <span>{{
+                activeVideo.status === 0 ? '正在解析原片，几十秒到几分钟…' : '复刻视频生成中，预计 2~10 分钟…'
+              }}</span>
             </div>
 
             <!-- 失败 -->
-            <div v-else-if="activeVideo.status === 4" class="failed-box">
-              <p>{{ activeVideo.fail_reason || '解析失败' }}</p>
+            <div
+              v-else-if="activeVideo.status === 4"
+              class="ll-card mt-14px flex flex-col items-center justify-center gap-10px p-40px text-13px text-ink-2"
+            >
+              <p class="m-0 text-danger">{{ activeVideo.fail_reason || '解析失败' }}</p>
               <n-button size="small" @click="view = 'list'">换个视频重试</n-button>
             </div>
 
             <!-- 待确认：剧情分析 -->
             <template v-else-if="activeVideo.status === 1">
-              <div v-if="activeVideo.cover_url || activeVideo.source_video_url" class="origin-box">
+              <div v-if="activeVideo.cover_url || activeVideo.source_video_url" class="mt-14px mb-14px">
                 <video
                   v-if="activeVideo.source_video_url"
                   :src="activeVideo.source_video_url"
                   :poster="activeVideo.cover_url"
                   controls
                   muted
-                  class="origin-video"
+                  class="block w-full max-h-320px rounded-10px bg-black"
                 />
               </div>
 
-              <div class="plan-tip">以下是原片的剧情分析（只读）。确认后按此复刻；也可以改写剧情再复刻。</div>
-              <div class="script-raw">{{ activeVideo.script }}</div>
+              <div
+                class="mt-14px mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px text-warning"
+              >
+                以下是原片的剧情分析（只读）。确认后按此复刻；也可以改写剧情再复刻。
+              </div>
+              <div
+                class="ll-card p-16px text-13px leading-22px text-ink whitespace-pre-wrap"
+                v-text="activeVideo.script"
+              />
 
-              <div class="confirm-form">
-                <div class="field">
-                  <div class="label">
+              <div class="ll-card mt-14px px-16px pt-14px pb-2px">
+                <div class="mb-12px">
+                  <div class="ll-label">
                     改写剧情（选填）
-                    <span class="link" @click="editingPrompt = !editingPrompt">{{ editingPrompt ? '收起' : '展开' }}</span>
+                    <span class="ll-link" @click="editingPrompt = !editingPrompt">{{
+                      editingPrompt ? '收起' : '展开'
+                    }}</span>
                   </div>
                   <n-input
                     v-if="editingPrompt"
@@ -292,19 +363,25 @@ async function confirmGenerate() {
                     placeholder="想改哪里写清楚，AI 会按改写后的剧情复刻"
                   />
                 </div>
-                <div class="field two-col">
-                  <div v-if="modelOptions.length">
-                    <div class="label">模型</div>
+                <div class="mb-12px flex gap-10px">
+                  <div v-if="modelOptions.length" class="flex-1 min-w-0">
+                    <div class="ll-label">模型</div>
                     <n-select v-model:value="remakeModel" size="small" :options="modelOptions" />
                   </div>
-                  <div v-if="sizeOptions.length">
-                    <div class="label">比例</div>
-                    <n-select v-model:value="remakeSize" size="small" clearable :options="sizeOptions" placeholder="跟原片" />
+                  <div v-if="sizeOptions.length" class="flex-1 min-w-0">
+                    <div class="ll-label">比例</div>
+                    <n-select
+                      v-model:value="remakeSize"
+                      size="small"
+                      clearable
+                      :options="sizeOptions"
+                      placeholder="跟原片"
+                    />
                   </div>
                 </div>
               </div>
 
-              <div class="plan-ops">
+              <div class="flex gap-10px mt-14px">
                 <n-button size="small" :loading="replanning" @click="replan">重新解析</n-button>
                 <n-button size="small" type="primary" :loading="generating" @click="confirmGenerate">复刻视频</n-button>
               </div>
@@ -312,8 +389,14 @@ async function confirmGenerate() {
 
             <!-- 已完成 -->
             <template v-else-if="activeVideo.status === 3">
-              <video v-if="activeVideo.video_url" :src="activeVideo.video_url" controls autoplay class="result-video" />
-              <div class="plan-ops">
+              <video
+                v-if="activeVideo.video_url"
+                :src="activeVideo.video_url"
+                controls
+                autoplay
+                class="mt-14px block w-full max-h-70vh rounded-10px bg-black"
+              />
+              <div class="flex gap-10px mt-14px">
                 <n-button size="small" @click="view = 'list'">再复刻一条</n-button>
               </div>
             </template>
@@ -323,289 +406,3 @@ async function confirmGenerate() {
     </template>
   </Workbench>
 </template>
-
-<style scoped lang="less">
-.field {
-  margin-bottom: 14px;
-
-  .label {
-    font-size: 13px;
-    color: #1f2329;
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    .link {
-      color: #875f9a;
-      font-size: 12px;
-      cursor: pointer;
-    }
-  }
-
-  .hint {
-    font-size: 11px;
-    color: #6e7681;
-    margin-top: 6px;
-  }
-
-  .desc-box {
-    font-size: 12px;
-    color: #5f6673;
-    line-height: 20px;
-    background: #f7f8f9;
-    border-radius: 8px;
-    padding: 10px 12px;
-  }
-}
-
-.seg {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.two-col {
-  display: flex;
-  gap: 10px;
-
-  > div {
-    flex: 1;
-  }
-}
-
-.right-inner {
-  height: 100%;
-  padding: 24px 32px;
-  display: flex;
-  flex-direction: column;
-
-  .list-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2329;
-    margin-bottom: 14px;
-    flex-shrink: 0;
-  }
-
-  .video-list {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-
-    .video-item {
-      display: flex;
-      gap: 12px;
-      background: #fff;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 10px;
-      cursor: pointer;
-      transition: box-shadow 0.2s;
-
-      &:hover {
-        box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
-      }
-
-      .cover {
-        width: 64px;
-        height: 64px;
-        border-radius: 8px;
-        object-fit: cover;
-        flex-shrink: 0;
-
-        &.placeholder {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 24px;
-          background: #f7f8f9;
-        }
-      }
-
-      .info {
-        flex: 1;
-        min-width: 0;
-
-        .head {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-
-          .name {
-            flex: 1;
-            font-weight: 600;
-            font-size: 14px;
-            color: #1f2329;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-        }
-
-        .sub {
-          font-size: 11px;
-          color: #5f6673;
-          margin-top: 4px;
-        }
-      }
-    }
-
-    .empty {
-      text-align: center;
-      color: #5f6673;
-      font-size: 13px;
-      padding: 80px 0;
-    }
-
-    .more {
-      text-align: center;
-      color: #875f9a;
-      font-size: 12px;
-      padding: 8px 0;
-      cursor: pointer;
-    }
-  }
-
-  .back {
-    flex-shrink: 0;
-    font-size: 13px;
-    color: #4b5563;
-    cursor: pointer;
-    margin-bottom: 12px;
-    width: fit-content;
-
-    &:hover {
-      color: #875f9a;
-    }
-  }
-
-  .detail {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-
-    .detail-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-
-      h2 {
-        flex: 1;
-        font-size: 18px;
-        color: #1f2329;
-        margin: 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .del {
-        flex-shrink: 0;
-        font-size: 12px;
-        color: #b4433e;
-        cursor: pointer;
-      }
-    }
-
-    .meta {
-      font-size: 12px;
-      color: #5f6673;
-      margin: 8px 0 14px;
-      word-break: break-all;
-    }
-
-    .running-box,
-    .failed-box {
-      background: #fff;
-      border-radius: 10px;
-      padding: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      color: #4b5563;
-      font-size: 13px;
-    }
-
-    .failed-box {
-      flex-direction: column;
-
-      p {
-        margin: 0 0 12px;
-        color: #b4433e;
-      }
-    }
-
-    .origin-box {
-      margin-bottom: 14px;
-
-      .origin-video {
-        width: 100%;
-        max-height: 320px;
-        border-radius: 10px;
-        background: #000;
-        display: block;
-      }
-    }
-
-    .plan-tip {
-      font-size: 12px;
-      color: #94651f;
-      background: #fbf4e8;
-      border-radius: 8px;
-      padding: 8px 12px;
-      margin-bottom: 14px;
-    }
-
-    .script-raw {
-      background: #fff;
-      border-radius: 10px;
-      padding: 16px;
-      font-size: 13px;
-      color: #1f2329;
-      line-height: 22px;
-      white-space: pre-wrap;
-    }
-
-    .confirm-form {
-      margin-top: 14px;
-      background: #fff;
-      border-radius: 10px;
-      padding: 14px 16px;
-
-      .field {
-        margin-bottom: 12px;
-
-        .label {
-          font-size: 13px;
-          color: #1f2329;
-          margin-bottom: 6px;
-          display: flex;
-          justify-content: space-between;
-
-          .link {
-            color: #875f9a;
-            font-size: 12px;
-            cursor: pointer;
-          }
-        }
-      }
-    }
-
-    .plan-ops {
-      display: flex;
-      gap: 10px;
-      margin-top: 14px;
-    }
-
-    .result-video {
-      width: 100%;
-      max-height: 70vh;
-      border-radius: 12px;
-      background: #000;
-      display: block;
-    }
-  }
-}
-</style>

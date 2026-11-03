@@ -60,18 +60,22 @@ function findVideo(key: string): ILActionVideo | undefined {
 
 // 导入动作视频：上传成功后登记
 const importList = ref<{ url: string; thumbnail?: string; name?: string }[]>([])
-watch(importList, async (list) => {
-  const latest = list[list.length - 1]
-  if (!latest?.url) return
-  try {
-    await llActionVideoImport({ url: latest.url, cover_url: latest.thumbnail })
-    message.success('动作视频已导入')
-    importList.value = []
-    await loadVideos()
-  } catch {
-    importList.value = []
-  }
-}, { deep: true })
+watch(
+  importList,
+  async (list) => {
+    const latest = list[list.length - 1]
+    if (!latest?.url) return
+    try {
+      await llActionVideoImport({ url: latest.url, cover_url: latest.thumbnail })
+      message.success('动作视频已导入')
+      importList.value = []
+      await loadVideos()
+    } catch {
+      importList.value = []
+    }
+  },
+  { deep: true },
+)
 
 async function removeMine(item: ILActionVideo) {
   await llActionVideoRemove(item.id)
@@ -158,295 +162,130 @@ async function removeItem(item: ILCreation) {
         title="人物形象"
       />
 
-      <div class="field">
-        <div class="label">动作视频（二选一）</div>
-        <div class="video-group" v-loading="loadingVideos">
-          <div class="group-title">预置动作</div>
-          <div class="video-grid">
+      <div class="mb-14px">
+        <div class="ll-label">动作视频（二选一）</div>
+        <div v-loading="loadingVideos">
+          <div class="my-8px text-12px text-muted">预置动作</div>
+          <div class="grid grid-cols-3 gap-8px max-h-200px overflow-auto mb-10px">
             <div
               v-for="v in presets"
               :key="'p' + v.id"
-              class="video-card"
-              :class="{ selected: selectedKey === 'p' + v.id }"
+              class="group relative overflow-hidden rounded-8px border-2 border-solid bg-surface2 cursor-pointer transition-colors"
+              :class="selectedKey === 'p' + v.id ? 'border-violet' : 'border-transparent'"
               @click="selectedKey = 'p' + v.id"
             >
-              <video :src="v.url" :poster="v.cover_url" muted preload="metadata" />
-              <div class="name">{{ v.name }}</div>
+              <video
+                :src="v.url"
+                :poster="v.cover_url"
+                muted
+                preload="metadata"
+                class="block w-full aspect-[9/16] object-cover pointer-events-none"
+              />
+              <div class="truncate px-6px py-3px text-11px text-ink-2">{{ v.name }}</div>
             </div>
-            <div v-if="!loadingVideos && !presets.length" class="empty">暂无预置动作</div>
+            <div v-if="!loadingVideos && !presets.length" class="col-span-full ll-empty !text-12px py-8px">
+              暂无预置动作
+            </div>
           </div>
 
-          <div class="group-title">
+          <div class="my-8px text-12px text-muted">
             我导入的
-            <span v-if="mine.length" class="count">（{{ mine.length }}）</span>
+            <span v-if="mine.length" class="text-placeholder">（{{ mine.length }}）</span>
           </div>
-          <div class="video-grid">
+          <div class="grid grid-cols-3 gap-8px max-h-200px overflow-auto mb-10px">
             <div
               v-for="v in mine"
               :key="'m' + v.id"
-              class="video-card"
-              :class="{ selected: selectedKey === 'm' + v.id }"
+              class="group relative overflow-hidden rounded-8px border-2 border-solid bg-surface2 cursor-pointer transition-colors"
+              :class="selectedKey === 'm' + v.id ? 'border-violet' : 'border-transparent'"
               @click="selectedKey = 'm' + v.id"
             >
-              <video :src="v.url" :poster="v.cover_url" muted preload="metadata" />
-              <div class="name">{{ v.name }}</div>
+              <video
+                :src="v.url"
+                :poster="v.cover_url"
+                muted
+                preload="metadata"
+                class="block w-full aspect-[9/16] object-cover pointer-events-none"
+              />
+              <div class="truncate px-6px py-3px text-11px text-ink-2">{{ v.name }}</div>
               <n-popconfirm @positive-click="removeMine(v)">
-                <template #trigger><span class="del" @click.stop>删</span></template>
+                <template #trigger>
+                  <span
+                    class="absolute top-4px right-4px w-18px h-18px flex items-center justify-center rounded-full bg-black/50 text-10px text-white cursor-pointer opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                    @click.stop
+                    >删</span
+                  >
+                </template>
                 删除这个动作视频？
               </n-popconfirm>
             </div>
-            <div class="import-area">
+            <div class="flex items-center justify-center">
               <VideoUpload v-model:videoList="importList" btnName="+ 导入动作视频" :limitNumber="1" />
             </div>
           </div>
         </div>
       </div>
 
-      <div v-if="modelOptions.length" class="field">
-        <div class="label">模型</div>
+      <div v-if="modelOptions.length" class="mb-14px">
+        <div class="ll-label">模型</div>
         <n-select v-model:value="model" size="small" :options="modelOptions" />
       </div>
     </template>
 
     <template #right>
-      <div class="right-inner">
-        <div class="list-title">生成记录</div>
-        <div class="record-grid" v-loading="listCtl.loading.value">
-          <div v-for="item in listCtl.items.value" :key="item.id" class="record-card">
-            <div class="cover" @click="openPreview(item)">
-              <img v-if="item.input_image_url" :src="item.input_image_url" alt="" />
-              <div v-else class="cover-fallback">🕺</div>
-              <div class="ll-chip" :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`">{{ CREATION_STATUS_MAP[item.status]?.label }}</div>
-              <div v-if="item.status === 2" class="fail-tip">{{ item.fail_reason || '生成失败' }}</div>
+      <div class="h-full min-h-0 flex flex-col">
+        <h2 class="m-0 flex-none mb-14px text-16px font-600 leading-22px text-ink">生成记录</h2>
+        <div
+          v-loading="listCtl.loading.value"
+          class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-14px content-start"
+        >
+          <div v-for="item in listCtl.items.value" :key="item.id" class="ll-card overflow-hidden">
+            <div class="relative cursor-pointer" @click="openPreview(item)">
+              <img
+                v-if="item.input_image_url"
+                :src="item.input_image_url"
+                alt=""
+                class="block w-full aspect-[9/16] object-cover"
+              />
+              <div v-else class="w-full aspect-[9/16] flex items-center justify-center text-32px bg-surface2">🕺</div>
+              <div
+                class="ll-chip absolute top-6px left-6px"
+                :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`"
+              >
+                {{ CREATION_STATUS_MAP[item.status]?.label }}
+              </div>
+              <div
+                v-if="item.status === 2"
+                class="absolute inset-x-0 bottom-0 truncate px-8px py-4px text-11px text-white bg-[rgba(180,67,62,0.85)]"
+              >
+                {{ item.fail_reason || '生成失败' }}
+              </div>
             </div>
-            <div class="meta">
-              <span class="model">{{ item.model || '-' }}</span>
-              <span class="time">{{ formatTime(item.create_time) }}</span>
+            <div class="flex items-center gap-8px px-10px py-8px text-11px text-muted">
+              <span class="text-ink-2">{{ item.model || '-' }}</span>
+              <span class="flex-1">{{ formatTime(item.create_time) }}</span>
               <n-popconfirm @positive-click="removeItem(item)">
-                <template #trigger><span class="del">删除</span></template>
+                <template #trigger><span class="ll-danger-link">删除</span></template>
                 确定删除这条记录？
               </n-popconfirm>
             </div>
           </div>
-          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="empty">还没有记录，左侧开始生成吧</div>
-          <div v-if="listCtl.hasMore.value" class="more" @click="listCtl.loadMore()">加载更多</div>
+          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="col-span-full ll-empty py-80px">
+            还没有记录，左侧开始生成吧
+          </div>
+          <div
+            v-if="listCtl.hasMore.value"
+            class="col-span-full ll-link block text-center py-8px"
+            @click="listCtl.loadMore()"
+          >
+            加载更多
+          </div>
         </div>
       </div>
     </template>
   </Workbench>
 
   <n-modal v-model:show="previewShow" preset="card" title="迁移结果" style="width: 420px">
-    <video v-if="previewUrl" :src="previewUrl" controls autoplay style="width: 100%; border-radius: 8px" />
+    <video v-if="previewUrl" :src="previewUrl" controls autoplay class="block w-full rounded-8px" />
   </n-modal>
 </template>
-
-<style scoped lang="less">
-.field {
-  margin-bottom: 14px;
-
-  .label {
-    font-size: 13px;
-    color: #1f2329;
-    margin-bottom: 6px;
-  }
-}
-
-.video-group {
-  .group-title {
-    font-size: 12px;
-    color: #5f6673;
-    margin: 8px 0;
-
-    .count {
-      color: #6e7681;
-    }
-  }
-
-  .video-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    max-height: 200px;
-    overflow: auto;
-    margin-bottom: 10px;
-
-    .video-card {
-      border: 2px solid transparent;
-      border-radius: 8px;
-      overflow: hidden;
-      cursor: pointer;
-      position: relative;
-      background: #f7f8f9;
-
-      video {
-        width: 100%;
-        aspect-ratio: 9 / 16;
-        object-fit: cover;
-        display: block;
-        pointer-events: none;
-      }
-
-      .name {
-        font-size: 11px;
-        color: #4b5563;
-        padding: 3px 6px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      &.selected {
-        border-color: #875f9a;
-      }
-
-      .del {
-        position: absolute;
-        top: 4px;
-        right: 4px;
-        width: 18px;
-        height: 18px;
-        border-radius: 50%;
-        background: rgba(0, 0, 0, 0.5);
-        color: #fff;
-        font-size: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        opacity: 0;
-        transition: opacity 0.2s;
-      }
-
-      &:hover .del {
-        opacity: 1;
-      }
-    }
-
-    .import-area {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .empty {
-      grid-column: 1 / -1;
-      text-align: center;
-      color: #5f6673;
-      font-size: 12px;
-      padding: 8px 0;
-    }
-  }
-}
-
-.right-inner {
-  height: 100%;
-  padding: 24px 32px;
-  display: flex;
-  flex-direction: column;
-
-  .list-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2329;
-    margin-bottom: 14px;
-    flex-shrink: 0;
-  }
-
-  .record-grid {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 14px;
-    align-content: start;
-
-    .record-card {
-      background: #fff;
-      border-radius: 10px;
-      overflow: hidden;
-
-      .cover {
-        position: relative;
-        cursor: pointer;
-
-        img {
-          width: 100%;
-          aspect-ratio: 9 / 16;
-          object-fit: cover;
-          display: block;
-        }
-
-        .cover-fallback {
-          width: 100%;
-          aspect-ratio: 9 / 16;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 32px;
-          background: #f7f8f9;
-        }
-
-        .ll-chip {
-          position: absolute;
-          top: 6px;
-          left: 6px;
-        }
-
-        .fail-tip {
-          position: absolute;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(180, 67, 62, 0.85);
-          color: #fff;
-          font-size: 11px;
-          padding: 4px 8px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-      }
-
-      .meta {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        font-size: 11px;
-        color: #5f6673;
-
-        .model {
-          color: #4b5563;
-        }
-
-        .time {
-          flex: 1;
-        }
-
-        .del {
-          color: #b4433e;
-          cursor: pointer;
-        }
-      }
-    }
-
-    .empty {
-      grid-column: 1 / -1;
-      text-align: center;
-      color: #5f6673;
-      font-size: 13px;
-      padding: 80px 0;
-    }
-
-    .more {
-      grid-column: 1 / -1;
-      text-align: center;
-      color: #875f9a;
-      font-size: 12px;
-      padding: 8px 0;
-      cursor: pointer;
-    }
-  }
-}
-</style>

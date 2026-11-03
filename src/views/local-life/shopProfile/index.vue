@@ -124,243 +124,113 @@ async function removeItem(item: ILShopProfile) {
 
 <template>
   <n-config-provider :theme-overrides="llTheme" abstract>
-    <div class="shop-profile">
-    <div class="head">
-      <div>
-        <h1>店铺档案</h1>
-        <p>一次录入，AI文案、图文笔记、探店视频、带货短剧都能关联引用（最多 20 条）</p>
-      </div>
-      <n-button type="primary" @click="openCreate">+ 新建档案</n-button>
-    </div>
+    <div class="h-full overflow-y-auto bg-page text-ink">
+      <div class="max-w-1180px box-border pt-14px pb-24px pl-16px pr-24px">
+        <header class="flex items-center justify-between gap-16px">
+          <div class="min-w-0">
+            <h1 class="m-0 text-22px font-600 leading-30px text-ink">店铺档案</h1>
+            <p class="m-0 mt-2px text-12px leading-18px text-muted">
+              一次录入，AI文案、图文笔记、探店视频、带货短剧都能关联引用（最多 20 条）
+            </p>
+          </div>
+          <n-button type="primary" class="flex-none" @click="openCreate">+ 新建档案</n-button>
+        </header>
 
-    <div class="grid" v-loading="loading">
-      <div v-for="item in list" :key="item.id" class="card">
-        <div class="card-head">
-          <span class="name">{{ item.name }}</span>
-          <span v-if="item.self_title" class="self-title">{{ item.self_title }}</span>
-        </div>
-        <div v-if="item.address" class="line">📍 {{ item.address }}</div>
-        <div v-if="item.products" class="line">🛍️ {{ item.products }}</div>
-        <div v-if="item.selling_points" class="line points">
-          <span v-for="(p, i) in item.selling_points.split('\n').filter(Boolean).slice(0, 3)" :key="i" class="tag">{{ p }}</span>
-        </div>
-        <div v-if="item.target_audience" class="line">👥 {{ item.target_audience }}</div>
-        <div class="foot">
-          <span>{{ formatTime(item.update_time || item.create_time) }}</span>
-          <div class="ops">
-            <span class="op" @click="openEdit(item)">编辑</span>
-            <n-popconfirm @positive-click="removeItem(item)">
-              <template #trigger><span class="op danger">删除</span></template>
-              删除后已生成的历史内容不受影响，确定删除？
-            </n-popconfirm>
+        <div
+          v-loading="loading"
+          class="mt-12px grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-10px min-h-200px"
+        >
+          <div
+            v-for="item in list"
+            :key="item.id"
+            class="ll-card flex flex-col p-16px transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+          >
+            <div class="flex items-center gap-8px mb-10px min-w-0">
+              <span class="truncate text-16px font-600 leading-22px text-ink">{{ item.name }}</span>
+              <span v-if="item.self_title" class="ll-chip ll-chip-running">{{ item.self_title }}</span>
+            </div>
+            <div v-if="item.address" class="mb-4px text-12px leading-20px text-ink-2 line-clamp-2">
+              📍 {{ item.address }}
+            </div>
+            <div v-if="item.products" class="mb-4px text-12px leading-20px text-ink-2 line-clamp-2">
+              🛍️ {{ item.products }}
+            </div>
+            <div v-if="item.selling_points" class="mb-4px flex flex-wrap gap-6px">
+              <span
+                v-for="(p, i) in item.selling_points.split('\n').filter(Boolean).slice(0, 3)"
+                :key="i"
+                class="ll-chip text-ink-2 bg-surface2 border border-line"
+                >{{ p }}</span
+              >
+            </div>
+            <div v-if="item.target_audience" class="mb-4px text-12px leading-20px text-ink-2 line-clamp-2">
+              👥 {{ item.target_audience }}
+            </div>
+            <div class="mt-auto pt-10px flex items-center justify-between text-12px text-placeholder">
+              <span>{{ formatTime(item.update_time || item.create_time) }}</span>
+              <div class="flex gap-12px">
+                <span class="ll-link" @click="openEdit(item)">编辑</span>
+                <n-popconfirm @positive-click="removeItem(item)">
+                  <template #trigger><span class="ll-danger-link text-12px">删除</span></template>
+                  删除后已生成的历史内容不受影响，确定删除？
+                </n-popconfirm>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="!loading && !list.length" class="ll-card col-span-full flex flex-col items-center py-60px">
+            <div class="mb-10px text-40px leading-none" aria-hidden="true">🏪</div>
+            <p class="ll-empty m-0 mb-14px">还没有店铺档案</p>
+            <n-button type="primary" ghost size="small" @click="openCreate">新建第一条档案</n-button>
           </div>
         </div>
       </div>
 
-      <div v-if="!loading && !list.length" class="empty">
-        <div class="emoji">🏪</div>
-        <p>还没有店铺档案</p>
-        <n-button type="primary" ghost size="small" @click="openCreate">新建第一条档案</n-button>
-      </div>
-    </div>
-
-    <n-modal v-model:show="showEditor" preset="card" :title="editingId ? '编辑店铺档案' : '新建店铺档案'" style="width: 520px">
-      <div class="editor">
-        <div v-for="field in FIELDS" :key="field.key" class="field">
-          <div class="label">
-            {{ field.label }}
-            <span class="count" :class="{ over: charLen(form[field.key]) > field.max }">
-              {{ charLen(form[field.key]) }}/{{ field.max }}
-            </span>
+      <n-modal
+        v-model:show="showEditor"
+        preset="card"
+        :title="editingId ? '编辑店铺档案' : '新建店铺档案'"
+        style="width: 520px"
+      >
+        <div>
+          <div v-for="field in FIELDS" :key="field.key" class="mb-14px">
+            <div class="ll-label">
+              {{ field.label }}
+              <span
+                class="text-12px"
+                :class="charLen(form[field.key]) > field.max ? 'text-danger' : 'text-placeholder'"
+              >
+                {{ charLen(form[field.key]) }}/{{ field.max }}
+              </span>
+            </div>
+            <n-input
+              v-if="field.type === 'textarea'"
+              v-model:value="form[field.key]"
+              type="textarea"
+              :rows="3"
+              :placeholder="field.placeholder"
+            />
+            <n-input v-else v-model:value="form[field.key]" :placeholder="field.placeholder" />
           </div>
-          <n-input
-            v-if="field.type === 'textarea'"
-            v-model:value="form[field.key]"
-            type="textarea"
-            :rows="3"
-            :placeholder="field.placeholder"
-          />
-          <n-input v-else v-model:value="form[field.key]" :placeholder="field.placeholder" />
+          <div class="mb-14px">
+            <div class="ll-label">开店时间</div>
+            <n-date-picker
+              v-model:formatted-value="openDate"
+              type="date"
+              value-format="yyyy-MM-dd"
+              clearable
+              placeholder="选填"
+              class="w-full"
+            />
+          </div>
         </div>
-        <div class="field">
-          <div class="label">开店时间</div>
-          <n-date-picker v-model:formatted-value="openDate" type="date" value-format="yyyy-MM-dd" clearable placeholder="选填" style="width: 100%" />
-        </div>
-      </div>
-      <template #footer>
-        <div class="editor-foot">
-          <n-button @click="showEditor = false">取消</n-button>
-          <n-button type="primary" :loading="saving" @click="save">保存</n-button>
-        </div>
-      </template>
-    </n-modal>
+        <template #footer>
+          <div class="flex justify-end gap-10px">
+            <n-button @click="showEditor = false">取消</n-button>
+            <n-button type="primary" :loading="saving" @click="save">保存</n-button>
+          </div>
+        </template>
+      </n-modal>
     </div>
   </n-config-provider>
 </template>
-
-<style scoped lang="less">
-@import '@/assets/variables.less';
-
-.shop-profile {
-  height: 100%;
-  overflow: auto;
-  padding: 24px 32px;
-  .scrollbar(@width: 8px, @trackColor: #f7f8f9, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
-
-  .head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-
-    h1 {
-      font-size: 20px;
-      color: #1f2329;
-      margin: 0 0 4px;
-    }
-
-    p {
-      font-size: 12px;
-      color: #5f6673;
-      margin: 0;
-    }
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 14px;
-    min-height: 200px;
-
-    .card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      transition: box-shadow 0.2s;
-
-      &:hover {
-        box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.08);
-      }
-
-      .card-head {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 10px;
-
-        .name {
-          font-size: 16px;
-          font-weight: 600;
-          color: #1f2329;
-        }
-
-        .self-title {
-          font-size: 12px;
-          color: #875f9a;
-          background: rgba(135, 95, 154, 0.08);
-          border-radius: 10px;
-          padding: 1px 8px;
-        }
-      }
-
-      .line {
-        font-size: 12px;
-        color: #4b5563;
-        line-height: 20px;
-        margin-bottom: 4px;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-
-        &.points {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-
-          .tag {
-            background: #f7f8f9;
-            border-radius: 4px;
-            padding: 1px 6px;
-            font-size: 11px;
-          }
-        }
-      }
-
-      .foot {
-        margin-top: auto;
-        padding-top: 10px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 12px;
-        color: #6e7681;
-
-        .ops {
-          display: flex;
-          gap: 12px;
-
-          .op {
-            color: #875f9a;
-            cursor: pointer;
-
-            &.danger {
-              color: #b4433e;
-            }
-          }
-        }
-      }
-    }
-
-    .empty {
-      grid-column: 1 / -1;
-      background: #fff;
-      border-radius: 12px;
-      text-align: center;
-      padding: 60px 0;
-
-      .emoji {
-        font-size: 40px;
-        margin-bottom: 10px;
-      }
-
-      p {
-        color: #5f6673;
-        font-size: 13px;
-        margin: 0 0 14px;
-      }
-    }
-  }
-
-  .editor {
-    .field {
-      margin-bottom: 14px;
-
-      .label {
-        font-size: 13px;
-        color: #1f2329;
-        margin-bottom: 6px;
-        display: flex;
-        justify-content: space-between;
-
-        .count {
-          color: #6e7681;
-          font-size: 12px;
-
-          &.over {
-            color: #b4433e;
-          }
-        }
-      }
-    }
-  }
-
-  .editor-foot {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-  }
-}
-</style>

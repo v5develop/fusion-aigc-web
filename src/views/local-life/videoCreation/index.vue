@@ -114,7 +114,7 @@ async function removeItem(item: ILVideoCreation) {
 const activeVideo = ref<ILVideoCreation | null>(null)
 const detailLoading = ref(false)
 const scriptScenes = computed(() => parseScript(activeVideo.value?.script))
-const scriptRaw = computed(() => (scriptScenes.value ? '' : activeVideo.value?.script ?? ''))
+const scriptRaw = computed(() => (scriptScenes.value ? '' : (activeVideo.value?.script ?? '')))
 
 // 复刻专用的确认参数，这里只对 model/size 生效（复刻页有自己的组件；此处防御性保留）
 const { start: startVideoPoll } = usePollingWhile(
@@ -169,7 +169,9 @@ async function submit() {
         ...(withPerson.value
           ? {
               portrait_source: portraitSource.value,
-              ...(portraitSource.value === 'UPLOAD' ? { image_url: personImage.value } : { public_id: personPublicId.value }),
+              ...(portraitSource.value === 'UPLOAD'
+                ? { image_url: personImage.value }
+                : { public_id: personPublicId.value }),
             }
           : {}),
         env1_url: form.env1_url[0],
@@ -231,12 +233,14 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
 <template>
   <Workbench :title="pageTitle" :submit="submit" :loading="submitting" submit-text="生成分镜剧本">
     <template #default>
-      <div class="field">
-        <div class="label">
+      <div class="mb-14px">
+        <div class="ll-label">
           {{ isExplore ? '视频文案' : '短剧主题' }}
-          <span class="links">
-            <span class="link" :class="{ disabled: aiWriting }" @click="aiWriteText">{{ aiWriting ? 'AI帮写中…' : '✨ AI帮写' }}</span>
-            <span class="link" @click="showCopyPicker = true">选择AI文案</span>
+          <span class="flex gap-10px">
+            <span class="ll-link" :class="{ 'opacity-60 !cursor-not-allowed': aiWriting }" @click="aiWriteText">{{
+              aiWriting ? 'AI帮写中…' : '✨ AI帮写'
+            }}</span>
+            <span class="ll-link" @click="showCopyPicker = true">选择AI文案</span>
           </span>
         </div>
         <n-input
@@ -249,33 +253,34 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
         />
       </div>
 
-      <div v-if="!isExplore" class="field">
-        <div class="label">商品卖点（选填）</div>
+      <div v-if="!isExplore" class="mb-14px">
+        <div class="ll-label">商品卖点（选填）</div>
         <n-input
           v-model:value="form.selling_points"
+          size="small"
           :maxlength="options?.max_selling_points_len || 200"
           placeholder="如：便携榨汁杯、30秒出汁、USB充电"
         />
       </div>
 
-      <div class="field">
-        <div class="label">{{ isExplore ? '道具图（选填）' : '商品图（必填）' }}</div>
+      <div class="mb-14px">
+        <div class="ll-label">{{ isExplore ? '道具图（选填）' : '商品图（必填）' }}</div>
         <ImageUpload v-model:imgList="form.prop_url" btnName="上传图片" :topRightTips="false" :limitNumber="1" />
       </div>
 
-      <div class="field">
-        <div class="label">{{ isExplore ? '门店图（选填）' : '环境图（选填）' }}</div>
+      <div class="mb-14px">
+        <div class="ll-label">{{ isExplore ? '门店图（选填）' : '环境图（选填）' }}</div>
         <ImageUpload v-model:imgList="form.env1_url" btnName="上传图片" :topRightTips="false" :limitNumber="1" />
       </div>
 
-      <div v-if="isExplore" class="field">
-        <div class="label">店内图（选填）</div>
+      <div v-if="isExplore" class="mb-14px">
+        <div class="ll-label">店内图（选填）</div>
         <ImageUpload v-model:imgList="form.env2_url" btnName="上传图片" :topRightTips="false" :limitNumber="1" />
       </div>
 
-      <div class="field">
-        <div class="label">出镜人物（选填）</div>
-        <div class="seg">
+      <div class="mb-14px">
+        <div class="ll-label">出镜人物（选填）</div>
+        <div class="flex flex-wrap gap-8px">
           <span class="ll-pill" :class="{ 'll-pill-active': !withPerson }" @click="withPerson = false">不出现人物</span>
           <span class="ll-pill" :class="{ 'll-pill-active': withPerson }" @click="withPerson = true">指定人物</span>
         </div>
@@ -287,73 +292,113 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
         />
       </div>
 
-      <div class="field">
-        <div class="label">关联店铺档案</div>
+      <div class="mb-14px">
+        <div class="ll-label">关联店铺档案</div>
         <ShopProfileSelect v-model:value="form.shop_profile_id" />
       </div>
 
-      <div class="field three-col">
-        <div v-if="durationOptions.length">
-          <div class="label">时长</div>
+      <div class="mb-14px flex gap-10px">
+        <div v-if="durationOptions.length" class="flex-1 min-w-0">
+          <div class="ll-label">时长</div>
           <n-select v-model:value="form.duration" size="small" :options="durationOptions" />
         </div>
-        <div v-if="sizeOptions.length">
-          <div class="label">比例</div>
+        <div v-if="sizeOptions.length" class="flex-1 min-w-0">
+          <div class="ll-label">比例</div>
           <n-select v-model:value="form.size" size="small" :options="sizeOptions" />
         </div>
-        <div v-if="modelOptions.length">
-          <div class="label">模型</div>
+        <div v-if="modelOptions.length" class="flex-1 min-w-0">
+          <div class="ll-label">模型</div>
           <n-select v-model:value="form.model" size="small" :options="modelOptions" />
         </div>
       </div>
     </template>
 
     <template #right>
-      <div class="right-inner">
+      <div class="h-full min-h-0 flex flex-col">
         <!-- 列表 -->
         <template v-if="view === 'list'">
-          <div class="list-title">我的{{ pageTitle }}</div>
-          <div class="video-list" v-loading="listCtl.loading.value">
-            <div v-for="item in listCtl.items.value" :key="item.id" class="video-item" @click="openDetail(item.id)">
-              <img v-if="item.char_url || item.env1_url" class="cover" :src="item.char_url || item.env1_url" alt="" />
-              <div v-else class="cover placeholder">🎬</div>
-              <div class="info">
-                <div class="head">
-                  <span class="name">{{ item.user_text || '未命名' }}</span>
-                  <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[item.status]?.type}`">{{ VIDEO_STATUS_MAP[item.status]?.label }}</span>
+          <h2 class="m-0 flex-none mb-14px text-16px font-600 leading-22px text-ink">我的{{ pageTitle }}</h2>
+          <div v-loading="listCtl.loading.value" class="flex-1 min-h-0 overflow-auto">
+            <div
+              v-for="item in listCtl.items.value"
+              :key="item.id"
+              class="ll-card flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+              @click="openDetail(item.id)"
+            >
+              <img
+                v-if="item.char_url || item.env1_url"
+                class="w-64px h-64px flex-none rounded-8px object-cover"
+                :src="item.char_url || item.env1_url"
+                alt=""
+              />
+              <div
+                v-else
+                class="w-64px h-64px flex-none rounded-8px flex items-center justify-center text-24px bg-surface2"
+              >
+                🎬
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-8px">
+                  <span class="flex-1 truncate text-14px font-600 text-ink">{{ item.user_text || '未命名' }}</span>
+                  <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[item.status]?.type}`">{{
+                    VIDEO_STATUS_MAP[item.status]?.label
+                  }}</span>
                 </div>
-                <div class="sub">{{ item.duration }}s · {{ item.size }} · {{ formatTime(item.create_time) }}</div>
+                <div class="mt-4px text-11px text-muted">
+                  {{ item.duration }}s · {{ item.size }} · {{ formatTime(item.create_time) }}
+                </div>
               </div>
             </div>
-            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="empty">还没有记录，左侧开始创作吧</div>
-            <div v-if="listCtl.hasMore.value" class="more" @click="listCtl.loadMore()">加载更多</div>
+            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="ll-empty py-80px">
+              还没有记录，左侧开始创作吧
+            </div>
+            <div v-if="listCtl.hasMore.value" class="ll-link block text-center py-8px" @click="listCtl.loadMore()">
+              加载更多
+            </div>
           </div>
         </template>
 
         <!-- 详情：剧本确认 / 成片 -->
         <template v-else>
-          <div class="back" @click="view = 'list'">← 返回列表</div>
-          <div v-if="activeVideo" class="detail" v-loading="detailLoading">
-            <div class="detail-head">
-              <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{ VIDEO_STATUS_MAP[activeVideo.status]?.label }}</span>
-              <h2>{{ activeVideo.user_text || '未命名' }}</h2>
+          <div
+            class="flex-none w-fit mb-12px text-13px text-ink-2 cursor-pointer hover:text-violet-ink"
+            @click="view = 'list'"
+          >
+            ← 返回列表
+          </div>
+          <div v-if="activeVideo" v-loading="detailLoading" class="flex-1 min-h-0 overflow-auto">
+            <div class="flex items-center gap-10px">
+              <span class="ll-chip" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{
+                VIDEO_STATUS_MAP[activeVideo.status]?.label
+              }}</span>
+              <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
+                {{ activeVideo.user_text || '未命名' }}
+              </h2>
               <n-popconfirm @positive-click="removeItem(activeVideo!)">
-                <template #trigger><span class="del">删除</span></template>
+                <template #trigger><span class="flex-none text-12px ll-danger-link">删除</span></template>
                 确定删除这条记录？
               </n-popconfirm>
             </div>
-            <div class="meta">{{ activeVideo.duration }}s · {{ activeVideo.size }} · {{ formatTime(activeVideo.create_time) }}</div>
+            <div class="mt-8px mb-14px text-12px text-muted">
+              {{ activeVideo.duration }}s · {{ activeVideo.size }} · {{ formatTime(activeVideo.create_time) }}
+            </div>
 
             <!-- 构思中 / 生成中 -->
-            <div v-if="activeVideo.status === 0 || activeVideo.status === 2" class="running-box">
+            <div
+              v-if="activeVideo.status === 0 || activeVideo.status === 2"
+              class="ll-card flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+            >
               <n-spin size="small" />
               <span>{{ activeVideo.status === 0 ? 'AI 正在构思分镜剧本…' : '视频生成中，预计 2~10 分钟…' }}</span>
             </div>
 
             <!-- 失败 -->
-            <div v-else-if="activeVideo.status === 4" class="failed-box">
-              <p>{{ activeVideo.fail_reason || '生成失败' }}</p>
-              <div class="ops">
+            <div
+              v-else-if="activeVideo.status === 4"
+              class="ll-card flex flex-col items-center justify-center gap-10px p-40px text-13px text-ink-2"
+            >
+              <p class="m-0 text-danger">{{ activeVideo.fail_reason || '生成失败' }}</p>
+              <div class="flex gap-10px">
                 <n-button size="small" @click="replan" :loading="replanning">重新构思</n-button>
                 <n-button size="small" type="primary" @click="confirmGenerate" :loading="generating">重新出片</n-button>
               </div>
@@ -361,24 +406,40 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
 
             <!-- 待确认：分镜剧本 -->
             <template v-else-if="activeVideo.status === 1">
-              <div class="plan-tip">分镜剧本已出（剧本只读）。不满意就重新构思；满意就确认生成。</div>
+              <div
+                class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px text-warning"
+              >
+                分镜剧本已出（剧本只读）。不满意就重新构思；满意就确认生成。
+              </div>
 
               <template v-if="scriptScenes">
-                <div v-for="(scene, i) in scriptScenes" :key="i" class="scene-card">
-                  <div class="scene-head">
-                    <span class="scene-name">{{ scene.scene_name || `分镜 ${i + 1}` }}</span>
-                    <span v-if="sceneTime(scene)" class="scene-time">{{ sceneTime(scene) }}</span>
+                <div v-for="(scene, i) in scriptScenes" :key="i" class="ll-card px-16px py-14px mb-10px">
+                  <div class="flex items-baseline justify-between gap-8px mb-8px">
+                    <span class="text-14px font-600 text-ink">{{ scene.scene_name || `分镜 ${i + 1}` }}</span>
+                    <span v-if="sceneTime(scene)" class="text-12px text-violet-ink">{{ sceneTime(scene) }}</span>
                   </div>
-                  <div v-if="scene.camera" class="scene-line"><b>镜头</b>{{ scene.camera }}</div>
-                  <div v-if="scene.dialogue" class="scene-line dialogue"><b>台词</b>{{ scene.dialogue }}</div>
-                  <div v-if="scene.image_ref" class="scene-line"><b>画面</b>{{ scene.image_ref }}</div>
+                  <div v-if="scene.camera" class="mb-4px text-13px leading-20px text-ink-2">
+                    <b class="mr-8px font-400 text-muted">镜头</b>{{ scene.camera }}
+                  </div>
+                  <div v-if="scene.dialogue" class="mb-4px text-13px leading-20px text-ink">
+                    <b class="mr-8px font-400 text-muted">台词</b>{{ scene.dialogue }}
+                  </div>
+                  <div v-if="scene.image_ref" class="mb-4px text-13px leading-20px text-ink-2">
+                    <b class="mr-8px font-400 text-muted">画面</b>{{ scene.image_ref }}
+                  </div>
                 </div>
               </template>
-              <div v-else-if="scriptRaw" class="script-raw">{{ scriptRaw }}</div>
+              <div
+                v-else-if="scriptRaw"
+                class="ll-card p-16px text-13px leading-22px text-ink whitespace-pre-wrap"
+                v-text="scriptRaw"
+              />
 
-              <div class="plan-ops">
+              <div class="flex gap-10px mt-14px">
                 <n-button size="small" :loading="replanning" @click="replan">重新构思</n-button>
-                <n-button size="small" type="primary" :loading="generating" @click="confirmGenerate">确认生成视频</n-button>
+                <n-button size="small" type="primary" :loading="generating" @click="confirmGenerate"
+                  >确认生成视频</n-button
+                >
               </div>
             </template>
 
@@ -389,9 +450,9 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
                 :src="activeVideo.video_url"
                 controls
                 autoplay
-                class="result-video"
+                class="block w-full max-h-70vh rounded-10px bg-black"
               />
-              <div class="plan-ops">
+              <div class="flex gap-10px mt-14px">
                 <n-button size="small" @click="replan" :loading="replanning">换个剧本重新拍</n-button>
               </div>
             </template>
@@ -403,291 +464,3 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
 
   <CopywritingPicker v-model:show="showCopyPicker" @select="pickCopy" />
 </template>
-
-<style scoped lang="less">
-.field {
-  margin-bottom: 14px;
-
-  .label {
-    font-size: 13px;
-    color: #1f2329;
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    .links {
-      display: flex;
-      gap: 10px;
-
-      .link {
-        color: #875f9a;
-        font-size: 12px;
-        cursor: pointer;
-
-        &.disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-      }
-    }
-  }
-}
-
-.seg {
-  display: flex;
-  gap: 6px;
-}
-
-.three-col {
-  display: flex;
-  gap: 10px;
-
-  > div {
-    flex: 1;
-  }
-}
-
-.right-inner {
-  height: 100%;
-  padding: 24px 32px;
-  display: flex;
-  flex-direction: column;
-
-  .list-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2329;
-    margin-bottom: 14px;
-    flex-shrink: 0;
-  }
-
-  .video-list {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-
-    .video-item {
-      display: flex;
-      gap: 12px;
-      background: #fff;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 10px;
-      cursor: pointer;
-      transition: box-shadow 0.2s;
-
-      &:hover {
-        box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
-      }
-
-      .cover {
-        width: 64px;
-        height: 64px;
-        border-radius: 8px;
-        object-fit: cover;
-        flex-shrink: 0;
-
-        &.placeholder {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 24px;
-          background: #f7f8f9;
-        }
-      }
-
-      .info {
-        flex: 1;
-        min-width: 0;
-
-        .head {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-
-          .name {
-            flex: 1;
-            font-weight: 600;
-            font-size: 14px;
-            color: #1f2329;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-        }
-
-        .sub {
-          font-size: 11px;
-          color: #5f6673;
-          margin-top: 4px;
-        }
-      }
-    }
-
-    .empty {
-      text-align: center;
-      color: #5f6673;
-      font-size: 13px;
-      padding: 80px 0;
-    }
-
-    .more {
-      text-align: center;
-      color: #875f9a;
-      font-size: 12px;
-      padding: 8px 0;
-      cursor: pointer;
-    }
-  }
-
-  .back {
-    flex-shrink: 0;
-    font-size: 13px;
-    color: #4b5563;
-    cursor: pointer;
-    margin-bottom: 12px;
-    width: fit-content;
-
-    &:hover {
-      color: #875f9a;
-    }
-  }
-
-  .detail {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-
-    .detail-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-
-      h2 {
-        flex: 1;
-        font-size: 18px;
-        color: #1f2329;
-        margin: 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .del {
-        flex-shrink: 0;
-        font-size: 12px;
-        color: #b4433e;
-        cursor: pointer;
-      }
-    }
-
-    .meta {
-      font-size: 12px;
-      color: #5f6673;
-      margin: 8px 0 14px;
-    }
-
-    .running-box,
-    .failed-box {
-      background: #fff;
-      border-radius: 10px;
-      padding: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      color: #4b5563;
-      font-size: 13px;
-    }
-
-    .failed-box {
-      flex-direction: column;
-
-      p {
-        margin: 0 0 12px;
-        color: #b4433e;
-      }
-
-      .ops {
-        display: flex;
-        gap: 10px;
-      }
-    }
-
-    .plan-tip {
-      font-size: 12px;
-      color: #94651f;
-      background: #fbf4e8;
-      border-radius: 8px;
-      padding: 8px 12px;
-      margin-bottom: 14px;
-    }
-
-    .scene-card {
-      background: #fff;
-      border-radius: 10px;
-      padding: 14px 16px;
-      margin-bottom: 10px;
-
-      .scene-head {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 8px;
-
-        .scene-name {
-          font-weight: 600;
-          font-size: 14px;
-          color: #1f2329;
-        }
-
-        .scene-time {
-          font-size: 12px;
-          color: #875f9a;
-        }
-      }
-
-      .scene-line {
-        font-size: 13px;
-        color: #555;
-        line-height: 20px;
-        margin-bottom: 4px;
-
-        b {
-          color: #5f6673;
-          font-weight: normal;
-          margin-right: 8px;
-        }
-
-        &.dialogue {
-          color: #1f2329;
-        }
-      }
-    }
-
-    .script-raw {
-      background: #fff;
-      border-radius: 10px;
-      padding: 16px;
-      font-size: 13px;
-      color: #1f2329;
-      line-height: 22px;
-      white-space: pre-wrap;
-    }
-
-    .plan-ops {
-      display: flex;
-      gap: 10px;
-      margin-top: 14px;
-    }
-
-    .result-video {
-      width: 100%;
-      max-height: 70vh;
-      border-radius: 12px;
-      background: #000;
-      display: block;
-    }
-  }
-}
-</style>

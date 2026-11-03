@@ -30,12 +30,13 @@ const imageIndex = defineModel<number>('imageIndex', { default: 0 })
 
 const message = useMessage()
 
-const tabs = computed(() =>
-  [
-    { key: 'UPLOAD', label: '上传照片' },
-    { key: 'PUBLIC', label: '公共数字人' },
-    ...(props.enableAi ? [{ key: 'AI', label: 'AI定制形象' }] : []),
-  ] as { key: ILPortraitSource; label: string }[],
+const tabs = computed(
+  () =>
+    [
+      { key: 'UPLOAD', label: '上传照片' },
+      { key: 'PUBLIC', label: '公共数字人' },
+      ...(props.enableAi ? [{ key: 'AI', label: 'AI定制形象' }] : []),
+    ] as { key: ILPortraitSource; label: string }[],
 )
 
 // ---------------- 上传照片：数组 ↔ 单地址桥接 ----------------
@@ -149,9 +150,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="person-source">
-    <div class="module-title">{{ title ?? '人物形象' }}</div>
-    <div class="tabs">
+  <div class="mb-14px">
+    <div class="ll-section-title">{{ title ?? '人物形象' }}</div>
+    <div class="flex flex-wrap gap-8px mb-12px">
       <div
         v-for="tab in tabs"
         :key="tab.key"
@@ -164,42 +165,52 @@ onMounted(() => {
     </div>
 
     <!-- 上传照片 -->
-    <div v-if="source === 'UPLOAD'" class="tab-content">
+    <div v-if="source === 'UPLOAD'">
       <ImageUpload v-model:imgList="uploadList" btnName="上传人物照片" :topRightTips="false" :limitNumber="1">
-        <span class="hint">支持 jpg/png/webp，人脸清晰的正面照效果更佳</span>
+        <span class="inline-block mt-8px text-12px leading-18px text-placeholder"
+          >支持 jpg/png/webp，人脸清晰的正面照效果更佳</span
+        >
       </ImageUpload>
     </div>
 
     <!-- 公共数字人 -->
-    <div v-else-if="source === 'PUBLIC'" class="tab-content" v-loading="publicLoading">
-      <div class="public-grid">
+    <div v-else-if="source === 'PUBLIC'" v-loading="publicLoading">
+      <div class="grid grid-cols-3 gap-8px max-h-260px overflow-auto">
         <div
           v-for="item in publicList"
           :key="item.id"
-          class="public-card"
-          :class="{ selected: publicId === item.id }"
+          class="relative overflow-hidden rounded-8px border-2 border-solid bg-surface2 cursor-pointer transition-colors"
+          :class="publicId === item.id ? 'border-violet' : 'border-transparent'"
           @click="publicId = item.id"
         >
-          <img :src="item.image_url || item.avatar_url" alt="" />
-          <div class="name">{{ item.name }}</div>
-          <div class="role">{{ item.role_label }}</div>
+          <img :src="item.image_url || item.avatar_url" alt="" class="block w-full aspect-[3/4] object-cover" />
+          <div class="truncate px-6px pt-4px text-12px leading-17px text-ink">{{ item.name }}</div>
+          <div class="truncate px-6px pb-6px text-11px leading-16px text-muted">{{ item.role_label }}</div>
+          <span
+            v-if="publicId === item.id"
+            class="absolute top-4px right-4px w-18px h-18px rounded-full bg-violet text-white text-12px flex items-center justify-center"
+            aria-hidden="true"
+            >✓</span
+          >
         </div>
-        <div v-if="!publicLoading && !publicList.length" class="empty">暂无公共数字人</div>
+        <div v-if="!publicLoading && !publicList.length" class="col-span-full ll-empty !text-12px py-20px">
+          暂无公共数字人
+        </div>
       </div>
     </div>
 
     <!-- AI 定制形象 -->
-    <div v-else class="tab-content">
+    <div v-else>
       <template v-if="!portrait || portrait.status !== 1">
-        <div class="option-row">
-          <span class="option-label">性别</span>
+        <div class="flex items-center gap-10px mb-10px">
+          <span class="w-56px flex-none text-13px text-ink-2">性别</span>
           <n-radio-group v-model:value="portraitForm.gender" size="small">
             <n-radio-button value="female">女</n-radio-button>
             <n-radio-button value="male">男</n-radio-button>
           </n-radio-group>
         </div>
-        <div class="option-row">
-          <span class="option-label">年龄</span>
+        <div class="flex items-center gap-10px mb-10px">
+          <span class="w-56px flex-none text-13px text-ink-2">年龄</span>
           <n-select
             v-model:value="portraitForm.age"
             size="small"
@@ -207,8 +218,8 @@ onMounted(() => {
             placeholder="请选择"
           />
         </div>
-        <div class="option-row">
-          <span class="option-label">肤色</span>
+        <div class="flex items-center gap-10px mb-10px">
+          <span class="w-56px flex-none text-13px text-ink-2">肤色</span>
           <n-select
             v-model:value="portraitForm.skin_tone"
             size="small"
@@ -216,8 +227,8 @@ onMounted(() => {
             placeholder="请选择"
           />
         </div>
-        <div class="option-row">
-          <span class="option-label">职业</span>
+        <div class="flex items-center gap-10px mb-10px">
+          <span class="w-56px flex-none text-13px text-ink-2">职业</span>
           <n-select
             v-model:value="portraitForm.role"
             size="small"
@@ -226,213 +237,33 @@ onMounted(() => {
             placeholder="选填"
           />
         </div>
-        <div class="option-row top">
-          <span class="option-label">外貌描述</span>
+        <div class="flex items-start gap-10px mb-10px">
+          <span class="w-56px flex-none text-13px leading-28px text-ink-2">外貌描述</span>
           <Textarea v-model:value="portraitForm.description" placeholder="补充外貌细节，如：短发、圆脸、爱笑（选填）" />
         </div>
-        <div class="gen-btn" :class="{ disabled: generating }" @click="generatePortrait">
+        <div
+          class="mt-4px h-36px flex items-center justify-center rounded-full border border-solid border-violet-line bg-white text-13px text-violet-ink cursor-pointer select-none transition-colors"
+          :class="generating ? 'opacity-60 cursor-not-allowed' : 'hover:(bg-violet-soft border-violet)'"
+          @click="generatePortrait"
+        >
           <span>{{ generating ? '形象生成中…' : '生成形象' }}</span>
         </div>
       </template>
 
       <template v-else>
-        <div class="portrait-grid">
+        <div class="grid grid-cols-4 gap-8px">
           <div
             v-for="(url, index) in portrait.image_urls"
             :key="url"
-            class="portrait-card"
-            :class="{ selected: portraitId === portrait.id && imageIndex === index }"
+            class="overflow-hidden rounded-8px border-2 border-solid cursor-pointer transition-colors"
+            :class="portraitId === portrait.id && imageIndex === index ? 'border-violet' : 'border-transparent'"
             @click="pickPortraitImage(index)"
           >
-            <img :src="url" alt="" />
+            <img :src="url" alt="" class="block w-full aspect-[9/16] object-cover" />
           </div>
         </div>
-        <div class="regen" @click="regeneratePortrait">不满意？重新生成</div>
+        <div class="ll-link block mt-10px text-center" @click="regeneratePortrait">不满意？重新生成</div>
       </template>
     </div>
   </div>
 </template>
-
-<style scoped lang="less">
-.person-source {
-  .module-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: #1f2329;
-    margin-bottom: 10px;
-  }
-
-  .tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-
-    .tab {
-      padding: 5px 14px;
-      border-radius: 14px;
-      font-size: 12px;
-      color: #4b5563;
-      background: #f7f8f9;
-      cursor: pointer;
-      transition: all 0.2s;
-
-      &.active {
-        color: #fff;
-        background: #875f9a;
-      }
-    }
-  }
-
-  .tab-content {
-    .hint {
-      color: #6e7681;
-      font-size: 12px;
-      margin-top: 8px;
-      display: inline-block;
-    }
-
-    .public-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      max-height: 260px;
-      overflow: auto;
-
-      .public-card {
-        border: 2px solid transparent;
-        border-radius: 8px;
-        overflow: hidden;
-        cursor: pointer;
-        position: relative;
-        background: #f7f8f9;
-
-        img {
-          width: 100%;
-          aspect-ratio: 3 / 4;
-          object-fit: cover;
-          display: block;
-        }
-
-        .name {
-          font-size: 12px;
-          padding: 4px 6px 0;
-          color: #1f2329;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .role {
-          font-size: 11px;
-          color: #5f6673;
-          padding: 0 6px 6px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        &.selected {
-          border-color: #875f9a;
-
-          &::after {
-            content: '✓';
-            position: absolute;
-            top: 4px;
-            right: 4px;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #875f9a;
-            color: #fff;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-        }
-      }
-
-      .empty {
-        grid-column: 1 / -1;
-        text-align: center;
-        color: #5f6673;
-        font-size: 12px;
-        padding: 20px 0;
-      }
-    }
-
-    .option-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
-
-      &.top {
-        align-items: flex-start;
-      }
-
-      .option-label {
-        width: 56px;
-        flex-shrink: 0;
-        font-size: 13px;
-        color: #4b5563;
-      }
-    }
-
-    .gen-btn {
-      height: 38px;
-      border-radius: 19px;
-      border: 1px solid #875f9a;
-      color: #875f9a;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      cursor: pointer;
-      margin-top: 4px;
-
-      &:hover {
-        background: rgba(135, 95, 154, 0.06);
-      }
-
-      &.disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-    }
-
-    .portrait-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-
-      .portrait-card {
-        border: 2px solid transparent;
-        border-radius: 8px;
-        overflow: hidden;
-        cursor: pointer;
-
-        img {
-          width: 100%;
-          aspect-ratio: 9 / 16;
-          object-fit: cover;
-          display: block;
-        }
-
-        &.selected {
-          border-color: #875f9a;
-        }
-      }
-    }
-
-    .regen {
-      text-align: center;
-      color: #875f9a;
-      font-size: 12px;
-      margin-top: 10px;
-      cursor: pointer;
-    }
-  }
-}
-</style>

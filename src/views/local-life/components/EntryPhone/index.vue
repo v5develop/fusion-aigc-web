@@ -1,11 +1,27 @@
 <script setup lang="ts">
 /**
- * 全案设计 · 手机预览（还原原型 LocalLifePhone 的空态）。
+ * 全案设计 · 手机预览（原型 LocalLifePhone）。
  *
  * 结构照原型：状态栏 → 店铺导航 → 五连图横条 → 门店卡 → 入口图 → 套餐推荐 → 推荐菜。
- * 入口页没有品牌档案与生成结果，只画「待生成」占位；原型同样不在空态里编造套餐名和价格。
- * 整块是示意图，对读屏只暴露一个「手机预览」名称。
+ * 没有结果的位置画「待生成」占位（生成中显示「生成中」）；有结果按图种填进对应位置。
+ * 原型同样不在空态里编造套餐名和价格。整块是示意图，对读屏只暴露一个「手机预览」名称。
  */
+import { computed } from 'vue'
+import type { KindResults } from '../../useFullSet.ts'
+
+const props = withDefaults(defineProps<{ shopName?: string; results?: KindResults; running?: boolean }>(), {
+  shopName: '',
+  results: () => ({}),
+  running: false,
+})
+const pending = computed(() => (props.running ? '生成中' : '待生成'))
+const fiveUrls = computed(() => props.results.fivePanel ?? [])
+const mealUrls = computed(() => [props.results.twoPanel?.[0], props.results.setMealImage?.[0]])
+const closeupUrls = computed(() => props.results.closeupImage ?? [])
+const ariaLabel = computed(() => {
+  const done = Object.values(props.results).some((v) => v?.length)
+  return `手机预览：大众点评门店页，${done ? '已生成' : pending.value}`
+})
 const ICONS = {
   image: ['M4 5h16v14H4z', 'M9 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z', 'M20 15l-5-5-9 9'],
   back: ['M15 5l-7 7 7 7'],
@@ -28,7 +44,7 @@ const mealLabels = ['套餐二连图', '套餐图']
 </script>
 
 <template>
-  <div class="min-w-0 flex flex-col items-center gap-8px" role="img" aria-label="手机预览：大众点评门店页，待生成">
+  <div class="min-w-0 flex flex-col items-center gap-8px" role="img" :aria-label="ariaLabel">
     <div
       class="aspect-[440/956] w-[min(100%,360px)] rounded-30px bg-ink p-6px shadow-[0_12px_28px_rgba(31,35,41,0.16)]"
       aria-hidden="true"
@@ -68,18 +84,27 @@ const mealLabels = ['套餐二连图', '套餐图']
             <div
               v-for="(label, i) in stripLabels"
               :key="label"
-              class="aspect-[4/3] flex flex-1 flex-col items-center justify-center gap-2px rounded-3px bg-sunken text-ink/30"
+              class="aspect-[4/3] flex flex-1 flex-col items-center justify-center gap-2px overflow-hidden rounded-3px bg-sunken text-ink/30"
             >
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6">
+              <img v-if="fiveUrls[i]" :src="fiveUrls[i]" alt="" class="h-full w-full object-cover" />
+              <svg
+                v-else
+                viewBox="0 0 24 24"
+                width="15"
+                height="15"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+              >
                 <path v-for="d in ICONS.image" :key="d" :d="d" />
               </svg>
-              <span v-if="i === 0" class="text-8px text-placeholder">五连图</span>
+              <span v-if="i === 0 && !fiveUrls[i]" class="text-8px text-placeholder">五连图</span>
             </div>
           </div>
 
           <!-- 门店卡 -->
           <div class="relative -mt-10px rounded-t-14px bg-white px-12px pb-10px pt-12px">
-            <h3 class="m-0 text-15px text-ink font-600 leading-[1.35]">选择品牌档案后预览</h3>
+            <h3 class="m-0 text-15px text-ink font-600 leading-[1.35]">{{ shopName || '选择品牌档案后预览' }}</h3>
             <div class="mt-6px flex flex-wrap items-center gap-6px text-9px text-muted leading-none">
               <span class="inline-flex items-center gap-3px rounded-4px bg-violet-soft px-8px py-2px text-violet-ink">
                 <svg viewBox="0 0 24 24" width="9" height="9" fill="currentColor">
@@ -127,13 +152,15 @@ const mealLabels = ['套餐二连图', '套餐图']
 
           <!-- 入口图 -->
           <div class="mx-8px mt-7px overflow-hidden rounded-8px bg-white">
+            <img v-if="results.entryImage?.[0]" :src="results.entryImage[0]" alt="" class="block w-full" />
             <div
+              v-else
               class="min-h-54px flex items-center justify-center gap-5px border border-line-strong rounded-8px border-dashed text-9px text-ink/40"
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6">
                 <path v-for="d in ICONS.image" :key="d" :d="d" />
               </svg>
-              入口图 · 待生成
+              入口图 · {{ pending }}
             </div>
           </div>
 
@@ -144,14 +171,20 @@ const mealLabels = ['套餐二连图', '套餐图']
               <span class="text-8px text-ink/45">2 个套餐</span>
             </header>
             <div class="grid grid-cols-2 gap-6px">
-              <div v-for="label in mealLabels" :key="label" class="overflow-hidden border border-line-soft rounded-8px">
+              <div
+                v-for="(label, i) in mealLabels"
+                :key="label"
+                class="overflow-hidden border border-line-soft rounded-8px"
+              >
+                <img v-if="mealUrls[i]" :src="mealUrls[i]" alt="" class="aspect-[4/3] block w-full object-cover" />
                 <div
+                  v-else
                   class="aspect-[4/3] w-full flex flex-col items-center justify-center gap-2px bg-surface3 text-ink/25"
                 >
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path v-for="d in ICONS.image" :key="d" :d="d" />
                   </svg>
-                  <em class="text-7px text-ink/40 not-italic leading-[1.2]">{{ label }} · 待生成</em>
+                  <em class="text-7px text-ink/40 not-italic leading-[1.2]">{{ label }} · {{ pending }}</em>
                 </div>
               </div>
             </div>
@@ -168,13 +201,20 @@ const mealLabels = ['套餐二连图', '套餐图']
               :key="n"
               :class="['flex gap-8px py-7px', n === 1 ? 'pt-0' : 'border-t border-line-soft']"
             >
+              <img
+                v-if="closeupUrls[n - 1]"
+                :src="closeupUrls[n - 1]"
+                alt=""
+                class="h-58px w-58px rounded-6px object-cover"
+              />
               <div
+                v-else
                 class="h-58px w-58px flex flex-col items-center justify-center gap-2px rounded-6px bg-surface3 text-ink/25"
               >
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6">
                   <path v-for="d in ICONS.image" :key="d" :d="d" />
                 </svg>
-                <em class="text-7px text-ink/40 not-italic leading-[1.2]">推荐菜 · 待生成</em>
+                <em class="text-7px text-ink/40 not-italic leading-[1.2]">推荐菜 · {{ pending }}</em>
               </div>
             </div>
           </section>

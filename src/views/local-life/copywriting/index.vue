@@ -11,7 +11,19 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import Workbench from '../components/Workbench/index.vue'
 import ShopProfileSelect from '../components/ShopProfileSelect/index.vue'
-import { llCopywritingAiWrite, llCopywritingGenerate, llCopywritingList, llCopywritingPut, llCopywritingRegenerate, llCopywritingRemove, llCopywritingDetail, llCopywritingDerivatives, llCopywritingOptions, llCopywritingSave, llIdempotencyHeaders } from '@/api/localLife.ts'
+import {
+  llCopywritingAiWrite,
+  llCopywritingGenerate,
+  llCopywritingList,
+  llCopywritingPut,
+  llCopywritingRegenerate,
+  llCopywritingRemove,
+  llCopywritingDetail,
+  llCopywritingDerivatives,
+  llCopywritingOptions,
+  llCopywritingSave,
+  llIdempotencyHeaders,
+} from '@/api/localLife.ts'
 import type { ILCopywriting, ILCopywritingOptions, ILDerivative } from '@/api/localLifeTypes.ts'
 import { useAgreement, useLLList, usePollingWhile } from '../hooks.ts'
 import { COPY_STATUS_MAP, DERIVATIVE_KIND_MAP, formatTime, isCopyRunning } from '../constants.ts'
@@ -248,9 +260,14 @@ function openDerivative(d: ILDerivative) {
 </script>
 
 <template>
-  <Workbench title="AI文案" :submit="submit" :loading="submitting" :submit-text="mode === 'MANUAL' ? '保存文案' : '生成文案'">
+  <Workbench
+    title="AI文案"
+    :submit="submit"
+    :loading="submitting"
+    :submit-text="mode === 'MANUAL' ? '保存文案' : '生成文案'"
+  >
     <template #default>
-      <div class="mode-tabs">
+      <div class="flex flex-wrap gap-8px mb-16px">
         <div
           v-for="tab in modeTabs"
           :key="tab.key"
@@ -263,8 +280,8 @@ function openDerivative(d: ILDerivative) {
       </div>
 
       <template v-if="mode !== 'MANUAL'">
-        <div class="field">
-          <div class="label">内容类型</div>
+        <div class="mb-14px">
+          <div class="ll-label">内容类型</div>
           <n-select
             v-model:value="form.content_type"
             size="small"
@@ -272,9 +289,9 @@ function openDerivative(d: ILDerivative) {
             placeholder="请选择"
           />
         </div>
-        <div class="field two-col">
+        <div class="mb-14px grid grid-cols-2 gap-10px">
           <div>
-            <div class="label">风格</div>
+            <div class="ll-label">风格</div>
             <n-select
               v-model:value="form.style"
               size="small"
@@ -284,7 +301,7 @@ function openDerivative(d: ILDerivative) {
             />
           </div>
           <div>
-            <div class="label">行业</div>
+            <div class="ll-label">行业</div>
             <n-select
               v-model:value="form.industry"
               size="small"
@@ -294,8 +311,8 @@ function openDerivative(d: ILDerivative) {
             />
           </div>
         </div>
-        <div class="field">
-          <div class="label">目标字数</div>
+        <div class="mb-14px">
+          <div class="ll-label">目标字数</div>
           <n-select
             v-model:value="form.target_words"
             size="small"
@@ -306,8 +323,8 @@ function openDerivative(d: ILDerivative) {
         </div>
       </template>
 
-      <div v-if="mode === 'AI_WRITE'" class="field">
-        <div class="label">主题</div>
+      <div v-if="mode === 'AI_WRITE'" class="mb-14px">
+        <div class="ll-label">主题</div>
         <n-input
           v-model:value="form.topic"
           type="textarea"
@@ -318,8 +335,8 @@ function openDerivative(d: ILDerivative) {
         />
       </div>
 
-      <div v-if="mode === 'IMITATE'" class="field">
-        <div class="label">爆款原文</div>
+      <div v-if="mode === 'IMITATE'" class="mb-14px">
+        <div class="ll-label">爆款原文</div>
         <n-input
           v-model:value="form.reference_text"
           type="textarea"
@@ -331,14 +348,14 @@ function openDerivative(d: ILDerivative) {
       </div>
 
       <template v-if="mode === 'MANUAL'">
-        <div class="field">
-          <div class="label">标题</div>
+        <div class="mb-14px">
+          <div class="ll-label">标题</div>
           <n-input v-model:value="form.title" size="small" maxlength="100" placeholder="选填" />
         </div>
-        <div class="field">
-          <div class="label">
+        <div class="mb-14px">
+          <div class="ll-label">
             正文
-            <span class="ai-write-link" :class="{ disabled: aiWriting }" @click="aiWriteDraft">
+            <span class="ll-link" :class="{ 'opacity-60 cursor-not-allowed': aiWriting }" @click="aiWriteDraft">
               {{ aiWriting ? 'AI帮写中…' : '✨ AI帮写' }}
             </span>
           </div>
@@ -346,17 +363,17 @@ function openDerivative(d: ILDerivative) {
         </div>
       </template>
 
-      <div v-if="mode !== 'MANUAL'" class="field">
-        <div class="label">关联店铺档案</div>
+      <div v-if="mode !== 'MANUAL'" class="mb-14px">
+        <div class="ll-label">关联店铺档案</div>
         <ShopProfileSelect v-model:value="form.shop_profile_id" />
       </div>
     </template>
 
     <template #right>
-      <div class="right-inner">
+      <div class="h-full min-h-0 flex flex-col">
         <!-- 列表视图 -->
         <template v-if="view === 'list'">
-          <div class="list-bar">
+          <div class="flex flex-none items-center gap-10px mb-14px">
             <div class="flex gap-6px">
               <span
                 v-for="opt in [
@@ -369,61 +386,104 @@ function openDerivative(d: ILDerivative) {
                 class="ll-pill"
                 :class="{ 'll-pill-active': statusFilter === opt.value }"
                 @click="statusFilter = opt.value"
-              >{{ opt.label }}</span>
+                >{{ opt.label }}</span
+              >
             </div>
-            <n-input v-model:value="keyword" size="small" placeholder="搜索关键词" clearable @keydown.enter="search" @clear="search">
-              <template #suffix><span class="search-btn" @click="search">搜索</span></template>
+            <n-input
+              v-model:value="keyword"
+              class="!w-200px"
+              size="small"
+              placeholder="搜索关键词"
+              clearable
+              @keydown.enter="search"
+              @clear="search"
+            >
+              <template #suffix><span class="ll-link" @click="search">搜索</span></template>
             </n-input>
           </div>
 
-          <div class="copy-list" v-loading="listCtl.loading.value">
-            <div v-for="item in listCtl.items.value" :key="item.id" class="copy-item" @click="openDetail(item.id)">
-              <div class="head">
-                <span class="title">{{ item.title || '未命名文案' }}</span>
+          <div v-loading="listCtl.loading.value" class="flex-1 min-h-0 overflow-auto flex flex-col gap-10px">
+            <div
+              v-for="item in listCtl.items.value"
+              :key="item.id"
+              class="ll-card flex-none px-16px py-12px cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+              @click="openDetail(item.id)"
+            >
+              <div class="flex items-center gap-8px mb-6px">
+                <span class="flex-1 min-w-0 truncate text-14px font-600 leading-20px text-ink">{{
+                  item.title || '未命名文案'
+                }}</span>
                 <span class="ll-chip" :class="`ll-chip-${COPY_STATUS_MAP[item.status]?.type}`">
                   {{ COPY_STATUS_MAP[item.status]?.label ?? '未知' }}
                 </span>
               </div>
-              <div class="body">{{ item.body || '生成中…' }}</div>
-              <div class="foot">
-                <span>{{ item.content_type_label }}<template v-if="item.word_count"> · {{ item.word_count }}字</template></span>
-                <span class="time">{{ formatTime(item.create_time) }}</span>
+              <div class="line-clamp-2 mb-8px text-12px leading-18px text-ink-2">{{ item.body || '生成中…' }}</div>
+              <div class="flex justify-between gap-8px text-12px text-muted">
+                <span
+                  >{{ item.content_type_label
+                  }}<template v-if="item.word_count"> · {{ item.word_count }}字</template></span
+                >
+                <span class="flex-none">{{ formatTime(item.create_time) }}</span>
               </div>
             </div>
-            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="empty">还没有文案，左侧开始创作吧</div>
-            <div v-if="listCtl.hasMore.value && !listCtl.loadingMore.value" class="more" @click="listCtl.loadMore()">加载更多</div>
+            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="ll-empty py-80px">
+              还没有文案，左侧开始创作吧
+            </div>
+            <div
+              v-if="listCtl.hasMore.value && !listCtl.loadingMore.value"
+              class="ll-link block text-center py-8px"
+              @click="listCtl.loadMore()"
+            >
+              加载更多
+            </div>
           </div>
         </template>
 
         <!-- 详情视图 -->
         <template v-else>
-          <div class="back" @click="view = 'list'">← 返回列表</div>
-          <div v-if="detail" class="detail" v-loading="detailLoading">
-            <div class="detail-head">
+          <div
+            class="flex-none w-fit mb-12px text-13px text-ink-2 cursor-pointer hover:text-violet-ink"
+            @click="view = 'list'"
+          >
+            ← 返回列表
+          </div>
+          <div v-if="detail" v-loading="detailLoading" class="flex-1 min-h-0 overflow-auto">
+            <div class="flex items-center gap-10px">
               <span class="ll-chip" :class="`ll-chip-${COPY_STATUS_MAP[detail.status]?.type}`">
                 {{ COPY_STATUS_MAP[detail.status]?.label }}
               </span>
-              <h2>{{ detail.title || '未命名文案' }}</h2>
+              <h2 class="m-0 text-16px font-600 leading-22px text-ink">{{ detail.title || '未命名文案' }}</h2>
             </div>
-            <div class="detail-meta">
+            <div class="mt-8px mb-16px text-12px text-muted">
               {{ detail.content_type_label }}<template v-if="detail.style"> · {{ detail.style }}</template>
-              <template v-if="detail.word_count"> · {{ detail.word_count }}字</template> · {{ formatTime(detail.create_time) }}
+              <template v-if="detail.word_count"> · {{ detail.word_count }}字</template> ·
+              {{ formatTime(detail.create_time) }}
             </div>
 
-            <div v-if="detail.status === 0" class="generating">
+            <div
+              v-if="detail.status === 0"
+              class="ll-card flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+            >
               <n-spin size="small" />
               <span>文案生成中，请稍候…</span>
             </div>
-            <div v-else-if="detail.status === 2" class="failed">{{ detail.fail_reason || '生成失败' }}</div>
+            <div
+              v-else-if="detail.status === 2"
+              class="ll-card flex items-center justify-center gap-10px p-40px text-13px text-danger"
+            >
+              {{ detail.fail_reason || '生成失败' }}
+            </div>
 
             <template v-else>
-              <div v-if="!editing" class="detail-body">{{ detail.body }}</div>
-              <div v-else class="edit-area">
+              <div v-if="!editing" class="ll-card p-16px whitespace-pre-wrap text-14px leading-24px text-ink">
+                {{ detail.body }}
+              </div>
+              <div v-else class="flex flex-col gap-10px">
                 <n-input v-model:value="editForm.title" size="small" maxlength="100" placeholder="标题" />
                 <n-input v-model:value="editForm.body" type="textarea" :rows="12" placeholder="正文" />
               </div>
 
-              <div class="detail-ops">
+              <div class="flex gap-8px mt-14px">
                 <template v-if="!editing">
                   <n-button size="small" @click="copyBody">复制</n-button>
                   <n-button size="small" @click="startEdit">编辑</n-button>
@@ -439,13 +499,25 @@ function openDerivative(d: ILDerivative) {
                 </template>
               </div>
 
-              <div v-if="derivatives.length" class="derivatives">
-                <div class="sub-title">用这条文案生成过</div>
-                <div class="deriv-list">
-                  <div v-for="d in derivatives" :key="d.kind + d.id" class="deriv-item" @click="openDerivative(d)">
-                    <img v-if="d.cover_url" :src="d.cover_url" alt="" />
-                    <video v-else-if="d.is_video && d.result_url" :src="d.result_url" muted />
-                    <div class="kind">{{ DERIVATIVE_KIND_MAP[d.kind] ?? d.kind }}</div>
+              <div v-if="derivatives.length" class="mt-20px">
+                <div class="ll-section-title">用这条文案生成过</div>
+                <div class="flex flex-wrap gap-10px">
+                  <div
+                    v-for="d in derivatives"
+                    :key="d.kind + d.id"
+                    class="relative w-96px overflow-hidden rounded-8px border border-solid border-line bg-white cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+                    @click="openDerivative(d)"
+                  >
+                    <img v-if="d.cover_url" class="block w-full aspect-square object-cover" :src="d.cover_url" alt="" />
+                    <video
+                      v-else-if="d.is_video && d.result_url"
+                      class="block w-full aspect-square object-cover"
+                      :src="d.result_url"
+                      muted
+                    />
+                    <div class="absolute inset-x-0 bottom-0 py-2px bg-black/45 text-center text-11px text-white">
+                      {{ DERIVATIVE_KIND_MAP[d.kind] ?? d.kind }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -456,262 +528,3 @@ function openDerivative(d: ILDerivative) {
     </template>
   </Workbench>
 </template>
-
-<style scoped lang="less">
-.mode-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.field {
-  margin-bottom: 14px;
-
-  .label {
-    font-size: 13px;
-    color: #1f2329;
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    .ai-write-link {
-      color: #875f9a;
-      font-size: 12px;
-      cursor: pointer;
-
-      &.disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-    }
-  }
-}
-
-.two-col {
-  display: flex;
-  gap: 10px;
-
-  > div {
-    flex: 1;
-  }
-}
-
-.right-inner {
-  height: 100%;
-  padding: 24px 32px;
-  display: flex;
-  flex-direction: column;
-
-  .list-bar {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 14px;
-    flex-shrink: 0;
-
-    > .n-input {
-      width: 200px;
-    }
-
-    .search-btn {
-      font-size: 12px;
-      color: #875f9a;
-      cursor: pointer;
-    }
-  }
-
-  .copy-list {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-
-    .copy-item {
-      background: #fff;
-      border-radius: 10px;
-      padding: 12px 16px;
-      margin-bottom: 10px;
-      cursor: pointer;
-      transition: box-shadow 0.2s;
-
-      &:hover {
-        box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
-      }
-
-      .head {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 6px;
-
-        .title {
-          flex: 1;
-          font-weight: 600;
-          font-size: 14px;
-          color: #1f2329;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-      }
-
-      .body {
-        font-size: 12px;
-        color: #4b5563;
-        line-height: 18px;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        margin-bottom: 8px;
-      }
-
-      .foot {
-        display: flex;
-        justify-content: space-between;
-        font-size: 12px;
-        color: #5f6673;
-
-        .time {
-          flex-shrink: 0;
-        }
-      }
-    }
-
-    .empty {
-      text-align: center;
-      color: #5f6673;
-      font-size: 13px;
-      padding: 80px 0;
-    }
-
-    .more {
-      text-align: center;
-      color: #875f9a;
-      font-size: 12px;
-      padding: 8px 0;
-      cursor: pointer;
-    }
-  }
-
-  .back {
-    flex-shrink: 0;
-    font-size: 13px;
-    color: #4b5563;
-    cursor: pointer;
-    margin-bottom: 12px;
-    width: fit-content;
-
-    &:hover {
-      color: #875f9a;
-    }
-  }
-
-  .detail {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-
-    .detail-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-
-      h2 {
-        font-size: 18px;
-        color: #1f2329;
-        margin: 0;
-      }
-    }
-
-    .detail-meta {
-      font-size: 12px;
-      color: #5f6673;
-      margin: 8px 0 16px;
-    }
-
-    .detail-body {
-      white-space: pre-wrap;
-      font-size: 14px;
-      color: #1f2329;
-      line-height: 24px;
-      background: #fff;
-      border-radius: 10px;
-      padding: 16px;
-    }
-
-    .edit-area {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .generating,
-    .failed {
-      background: #fff;
-      border-radius: 10px;
-      padding: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      color: #4b5563;
-      font-size: 13px;
-    }
-
-    .failed {
-      color: #b4433e;
-    }
-    .detail-ops {
-      display: flex;
-      gap: 8px;
-      margin-top: 14px;
-    }
-
-    .derivatives {
-      margin-top: 20px;
-
-      .sub-title {
-        font-size: 14px;
-        font-weight: 600;
-        color: #1f2329;
-        margin-bottom: 10px;
-      }
-
-      .deriv-list {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-
-        .deriv-item {
-          width: 96px;
-          border-radius: 8px;
-          overflow: hidden;
-          cursor: pointer;
-          position: relative;
-          background: #fff;
-
-          img,
-          video {
-            width: 100%;
-            aspect-ratio: 1;
-            object-fit: cover;
-            display: block;
-          }
-
-          .kind {
-            position: absolute;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.45);
-            color: #fff;
-            font-size: 11px;
-            text-align: center;
-            padding: 2px 0;
-          }
-        }
-      }
-    }
-  }
-}
-</style>

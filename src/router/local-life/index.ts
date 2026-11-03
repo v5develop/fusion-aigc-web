@@ -1,9 +1,15 @@
-// 本地生活（Go 网关 /api/v1/local-life）路由：hub 页 + 11 个功能页。
+// 本地生活（Go 网关 /api/v1/local-life）路由：导航首页 + 全案设计 + 11 个功能页。
 // 不进电商标签体系，普通路由直达；meta.title 供浏览器标签与后续面包屑使用
 export default [
   {
     path: '/local-life',
     name: 'local-life',
+    component: () => import('@/views/local-life/landing/index.vue'),
+  },
+  {
+    path: '/local-life/full-set',
+    name: 'local-life-full-set',
+    meta: { title: '门店全案' },
     component: () => import('@/views/local-life/index.vue'),
   },
   {

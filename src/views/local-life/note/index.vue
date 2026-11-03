@@ -283,23 +283,27 @@ watch(view, (v) => {
 <template>
   <Workbench title="图文笔记" :submit="submit" :loading="submitting" submit-text="开始构思">
     <template #default>
-      <div class="field">
-        <div class="label">笔记类型</div>
+      <div class="mb-14px">
+        <div class="ll-label">笔记类型</div>
         <n-select
           v-model:value="form.note_type"
           size="small"
           :options="typeOptions"
           @update:value="form.materials = []"
         />
-        <div v-if="activeType?.material_hint" class="hint">{{ activeType.material_hint }}</div>
+        <div v-if="activeType?.material_hint" class="mt-4px text-11px leading-16px text-placeholder">
+          {{ activeType.material_hint }}
+        </div>
       </div>
 
-      <div class="field">
-        <div class="label">
+      <div class="mb-14px">
+        <div class="ll-label">
           主题
-          <span class="links">
-            <span class="link" :class="{ disabled: aiWriting }" @click="aiWriteTopic">{{ aiWriting ? 'AI帮写中…' : '✨ AI帮写' }}</span>
-            <span class="link" @click="showCopyPicker = true">选择AI文案</span>
+          <span class="flex gap-10px">
+            <span class="ll-link" :class="{ 'opacity-60 !cursor-not-allowed': aiWriting }" @click="aiWriteTopic">{{
+              aiWriting ? 'AI帮写中…' : '✨ AI帮写'
+            }}</span>
+            <span class="ll-link" @click="showCopyPicker = true">选择AI文案</span>
           </span>
         </div>
         <n-input
@@ -312,109 +316,200 @@ watch(view, (v) => {
         />
       </div>
 
-      <div class="field">
-        <div class="label">{{ activeType?.material_label ?? '素材图' }}（选填，最多{{ noteOptions?.max_materials ?? 3 }}张）</div>
-        <ImageUpload v-model:imgList="form.materials" btnName="上传素材" :topRightTips="false" multiple :limitNumber="noteOptions?.max_materials ?? 3" />
+      <div class="mb-14px">
+        <div class="ll-label">
+          {{ activeType?.material_label ?? '素材图' }}（选填，最多{{ noteOptions?.max_materials ?? 3 }}张）
+        </div>
+        <ImageUpload
+          v-model:imgList="form.materials"
+          btnName="上传素材"
+          :topRightTips="false"
+          multiple
+          :limitNumber="noteOptions?.max_materials ?? 3"
+        />
       </div>
 
-      <div class="field">
-        <div class="label">出镜数字人</div>
-        <n-select v-model:value="form.digital_human_id" size="small" clearable :options="myDhOptions" placeholder="选填，用已生成的数字人出镜" />
+      <div class="mb-14px">
+        <div class="ll-label">出镜数字人</div>
+        <n-select
+          v-model:value="form.digital_human_id"
+          size="small"
+          clearable
+          :options="myDhOptions"
+          placeholder="选填，用已生成的数字人出镜"
+        />
       </div>
 
-      <div class="field">
-        <div class="label">关联店铺档案</div>
+      <div class="mb-14px">
+        <div class="ll-label">关联店铺档案</div>
         <ShopProfileSelect v-model:value="form.shop_profile_id" />
       </div>
 
-      <div class="field">
-        <div class="label">套图数量</div>
+      <div class="mb-14px">
+        <div class="ll-label">套图数量</div>
         <n-select v-model:value="form.image_count" size="small" :options="imageCountOptions" />
       </div>
     </template>
 
     <template #right>
-      <div class="right-inner">
+      <div class="h-full min-h-0 flex flex-col">
         <!-- 列表 -->
         <template v-if="view === 'list'">
-          <div class="list-title">
+          <div class="flex flex-none items-baseline gap-8px mb-14px text-16px font-600 leading-22px text-ink">
             我的笔记
-            <span v-if="pendingCount" class="pending-tip">{{ pendingCount }} 条待确认</span>
+            <span v-if="pendingCount" class="ll-chip ll-chip-warning self-center">{{ pendingCount }} 条待确认</span>
           </div>
-          <div class="note-list" v-loading="listCtl.loading.value">
-            <div v-for="item in listCtl.items.value" :key="item.id" class="note-item" @click="openDetail(item.id)">
-              <img v-if="item.image_urls?.length" class="cover" :src="item.image_urls[0]" alt="" />
-              <div v-else class="cover placeholder">📝</div>
-              <div class="info">
-                <div class="head">
-                  <span class="name">{{ item.title || item.topic }}</span>
-                  <span class="ll-chip" :class="`ll-chip-${NOTE_STATUS_MAP[item.status]?.type}`">{{ NOTE_STATUS_MAP[item.status]?.label }}</span>
+          <div class="flex-1 min-h-0 overflow-auto" v-loading="listCtl.loading.value">
+            <div
+              v-for="item in listCtl.items.value"
+              :key="item.id"
+              class="ll-card flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-[0.18s] ease-[ease] hover:(border-violet-line shadow-[0_4px_16px_rgba(31,35,41,0.08)])"
+              @click="openDetail(item.id)"
+            >
+              <img
+                v-if="item.image_urls?.length"
+                class="w-64px h-64px flex-none rounded-8px object-cover"
+                :src="item.image_urls[0]"
+                alt=""
+              />
+              <div
+                v-else
+                class="w-64px h-64px flex-none flex items-center justify-center rounded-8px border border-solid border-line bg-surface2 text-24px"
+              >
+                📝
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-8px">
+                  <span class="flex-1 truncate text-14px font-600 leading-20px text-ink">{{
+                    item.title || item.topic
+                  }}</span>
+                  <span class="ll-chip" :class="`ll-chip-${NOTE_STATUS_MAP[item.status]?.type}`">{{
+                    NOTE_STATUS_MAP[item.status]?.label
+                  }}</span>
                 </div>
-                <div class="desc">{{ item.content || item.topic }}</div>
-                <div class="time">{{ item.note_type_label }} · {{ formatTime(item.create_time) }}</div>
+                <div class="my-4px line-clamp-2 text-12px leading-18px text-ink-2">
+                  {{ item.content || item.topic }}
+                </div>
+                <div class="text-11px leading-16px text-muted">
+                  {{ item.note_type_label }} · {{ formatTime(item.create_time) }}
+                </div>
               </div>
             </div>
-            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="empty">还没有笔记，左侧开始构思吧</div>
-            <div v-if="listCtl.hasMore.value" class="more" @click="listCtl.loadMore()">加载更多</div>
+            <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="ll-empty py-80px">
+              还没有笔记，左侧开始构思吧
+            </div>
+            <div v-if="listCtl.hasMore.value" class="ll-link block text-center py-8px" @click="listCtl.loadMore()">
+              加载更多
+            </div>
           </div>
         </template>
 
         <!-- 详情 / 规划 / 成果 -->
         <template v-else>
-          <div class="back" @click="view = 'list'">← 返回列表</div>
-          <div v-if="activeNote" class="detail" v-loading="detailLoading">
-            <div class="detail-head">
-              <span class="ll-chip" :class="`ll-chip-${NOTE_STATUS_MAP[activeNote.status]?.type}`">{{ NOTE_STATUS_MAP[activeNote.status]?.label }}</span>
-              <h2>{{ activeNote.title || activeNote.topic }}</h2>
+          <div
+            class="flex-none w-fit mb-12px text-13px text-ink-2 cursor-pointer hover:text-violet-ink"
+            @click="view = 'list'"
+          >
+            ← 返回列表
+          </div>
+          <div v-if="activeNote" class="flex-1 min-h-0 overflow-auto" v-loading="detailLoading">
+            <div class="flex items-center gap-10px">
+              <span class="ll-chip" :class="`ll-chip-${NOTE_STATUS_MAP[activeNote.status]?.type}`">{{
+                NOTE_STATUS_MAP[activeNote.status]?.label
+              }}</span>
+              <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
+                {{ activeNote.title || activeNote.topic }}
+              </h2>
               <n-popconfirm @positive-click="removeItem(activeNote!)">
-                <template #trigger><span class="del">删除</span></template>
+                <template #trigger><span class="ll-danger-link flex-none text-12px">删除</span></template>
                 确定删除这条笔记？
               </n-popconfirm>
             </div>
-            <div class="meta">{{ activeNote.note_type_label }} · 套图 {{ activeNote.image_count }}张 · {{ formatTime(activeNote.create_time) }}</div>
+            <div class="mt-8px mb-14px text-12px text-muted">
+              {{ activeNote.note_type_label }} · 套图 {{ activeNote.image_count }}张 ·
+              {{ formatTime(activeNote.create_time) }}
+            </div>
 
             <!-- 构思中 / 生成中 -->
-            <div v-if="activeNote.status === 0 || activeNote.status === 3" class="running-box">
+            <div
+              v-if="activeNote.status === 0 || activeNote.status === 3"
+              class="ll-card flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+            >
               <n-spin size="small" />
               <span>{{ activeNote.status === 0 ? 'AI 构思中，标题正文马上就来…' : '图片生成中，请稍候…' }}</span>
             </div>
 
             <!-- 构思失败 / 生成失败 -->
-            <div v-else-if="activeNote.status === 2 || activeNote.status === 5" class="failed-box">
-              <p>{{ activeNote.fail_reason || (activeNote.status === 2 ? '构思失败' : '生成失败') }}</p>
-              <n-button size="small" type="primary" :loading="replanning || generating" @click="activeNote.status === 2 ? replan() : confirmGenerate()">
+            <div
+              v-else-if="activeNote.status === 2 || activeNote.status === 5"
+              class="ll-card flex flex-col items-center justify-center gap-12px p-40px text-13px text-ink-2"
+            >
+              <p class="m-0 text-danger">
+                {{ activeNote.fail_reason || (activeNote.status === 2 ? '构思失败' : '生成失败') }}
+              </p>
+              <n-button
+                size="small"
+                type="primary"
+                :loading="replanning || generating"
+                @click="activeNote.status === 2 ? replan() : confirmGenerate()"
+              >
                 {{ activeNote.status === 2 ? '重新构思' : '重试生成' }}
               </n-button>
             </div>
 
             <!-- 待确认：规划页 -->
             <template v-else-if="activeNote.status === 1">
-              <div class="plan-tip">以下是 AI 构思的内容，可以修改后确认生成；也可以换个思路重新构思。</div>
-              <div class="plan-form">
-                <div class="field">
-                  <div class="label">标题</div>
-                  <n-input v-model:value="editForm.title" maxlength="30" show-count placeholder="笔记标题" />
+              <div
+                class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px leading-18px text-warning"
+              >
+                以下是 AI 构思的内容，可以修改后确认生成；也可以换个思路重新构思。
+              </div>
+              <div class="ll-card p-16px">
+                <div class="mb-14px">
+                  <div class="ll-label">标题</div>
+                  <n-input
+                    v-model:value="editForm.title"
+                    size="small"
+                    maxlength="30"
+                    show-count
+                    placeholder="笔记标题"
+                  />
                 </div>
-                <div class="field">
-                  <div class="label">正文</div>
-                  <n-input v-model:value="editForm.content" type="textarea" :rows="8" placeholder="笔记正文，话题用 # 或空格分隔写在下面" />
+                <div class="mb-14px">
+                  <div class="ll-label">正文</div>
+                  <n-input
+                    v-model:value="editForm.content"
+                    type="textarea"
+                    :rows="8"
+                    placeholder="笔记正文，话题用 # 或空格分隔写在下面"
+                  />
                 </div>
-                <div class="field">
-                  <div class="label">话题</div>
-                  <n-input v-model:value="editForm.tags" placeholder="用空格分隔，如：探店 咖啡 周末去哪儿" />
+                <div class="mb-14px">
+                  <div class="ll-label">话题</div>
+                  <n-input
+                    v-model:value="editForm.tags"
+                    size="small"
+                    placeholder="用空格分隔，如：探店 咖啡 周末去哪儿"
+                  />
                 </div>
-                <div class="field">
-                  <div class="label">套图数量（最多 {{ activeNote.image_count }} 张，只能改少）</div>
+                <div class="mb-14px">
+                  <div class="ll-label">套图数量（最多 {{ activeNote.image_count }} 张，只能改少）</div>
                   <n-select v-model:value="genCount" size="small" :options="genCountOptions" />
                 </div>
-                <div v-if="activeNote.material_urls?.length" class="field">
-                  <div class="label">参考素材</div>
-                  <div class="material-row">
-                    <img v-for="url in activeNote.material_urls" :key="url" :src="url" alt="" />
+                <div v-if="activeNote.material_urls?.length">
+                  <div class="ll-label">参考素材</div>
+                  <div class="flex flex-wrap gap-8px">
+                    <img
+                      v-for="url in activeNote.material_urls"
+                      :key="url"
+                      :src="url"
+                      alt=""
+                      class="w-64px h-64px rounded-8px object-cover"
+                    />
                   </div>
                 </div>
               </div>
-              <div class="plan-ops">
+              <div class="flex gap-8px mt-14px">
                 <n-button size="small" :loading="replanning" @click="replan">重新构思</n-button>
                 <n-button size="small" type="primary" :loading="generating" @click="confirmGenerate">确认生成</n-button>
               </div>
@@ -422,39 +517,56 @@ watch(view, (v) => {
 
             <!-- 已完成 -->
             <template v-else-if="activeNote.status === 4">
-              <div class="plan-form">
+              <div class="ll-card p-16px">
                 <template v-if="!editingResult">
-                  <div class="result-title">{{ activeNote.title }}</div>
-                  <div class="result-content">{{ activeNote.content }}</div>
-                  <div v-if="activeNote.tags?.length" class="result-tags">
-                    <span v-for="tag in activeNote.tags" :key="tag" class="tag">#{{ tag }}</span>
+                  <div class="mb-8px text-16px font-600 leading-22px text-ink">{{ activeNote.title }}</div>
+                  <div class="mb-10px whitespace-pre-wrap text-13px leading-22px text-ink">
+                    {{ activeNote.content }}
+                  </div>
+                  <div v-if="activeNote.tags?.length" class="flex flex-wrap gap-x-8px gap-y-4px mb-12px">
+                    <span v-for="tag in activeNote.tags" :key="tag" class="text-12px text-violet-ink">#{{ tag }}</span>
                   </div>
                 </template>
                 <template v-else>
-                  <div class="field">
-                    <div class="label">标题</div>
-                    <n-input v-model:value="editForm.title" maxlength="30" show-count />
+                  <div class="mb-14px">
+                    <div class="ll-label">标题</div>
+                    <n-input v-model:value="editForm.title" size="small" maxlength="30" show-count />
                   </div>
-                  <div class="field">
-                    <div class="label">正文</div>
+                  <div class="mb-14px">
+                    <div class="ll-label">正文</div>
                     <n-input v-model:value="editForm.content" type="textarea" :rows="8" />
                   </div>
-                  <div class="field">
-                    <div class="label">话题</div>
-                    <n-input v-model:value="editForm.tags" placeholder="空格分隔" />
+                  <div class="mb-14px">
+                    <div class="ll-label">话题</div>
+                    <n-input v-model:value="editForm.tags" size="small" placeholder="空格分隔" />
                   </div>
                 </template>
 
-                <div class="image-grid">
-                  <div v-for="(url, i) in activeNote.image_urls" :key="url" class="image-cell" @click="openImage(url)">
-                    <img :src="url" alt="" />
-                    <span class="idx">{{ i + 1 }}</span>
+                <div class="grid grid-cols-3 gap-10px mt-14px">
+                  <div
+                    v-for="(url, i) in activeNote.image_urls"
+                    :key="url"
+                    class="relative overflow-hidden rounded-8px cursor-pointer"
+                    @click="openImage(url)"
+                  >
+                    <img :src="url" alt="" class="block w-full aspect-[3/4] object-cover" />
+                    <span
+                      class="absolute top-6px left-6px w-20px h-20px flex items-center justify-center rounded-full bg-black/50 text-11px text-white"
+                      >{{ i + 1 }}</span
+                    >
                   </div>
                 </div>
               </div>
-              <div class="plan-ops">
+              <div class="flex gap-8px mt-14px">
                 <template v-if="!editingResult">
-                  <n-button size="small" @click="editingResult = true; fillEditForm(activeNote)">编辑文案</n-button>
+                  <n-button
+                    size="small"
+                    @click="
+                      editingResult = true
+                      fillEditForm(activeNote)
+                    "
+                    >编辑文案</n-button
+                  >
                   <n-button size="small" :loading="replanning" @click="replan">重新生成</n-button>
                 </template>
                 <template v-else>
@@ -471,333 +583,7 @@ watch(view, (v) => {
 
   <CopywritingPicker v-model:show="showCopyPicker" @select="pickCopy" />
 
-  <n-modal v-model:show="imagePreviewShow" preset="card" style="width: 560px" title="笔记配图">
-    <img v-if="previewUrl" :src="previewUrl" style="width: 100%; border-radius: 8px" alt="" />
+  <n-modal v-model:show="imagePreviewShow" preset="card" class="!w-560px" title="笔记配图">
+    <img v-if="previewUrl" :src="previewUrl" class="block w-full rounded-8px" alt="" />
   </n-modal>
 </template>
-
-<style scoped lang="less">
-.field {
-  margin-bottom: 14px;
-
-  .label {
-    font-size: 13px;
-    color: #1f2329;
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    .links {
-      display: flex;
-      gap: 10px;
-
-      .link {
-        color: #875f9a;
-        font-size: 12px;
-        cursor: pointer;
-
-        &.disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-      }
-    }
-  }
-
-  .hint {
-    font-size: 11px;
-    color: #6e7681;
-    margin-top: 4px;
-  }
-}
-
-.right-inner {
-  height: 100%;
-  padding: 24px 32px;
-  display: flex;
-  flex-direction: column;
-
-  .list-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2329;
-    margin-bottom: 14px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-
-    .pending-tip {
-      font-size: 11px;
-      color: #94651f;
-      background: #fbf4e8;
-      padding: 2px 8px;
-      border-radius: 10px;
-    }
-  }
-
-  .note-list {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-
-    .note-item {
-      display: flex;
-      gap: 12px;
-      background: #fff;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 10px;
-      cursor: pointer;
-      transition: box-shadow 0.2s;
-
-      &:hover {
-        box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
-      }
-
-      .cover {
-        width: 64px;
-        height: 64px;
-        border-radius: 8px;
-        object-fit: cover;
-        flex-shrink: 0;
-
-        &.placeholder {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 24px;
-          background: #f7f8f9;
-        }
-      }
-
-      .info {
-        flex: 1;
-        min-width: 0;
-
-        .head {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-
-          .name {
-            flex: 1;
-            font-weight: 600;
-            font-size: 14px;
-            color: #1f2329;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-        }
-
-        .desc {
-          font-size: 12px;
-          color: #4b5563;
-          line-height: 17px;
-          margin: 4px 0;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-
-        .time {
-          font-size: 11px;
-          color: #5f6673;
-        }
-      }
-    }
-
-    .empty {
-      text-align: center;
-      color: #5f6673;
-      font-size: 13px;
-      padding: 80px 0;
-    }
-
-    .more {
-      text-align: center;
-      color: #875f9a;
-      font-size: 12px;
-      padding: 8px 0;
-      cursor: pointer;
-    }
-  }
-
-  .back {
-    flex-shrink: 0;
-    font-size: 13px;
-    color: #4b5563;
-    cursor: pointer;
-    margin-bottom: 12px;
-    width: fit-content;
-
-    &:hover {
-      color: #875f9a;
-    }
-  }
-
-  .detail {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-
-    .detail-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-
-      h2 {
-        flex: 1;
-        font-size: 18px;
-        color: #1f2329;
-        margin: 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .del {
-        flex-shrink: 0;
-        font-size: 12px;
-        color: #b4433e;
-        cursor: pointer;
-      }
-    }
-
-    .meta {
-      font-size: 12px;
-      color: #5f6673;
-      margin: 8px 0 14px;
-    }
-
-    .running-box,
-    .failed-box {
-      background: #fff;
-      border-radius: 10px;
-      padding: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      color: #4b5563;
-      font-size: 13px;
-    }
-
-    .failed-box {
-      flex-direction: column;
-
-      p {
-        margin: 0 0 12px;
-        color: #b4433e;
-      }
-    }
-
-    .plan-tip {
-      font-size: 12px;
-      color: #94651f;
-      background: #fbf4e8;
-      border-radius: 8px;
-      padding: 8px 12px;
-      margin-bottom: 14px;
-    }
-
-    .plan-form {
-      background: #fff;
-      border-radius: 10px;
-      padding: 16px;
-
-      .field {
-        margin-bottom: 12px;
-
-        .label {
-          font-size: 13px;
-          color: #1f2329;
-          margin-bottom: 6px;
-        }
-      }
-
-      .result-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: #1f2329;
-        margin-bottom: 8px;
-      }
-
-      .result-content {
-        font-size: 13px;
-        color: #1f2329;
-        line-height: 22px;
-        white-space: pre-wrap;
-        margin-bottom: 10px;
-      }
-
-      .result-tags {
-        margin-bottom: 12px;
-
-        .tag {
-          color: #4d7ee0;
-          font-size: 12px;
-          margin-right: 8px;
-        }
-      }
-
-      .material-row {
-        display: flex;
-        gap: 8px;
-
-        img {
-          width: 64px;
-          height: 64px;
-          object-fit: cover;
-          border-radius: 6px;
-        }
-      }
-
-      .image-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        margin-top: 14px;
-
-        .image-cell {
-          position: relative;
-          border-radius: 8px;
-          overflow: hidden;
-          cursor: pointer;
-
-          img {
-            width: 100%;
-            aspect-ratio: 3 / 4;
-            object-fit: cover;
-            display: block;
-          }
-
-          .idx {
-            position: absolute;
-            top: 6px;
-            left: 6px;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: rgba(0, 0, 0, 0.5);
-            color: #fff;
-            font-size: 11px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-        }
-      }
-    }
-
-    .plan-ops {
-      display: flex;
-      gap: 10px;
-      margin-top: 14px;
-    }
-  }
-}
-</style>

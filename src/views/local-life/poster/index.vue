@@ -44,8 +44,12 @@ const form = reactive({
   copywriting_id: undefined as number | undefined,
 })
 
-const posterTypeOptions = computed(() => (options.value?.poster_types ?? []).map((o) => ({ label: o.label, value: o.code })))
-const posterStyleOptions = computed(() => (options.value?.poster_styles ?? []).map((o) => ({ label: o.label, value: o.code })))
+const posterTypeOptions = computed(() =>
+  (options.value?.poster_types ?? []).map((o) => ({ label: o.label, value: o.code })),
+)
+const posterStyleOptions = computed(() =>
+  (options.value?.poster_styles ?? []).map((o) => ({ label: o.label, value: o.code })),
+)
 const sizeOptions = computed(() => (options.value?.sizes ?? []).map((o) => ({ label: o.label, value: o.code })))
 const imageCountOptions = computed(() => {
   const max = options.value?.max_images ?? 4
@@ -173,12 +177,14 @@ async function removeItem(item: ILCreation) {
 <template>
   <Workbench :title="pageTitle" :submit="submit" :loading="submitting">
     <template #default>
-      <div class="field">
-        <div class="label">
+      <div class="mb-14px">
+        <div class="ll-label">
           {{ isPoster ? '海报信息' : '长图内容' }}
-          <span class="links">
-            <span class="link" :class="{ disabled: aiWriting }" @click="aiWriteContent">{{ aiWriting ? 'AI帮写中…' : '✨ AI帮写' }}</span>
-            <span class="link" @click="showCopyPicker = true">选择AI文案</span>
+          <span class="flex gap-10px">
+            <span class="ll-link" :class="{ 'opacity-60 !cursor-not-allowed': aiWriting }" @click="aiWriteContent">{{
+              aiWriting ? 'AI帮写中…' : '✨ AI帮写'
+            }}</span>
+            <span class="ll-link" @click="showCopyPicker = true">选择AI文案</span>
           </span>
         </div>
         <n-input
@@ -187,42 +193,58 @@ async function removeItem(item: ILCreation) {
           :rows="5"
           :maxlength="options?.max_content_len || undefined"
           show-count
-          :placeholder="isPoster ? '活动主题、时间、优惠信息等，画在海报上的文字' : '要放进长图的分段内容，AI 会按模板排版'"
+          :placeholder="
+            isPoster ? '活动主题、时间、优惠信息等，画在海报上的文字' : '要放进长图的分段内容，AI 会按模板排版'
+          "
         />
       </div>
 
       <template v-if="isPoster">
-        <div class="field two-col">
-          <div>
-            <div class="label">海报类型</div>
+        <div class="mb-14px grid grid-cols-2 gap-10px">
+          <div class="min-w-0">
+            <div class="ll-label">海报类型</div>
             <n-select v-model:value="form.poster_type" size="small" :options="posterTypeOptions" />
           </div>
-          <div>
-            <div class="label">风格</div>
-            <n-select v-model:value="form.poster_style" size="small" clearable :options="posterStyleOptions" placeholder="选填" />
+          <div class="min-w-0">
+            <div class="ll-label">风格</div>
+            <n-select
+              v-model:value="form.poster_style"
+              size="small"
+              clearable
+              :options="posterStyleOptions"
+              placeholder="选填"
+            />
           </div>
         </div>
       </template>
 
-      <div class="field">
-        <div class="label">模板{{ templateRequired ? '（必选）' : '（选填）' }}</div>
-        <div class="template-grid" v-loading="templatesLoading">
+      <div class="mb-14px">
+        <div class="ll-label">模板{{ templateRequired ? '（必选）' : '（选填）' }}</div>
+        <div class="grid grid-cols-3 gap-8px max-h-300px overflow-auto" v-loading="templatesLoading">
           <div
             v-for="t in templates"
             :key="t.id"
-            class="template"
-            :class="{ selected: templateId === t.id }"
+            class="relative overflow-hidden rounded-8px border-2 border-solid bg-surface2 cursor-pointer transition-colors"
+            :class="templateId === t.id ? 'border-violet' : 'border-transparent hover:border-violet-line'"
             @click="templateId = t.id"
           >
-            <img :src="t.url" alt="" />
-            <div class="name">{{ t.title }}</div>
+            <img :src="t.url" alt="" class="block w-full aspect-[3/4] object-cover" />
+            <div class="truncate px-6px py-3px text-11px leading-16px text-ink-2">{{ t.title }}</div>
+            <span
+              v-if="templateId === t.id"
+              class="absolute top-4px right-4px w-18px h-18px flex items-center justify-center rounded-full bg-violet text-12px text-white"
+              aria-hidden="true"
+              >✓</span
+            >
           </div>
-          <div v-if="!templatesLoading && !templates.length" class="empty">暂无模板</div>
+          <div v-if="!templatesLoading && !templates.length" class="col-span-full ll-empty !text-12px py-24px">
+            暂无模板
+          </div>
         </div>
       </div>
 
-      <div class="field">
-        <div class="label">参考素材（选填，最多{{ maxMaterials }}张）</div>
+      <div class="mb-14px">
+        <div class="ll-label">参考素材（选填，最多{{ maxMaterials }}张）</div>
         <ImageUpload
           v-model:imgList="form.materials"
           btnName="上传素材图"
@@ -232,46 +254,79 @@ async function removeItem(item: ILCreation) {
         />
       </div>
 
-      <div class="field two-col">
-        <div>
-          <div class="label">比例</div>
-          <n-select v-model:value="form.size" size="small" :options="sizeOptions" :disabled="!sizeOptions.length" placeholder="默认" />
+      <div class="mb-14px grid grid-cols-2 gap-10px">
+        <div class="min-w-0">
+          <div class="ll-label">比例</div>
+          <n-select
+            v-model:value="form.size"
+            size="small"
+            :options="sizeOptions"
+            :disabled="!sizeOptions.length"
+            placeholder="默认"
+          />
         </div>
-        <div>
-          <div class="label">生成张数</div>
+        <div class="min-w-0">
+          <div class="ll-label">生成张数</div>
           <n-select v-model:value="form.image_count" size="small" :options="imageCountOptions" />
         </div>
       </div>
     </template>
 
     <template #right>
-      <div class="right-inner">
-        <div class="list-title">生成记录</div>
-        <div class="record-grid" v-loading="listCtl.loading.value">
-          <div v-for="item in listCtl.items.value" :key="item.id" class="record-card">
-            <div class="cover" @click="openPreview(item)">
+      <div class="h-full min-h-0 flex flex-col">
+        <div class="flex-none mb-14px text-16px font-600 leading-22px text-ink">生成记录</div>
+        <div
+          class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] content-start gap-14px"
+          v-loading="listCtl.loading.value"
+        >
+          <div v-for="item in listCtl.items.value" :key="item.id" class="ll-card overflow-hidden">
+            <div class="relative cursor-pointer" @click="openPreview(item)">
               <!-- 多张取第一张做封面；视频类封面用输入图兜底 -->
               <img
                 v-if="item.image_urls?.length || item.input_image_url"
                 :src="item.image_urls[0] || item.input_image_url"
                 alt=""
+                class="block w-full aspect-[3/4] object-cover"
               />
-              <div v-else class="cover-fallback">🎨</div>
-              <div class="ll-chip" :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`">{{ CREATION_STATUS_MAP[item.status]?.label }}</div>
-              <div v-if="item.image_urls?.length > 1" class="count">共{{ item.image_urls.length }}张</div>
-              <div v-if="item.status === 2" class="fail-tip">{{ item.fail_reason || '生成失败' }}</div>
+              <div v-else class="w-full aspect-[3/4] flex items-center justify-center bg-surface2 text-32px">🎨</div>
+              <div
+                class="ll-chip absolute top-6px left-6px"
+                :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`"
+              >
+                {{ CREATION_STATUS_MAP[item.status]?.label }}
+              </div>
+              <div
+                v-if="item.image_urls?.length > 1"
+                class="absolute top-6px right-6px rounded-full bg-black/45 px-8px py-2px text-11px text-white"
+              >
+                共{{ item.image_urls.length }}张
+              </div>
+              <div
+                v-if="item.status === 2"
+                class="absolute inset-x-0 bottom-0 truncate bg-danger/85 px-8px py-4px text-11px text-white"
+              >
+                {{ item.fail_reason || '生成失败' }}
+              </div>
             </div>
-            <div class="meta">
-              <span class="size">{{ item.size || '-' }}</span>
-              <span class="time">{{ formatTime(item.create_time) }}</span>
+            <div class="flex items-center gap-8px px-10px py-8px text-11px text-muted">
+              <span class="text-ink-2">{{ item.size || '-' }}</span>
+              <span class="flex-1">{{ formatTime(item.create_time) }}</span>
               <n-popconfirm @positive-click="removeItem(item)">
-                <template #trigger><span class="del">删除</span></template>
+                <template #trigger><span class="ll-danger-link">删除</span></template>
                 确定删除这条记录？
               </n-popconfirm>
             </div>
           </div>
-          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="empty">还没有记录，左侧开始生成吧</div>
-          <div v-if="listCtl.hasMore.value" class="more" @click="listCtl.loadMore()">加载更多</div>
+          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="col-span-full ll-empty py-80px">
+            还没有记录，左侧开始生成吧
+          </div>
+          <div
+            v-if="listCtl.hasMore.value"
+            class="col-span-full ll-link block text-center py-8px"
+            @click="listCtl.loadMore()"
+          >
+            加载更多
+          </div>
         </div>
       </div>
     </template>
@@ -279,244 +334,9 @@ async function removeItem(item: ILCreation) {
 
   <CopywritingPicker v-model:show="showCopyPicker" @select="pickCopy" />
 
-  <n-modal v-model:show="previewShow" preset="card" :title="pageTitle" style="width: 640px">
-    <div v-if="previewItem" class="preview-grid">
-      <img v-for="url in previewItem.image_urls" :key="url" :src="url" alt="" />
+  <n-modal v-model:show="previewShow" preset="card" :title="pageTitle" class="!w-640px">
+    <div v-if="previewItem" class="grid grid-cols-2 gap-10px">
+      <img v-for="url in previewItem.image_urls" :key="url" :src="url" alt="" class="block w-full rounded-8px" />
     </div>
   </n-modal>
 </template>
-
-<style scoped lang="less">
-.field {
-  margin-bottom: 14px;
-
-  .label {
-    font-size: 13px;
-    color: #1f2329;
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    .links {
-      display: flex;
-      gap: 10px;
-
-      .link {
-        color: #875f9a;
-        font-size: 12px;
-        cursor: pointer;
-
-        &.disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-      }
-    }
-  }
-}
-
-.two-col {
-  display: flex;
-  gap: 10px;
-
-  > div {
-    flex: 1;
-  }
-}
-
-.template-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  max-height: 300px;
-  overflow: auto;
-
-  .template {
-    border: 2px solid transparent;
-    border-radius: 8px;
-    overflow: hidden;
-    cursor: pointer;
-    position: relative;
-    background: #f7f8f9;
-
-    img {
-      width: 100%;
-      aspect-ratio: 3 / 4;
-      object-fit: cover;
-      display: block;
-    }
-
-    .name {
-      font-size: 11px;
-      color: #4b5563;
-      padding: 3px 6px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    &.selected {
-      border-color: #875f9a;
-
-      &::after {
-        content: '✓';
-        position: absolute;
-        top: 4px;
-        right: 4px;
-        width: 18px;
-        height: 18px;
-        border-radius: 50%;
-        background: #875f9a;
-        color: #fff;
-        font-size: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-    }
-  }
-
-  .empty {
-    grid-column: 1 / -1;
-    text-align: center;
-    color: #5f6673;
-    font-size: 12px;
-    padding: 24px 0;
-  }
-}
-
-.right-inner {
-  height: 100%;
-  padding: 24px 32px;
-  display: flex;
-  flex-direction: column;
-
-  .list-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2329;
-    margin-bottom: 14px;
-    flex-shrink: 0;
-  }
-
-  .record-grid {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 14px;
-    align-content: start;
-
-    .record-card {
-      background: #fff;
-      border-radius: 10px;
-      overflow: hidden;
-
-      .cover {
-        position: relative;
-        cursor: pointer;
-
-        img {
-          width: 100%;
-          aspect-ratio: 3 / 4;
-          object-fit: cover;
-          display: block;
-        }
-
-        .cover-fallback {
-          width: 100%;
-          aspect-ratio: 3 / 4;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 32px;
-          background: #f7f8f9;
-        }
-
-        .ll-chip {
-          position: absolute;
-          top: 6px;
-          left: 6px;
-        }
-
-        .count {
-          position: absolute;
-          top: 6px;
-          right: 6px;
-          font-size: 11px;
-          padding: 2px 8px;
-          border-radius: 10px;
-          color: #fff;
-          background: rgba(0, 0, 0, 0.45);
-        }
-
-        .fail-tip {
-          position: absolute;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(180, 67, 62, 0.85);
-          color: #fff;
-          font-size: 11px;
-          padding: 4px 8px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-      }
-
-      .meta {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        font-size: 11px;
-        color: #5f6673;
-
-        .size {
-          color: #4b5563;
-        }
-
-        .time {
-          flex: 1;
-        }
-
-        .del {
-          color: #b4433e;
-          cursor: pointer;
-        }
-      }
-    }
-
-    .empty {
-      grid-column: 1 / -1;
-      text-align: center;
-      color: #5f6673;
-      font-size: 13px;
-      padding: 80px 0;
-    }
-
-    .more {
-      grid-column: 1 / -1;
-      text-align: center;
-      color: #875f9a;
-      font-size: 12px;
-      padding: 8px 0;
-      cursor: pointer;
-    }
-  }
-}
-
-.preview-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-
-  img {
-    width: 100%;
-    border-radius: 8px;
-  }
-}
-</style>

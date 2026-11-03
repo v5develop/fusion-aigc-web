@@ -171,12 +171,14 @@ watch(bgSource, () => {
 <template>
   <Workbench title="数字人口播" :submit="submit" :loading="submitting" submit-text="生成口播视频">
     <template #default>
-      <div class="field">
-        <div class="label">
+      <div class="mb-14px">
+        <div class="ll-label">
           口播文案
-          <span class="links">
-            <span class="link" :class="{ disabled: aiWriting }" @click="aiWriteContent">{{ aiWriting ? 'AI帮写中…' : '✨ AI帮写' }}</span>
-            <span class="link" @click="showCopyPicker = true">选择AI文案</span>
+          <span class="flex gap-10px">
+            <span class="ll-link" :class="{ 'opacity-60 cursor-not-allowed': aiWriting }" @click="aiWriteContent">{{
+              aiWriting ? 'AI帮写中…' : '✨ AI帮写'
+            }}</span>
+            <span class="ll-link" @click="showCopyPicker = true">选择AI文案</span>
           </span>
         </div>
         <n-input v-model:value="form.content" type="textarea" :rows="6" placeholder="数字人要播报的内容，字数不限" />
@@ -189,9 +191,9 @@ watch(bgSource, () => {
         title="人物形象"
       />
 
-      <div class="field">
-        <div class="label">背景</div>
-        <div class="seg">
+      <div class="mb-14px">
+        <div class="ll-label">背景</div>
+        <div class="flex flex-wrap gap-8px mb-10px">
           <span
             v-for="seg in BG_SEGMENTS"
             :key="seg.key"
@@ -202,57 +204,97 @@ watch(bgSource, () => {
             {{ seg.label }}
           </span>
         </div>
-        <div v-if="bgSource === 'PRESET'" class="bg-grid" v-loading="bgLoading">
-          <div v-for="b in bgList" :key="b.id" class="bg" :class="{ selected: bgId === b.id }" @click="bgId = b.id">
-            <img :src="b.url" alt="" />
-            <div class="name">{{ b.title }}</div>
+        <div
+          v-if="bgSource === 'PRESET'"
+          v-loading="bgLoading"
+          class="grid grid-cols-3 gap-8px max-h-220px overflow-auto"
+        >
+          <div
+            v-for="b in bgList"
+            :key="b.id"
+            class="relative overflow-hidden rounded-8px border-2 border-solid cursor-pointer bg-white transition-colors"
+            :class="bgId === b.id ? 'border-violet' : 'border-transparent'"
+            @click="bgId = b.id"
+          >
+            <img :src="b.url" alt="" class="block w-full aspect-[9/16] object-cover" />
+            <div class="truncate px-6px py-3px text-11px leading-16px text-ink-2">{{ b.title }}</div>
           </div>
-          <div v-if="!bgLoading && !bgList.length" class="empty">暂无预设背景</div>
+          <div v-if="!bgLoading && !bgList.length" class="col-span-full ll-empty !text-12px py-24px">暂无预设背景</div>
         </div>
         <template v-if="bgSource === 'UPLOAD'">
           <ImageUpload v-model:imgList="bgImageList" btnName="上传背景图" :topRightTips="false" :limitNumber="1" />
         </template>
-        <div v-if="bgSource === 'AI'" class="hint">不选背景，AI 按文案内容自动匹配场景</div>
+        <div v-if="bgSource === 'AI'" class="mt-6px text-11px leading-16px text-placeholder">
+          不选背景，AI 按文案内容自动匹配场景
+        </div>
       </div>
 
-      <div class="field three-col">
-        <div v-if="modelOptions.length">
-          <div class="label">出片模型</div>
+      <div class="mb-14px flex gap-10px">
+        <div v-if="modelOptions.length" class="flex-1 min-w-0">
+          <div class="ll-label">出片模型</div>
           <n-select v-model:value="form.model" size="small" :options="modelOptions" />
         </div>
-        <div v-if="durationOptions.length">
-          <div class="label">时长</div>
+        <div v-if="durationOptions.length" class="flex-1 min-w-0">
+          <div class="ll-label">时长</div>
           <n-select v-model:value="form.duration" size="small" :options="durationOptions" />
         </div>
-        <div v-if="sizeOptions.length">
-          <div class="label">比例</div>
+        <div v-if="sizeOptions.length" class="flex-1 min-w-0">
+          <div class="ll-label">比例</div>
           <n-select v-model:value="form.size" size="small" :options="sizeOptions" />
         </div>
       </div>
     </template>
 
     <template #right>
-      <div class="right-inner">
-        <div class="list-title">生成记录</div>
-        <div class="record-grid" v-loading="listCtl.loading.value">
-          <div v-for="item in listCtl.items.value" :key="item.id" class="record-card">
-            <div class="cover" @click="openPreview(item)">
-              <img v-if="item.input_image_url" :src="item.input_image_url" alt="" />
-              <div v-else class="cover-fallback">🎙️</div>
-              <div class="ll-chip" :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`">{{ CREATION_STATUS_MAP[item.status]?.label }}</div>
-              <div v-if="item.status === 2" class="fail-tip">{{ item.fail_reason || '生成失败' }}</div>
+      <div class="h-full min-h-0 flex flex-col">
+        <h2 class="m-0 mb-14px flex-none text-16px font-600 leading-22px text-ink">生成记录</h2>
+        <div
+          v-loading="listCtl.loading.value"
+          class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-14px content-start"
+        >
+          <div v-for="item in listCtl.items.value" :key="item.id" class="ll-card overflow-hidden">
+            <div class="relative cursor-pointer" @click="openPreview(item)">
+              <img
+                v-if="item.input_image_url"
+                :src="item.input_image_url"
+                alt=""
+                class="block w-full aspect-[9/16] object-cover"
+              />
+              <div v-else class="w-full aspect-[9/16] flex items-center justify-center text-32px bg-surface2">🎙️</div>
+              <div
+                class="ll-chip absolute top-6px left-6px"
+                :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`"
+              >
+                {{ CREATION_STATUS_MAP[item.status]?.label }}
+              </div>
+              <div
+                v-if="item.status === 2"
+                class="absolute inset-x-0 bottom-0 truncate px-8px py-4px bg-danger/85 text-11px text-white"
+              >
+                {{ item.fail_reason || '生成失败' }}
+              </div>
             </div>
-            <div class="meta">
-              <span class="content">{{ item.content }}</span>
-              <span class="sub">{{ item.duration ? item.duration + 's' : '' }} {{ item.size }} {{ formatTime(item.create_time) }}</span>
+            <div class="px-10px py-8px flex flex-col gap-2px">
+              <span class="line-clamp-2 text-12px leading-17px text-ink">{{ item.content }}</span>
+              <span class="text-11px leading-16px text-muted"
+                >{{ item.duration ? item.duration + 's' : '' }} {{ item.size }} {{ formatTime(item.create_time) }}</span
+              >
               <n-popconfirm @positive-click="removeItem(item)">
-                <template #trigger><span class="del">删除</span></template>
+                <template #trigger><span class="ll-danger-link w-fit text-11px">删除</span></template>
                 确定删除这条记录？
               </n-popconfirm>
             </div>
           </div>
-          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="empty">还没有记录，左侧开始生成吧</div>
-          <div v-if="listCtl.hasMore.value" class="more" @click="listCtl.loadMore()">加载更多</div>
+          <div v-if="!listCtl.loading.value && !listCtl.items.value.length" class="col-span-full ll-empty py-80px">
+            还没有记录，左侧开始生成吧
+          </div>
+          <div
+            v-if="listCtl.hasMore.value"
+            class="col-span-full ll-link block text-center py-8px"
+            @click="listCtl.loadMore()"
+          >
+            加载更多
+          </div>
         </div>
       </div>
     </template>
@@ -260,222 +302,7 @@ watch(bgSource, () => {
 
   <CopywritingPicker v-model:show="showCopyPicker" @select="pickCopy" />
 
-  <n-modal v-model:show="previewShow" preset="card" title="口播视频" style="width: 420px">
-    <video v-if="previewUrl" :src="previewUrl" controls autoplay style="width: 100%; border-radius: 8px" />
+  <n-modal v-model:show="previewShow" preset="card" title="口播视频" class="!w-420px">
+    <video v-if="previewUrl" :src="previewUrl" controls autoplay class="block w-full rounded-8px" />
   </n-modal>
 </template>
-
-<style scoped lang="less">
-.field {
-  margin-bottom: 14px;
-
-  .label {
-    font-size: 13px;
-    color: #1f2329;
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    .links {
-      display: flex;
-      gap: 10px;
-
-      .link {
-        color: #875f9a;
-        font-size: 12px;
-        cursor: pointer;
-
-        &.disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-      }
-    }
-  }
-
-  .hint {
-    font-size: 11px;
-    color: #6e7681;
-    margin-top: 6px;
-  }
-}
-
-.seg {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.bg-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  max-height: 220px;
-  overflow: auto;
-
-  .bg {
-    border: 2px solid transparent;
-    border-radius: 8px;
-    overflow: hidden;
-    cursor: pointer;
-    position: relative;
-
-    img {
-      width: 100%;
-      aspect-ratio: 9 / 16;
-      object-fit: cover;
-      display: block;
-    }
-
-    .name {
-      font-size: 11px;
-      color: #4b5563;
-      padding: 3px 6px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    &.selected {
-      border-color: #875f9a;
-    }
-  }
-
-  .empty {
-    grid-column: 1 / -1;
-    text-align: center;
-    color: #5f6673;
-    font-size: 12px;
-    padding: 24px 0;
-  }
-}
-
-.three-col {
-  display: flex;
-  gap: 10px;
-
-  > div {
-    flex: 1;
-  }
-}
-
-.right-inner {
-  height: 100%;
-  padding: 24px 32px;
-  display: flex;
-  flex-direction: column;
-
-  .list-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2329;
-    margin-bottom: 14px;
-    flex-shrink: 0;
-  }
-
-  .record-grid {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 14px;
-    align-content: start;
-
-    .record-card {
-      background: #fff;
-      border-radius: 10px;
-      overflow: hidden;
-
-      .cover {
-        position: relative;
-        cursor: pointer;
-
-        img {
-          width: 100%;
-          aspect-ratio: 9 / 16;
-          object-fit: cover;
-          display: block;
-        }
-
-        .cover-fallback {
-          width: 100%;
-          aspect-ratio: 9 / 16;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 32px;
-          background: #f7f8f9;
-        }
-
-        .ll-chip {
-          position: absolute;
-          top: 6px;
-          left: 6px;
-        }
-
-        .fail-tip {
-          position: absolute;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(180, 67, 62, 0.85);
-          color: #fff;
-          font-size: 11px;
-          padding: 4px 8px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-      }
-
-      .meta {
-        padding: 8px 10px;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-
-        .content {
-          font-size: 12px;
-          color: #1f2329;
-          line-height: 17px;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-
-        .sub {
-          font-size: 11px;
-          color: #5f6673;
-        }
-
-        .del {
-          font-size: 11px;
-          color: #b4433e;
-          cursor: pointer;
-          width: fit-content;
-        }
-      }
-    }
-
-    .empty {
-      grid-column: 1 / -1;
-      text-align: center;
-      color: #5f6673;
-      font-size: 13px;
-      padding: 80px 0;
-    }
-
-    .more {
-      grid-column: 1 / -1;
-      text-align: center;
-      color: #875f9a;
-      font-size: 12px;
-      padding: 8px 0;
-      cursor: pointer;
-    }
-  }
-}
-</style>
