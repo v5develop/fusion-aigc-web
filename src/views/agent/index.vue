@@ -67,9 +67,10 @@ const ICON = {
   chevronRight: 'M9 18l6-6-6-6',
   chevronDown: 'M6 9l6 6 6-6',
   search: 'M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM20 20l-3.5-3.5',
-  bag: 'M6 7h12l-1 13H7zM9 7a3 3 0 0 1 6 0',
-  canvas: 'M4 4h16v16H4zM4 10h16M10 10v10',
-  share: 'M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M12 3v13M7 8l5-5 5 5',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  external: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
+  share:
+    'M18 3a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM6 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM18 15a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4',
   checkCircle: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM8 12l3 3 5-6',
   xCircle: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM9 9l6 6M15 9l-6 6',
   x: 'M6 6l12 12M18 6L6 18',
@@ -81,8 +82,8 @@ const ICON = {
 } as const
 
 const HEADER_ACTIONS = [
-  { label: '一键铺货', icon: ICON.bag },
-  { label: '在画布中打开', icon: ICON.canvas },
+  { label: '一键铺货', icon: ICON.grid },
+  { label: '在画布中打开', icon: ICON.external },
   { label: '分享', icon: ICON.share },
 ]
 
@@ -211,7 +212,8 @@ const visibleConversations = computed(() => {
 const activeConversation = computed(() => conversations.value.find((c) => c.agentConversationId === activeId.value))
 const headerMeta = computed(() => {
   const parts = [selectedSkill.value?.title, versionLabel(selectedSkill.value)]
-  if (activeConversation.value) parts.push(`${roundsOf(activeConversation.value)} 轮`)
+  // 每轮受理后服务端即落库（用户 + 助手各一条），故标「按轮保存」
+  if (activeConversation.value) parts.push(`${roundsOf(activeConversation.value)} 轮`, '按轮保存')
   return parts.filter(Boolean).join(' · ')
 })
 
@@ -615,18 +617,18 @@ onUnmounted(() => controller?.abort())
       </aside>
       <aside
         v-else
-        class="flex w-255px flex-none min-h-0 flex-col border-r border-solid border-line bg-white"
+        class="flex w-260px flex-none min-h-0 flex-col border-r border-solid border-line bg-white"
         aria-label="对话列表"
       >
-        <div class="flex flex-none items-center gap-8px px-14px pt-14px pb-10px">
-          <h1 class="m-0 flex flex-1 items-baseline gap-4px text-15px font-600 text-ink">
+        <div class="flex flex-none items-center gap-6px px-14px pt-16px pb-10px">
+          <h1 class="m-0 flex flex-1 items-baseline gap-6px text-15px font-600 text-ink">
             会话<span class="text-12px font-400 text-muted">{{ listTotal }}</span>
           </h1>
           <button
             type="button"
             :disabled="streaming"
             :class="[
-              'inline-flex h-26px items-center gap-2px rounded-999px border border-solid border-violet-line bg-white px-10px text-12px text-violet-ink cursor-pointer hover:bg-violet-soft disabled:(cursor-not-allowed opacity-50)',
+              'inline-flex h-28px items-center gap-4px rounded-6px border border-solid border-line bg-white px-10px text-12px text-violet-ink cursor-pointer hover:(border-violet-line bg-violet-soft) disabled:(cursor-not-allowed opacity-50)',
               FOCUS,
             ]"
             @click="newConversation"
@@ -647,7 +649,7 @@ onUnmounted(() => controller?.abort())
             type="button"
             aria-label="收起会话列表"
             :class="[
-              'grid h-26px w-26px place-items-center rounded-8px border border-solid border-line bg-white text-muted cursor-pointer hover:(text-ink border-line-strong)',
+              'grid h-28px w-28px place-items-center rounded-6px border-none bg-transparent text-muted cursor-pointer hover:(bg-surface2 text-ink)',
               FOCUS,
             ]"
             @click="sidebarCollapsed = true"
@@ -680,18 +682,19 @@ onUnmounted(() => controller?.abort())
             </template>
           </n-input>
         </div>
-        <ul class="m-0 flex-1 min-h-0 list-none overflow-y-auto px-8px pb-10px">
-          <li v-for="c in visibleConversations" :key="c.agentConversationId" class="mb-4px">
+        <ul class="m-0 flex-1 min-h-0 list-none overflow-y-auto px-10px pb-10px">
+          <li v-for="c in visibleConversations" :key="c.agentConversationId" class="mb-6px">
             <div
               :class="[
-                'flex items-start gap-10px rounded-12px border border-solid px-8px py-8px',
+                'flex items-start gap-10px rounded-10px border border-solid p-10px',
                 activeId === c.agentConversationId
                   ? 'bg-violet-soft border-violet-line'
                   : 'border-transparent hover:bg-surface2',
               ]"
             >
+              <!-- 缩略图：会话列表接口暂无封面字段，先用星芒占位块；有封面后在此换成图片 -->
               <span
-                class="grid h-40px w-40px flex-none place-items-center rounded-8px bg-violet-soft-2 text-violet"
+                class="grid h-40px w-40px flex-none place-items-center rounded-8px border border-solid border-line bg-surface2 text-violet"
                 aria-hidden="true"
               >
                 <svg
@@ -731,7 +734,7 @@ onUnmounted(() => controller?.abort())
                   <span class="min-w-0 flex-1">
                     <span
                       :class="[
-                        'block truncate text-13px font-600',
+                        'block truncate text-14px font-600 leading-20px',
                         activeId === c.agentConversationId ? 'text-violet-ink' : 'text-ink',
                       ]"
                     >
@@ -741,18 +744,18 @@ onUnmounted(() => controller?.abort())
                       c.lastMessage
                     }}</span>
                   </span>
-                  <span class="flex flex-none flex-col items-end gap-2px text-11px text-muted">
+                  <span class="flex flex-none flex-col items-end gap-2px text-12px leading-20px text-muted">
                     <span>{{ dayLabel(c.updatedAt || c.createdAt) }}</span>
-                    <span>{{ roundsOf(c) }} 轮</span>
+                    <span>· {{ roundsOf(c) }} 轮</span>
                   </span>
                 </button>
-                <div v-if="editingId !== c.agentConversationId" class="flex justify-end gap-6px">
+                <div v-if="editingId !== c.agentConversationId" class="flex justify-end gap-2px">
                   <button
                     type="button"
                     :aria-label="`重命名：${c.title}`"
                     title="重命名"
                     :class="[
-                      'grid h-22px w-22px place-items-center rounded-6px border border-solid border-line bg-white text-muted cursor-pointer hover:(text-violet-ink border-violet-line)',
+                      'grid h-22px w-22px place-items-center rounded-6px border-none bg-transparent text-muted cursor-pointer hover:(bg-violet-soft-2 text-violet-ink)',
                       FOCUS,
                     ]"
                     @click="startRename(c)"
@@ -774,7 +777,7 @@ onUnmounted(() => controller?.abort())
                     :aria-label="`删除：${c.title}`"
                     title="删除"
                     :class="[
-                      'grid h-22px w-22px place-items-center rounded-6px border border-solid border-line bg-white text-muted cursor-pointer hover:(text-danger border-danger-line)',
+                      'grid h-22px w-22px place-items-center rounded-6px border-none bg-transparent text-muted cursor-pointer hover:(bg-violet-soft-2 text-violet-ink)',
                       FOCUS,
                     ]"
                     @click="confirmDelete(c)"
@@ -811,9 +814,9 @@ onUnmounted(() => controller?.abort())
 
       <!-- 右：对话 -->
       <section class="flex min-w-0 flex-1 min-h-0 flex-col" aria-label="对话">
-        <header class="flex flex-none items-center gap-10px border-b border-solid border-line bg-white px-20px py-10px">
+        <header class="flex h-64px flex-none items-center gap-12px border-b border-solid border-line bg-white px-20px">
           <span
-            class="grid h-36px w-36px flex-none place-items-center rounded-12px bg-violet-soft text-violet"
+            class="grid h-40px w-40px flex-none place-items-center rounded-10px bg-violet-soft text-violet"
             aria-hidden="true"
           >
             <svg
@@ -828,18 +831,20 @@ onUnmounted(() => controller?.abort())
             </svg>
           </span>
           <div class="min-w-0 flex-1">
-            <h2 class="m-0 truncate text-15px font-600 text-ink">{{ activeConversation?.title || '智能体' }}</h2>
-            <p v-if="headerMeta" class="m-0 mt-2px truncate text-12px text-muted">{{ headerMeta }}</p>
+            <h2 class="m-0 truncate text-16px font-600 leading-22px text-ink">
+              {{ activeConversation?.title || '智能体' }}
+            </h2>
+            <p v-if="headerMeta" class="m-0 mt-2px truncate text-12px leading-18px text-muted">{{ headerMeta }}</p>
           </div>
           <div class="flex flex-none items-center gap-8px">
             <span v-for="a in HEADER_ACTIONS" :key="a.label" :title="SOON" class="inline-flex">
               <button
                 type="button"
                 disabled
-                class="inline-flex h-28px items-center gap-4px rounded-8px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-not-allowed opacity-60"
+                class="inline-flex h-32px items-center gap-6px rounded-8px border border-solid border-line bg-white px-12px text-12px text-ink-2 cursor-not-allowed opacity-60"
               >
                 <svg
-                  class="h-13px w-13px"
+                  class="h-14px w-14px"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -861,7 +866,7 @@ onUnmounted(() => controller?.abort())
           :aria-busy="streaming"
           class="flex-1 min-h-0 overflow-y-auto px-20px py-20px"
         >
-          <div class="mx-auto max-w-[680px]">
+          <div class="mx-auto max-w-[760px]">
             <div v-if="msgPage > 1" class="mb-12px text-center">
               <button
                 type="button"
@@ -881,15 +886,18 @@ onUnmounted(() => controller?.abort())
               :class="['mb-18px flex', item.role === 'user' ? 'justify-end' : 'justify-start gap-10px']"
             >
               <!-- 用户 -->
-              <div v-if="item.role === 'user'" class="max-w-[80%] rounded-12px bg-violet-soft px-14px py-10px">
-                <div class="whitespace-pre-wrap break-words text-14px text-ink">{{ item.text }}</div>
-                <div v-if="item.images?.length" class="mt-8px flex gap-6px">
+              <div
+                v-if="item.role === 'user'"
+                class="max-w-[80%] rounded-14px border border-solid border-violet-line bg-violet-soft px-14px py-10px"
+              >
+                <div class="whitespace-pre-wrap break-words text-14px leading-22px text-ink">{{ item.text }}</div>
+                <div v-if="item.images?.length" class="mt-8px flex gap-8px">
                   <n-image
                     v-for="(url, i) in item.images.slice(0, 4)"
                     :key="i"
                     :src="url"
-                    :width="52"
-                    :height="52"
+                    :width="56"
+                    :height="56"
                     object-fit="cover"
                     class="overflow-hidden rounded-8px border border-solid border-violet-line bg-white"
                   />
@@ -899,7 +907,7 @@ onUnmounted(() => controller?.abort())
               <!-- 助手 -->
               <template v-else>
                 <span
-                  class="grid h-28px w-28px flex-none place-items-center rounded-999px bg-violet text-white"
+                  class="grid h-28px w-28px flex-none place-items-center rounded-999px bg-violet-soft-2 text-violet"
                   aria-hidden="true"
                 >
                   <svg
@@ -943,26 +951,30 @@ onUnmounted(() => controller?.abort())
                         v-for="(t, i) in item.reply.tools"
                         :key="i"
                         :title="t.message"
-                        class="flex items-center gap-8px py-4px text-13px"
+                        class="flex items-center gap-8px py-5px text-13px"
                       >
-                        <svg
+                        <span
                           :class="[
-                            'h-14px w-14px flex-none',
+                            'grid h-16px w-16px flex-none place-items-center rounded-999px',
                             t.status === 'completed'
-                              ? 'text-success'
+                              ? 'bg-success-soft text-success'
                               : t.status === 'failed'
-                                ? 'text-danger'
-                                : 'text-muted',
+                                ? 'bg-danger-soft text-danger'
+                                : 'bg-surface3 text-muted',
                           ]"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
                           aria-hidden="true"
                         >
-                          <path :d="t.status === 'failed' ? ICON.xCircle : ICON.checkCircle" />
-                        </svg>
-                        <span class="min-w-0 flex-1 truncate text-ink">{{ t.name }}</span>
+                          <svg
+                            class="h-10px w-10px"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="3"
+                          >
+                            <path :d="t.status === 'failed' ? ICON.x : ICON.check" />
+                          </svg>
+                        </span>
+                        <span class="min-w-0 flex-1 truncate text-ink-2">{{ t.name }}</span>
                         <span v-if="t.status === 'completed'" class="flex-none text-12px text-muted">已完成</span>
                         <span v-else-if="t.message" class="max-w-[50%] flex-none truncate text-12px text-danger">
                           {{ t.message }}
@@ -970,6 +982,11 @@ onUnmounted(() => controller?.abort())
                       </li>
                     </ul>
                   </div>
+                  <!--
+                    TODO(数据驱动)：结果卡「生成图片 N 张」放在这里——标题 + 「下载后为原图画质」提示、
+                    4 列图片网格、「多选下载」「预览模板」。流式帧目前不返回生成图片，待后端给出数据后再接入；
+                    无数据时不渲染空卡。
+                  -->
                   <div v-if="item.reply.text" class="whitespace-pre-wrap break-words leading-relaxed">
                     {{ item.reply.text }}
                   </div>
@@ -997,14 +1014,14 @@ onUnmounted(() => controller?.abort())
         </div>
 
         <!-- 输入框 -->
-        <div class="flex-none border-t border-solid border-line bg-white px-20px pt-12px pb-8px">
-          <div class="mx-auto max-w-[720px]">
+        <div class="flex-none border-t border-solid border-line bg-white px-20px pt-12px pb-10px">
+          <div class="mx-auto max-w-[760px]">
             <div
-              class="rounded-14px border border-solid border-line bg-white px-12px pt-10px pb-8px focus-within:border-violet-line"
+              class="rounded-14px border border-solid border-line bg-white px-12px pt-10px pb-10px shadow-[0_1px_2px_rgba(31,35,41,0.06)] focus-within:border-violet-line"
             >
               <div v-if="selectedSkill" class="mb-6px flex">
                 <span
-                  class="inline-flex items-center gap-4px rounded-999px border border-solid border-violet-line bg-violet-soft py-2px pl-8px pr-4px text-12px text-violet-ink"
+                  class="inline-flex h-24px items-center gap-4px rounded-6px border border-solid border-violet-line bg-violet-soft pl-8px pr-4px text-12px text-violet-ink"
                 >
                   <svg
                     class="h-12px w-12px"
@@ -1046,7 +1063,7 @@ onUnmounted(() => controller?.abort())
                 :value="draft"
                 type="textarea"
                 :bordered="false"
-                :autosize="{ minRows: 1, maxRows: 4 }"
+                :autosize="{ minRows: 2, maxRows: 4 }"
                 :maxlength="12000"
                 :disabled="streaming"
                 placeholder="描述你的创作目标、风格方向或产品卖点"
@@ -1059,7 +1076,7 @@ onUnmounted(() => controller?.abort())
                   <button
                     type="button"
                     disabled
-                    class="inline-flex h-26px items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-not-allowed opacity-60"
+                    class="inline-flex h-28px items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-not-allowed opacity-60"
                   >
                     <svg
                       class="h-13px w-13px"
@@ -1083,16 +1100,29 @@ onUnmounted(() => controller?.abort())
                   :title="selectedSkill?.description"
                   :disabled="streaming"
                   :class="[
-                    'inline-flex h-26px max-w-[200px] items-center gap-4px rounded-999px border border-solid bg-white px-10px text-12px cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
+                    'inline-flex h-28px max-w-[220px] items-center gap-4px rounded-999px border border-solid bg-white px-10px text-12px cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
                     selectedSkill ? 'border-line text-ink-2' : 'border-violet-line text-violet-ink',
                     FOCUS,
                   ]"
                   @click="openSkillDialog"
                 >
+                  <svg
+                    class="h-13px w-13px flex-none text-violet"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path :d="ICON.sparkle" />
+                  </svg>
                   <span class="truncate">{{ selectedSkill ? selectedSkill.title : '选择技能' }}</span>
-                  <span v-if="versionLabel(selectedSkill)" class="flex-none text-muted">{{
-                    versionLabel(selectedSkill)
-                  }}</span>
+                  <span
+                    v-if="versionLabel(selectedSkill)"
+                    class="flex-none rounded-4px bg-violet-soft-2 px-5px text-11px leading-16px text-violet-ink"
+                    >{{ versionLabel(selectedSkill) }}</span
+                  >
                   <svg
                     class="h-12px w-12px flex-none text-muted"
                     viewBox="0 0 24 24"
@@ -1108,7 +1138,7 @@ onUnmounted(() => controller?.abort())
                   <button
                     type="button"
                     disabled
-                    class="inline-flex h-26px items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-not-allowed opacity-60"
+                    class="inline-flex h-28px items-center gap-4px rounded-999px border border-solid border-line bg-white px-10px text-12px text-ink-2 cursor-not-allowed opacity-60"
                   >
                     ZH 中文
                     <svg
@@ -1135,7 +1165,7 @@ onUnmounted(() => controller?.abort())
                   type="button"
                   :disabled="stopping"
                   :class="[
-                    'inline-flex h-32px flex-none items-center justify-center rounded-999px border border-solid border-line-strong bg-white px-16px text-13px text-ink cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
+                    'inline-flex h-32px flex-none items-center justify-center rounded-8px border border-solid border-line-strong bg-white px-16px text-13px text-ink cursor-pointer hover:border-violet-line disabled:cursor-not-allowed',
                     FOCUS,
                   ]"
                   @click="stop"
@@ -1147,7 +1177,7 @@ onUnmounted(() => controller?.abort())
                   type="button"
                   :disabled="!draft.trim() || skillMissing"
                   :aria-describedby="skillMissing ? 'agent-skill-required' : undefined"
-                  :class="['ll-btn-primary h-32px flex-none gap-4px px-16px text-13px', FOCUS]"
+                  :class="['ll-btn-primary !rounded-8px h-32px flex-none gap-4px px-16px text-13px', FOCUS]"
                   @click="send(draft)"
                 >
                   <svg
@@ -1164,33 +1194,42 @@ onUnmounted(() => controller?.abort())
                 </button>
               </div>
             </div>
-            <p class="m-0 mt-6px text-center text-11px text-muted">AI 生成内容仅供参考，请仔细甄别</p>
+            <p class="m-0 mt-8px text-center text-12px text-muted">AI 生成内容仅供参考，请仔细甄别</p>
           </div>
         </div>
       </section>
     </div>
 
-    <!-- 选择技能 -->
+    <!-- 选择技能：标题与关闭同一行；页签是单行分段控件（不换行、等高、文字垂直居中）；
+         头 / 体 / 尾左右内边距同为 20px，列表行与标题左缘对齐 -->
     <n-modal
       v-model:show="skillDialogShow"
       preset="card"
-      title="选择技能"
-      :style="{ width: '560px', maxWidth: 'calc(100vw - 48px)' }"
+      closable
+      :bordered="false"
+      :segmented="{ content: true, footer: true }"
+      :style="{ width: '680px', maxWidth: 'calc(100vw - 48px)' }"
+      header-style="padding: 16px 20px"
+      content-style="padding: 16px 20px"
+      footer-style="padding: 12px 20px"
+      aria-labelledby="agent-skill-dialog-title"
       @after-leave="skillPillEl?.focus()"
     >
-      <template #header-extra>
-        <span class="mr-8px rounded-999px bg-violet-soft px-8px py-2px text-12px text-violet-ink"
-          >{{ skills.length }} 个技能</span
-        >
+      <template #header>
+        <div class="flex items-center gap-8px">
+          <span id="agent-skill-dialog-title" class="text-16px font-600 leading-24px text-ink">选择技能</span>
+          <span class="rounded-6px bg-surface3 px-8px text-12px font-400 leading-20px text-muted"
+            >{{ tabSkills.length }} 个技能</span
+          >
+        </div>
       </template>
 
       <div class="flex flex-col gap-12px">
-        <div class="flex items-center gap-10px">
-          <span id="agent-skill-tabs-label" class="flex-none text-13px text-ink-2">技能分类</span>
+        <div class="flex min-w-0">
           <div
             role="group"
-            aria-labelledby="agent-skill-tabs-label"
-            class="flex min-w-0 flex-1 flex-wrap gap-4px rounded-10px bg-surface2 p-4px"
+            aria-label="技能分类"
+            class="inline-flex max-w-full flex-nowrap items-center gap-2px overflow-x-auto rounded-10px border border-solid border-line bg-surface2 p-3px"
           >
             <button
               v-for="t in skillTabs"
@@ -1198,10 +1237,10 @@ onUnmounted(() => controller?.abort())
               type="button"
               :aria-pressed="skillTab === t.name"
               :class="[
-                'h-28px rounded-8px border-none px-12px text-13px cursor-pointer',
+                'inline-flex h-30px flex-none items-center justify-center whitespace-nowrap rounded-8px border border-solid px-14px text-13px leading-none cursor-pointer',
                 skillTab === t.name
-                  ? 'bg-white font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.08)]'
-                  : 'bg-transparent text-ink-2 hover:text-ink',
+                  ? 'border-line bg-white font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.08)]'
+                  : 'border-transparent bg-transparent text-ink-2 hover:text-ink',
                 FOCUS,
               ]"
               @click="skillTab = t.name"
@@ -1212,11 +1251,11 @@ onUnmounted(() => controller?.abort())
         </div>
 
         <div class="flex max-h-420px min-h-160px flex-col gap-8px overflow-y-auto">
-          <span v-if="skillTab === MY_SKILL_GROUP" :title="SOON" class="flex">
+          <span v-if="skillTab === MY_SKILL_GROUP" :title="SOON" class="flex flex-none">
             <button
               type="button"
               disabled
-              class="inline-flex h-40px w-full items-center justify-center gap-4px rounded-12px border border-dashed border-violet-line bg-white text-13px text-violet-ink cursor-not-allowed opacity-60"
+              class="inline-flex h-40px w-full items-center justify-center gap-4px rounded-10px border border-dashed border-line-strong bg-white text-13px text-ink-2 cursor-not-allowed opacity-60"
             >
               <svg
                 class="h-14px w-14px"
@@ -1237,10 +1276,10 @@ onUnmounted(() => controller?.abort())
             type="button"
             :aria-pressed="pendingSkillId === s.agentSkillId"
             :class="[
-              'flex w-full flex-none items-center gap-10px rounded-12px border border-solid px-12px py-10px text-left cursor-pointer',
+              'flex h-56px w-full flex-none items-center gap-12px rounded-10px border border-solid px-12px text-left cursor-pointer',
               pendingSkillId === s.agentSkillId
                 ? 'bg-violet-soft border-violet-line'
-                : 'bg-white border-line hover:border-violet-line',
+                : 'bg-white border-transparent hover:bg-surface2',
               FOCUS,
             ]"
             @click="pendingSkillId = s.agentSkillId"
@@ -1250,28 +1289,32 @@ onUnmounted(() => controller?.abort())
               aria-hidden="true"
               >{{ skillInitial(s) }}</span
             >
-            <span class="min-w-0 flex-1">
-              <span class="flex items-center gap-6px">
-                <span class="truncate text-14px font-600 text-ink">{{ s.title }}</span>
+            <span class="flex min-w-0 flex-1 flex-col gap-2px">
+              <!-- 勾选图标放在名称行末尾：与名称行同一垂直中心，同时贴最右 -->
+              <span class="flex h-20px items-center gap-6px">
+                <span class="truncate text-14px font-600 leading-20px text-ink">{{ s.title }}</span>
                 <span
                   v-if="versionLabel(s)"
-                  class="flex-none rounded-4px bg-violet-soft-2 px-6px py-1px text-11px text-violet-ink"
+                  class="flex-none rounded-4px bg-violet-soft-2 px-5px text-11px leading-16px text-violet-ink"
                   >{{ versionLabel(s) }}</span
                 >
+                <span class="flex-1" />
+                <svg
+                  v-if="pendingSkillId === s.agentSkillId"
+                  class="h-16px w-16px flex-none text-violet"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  aria-hidden="true"
+                >
+                  <path :d="ICON.checkCircle" />
+                </svg>
               </span>
-              <span v-if="s.description" class="mt-2px block truncate text-12px text-muted">{{ s.description }}</span>
+              <span v-if="s.description" class="block truncate text-12px leading-18px text-muted">{{
+                s.description
+              }}</span>
             </span>
-            <svg
-              v-if="pendingSkillId === s.agentSkillId"
-              class="h-16px w-16px flex-none text-violet"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.4"
-              aria-hidden="true"
-            >
-              <path :d="ICON.check" />
-            </svg>
           </button>
           <div v-if="!tabSkills.length" class="ll-empty py-24px">
             {{ skillTab === MY_SKILL_GROUP ? '暂无自建技能' : '暂无技能' }}
@@ -1280,11 +1323,11 @@ onUnmounted(() => controller?.abort())
       </div>
 
       <template #footer>
-        <div class="flex justify-end gap-8px">
+        <div class="flex justify-end gap-12px">
           <button
             type="button"
             :class="[
-              'inline-flex h-32px items-center rounded-999px border border-solid border-line-strong bg-white px-16px text-13px text-ink cursor-pointer hover:border-violet-line',
+              'inline-flex h-32px items-center rounded-8px border border-solid border-line-strong bg-white px-16px text-13px text-ink cursor-pointer hover:border-violet-line',
               FOCUS,
             ]"
             @click="skillDialogShow = false"
@@ -1294,7 +1337,7 @@ onUnmounted(() => controller?.abort())
           <button
             type="button"
             :disabled="!pendingSkillId"
-            :class="['ll-btn-primary h-32px px-16px text-13px', FOCUS]"
+            :class="['ll-btn-primary !rounded-8px h-32px px-16px text-13px', FOCUS]"
             @click="confirmSkill"
           >
             确认
