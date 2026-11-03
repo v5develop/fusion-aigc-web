@@ -211,7 +211,12 @@ async function handleTokenExpired(config: InternalAxiosRequestConfig, httpStatus
 }
 
 // 业务失败(code!==0)不弹全局 toast 的接口白名单：由调用方自行降级展示（如询价预览失败显示「获取失败」）
-const SILENT_ERROR_URLS = ['/billing/quote/preview']
+const SILENT_ERROR_URLS = [
+  '/billing/quote/preview',
+  '/studio/tryon/quote',
+  '/studio/pose/quote',
+  '/studio/image-generate/quote',
+]
 
 // 走「引导购买」弹框而非 toast 的接口白名单：前端在用的全部创作提交口。
 // 限定到提交口而不是全局认 code：3003 在后端还被复用在预扣冻结、退点等内部环节上，

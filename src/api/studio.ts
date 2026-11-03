@@ -31,8 +31,26 @@ export function studioSubmitPose(data: types.StudioPoseSubmitReq, headers: IdemH
 }
 
 /** 图片生成（count 张拆任务） */
-export function studioSubmitImageGen(data: types.StudioImageGenSubmitReq, headers: IdemHeaders = llIdempotencyHeaders()) {
+export function studioSubmitImageGen(
+  data: types.StudioImageGenSubmitReq,
+  headers: IdemHeaders = llIdempotencyHeaders(),
+) {
   return post<types.StudioSubmitResp>(`${PREFIX}/image-generate/submit`, data, headers, SUBMIT_TIMEOUT)
+}
+
+// ---------------- 提交前报价（只读，不冻结，不要 Idempotency-Key） ----------------
+
+/** 提交前报价：请求体与对应提交接口同构（只读张数与模型 / 分辨率 / 比例），回本次提交预计冻结的点数 */
+export function studioQuoteTryon(data: types.StudioTryonQuoteReq) {
+  return post<types.StudioQuoteResp>(`${PREFIX}/tryon/quote`, data)
+}
+
+export function studioQuotePose(data: types.StudioPoseQuoteReq) {
+  return post<types.StudioQuoteResp>(`${PREFIX}/pose/quote`, data)
+}
+
+export function studioQuoteImageGen(data: types.StudioImageGenQuoteReq) {
+  return post<types.StudioQuoteResp>(`${PREFIX}/image-generate/quote`, data)
 }
 
 // ---------------- 批次 ----------------

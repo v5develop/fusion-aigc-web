@@ -21,7 +21,7 @@ import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.v
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
 import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
-import { useIdempotentSubmit } from '../hooks.ts'
+import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import {
   ANGLE_OPTIONS,
   MAX_GARMENT_IMAGES,
@@ -116,6 +116,15 @@ const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
 
 /** 幂等重试：失败缓存 key 进「重试生成」态；表单任意字段变化换新 key */
 const idem = useIdempotentSubmit()
+
+/** 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例）原样发给报价接口，拿不到价就不显示 */
+const { points: costPoints } = useStudioCost('tryon', () => ({
+  model_image_urls: modelImages.value,
+  count_per_model: form.count_per_model,
+  model: form.model || undefined,
+  resolution: form.resolution || undefined,
+  aspect_ratio: form.aspect_ratio || undefined,
+}))
 idem.bindForm(
   form,
   () => g.selected,
@@ -464,6 +473,7 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
         />
         <StudioSubmitBar
           :label="submitText"
+          :points="costPoints"
           :submitting="submitting"
           :disabled="submitting"
           :retry="idem.retrying.value"

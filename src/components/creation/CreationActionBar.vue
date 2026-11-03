@@ -14,6 +14,7 @@ import { useId } from 'vue'
 const {
   label,
   costText = '',
+  costPoints = null,
   disabled = false,
   loading = false,
   reason = '',
@@ -23,6 +24,8 @@ const {
   label: string
   /** 按钮第二行：消耗 / 任务数说明 */
   costText?: string
+  /** 按钮第二行「消耗 N 点」（数字 900 粗，与工具页同款）；costText 有值时以 costText 为准，null 不显示 */
+  costPoints?: number | null
   disabled?: boolean
   loading?: boolean
   /** 还不能提交的原因（按钮上方一行 warning 小字） */
@@ -70,6 +73,12 @@ function onClick() {
         class="text-11px font-400 leading-14px text-white/74 whitespace-nowrap"
         aria-live="polite"
         >{{ costText }}</span
+      >
+      <span
+        v-else-if="costPoints != null"
+        class="text-11px font-400 leading-14px text-white/74 whitespace-nowrap"
+        aria-live="polite"
+        >消耗 <b class="font-900 tabular-nums">{{ costPoints }}</b> 点</span
       >
     </button>
   </div>

@@ -16,7 +16,7 @@ import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
 import PromptLibraryPicker from '../components/PromptLibraryPicker/index.vue'
 import { PromptWriteButton } from '@/components/prompt-write'
-import { useIdempotentSubmit } from '../hooks.ts'
+import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import { MAX_REF_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
 
 defineOptions({ name: 'studio-imagegen' })
@@ -50,6 +50,14 @@ const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
 
 /** 幂等重试：失败缓存 key 进「重试生成」态；表单任意字段变化换新 key */
 const idem = useIdempotentSubmit()
+
+/** 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例）原样发给报价接口，拿不到价就不显示 */
+const { points: costPoints } = useStudioCost('imagegen', () => ({
+  count: form.count,
+  model: form.model || undefined,
+  resolution: form.resolution || undefined,
+  aspect_ratio: form.aspect_ratio || undefined,
+}))
 idem.bindForm(form, refImages)
 
 /** 按钮文案对齐原型「立即生成」 */
@@ -200,6 +208,7 @@ function onReedit(payload: Record<string, unknown>) {
         />
         <StudioSubmitBar
           :label="submitText"
+          :points="costPoints"
           :submitting="submitting"
           :disabled="notReady"
           :retry="idem.retrying.value"

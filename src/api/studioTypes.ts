@@ -95,6 +95,42 @@ export interface StudioSubmitResp {
   warnings: string[]
 }
 
+// ---------------- 提交前报价 ----------------
+
+/** 报价请求：与对应提交体同构的子集（可直接传提交体），全部选填 */
+export type StudioTryonQuoteReq = Partial<
+  Pick<StudioTryonSubmitReq, 'model_image_urls' | 'count_per_model' | 'model' | 'resolution' | 'aspect_ratio'>
+>
+export type StudioPoseQuoteReq = Partial<
+  Pick<StudioPoseSubmitReq, 'pose_image_urls' | 'model' | 'resolution' | 'aspect_ratio'>
+>
+export type StudioImageGenQuoteReq = Partial<
+  Pick<StudioImageGenSubmitReq, 'count' | 'model' | 'resolution' | 'aspect_ratio'>
+>
+
+/** 报价响应（POST /{tryon,pose,image-generate}/quote） */
+export interface StudioQuoteResp {
+  /** 能否报出价；false 时点数为 0，原因见 reason */
+  available: boolean
+  /** 本次提交预计冻结点数 = unit_points × task_total（与提交回的 estimated_points 同口径） */
+  points: number
+  /** 每张点数 */
+  unit_points: number
+  /** PER_IMAGE */
+  price_unit: string
+  /** 计价张数；0 = 素材还没传够 */
+  task_total: number
+  /** 计价分辨率（已按模型档归一，如 Seedream 4k → 2k） */
+  resolution: string
+  /** on 真扣 / shadow 只算价不扣 / off 不计费 */
+  billing_mode: string
+  /** 提交是否真的冻结扣点（仅 billing_mode=on） */
+  charged: boolean
+  /** available=false 的原因 */
+  reason: string
+  warnings: string[]
+}
+
 // ---------------- 批次 / 任务 ----------------
 
 /** 批次。status：0 排队 / 1 切图中 / 2 反推中 / 3 生图中 / 4 全部成功 / 5 全部失败 / 6 部分成功 / 7 已取消 / 8 提交中（终态 = 4–7，不要用 >=4 判断） */

@@ -89,7 +89,7 @@ const videoCatalog: Catalog = {
       ['ai-video-enhance', '视频高清', '提升画质'],
       ['ai-video-translate', '视频翻译', '配音翻译'],
       ['ai-video-generator', '视频生成', '文生视频'],
-      ['ai-video-clone', '视频复刻', '复刻提示词'],
+      ['ai-video-clone', '视频复刻', '参照原片生成'],
     ]),
     group('电商', [
       ['model-sell', '模特带货', '模特卖货', workflowRouteOf('video-product-sell')],

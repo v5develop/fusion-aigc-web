@@ -23,6 +23,7 @@ import { signOut } from '@/api/auth.ts'
 import { useUserInfoStore } from '@/stores/userInfo.ts'
 import { catalogFor, type CatalogGroup } from '@/views/tools/catalog'
 import { tools } from '@/views/home/tools'
+import { chuandaitu_data, shangpingshiping_data, shangpingtu_data, type EcEntry } from '@/views/e-commerce/entries'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import CheckInButton from '@/components/check-in/CheckInButton.vue'
 
@@ -233,18 +234,43 @@ const ENTRY_ICON: Record<string, string | undefined> = {
 /** 以后新加的下级页还没配图标时，与工具目录同一做法借「图片生成」占位，保持图标框一致 */
 const PLACEHOLDER_ICON = toolIcon('image-generate')
 
+/**
+ * AI 电商目录的分组：与电商首页（views/e-commerce/index.vue）同源，组名与组内顺序都取 entries.ts。
+ * 搭配融图只在首页摘了卡片、路由仍在：侧栏照旧保留，放回它在穿戴图里原来的位置（服装去皱之后）。
+ */
+const withMergeImage = (list: EcEntry[]) =>
+  list.flatMap((e) => (e.pathName === 'clothing-remove-wrinkle' ? [e.pathName, 'merge-image'] : [e.pathName]))
+const EC_GROUPS: { label: string; names: string[] }[] = [
+  { label: '商品图', names: shangpingtu_data.map((e) => e.pathName) },
+  { label: '商品视频', names: shangpingshiping_data.map((e) => e.pathName) },
+  { label: '穿戴图', names: withMergeImage(chuandaitu_data) },
+]
+
 /** 某一入口下的页面目录：取已注册路由里带 meta.title 的下级静态页，不新增路由 */
 function routeGroups(path: string): PanelGroup[] {
-  const entries = router
+  const routes = router
     .getRoutes()
     .filter((r) => r.path.startsWith(path + '/') && !r.path.includes(':') && typeof r.meta?.title === 'string')
-    .map((r) => ({
-      key: r.path,
-      name: r.meta.title as string,
-      route: r.path,
-      icon: ENTRY_ICON[r.path] ?? PLACEHOLDER_ICON,
-    }))
-  return [{ entries }]
+  const toEntry = (r: (typeof routes)[number]): PanelEntry => ({
+    key: r.path,
+    name: r.meta.title as string,
+    route: r.path,
+    icon: ENTRY_ICON[r.path] ?? PLACEHOLDER_ICON,
+  })
+  if (path !== '/e-commerce') return [{ entries: routes.map(toEntry) }]
+  const byName = new Map(routes.map((r) => [String(r.name), r]))
+  const groups = EC_GROUPS.map((g) => ({
+    label: g.label,
+    entries: g.names.flatMap((n) => {
+      const r = byName.get(n)
+      if (!r) return []
+      byName.delete(n)
+      return [toEntry(r)]
+    }),
+  }))
+  // 以后新加、还没归组的电商页：接在最后一组末尾，不丢入口
+  groups[groups.length - 1]?.entries.push(...[...byName.values()].map(toEntry))
+  return groups.filter((g) => g.entries.length)
 }
 
 const panels: Record<'image' | 'video' | 'ai', { title: string; groups: PanelGroup[] }> = {

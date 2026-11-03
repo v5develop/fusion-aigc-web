@@ -17,7 +17,7 @@ import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
 import PoseMaterialSlots from './PoseMaterialSlots.vue'
 import PoseNotesList from './PoseNotesList.vue'
-import { useIdempotentSubmit } from '../hooks.ts'
+import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import { MAX_POSE_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
 
 defineOptions({ name: 'studio-pose' })
@@ -67,6 +67,14 @@ const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
 
 /** 幂等重试：失败缓存 key 进「重试生成」态；表单任意字段变化换新 key */
 const idem = useIdempotentSubmit()
+
+/** 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例）原样发给报价接口，拿不到价就不显示 */
+const { points: costPoints } = useStudioCost('pose', () => ({
+  pose_image_urls: poseImages.value,
+  model: form.model || undefined,
+  resolution: form.resolution || undefined,
+  aspect_ratio: form.aspect_ratio || undefined,
+}))
 idem.bindForm(form, sourceImages, poseImages, poseNotes)
 
 const submitText = computed(() => (poseImages.value.length ? `开始复刻（${poseImages.value.length} 张）` : '开始复刻'))
@@ -197,6 +205,7 @@ function onReedit(payload: Record<string, unknown>) {
         />
         <StudioSubmitBar
           :label="submitText"
+          :points="costPoints"
           :submitting="submitting"
           :disabled-reason="disabledReason"
           :retry="idem.retrying.value"

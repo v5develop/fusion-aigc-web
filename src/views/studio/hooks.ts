@@ -3,8 +3,20 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { MultiWatchSources, Ref } from 'vue'
 import { useUserInfoStore } from '@/stores/userInfo.ts'
-import { studioBatchDetail, studioHistory } from '@/api/studio.ts'
-import type { StudioBatchDetail, StudioKind } from '@/api/studioTypes.ts'
+import {
+  studioBatchDetail,
+  studioHistory,
+  studioQuoteImageGen,
+  studioQuotePose,
+  studioQuoteTryon,
+} from '@/api/studio.ts'
+import type {
+  StudioBatchDetail,
+  StudioImageGenQuoteReq,
+  StudioKind,
+  StudioPoseQuoteReq,
+  StudioTryonQuoteReq,
+} from '@/api/studioTypes.ts'
 import { createSafeUuid } from '@/utils/utils.ts'
 import { isBatchTerminal } from './constants.ts'
 import { toApiError } from '@/api'
@@ -331,4 +343,59 @@ export function useIdempotentSubmit() {
   onUnmounted(settle)
 
   return { retrying, take, settle, fail, invalidate, bindForm }
+}
+
+type StudioQuoteBody = {
+  tryon: StudioTryonQuoteReq
+  pose: StudioPoseQuoteReq
+  imagegen: StudioImageGenQuoteReq
+}
+
+const STUDIO_QUOTE = {
+  tryon: studioQuoteTryon,
+  pose: studioQuotePose,
+  imagegen: studioQuoteImageGen,
+} as const
+
+/**
+ * 提交前的「消耗 N 点」：调 Go 的 POST /studio/{tryon,pose,image-generate}/quote（只读报价，契约 api-studio.md §7.1）。
+ * 请求体就是提交体里影响价格的那几个字段（张数、模型、分辨率、比例），服务端与提交同一套归一 + 计费入口，
+ * 回的 points 与提交回的 estimated_points 同口径。
+ *
+ * <p>输入变化后防抖 300ms 询价，只取最后一次的响应；不阻塞提交。只有 available 且 charged（计费真开）且 points>0
+ * 才给出点数，其余（没配价、不计费、素材没传够、请求失败）一律 null，页面不显示消耗。
+ */
+export function useStudioCost<K extends StudioKind>(kind: K, body: () => StudioQuoteBody[K]) {
+  const points = ref<number | null>(null)
+  let seq = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  function fetchQuote() {
+    const id = ++seq
+    const quote = STUDIO_QUOTE[kind] as (b: StudioQuoteBody[K]) => ReturnType<typeof studioQuoteTryon>
+    quote(body())
+      .then((res) => {
+        if (id !== seq) return
+        const d = res.code === 0 ? res.data : null
+        points.value = d?.available && d.charged && d.points > 0 ? d.points : null
+      })
+      .catch(() => {
+        if (id === seq) points.value = null
+      })
+  }
+
+  watch(
+    () => JSON.stringify(body()),
+    () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(fetchQuote, 300)
+    },
+    { immediate: true },
+  )
+  onUnmounted(() => {
+    seq++
+    if (timer) clearTimeout(timer)
+  })
+
+  return { points }
 }
