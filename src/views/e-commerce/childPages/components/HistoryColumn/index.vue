@@ -131,7 +131,7 @@ const EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都
               v-if="stackOf(item)[0] && !isVideoUrl(stackOf(item)[0])"
               :src="withWatermark(stackOf(item)[0])"
               alt=""
-              class="block w-full h-full rounded-plate object-cover"
+              class="absolute inset-0 block h-full w-full rounded-plate object-cover object-center"
             />
             <span v-else class="text-11px">{{ groupMediaType === 'video' ? '视频' : '—' }}</span>
             <span

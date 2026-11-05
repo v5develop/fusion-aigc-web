@@ -247,7 +247,8 @@ async function removeItem(item: ILCreation) {
                   删除这个动作视频？
                 </n-popconfirm>
               </div>
-              <div class="flex items-center justify-center min-h-80px">
+              <!-- 上传槽为通栏设计（限量的角标 + 按钮 + 资产库入口一行），放单格里会被挤压错位，占满一行 -->
+              <div class="col-span-full">
                 <VideoUpload fromAsset v-model:videoList="importList" btnName="+ 导入动作视频" :limitNumber="1" />
               </div>
             </div>

@@ -1977,7 +1977,7 @@ const plateBtnCls =
                       v-if="stackOf(item)[0]"
                       :src="stackOf(item)[0]"
                       alt=""
-                      class="block w-full h-full rounded-5px object-cover"
+                      class="absolute inset-0 block h-full w-full rounded-5px object-cover object-center"
                     />
                     <span v-else class="text-11px">{{ schema.media === 'video' ? '视频' : '—' }}</span>
                     <span

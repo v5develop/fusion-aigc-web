@@ -487,7 +487,7 @@ const seamCls = [
     >
       <span :id="`${id}-hint`" class="sr-only">{{ hint }}</span>
       <button
-        v-if="canPickAsset && room > 0"
+        v-if="canPickAsset && room > 0 && mode === 'batch'"
         type="button"
         class="absolute right-12px top-12px z-30 h-30px box-border px-10px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
         :class="focusRing"
@@ -639,6 +639,21 @@ const seamCls = [
         @click="pick"
       >
         {{ uploading ? '上传中…' : '换一张' }}
+      </button>
+    </div>
+
+    <!-- pipe 版式（产品替换底图）网格顶格排布，「从资产库添加」放卡内右上角会压住第一行第 5 列的「待上传」格，
+         改为卡片下方右对齐（与叠片版式同一处理）；宽度与上传卡对齐。放在整条展示分支之后，不打断 v-if / v-else 链 -->
+    <div v-if="canPickAsset && mode === 'pipe' && room > 0" class="flex justify-end mt-6px w-full max-w-[434px]">
+      <button
+        type="button"
+        class="h-30px box-border px-10px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+        :class="focusRing"
+        :disabled="disabled || uploading"
+        :aria-label="`从资产库添加${spec.label}`"
+        @click="openAssetPicker"
+      >
+        从资产库添加
       </button>
     </div>
   </div>
