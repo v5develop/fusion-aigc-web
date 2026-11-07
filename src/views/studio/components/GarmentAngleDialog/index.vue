@@ -247,11 +247,11 @@ function isPending(key: string, angle: string) {
         @focusin="pointedKey = group.key"
       >
         <div class="flex items-baseline gap-8px">
-          <b class="text-12px font-600 text-ink">{{ group.label }}</b>
-          <span class="ml-auto text-10px text-placeholder">{{ group.urls.length }} / {{ maxPerGroup }}</span>
+          <b class="text-13px font-600 text-ink">{{ group.label }}</b>
+          <span class="ml-auto text-11px text-placeholder">{{ group.urls.length }} / {{ maxPerGroup }}</span>
           <button
             type="button"
-            class="px-4px text-12px leading-18px text-violet bg-transparent border-none cursor-pointer rounded-sm hover:underline disabled:(opacity-45 cursor-not-allowed) sx-focus"
+            class="sx-btn-ghost !text-violet-ink disabled:(opacity-45 cursor-not-allowed)"
             :aria-label="`从资产库添加${group.label}服装图`"
             :disabled="uploading || isFull(group)"
             @click="openAssets(group)"
@@ -272,7 +272,7 @@ function isPending(key: string, angle: string) {
               >
               <StudioMedBtn
                 :label="`删除${group.label}${cell.label}`"
-                class="top-3px right-3px z-2 opacity-0 transition-opacity duration-120 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+                class="top-3px right-3px z-2 sx-reveal motion-reduce:transition-none"
                 @click="emit('remove', group.key, cell.url)"
               >
                 <svg
@@ -316,8 +316,8 @@ function isPending(key: string, angle: string) {
 
     <template #footer>
       <div class="flex items-center gap-10px">
-        <span class="mr-auto text-10px text-placeholder">改动即时保存，关掉即生效</span>
-        <button type="button" class="ll-btn-primary h-34px px-18px !rounded-6px !text-12px" @click="show = false">
+        <span class="mr-auto text-11px text-placeholder">改动即时保存，关掉即生效</span>
+        <button type="button" class="sx-btn-primary h-34px px-18px !rounded-6px !text-13px" @click="show = false">
           完成
         </button>
       </div>

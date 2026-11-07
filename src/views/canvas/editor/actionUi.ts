@@ -33,4 +33,4 @@ export const STATUS_OK =
 
 /** 转圈（UnoCSS 内置 animate-spin，无需自定义关键帧） */
 export const SPINNER =
-  'inline-block shrink-0 w-14px h-14px border-2 border-solid border-violet-line border-t-violet rounded-full animate-spin motion-reduce:animate-none'
+  'inline-block shrink-0 w-14px h-14px border-2 border-solid border-violet-line border-t-violet rounded-full animate-spin'

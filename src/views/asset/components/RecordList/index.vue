@@ -58,7 +58,17 @@ const downloadGroup = async (group: any) => {
     <div class="record-item" v-for="item in recordsData" :key="item.taskId">
       <div class="title-cont">
         <div class="left-cont">
-          <span v-if="manageMode" class="group-check" @click="toggleGroupAll(item)">
+          <span
+            v-if="manageMode"
+            class="group-check"
+            role="checkbox"
+            tabindex="0"
+            :aria-checked="getGroupSelectState(item).allChecked"
+            aria-label="全选本组"
+            @click="toggleGroupAll(item)"
+            @keydown.enter.prevent="toggleGroupAll(item)"
+            @keydown.space.prevent="toggleGroupAll(item)"
+          >
             <svg viewBox="0 0 16 16" width="18" height="18">
               <template v-if="getGroupSelectState(item).allChecked">
                 <circle cx="8" cy="8" r="8" fill="#202020" />
@@ -137,6 +147,12 @@ const downloadGroup = async (group: any) => {
           display: inline-flex;
           align-items: center;
           cursor: pointer;
+          padding: 7px; // 视觉 18，命中 32
+          margin: -7px;
+          border-radius: 50%;
+          &:focus-visible {
+            outline: 2px solid #7c5cff;
+          }
           > svg {
             display: block;
           }

@@ -382,15 +382,15 @@ const checkPath = 'M5 12.5l4.2 4.2L19 7'
               <!-- 我的模特：编辑 / 删除 -->
               <div
                 v-if="item.source === 'custom'"
-                class="absolute top-6px right-6px flex gap-4px opacity-0 transition-opacity duration-fast group-hover:opacity-100 group-focus-within:opacity-100"
+                class="absolute top-6px right-6px flex gap-4px sx-reveal"
                 @click.stop
                 @keydown.stop
               >
-                <n-button size="tiny" secondary class="!bg-white/92" @click="openEdit(item)">编辑</n-button>
+                <n-button size="small" secondary class="!bg-white/92" @click="openEdit(item)">编辑</n-button>
                 <n-popconfirm @positive-click="removeItem(item)">
                   <template #trigger>
                     <n-button
-                      size="tiny"
+                      size="small"
                       secondary
                       type="error"
                       class="!bg-white/92"

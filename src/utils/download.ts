@@ -43,11 +43,19 @@ function extFromUrl(url: string): string {
  * 因此所有下载一律走 fetch→blob，抓不到时只能裸链打开让用户手动另存。
  */
 
-/** 通过隐藏 <a> 触发一次下载 */
-function triggerAnchorDownload(href: string, filename?: string) {
+/**
+ * 通过隐藏 <a> 触发一次下载。
+ * newTab：跨域裸链兜底时置 true —— 跨域 a.download 会被浏览器忽略，不加 target 会把
+ * 当前页导航走（智能体会话、表单草稿全丢），所以一律新开标签页（noopener）展示让用户另存。
+ */
+function triggerAnchorDownload(href: string, filename?: string, newTab = false) {
   const a = document.createElement('a')
   a.href = href
   if (filename) a.download = filename
+  if (newTab) {
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+  }
   a.style.display = 'none'
   document.body.appendChild(a)
   a.click()
@@ -71,8 +79,8 @@ export async function downloadImage(url: string, filename?: string): Promise<voi
     triggerAnchorDownload(objectUrl, name)
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
   } catch {
-    // 跨域时 a.download 会被忽略，退化为新开页展示，用户可右键另存
-    triggerAnchorDownload(url, name)
+    // 跨域时 a.download 会被忽略，退化为新开标签页展示，用户可右键另存（绝不在当前页导航）
+    triggerAnchorDownload(url, name, true)
   }
 }
 

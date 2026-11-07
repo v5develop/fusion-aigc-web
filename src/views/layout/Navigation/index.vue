@@ -5,7 +5,7 @@
  * <p>结构：品牌块（logo 40 + 小岐AI / 一体化数字员工平台）→ 首页 → 「AI 创作」二级组
  * （智能体 / 工作流 / 画布 / AI 图片 / AI 视频）→ 电商 › / 商拍 › / 本地生活 → 我的资产 / 创意广场 →
  * 提示词库 → 弹性留白 → 更新条 + 用户行。
- * 「AI 图片」「AI 视频」点击直接进入落地页（/picture、/video），不再并排展开目录栏；工具页自带同一份目录。
+ * 「AI 图片」「AI 视频」点击直接进入落地页（/image、/video），不再并排展开目录栏；工具页自带同一份目录。
  * 「本地生活」同样直接进落地页（/local-life）。电商 / 商拍仍点开 160 宽的二级目录栏（原型 motion-col-in：透明 + 左移 24px 滑入）。
  *
  * <p>原型侧栏没有的老入口（电商 / 商拍 / 本地生活 / 提示词库）按产品决定保留为独立的一级入口；
@@ -124,7 +124,7 @@ const aiSubs: NavSub[] = [
   // 原型 AppSidebar 的 AI 创作组：智能体之后即工作流；进导航首页 /workflow/home，模板页 /workflow?flow=&category=&template= 由首页卡片进
   { name: '工作流', path: '/workflow/home' },
   { name: '画布', path: '/canvas' },
-  { name: 'AI 图片', path: '/picture', owns: 'image' },
+  { name: 'AI 图片', path: '/image', owns: 'image' },
   { name: 'AI 视频', path: '/video', owns: 'video' },
 ]
 
@@ -294,7 +294,7 @@ const panelRoutes = (key: 'image' | 'video') =>
   panels[key].groups.flatMap((g) => g.entries.map((e) => e.route).filter((r): r is string => !!r))
 
 const ownedRoutes: Partial<Record<PanelKey, string[]>> = {
-  image: ['/picture', ...panelRoutes('image')],
+  image: ['/image', ...panelRoutes('image')],
   video: ['/video', ...panelRoutes('video')],
 }
 

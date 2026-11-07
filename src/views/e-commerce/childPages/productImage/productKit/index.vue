@@ -15,7 +15,7 @@ import RecordList from '@/views/e-commerce/childPages/components/RecordList/inde
 import { checkboxCustomImageList } from './constants.ts'
 import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
 // 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
-import { modelOps } from '@/views/picture/constants.ts'
+import { modelOps } from '@/views/image/constants.ts'
 import type { ICheckboxCustomImageItem } from './constants.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { useMessage } from 'naive-ui'

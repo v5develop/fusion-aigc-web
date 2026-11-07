@@ -17,6 +17,8 @@ import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
 import PoseMaterialSlots from './PoseMaterialSlots.vue'
 import PoseNotesList from './PoseNotesList.vue'
+import PosePairingPanel from './PosePairingPanel.vue'
+import { usePosePairing } from './usePosePairing.ts'
 import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import { MAX_POSE_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
 
@@ -54,6 +56,9 @@ function removePose(url: string) {
   delete poseNotes[url]
 }
 
+/** 多人配对（付费前确认）：状态随人物图 / 姿势图签名失效，没跑识别时提交体不带任何配对字段 */
+const pairing = usePosePairing(sourceImages, poseImages)
+
 /** 叠片右上清空：姿势图和全部逐张说明一起清 */
 function clearPoses() {
   poseImages.value = []
@@ -75,11 +80,11 @@ const { points: costPoints } = useStudioCost('pose', () => ({
   resolution: form.resolution || undefined,
   aspect_ratio: form.aspect_ratio || undefined,
 }))
-idem.bindForm(form, sourceImages, poseImages, poseNotes)
+idem.bindForm(form, sourceImages, poseImages, poseNotes, pairing.state)
 
 const submitText = computed(() => (poseImages.value.length ? `开始复刻（${poseImages.value.length} 张）` : '开始复刻'))
 
-/** 未就绪原因（提交条置灰展示）；空 = 就绪 */
+/** 未就绪原因：按钮保持可点（点了 toast 同一句），悬停在提交条上能看到；空 = 就绪 */
 const disabledReason = computed(() => {
   if (!sourceImages.value.length) return '上传一张人物图（图里需有人物，且不能是未成年人）'
   if (!poseImages.value.length) return '上传 1–9 张姿势参考图'
@@ -91,6 +96,11 @@ async function submit() {
   if (!sourceImages.value.length) return message.warning('请上传一张人物图（图里需有人物，且不能是未成年人）')
   if (!poseImages.value.length) return message.warning('请上传 1–9 张姿势参考图')
 
+  // 提交即放弃进行中的识别；有效的多人配对先校验，不合规直接拦下
+  pairing.cancel()
+  const pair = pairing.buildPayload()
+  if (pair && 'error' in pair) return message.warning(pair.error)
+
   const prompts = posePrompts.value
   const body: StudioPoseSubmitReq = {
     source_image_url: sourceImages.value[0] ?? '',
@@ -100,6 +110,7 @@ async function submit() {
     model: form.model || undefined,
     resolution: form.resolution || undefined,
     aspect_ratio: form.aspect_ratio || undefined,
+    ...(pair ? { source_person_count: pair.sourcePersonCount, mappings: pair.mappings } : {}),
   }
 
   submitting.value = true
@@ -147,6 +158,7 @@ function onReedit(payload: Record<string, unknown>) {
   form.model = MODEL_OPTIONS.some((o) => o.value === p.model) ? (p.model as string) : '通用'
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
   form.aspect_ratio = typeof p.aspect_ratio === 'string' ? p.aspect_ratio : ''
+  pairing.restore(p, sourceImages.value, poseImages.value)
   // 回填是一次全新的提交：bindForm 的深度 watch 会作废旧 key，这里再兜一道
   idem.invalidate()
 }
@@ -170,6 +182,23 @@ function onReedit(payload: Record<string, unknown>) {
           @clear-poses="clearPoses"
         />
 
+        <PosePairingPanel
+          v-if="sourceImages.length && poseImages.length"
+          :state="pairing.state.value"
+          :stale="pairing.stale.value"
+          :running="pairing.running.value"
+          :elapsed="pairing.elapsed.value"
+          :error-text="pairing.errorText.value"
+          :can-run="pairing.canRun.value"
+          :cooldown="pairing.cooldown.value"
+          :disabled="submitting"
+          @run="pairing.run"
+          @cancel="pairing.abort"
+          @reverse="pairing.reverse"
+          @reset="pairing.reset"
+          @set="pairing.setMapping"
+        />
+
         <!-- 补充说明（全局）：框内无边 textarea，左下计数 -->
         <div class="flex min-h-0 flex-1 flex-col gap-6px">
           <label for="pose-global-prompt" class="sr-only">补充说明</label>
@@ -183,7 +212,7 @@ function onReedit(payload: Record<string, unknown>) {
           />
           <span
             id="pose-global-prompt-count"
-            class="self-start mt-2px text-10px leading-15px tabular-nums select-none"
+            class="self-start mt-2px text-11px leading-15px tabular-nums select-none"
             :class="form.global_prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
             >{{ form.global_prompt.length }} / 3000</span
           >

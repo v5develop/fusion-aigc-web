@@ -68,20 +68,17 @@ const getGroupSelectState = (group: any) => {
   <!-- 结果列（原型 ToolPreviewPanel，规范 §5.11）：头部 = 标题 14/600 + 时间 12/500/18 + 下载（高 28、内边距 0 8、r4、11px）；
        下方候选网格：图片 5 列、gap 8、r6，视频沿用视频模块的 480 宽 16:9。结果卡上不放常驻操作，下载 / 选择只在悬停时出现 -->
   <section v-if="current" :aria-labelledby="titleId" class="flex flex-col gap-10px p-12px">
-    <div class="flex items-center gap-8px min-h-28px">
-      <button
+    <div class="flex items-center gap-8px min-h-32px">
+      <IconButton
         v-if="selectImgUrls"
-        type="button"
-        class="grid place-items-center p-0 border-none bg-transparent text-20px text-ink-2 cursor-pointer rounded-sm sx-focus"
-        :aria-pressed="getGroupSelectState(current).allChecked"
-        aria-label="全选本组"
+        size="sm"
+        variant="quiet"
+        :pressed="getGroupSelectState(current).allChecked"
+        label="全选本组"
         @click="toggleGroupAll(current)"
       >
-        <i
-          :class="getGroupSelectState(current).allChecked ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'"
-          aria-hidden="true"
-        />
-      </button>
+        <i :class="getGroupSelectState(current).allChecked ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'" />
+      </IconButton>
       <h2 :id="titleId" class="m-0 flex-none text-14px font-600 leading-20px text-ink">生成结果</h2>
       <span class="min-w-0 truncate text-12px font-500 leading-18px text-muted tabular-nums">{{
         current.createTime
@@ -90,13 +87,13 @@ const getGroupSelectState = (group: any) => {
       <button
         v-if="getDownloadableUrls(current).length"
         type="button"
-        class="sx-btn !h-28px !px-8px !text-11px ml-auto flex-none"
+        class="sx-btn !h-32px !px-12px !text-13px ml-auto flex-none"
         :disabled="downloadingIds.has(current.taskId)"
         :aria-busy="downloadingIds.has(current.taskId) || undefined"
         @click="onGroupDownload(current)"
       >
         <svg
-          class="w-12px h-12px"
+          class="w-14px h-14px"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"

@@ -13,6 +13,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import IconButton from '@/components/IconButton/index.vue'
 import { NConfigProvider, NPopover, useMessage } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
 import type { StudioBatchDetail, StudioKind } from '@/api/studioTypes.ts'
@@ -144,7 +145,7 @@ defineExpose({
         <span>网络异常，已暂停轮询</span>
         <button
           type="button"
-          class="h-24px box-border cursor-pointer rounded-sm border border-solid border-danger-line bg-white px-8px text-11px font-500 text-alert-danger hover:border-danger sx-focus"
+          class="h-32px box-border cursor-pointer rounded-sm border border-solid border-danger-line bg-white px-12px text-13px font-500 text-alert-danger hover:border-danger sx-focus"
           @click="ctl.retryPolling()"
         >
           重试
@@ -177,26 +178,18 @@ defineExpose({
               <div
                 class="relative mx-12px mt-12px flex h-64px box-border flex-none items-center gap-8px rounded-10px border border-solid border-#e9dff2 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7fe_100%)] pl-8px pr-14px py-12px shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
               >
-                <button
-                  type="button"
-                  class="grid h-24px w-24px flex-none cursor-pointer place-items-center rounded-full border-none bg-transparent p-0 text-muted hover:(bg-surface3 text-ink) active:bg-ghost-press sx-focus"
-                  aria-label="返回AI 商拍"
-                  title="返回AI 商拍"
-                  @click="back"
-                >
-                  <svg
-                    class="h-14px w-14px"
+                <IconButton label="返回AI 商拍" variant="quiet" @click="back">
+<svg
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    aria-hidden="true"
                   >
                     <path d="M19 12H5M11 18l-6-6 6-6" />
                   </svg>
-                </button>
+</IconButton>
                 <button
                   type="button"
                   class="flex h-40px min-w-0 flex-1 cursor-pointer items-center gap-12px border-none bg-transparent p-0 text-left hover:opacity-82 sx-focus"
@@ -259,31 +252,24 @@ defineExpose({
                   class="flex h-44px flex-none items-center justify-between pl-14px pr-8px shadow-[inset_0_-0.8px_0_#e5e7eb]"
                 >
                   <span class="text-13px font-600 leading-20px text-muted">切换功能</span>
-                  <button
-                    type="button"
-                    aria-label="关闭"
-                    class="grid h-26px w-26px cursor-pointer place-items-center rounded-4px border-none bg-transparent p-0 text-muted hover:(bg-surface3 text-ink) sx-focus"
-                    @click="switchOpen = false"
-                  >
-                    <svg
-                      class="h-14px w-14px"
+                  <IconButton label="关闭" variant="quiet" @click="switchOpen = false">
+<svg
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
                       stroke-width="2"
                       stroke-linecap="round"
-                      aria-hidden="true"
                     >
                       <path d="M18 6 6 18M6 6l12 12" />
                     </svg>
-                  </button>
+</IconButton>
                 </div>
                 <div class="grid grid-cols-3 gap-2px px-8px pb-16px pt-4px">
                   <button
                     v-for="entry in SWITCH_ENTRIES"
                     :key="entry.kind"
                     type="button"
-                    class="flex h-30px min-w-0 cursor-pointer items-center gap-6px rounded-6px border border-solid px-6px text-left sx-focus"
+                    class="flex h-32px min-w-0 cursor-pointer items-center gap-6px rounded-6px border border-solid px-6px text-left sx-focus"
                     :class="
                       entry.kind === kind
                         ? 'border-violet-line bg-[linear-gradient(#ffffff,#f3edf8)] text-violet-ink'
@@ -308,7 +294,7 @@ defineExpose({
                         :innerHTML="iconOf(entry.kind)"
                       />
                     </span>
-                    <span class="min-w-0 truncate text-12px font-500">{{ entry.name }}</span>
+                    <span class="min-w-0 truncate text-13px font-500">{{ entry.name }}</span>
                   </button>
                 </div>
               </div>

@@ -3,14 +3,20 @@
  * 三栏工作台 · 右列预览区。
  *
  * <p>选中批次的详情：批次摘要（状态 chip / 进度 / 成功失败数 / 点数 / 时间）+
- * 任务网格（per-task 状态 / 进度 / result_url / error_reason，成品点 n-image 大图预览）。
+ * 任务网格（per-task 状态 / 进度 / result_url / error_reason）。生成中的进度行显示批次当前阶段（切图中 / 反推中 / 生图中）；
+ * 每张成品常驻「下载」，点图打开对照（MediaLightbox：输入图 → 成品，见 compare.ts）；
+ * 失败的任务给「重试这张」（只重跑这一张、重新冻结这 1 张的点数，确认后调 studioRetryTask 并刷新进入轮询）。
  * 未选中 / 无历史时：有功能介绍文案（#intro 插槽 / intro 属性 / 按 feature 查 STUDIO_INTRO）就按原型
  * ToolIntroPanel 整列显示「功能介绍 + 适用场景」，否则显示空态引导。在跑批次由 useStudioHistory 轮询，这里只做展示。
  */
 import { computed, ref, useSlots } from 'vue'
 import { useMessage } from 'naive-ui'
-import { studioCancelBatch, studioDeleteBatch } from '@/api/studio.ts'
+import { studioCancelBatch, studioDeleteBatch, studioRetryTask } from '@/api/studio.ts'
+import { toApiError } from '@/api/index.ts'
 import type { StudioBatchDetail, StudioTask } from '@/api/studioTypes.ts'
+import IconButton from '@/components/IconButton/index.vue'
+import MediaLightbox from '@/components/MediaLightbox/index.vue'
+import type { LightboxItem } from '@/components/MediaLightbox/index.vue'
 import type { useStudioHistory } from '../../hooks.ts'
 import {
   KIND_LABEL,
@@ -22,6 +28,7 @@ import {
   taskChip,
 } from '../../constants.ts'
 import { STUDIO_INTRO } from './intro.ts'
+import { canRetryTask, compareItems, retrySupported, unitPoints } from './compare.ts'
 
 const props = defineProps<{
   /** useStudioHistory 实例（游标分页 + 在跑批次轮询） */
@@ -68,6 +75,60 @@ async function removeBatch(d: StudioBatchDetail) {
   message.success('已删除')
   await ctl.refresh()
 }
+
+// ---------------- 单张重试 ----------------
+
+const retrying = ref('')
+
+function retryConfirmText(d: StudioBatchDetail) {
+  const unit = unitPoints(d.batch)
+  return `只重新生成这一张，会按原入口重新冻结这 1 张的点数${unit ? `（约 ${unit} 点）` : ''}，其余图片不受影响。确定重试？`
+}
+
+async function retryTask(task: StudioTask) {
+  if (retrying.value) return
+  retrying.value = task.task_id
+  try {
+    await studioRetryTask(task.task_id)
+  } catch (err) {
+    const e = toApiError(err)
+    // 业务失败（不满足重试条件 / 点数不足等）拦截器已 toast；只补「接口不存在」与传输层失败
+    if (e?.httpStatus === 404 && e.code === -1) {
+      retrySupported.value = false
+      message.warning('单张重试暂未开放，可点「重新编辑」再提交')
+    } else if (!e || e.isNetwork) {
+      message.error('重试请求没有发出去，请检查网络后再试')
+    }
+    retrying.value = ''
+    return
+  }
+  // 重试已成功（已重新冻结点数）：刷新失败不能再报成「重试失败」，免得用户再点一次重复扣点。
+  // 刷新完成前保持 retrying，防止连点
+  try {
+    // 批次被拉回进行中：刷新列表即按需进入轮询
+    await ctl.refresh()
+    message.success('已重新提交这一张，生成好会自动刷新')
+  } catch {
+    message.warning('已重新提交，刷新失败，请稍后查看')
+  } finally {
+    retrying.value = ''
+  }
+}
+
+// ---------------- 结果对照 / 下载 ----------------
+
+const lbShow = ref(false)
+const lbIndex = ref(0)
+const lbItems = ref<LightboxItem[]>([])
+
+function openCompare(d: StudioBatchDetail, task: StudioTask) {
+  const { items, index } = compareItems(d, task)
+  lbItems.value = items
+  lbIndex.value = index
+  lbShow.value = true
+}
+
+const downloadPath = 'M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14'
 
 function reedit(d: StudioBatchDetail) {
   let payload: Record<string, unknown>
@@ -193,7 +254,7 @@ const single = computed(() => {
           <span class="text-14px font-600 text-ink">{{ summary!.title }}</span>
           <span class="ll-chip" :class="summary!.chip.cls">{{ summary!.chip.label }}</span>
         </div>
-        <div class="mt-6px text-12px text-muted">
+        <div class="mt-6px text-13px text-muted">
           成功 {{ summary!.done }} · 失败 {{ summary!.failed }} / 共 {{ summary!.total }} 张
           <span class="mx-4px text-line-strong">·</span> 预估 {{ summary!.points }} 点
           <span class="mx-4px text-line-strong">·</span> {{ summary!.time }}
@@ -214,39 +275,27 @@ const single = computed(() => {
             />
           </div>
           <div class="flex items-center gap-8px">
-            <span class="text-13px leading-20px text-ink">生成中</span>
+            <span class="text-13px leading-20px text-ink">{{ summary!.chip.label }}</span>
             <span class="text-11px leading-16px text-ink tabular-nums">{{ Math.round(summary!.progress) }}%</span>
           </div>
           <p class="m-0 text-11px leading-16px text-placeholder">可以离开这一页，任务不会中断，回来会接着显示进度</p>
         </div>
-        <div v-if="summary!.reason" class="mt-6px text-12px text-danger break-all">{{ summary!.reason }}</div>
-        <div class="flex gap-14px justify-end mt-10px">
+        <div v-if="summary!.reason" class="mt-6px text-13px text-danger break-all">{{ summary!.reason }}</div>
+        <div class="flex flex-wrap gap-6px justify-end mt-8px">
           <n-popconfirm v-if="summary!.running" @positive-click="cancelBatch(detail!)">
             <template #trigger
-              ><button
-                type="button"
-                class="border-none bg-transparent p-0 rounded-sm text-12px cursor-pointer sx-focus text-violet-ink hover:text-violet-press"
-              >
+              ><button type="button" class="sx-btn-ghost !text-violet-ink hover:!text-violet-press">
                 取消批次
               </button></template
             >
             只会取消还没开始的任务，已开始的继续跑完，确定取消？
           </n-popconfirm>
-          <button
-            type="button"
-            class="border-none bg-transparent p-0 rounded-sm text-12px cursor-pointer sx-focus text-violet-ink hover:text-violet-press"
-            @click="reedit(detail!)"
-          >
+          <button type="button" class="sx-btn-ghost !text-violet-ink hover:!text-violet-press" @click="reedit(detail!)">
             重新编辑
           </button>
           <n-popconfirm v-if="!summary!.running" @positive-click="removeBatch(detail!)">
             <template #trigger
-              ><button
-                type="button"
-                class="border-none bg-transparent p-0 rounded-sm text-12px cursor-pointer sx-focus ll-danger-link"
-              >
-                删除批次
-              </button></template
+              ><button type="button" class="sx-btn-ghost !text-danger hover:!bg-danger-soft">删除批次</button></template
             >
             删除后历史里不再显示（已入素材库的成品图不受影响），确定删除？
           </n-popconfirm>
@@ -255,12 +304,41 @@ const single = computed(() => {
 
       <!-- 单张成品：原型 StudioResult 图片（最大高 620、r8、contain 居中） -->
       <div v-if="single">
-        <n-image
-          :src="single.result_url"
-          :alt="taskCaption(single)"
-          class="flex justify-center [&_img]:block [&_img]:max-w-full [&_img]:max-h-620px [&_img]:rounded-lg [&_img]:object-contain"
-          object-fit="contain"
-        />
+        <div class="relative flex justify-center">
+          <button
+            type="button"
+            class="block max-w-full p-0 border-0 bg-transparent cursor-zoom-in sx-focus rounded-lg"
+            :aria-label="`查看${taskCaption(single)}与原图对照`"
+            @click="openCompare(detail!, single)"
+          >
+            <img
+              :src="single.result_url"
+              :alt="taskCaption(single)"
+              class="block max-w-full max-h-620px rounded-lg object-contain"
+            />
+          </button>
+          <IconButton
+            label="下载"
+            variant="overlay"
+            class="!absolute top-8px right-8px"
+            :href="single.result_url"
+            download
+            target="_blank"
+            @click.stop
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path :d="downloadPath" />
+            </svg>
+          </IconButton>
+        </div>
         <div class="mt-6px flex items-center justify-center gap-6px">
           <span
             class="overflow-hidden text-11px text-muted whitespace-nowrap text-ellipsis"
@@ -272,15 +350,43 @@ const single = computed(() => {
       </div>
       <div v-else class="grid gap-12px content-start justify-center grid-cols-[repeat(auto-fit,minmax(200px,300px))]">
         <div v-for="task in detail!.tasks" :key="task.id">
-          <div class="aspect-[3/4] overflow-hidden border border-solid border-line rounded-lg bg-surface2">
-            <n-image
-              v-if="task.status === 2 && task.result_url"
-              :src="task.result_url"
-              :alt="taskCaption(task)"
-              class="w-full h-full [&_img]:block [&_img]:w-full [&_img]:h-full"
-              object-fit="cover"
-              lazy
-            />
+          <div class="relative aspect-[3/4] overflow-hidden border border-solid border-line rounded-lg bg-surface2">
+            <template v-if="task.status === 2 && task.result_url">
+              <button
+                type="button"
+                class="block w-full h-full p-0 border-0 bg-transparent cursor-zoom-in sx-focus"
+                :aria-label="`查看${taskCaption(task)}与原图对照`"
+                @click="openCompare(detail!, task)"
+              >
+                <img
+                  :src="task.result_url"
+                  :alt="taskCaption(task)"
+                  class="block w-full h-full object-cover"
+                  loading="lazy"
+                />
+              </button>
+              <IconButton
+                label="下载"
+                variant="overlay"
+                class="!absolute top-8px right-8px"
+                :href="task.result_url"
+                download
+                target="_blank"
+                @click.stop
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path :d="downloadPath" />
+                </svg>
+              </IconButton>
+            </template>
             <div v-else-if="isTaskRunning(task)" class="flex h-full flex-col items-center justify-center gap-8px">
               <n-spin size="small" />
               <span class="text-12px text-ink-2">{{ task.status === 0 ? '排队中' : `${task.progress}%` }}</span>
@@ -293,10 +399,21 @@ const single = computed(() => {
             </div>
             <div
               v-else-if="task.status === 3"
-              class="flex h-full items-center justify-center p-10px overflow-hidden text-12px leading-18px text-center break-all bg-danger-soft text-danger"
+              class="flex h-full flex-col items-center justify-center gap-10px p-10px overflow-hidden text-12px leading-18px text-center break-all bg-danger-soft text-danger"
               :title="task.error_reason"
             >
-              {{ task.error_reason || '生成失败' }}
+              <span>{{ task.error_reason || '生成失败' }}</span>
+              <n-popconfirm
+                v-if="retrySupported && canRetryTask(detail!.batch, task)"
+                @positive-click="retryTask(task)"
+              >
+                <template #trigger>
+                  <button type="button" class="sx-btn" :disabled="!!retrying">
+                    {{ retrying === task.task_id ? '提交中…' : '重试这张' }}
+                  </button>
+                </template>
+                {{ retryConfirmText(detail!) }}
+              </n-popconfirm>
             </div>
             <div
               v-else
@@ -316,6 +433,8 @@ const single = computed(() => {
         </div>
       </div>
     </template>
+
+    <MediaLightbox v-model:show="lbShow" v-model:index="lbIndex" :items="lbItems" />
   </div>
 </template>
 

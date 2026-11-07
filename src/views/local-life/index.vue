@@ -2,8 +2,9 @@
 /**
  * 本地生活入口页 · 全案设计（还原 v1.0 原型 LocalLifeView 的版式）。
  *
- * 左：384 固定「预览 / 历史」页签 + 手机预览；右：标题行（全案设计 + 档案 pill + 四步条）
- * → 卡 A（选择品牌档案 + 选择模板）→ 卡 B（五类图种列）→ 底栏（预计消耗 + 一键生成全案）。
+ * 左：384 固定「预览 / 历史（角标封顶 99）」页签 + 手机预览；右：标题行（全案设计 + 档案 pill + 四步条）
+ * → 卡 A（未选档案 = 选择品牌档案；选了 = 档案小卡 + 整体设计要求「总需求 / 风格需求」，头部模板 chip 多选）
+ * → 卡 B（五类图种列）→ 底栏（预计消耗 + 一键生成全案；按钮不置灰，条件不满足点了提示原因）。
  * 步骤名、图种名、文案照原型 src/views/local-life。
  *
  * 接口（Java Creaft v1，见 api/localLifeFull.ts 与 useFullSet.ts）：品牌档案 /brand-profiles、
@@ -15,7 +16,9 @@
  */
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { NConfigProvider, NSpin, NTooltip } from 'naive-ui'
+import { NConfigProvider, NPopconfirm, NSpin, NTooltip, useMessage } from 'naive-ui'
+import IconButton from '@/components/IconButton/index.vue'
+import PageEmpty from '@/components/PageEmpty/index.vue'
 import { llFormSkin, llTheme } from './theme.ts'
 import EntryPhone from './components/EntryPhone/index.vue'
 import EntryTypeColumn from './components/EntryTypeColumn/index.vue'
@@ -24,6 +27,7 @@ import TemplatePicker from './components/TemplatePicker/index.vue'
 import ProfileImagePicker from './components/ProfileImagePicker/index.vue'
 import {
   ITEM_MAX_LENGTH,
+  REQUIREMENT_MAX_LENGTH,
   SECTIONS,
   STATUS_LABEL,
   isLLTerminal,
@@ -32,10 +36,11 @@ import {
   type KindResults,
   type TemplateCard,
 } from './useFullSet.ts'
-import type { LLKindKey, LLProfileItem } from '@/api/localLifeFull.ts'
+import { BIZ_TYPE_TO_KIND, type BrandProfileAssetRow, type LLKindKey, type LLProfileItem } from '@/api/localLifeFull.ts'
 
 const SHOP_PROFILE_PATH = '/local-life/shop-profile'
 
+const message = useMessage()
 const fs = useFullSet()
 const {
   profileSource,
@@ -48,29 +53,42 @@ const {
   userTemplates,
   templatesLoading,
   templatesError,
-  template,
+  templates,
   sections,
   selectedCount,
   continueFrom,
   costLines,
   estimatedCost,
+  estimateIsMinimum,
   history,
+  historyTotal,
   historyLoading,
   historyError,
+  deletingHistoryId,
+  requirement,
+  styleRequirement,
+  blockReason,
+  contentBlockReason,
   submitting,
   running,
   run,
+  runNotice,
   retrying,
   offline,
 } = fs
 
-/* ---------- 四步条（原型 STEP_LABELS） ---------- */
+/* ---------- 四步条（原型 STEP_LABELS：已完成打勾，当前 = 第一个未完成项） ---------- */
 const STEP_LABELS = ['选择品牌档案', '选择设计模板', '配置全案需求', '提交生成']
+/** 第 3 步完成 = 内容这一步没有拦提交的问题（与提交校验同一套规则） */
+const stepDone = computed(() => [
+  !!profile.value,
+  templates.value.length > 0 || !!continueFrom.value,
+  !contentBlockReason.value,
+  false,
+])
 const stepCurrent = computed(() => {
-  if (!profile.value) return 0
-  if (!template.value && !continueFrom.value) return 1
-  if (!selectedCount.value) return 2
-  return 3
+  const rest = stepDone.value.findIndex((done) => !done)
+  return rest === -1 ? 3 : rest
 })
 
 /* ---------- 预览 / 历史页签 ---------- */
@@ -79,6 +97,8 @@ const sideTabs: { key: SideTab; label: string }[] = [
   { key: 'preview', label: '预览' },
   { key: 'history', label: '历史' },
 ]
+/** 历史角标：该档案的历史总数，封顶 99 */
+const historyBadge = computed(() => Math.min(99, historyTotal.value || history.value.length))
 const activeTab = ref<SideTab>('preview')
 const tabRefs = ref<HTMLButtonElement[]>([])
 
@@ -98,6 +118,12 @@ const previewResults = computed<KindResults>(() => {
   }
   return run.value?.results ?? {}
 })
+/** 推荐菜产物旁的菜名：只有当前这次生成、且提交时记下了组号 → 菜名时才配；看历史 / 接管的记录不配 */
+const previewCloseupNames = computed<(string | undefined)[]>(() => {
+  if (previewHistoryId.value != null || !run.value?.closeupNames || !run.value.closeupGroups) return []
+  const names = run.value.closeupNames
+  return run.value.closeupGroups.map((g) => (g == null ? undefined : names[g]))
+})
 const runFailed = computed(
   () => !!run.value && isLLTerminal(run.value.status) && !['SUCCEED', 'PARTIAL_SUCCEED'].includes(run.value.status),
 )
@@ -109,6 +135,37 @@ function showHistory(id: number) {
 
 function formatTime(v?: string | null) {
   return v ? v.replace('T', ' ').slice(0, 16) : ''
+}
+
+const KIND_TITLE = Object.fromEntries(SECTIONS.map((s) => [s.key, s.title])) as Record<LLKindKey, string>
+/** 历史标题：「品牌 · 五连图×2 · 推荐菜×1」（张数按产物，未出图按所选图种），超 48 字截断 */
+function historyTitle(row: BrandProfileAssetRow) {
+  const parts: string[] = []
+  for (const b of row.businesses ?? []) {
+    const kind = BIZ_TYPE_TO_KIND[b.bizType]
+    if (!kind) continue
+    const n = (b.results ?? []).filter((r) => r.url).length
+    parts.push(n ? `${KIND_TITLE[kind]}×${n}` : KIND_TITLE[kind])
+  }
+  const text = [profile.value?.title, ...parts].filter(Boolean).join(' · ')
+  return text.length > 48 ? `${text.slice(0, 47)}…` : text
+}
+function historyThumbs(row: BrandProfileAssetRow) {
+  return Object.values(rowResults(row)).flat().slice(0, 10)
+}
+/** 点数：成功 = 实扣；失败 = 已退回；进行中 = 预扣（部分失败的退款以点数明细为准） */
+function historyPoints(row: BrandProfileAssetRow) {
+  if (row.points == null) return ''
+  if (row.status === 'SUCCEED' || row.status === 'PARTIAL_SUCCEED') return `${row.points} 点数`
+  if (isLLTerminal(row.status)) return `${row.points} 点数已退回`
+  return `预扣 ${row.points} 点数`
+}
+function historyFailed(row: BrandProfileAssetRow) {
+  return isLLTerminal(row.status) && row.status !== 'SUCCEED' && row.status !== 'PARTIAL_SUCCEED'
+}
+async function onDeleteHistory(id: number) {
+  const ok = await fs.deleteHistory(id)
+  if (ok && previewHistoryId.value === id) previewHistoryId.value = null
 }
 
 /* ---------- 弹窗 ---------- */
@@ -125,12 +182,21 @@ function onSelectProfile(item: LLProfileItem) {
   void fs.selectProfile(item)
 }
 function openTemplatePicker() {
+  if (!profile.value) {
+    message.warning('请先选择品牌档案，再看该品牌可用的模板')
+    openProfilePicker()
+    return
+  }
   templatePickerShow.value = true
 }
-function onSelectTemplate(item: TemplateCard) {
-  template.value = item
-  continueFrom.value = null
+function onConfirmTemplates(items: TemplateCard[]) {
+  templates.value = items
+  if (items.length) continueFrom.value = null
 }
+const templateChipText = computed(() => {
+  if (continueFrom.value) return '沿用上一轮模板'
+  return templates.value.length ? `已选 ${templates.value.length} 个模板` : '选择模板'
+})
 
 /* ---------- 图种列 ---------- */
 const MAX_TYPES = SECTIONS.length
@@ -153,15 +219,28 @@ function removeImage(kind: LLKindKey, index: number, url: string) {
   item.images = item.images.filter((u) => u !== url)
 }
 function openImagePicker(kind: LLKindKey, index: number) {
+  if (!profile.value) {
+    message.warning('请先选择品牌档案，再从中选择素材')
+    openProfilePicker()
+    return
+  }
   imagePicker.value = { show: true, kind, index }
 }
 const imagePickerSelected = computed(
   () => sections[imagePicker.value.kind].items[imagePicker.value.index]?.images ?? [],
 )
 const imagePickerMax = computed(() => SECTIONS.find((s) => s.key === imagePicker.value.kind)?.maxImages ?? 4)
+const imagePickerTitle = computed(() => KIND_TITLE[imagePicker.value.kind])
 function onImagesPicked(urls: string[]) {
   const item = sections[imagePicker.value.kind].items[imagePicker.value.index]
   if (item) item.images = urls
+}
+
+/* ---------- 整体设计要求 ---------- */
+function onRequirementInput(key: string, event: Event) {
+  const value = (event.target as HTMLTextAreaElement).value.slice(0, REQUIREMENT_MAX_LENGTH)
+  if (key === 'requirement') requirement.value = value
+  else styleRequirement.value = value
 }
 
 /* ---------- 续跑 ---------- */
@@ -183,7 +262,11 @@ const submitLabel = computed(() => {
   if (retrying.value) return '重试生成'
   return '一键生成全案'
 })
-const submitDisabled = computed(() => submitting.value || running.value || profileSource !== 'java')
+/** 只在提交中 / 生成中禁用；其余条件不满足时按钮照常可点，点了提示原因（fs.submit 内校验并 toast） */
+const submitDisabled = computed(() => submitting.value || running.value)
+const submitTitle = computed(() => blockReason.value || '生成后可预览、下载与重新生成')
+/** 预计消耗：报不出价（未勾选 / 某图种无单价）显示「—」，不显示 0 */
+const costText = computed(() => (estimatedCost.value == null ? '—' : estimatedCost.value.toLocaleString('zh-CN')))
 
 /* ---------- 原入口页的单项工具（路径不变） ---------- */
 const toolGroups = [
@@ -234,7 +317,7 @@ const ICONS = {
 const focusRing =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet'
 const pill =
-  'h-30px inline-flex shrink-0 cursor-pointer items-center gap-6px border border-solid border-control rounded-full sx-grad-plate shadow-plate px-10px text-ink-2 no-underline ' +
+  'h-32px inline-flex shrink-0 cursor-pointer items-center gap-6px border border-solid border-control rounded-full sx-grad-plate shadow-plate px-10px text-ink-2 no-underline ' +
   'transition-[border-color,background,color] duration-fast ease-sx motion-reduce:transition-none hover:(border-violet-line from-white to-violet-tint text-violet-ink)'
 /** 面板卡（同电商功能页 Container / 工具页三栏）：r8、1px line、面板投影 */
 const panelCls = 'bg-white rounded-lg border border-solid border-line shadow-panel'
@@ -249,11 +332,12 @@ const smallTintBtn =
   'sx-btn-tint !h-28px !px-10px !text-12px transition-[border-color,background,color] duration-fast ease-sx'
 /** 状态徽标：spec chip 20 高、r3、11px */
 const chipCls = 'sx-chip flex-shrink-0 border border-solid'
-/** 四步条：已完成 = 柔紫，当前 = 主色渐变，未到 = 灰 */
+/** 四步条：已完成 = 柔紫打勾，当前 = 主色渐变，未到 = 灰 */
 function stepState(index: number): 'done' | 'current' | 'todo' {
-  if (index < stepCurrent.value) return 'done'
-  return index === stepCurrent.value ? 'current' : 'todo'
+  if (index === stepCurrent.value) return 'current'
+  return stepDone.value[index] ? 'done' : 'todo'
 }
+const trashIcon = ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12', 'M9 7V4h6v3']
 </script>
 
 <template>
@@ -286,7 +370,7 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
               :aria-controls="`ll-side-${tab.key}`"
               :tabindex="activeTab === tab.key ? 0 : -1"
               :class="[
-                'h-30px cursor-pointer rounded-sm border border-solid px-8px text-13px transition-[background,border-color,color] duration-mid ease-sx motion-reduce:transition-none',
+                'h-32px cursor-pointer rounded-sm border border-solid px-8px text-13px transition-[background,border-color,color] duration-mid ease-sx motion-reduce:transition-none',
                 focusRing,
                 activeTab === tab.key
                   ? 'sx-grad-tint border-violet-line font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
@@ -295,7 +379,15 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
               @click="activeTab = tab.key"
               @keydown="onTabKeydown($event, index)"
             >
-              {{ tab.label }}
+              <span class="inline-flex items-center justify-center gap-4px">
+                {{ tab.label }}
+                <span
+                  v-if="tab.key === 'history' && historyBadge"
+                  class="min-w-16px rounded-full bg-violet-soft px-4px text-center text-11px font-500 leading-16px text-violet-ink font-mono tabular-nums"
+                  :aria-label="`${historyBadge} 条`"
+                  >{{ historyBadge }}</span
+                >
+              </span>
             </button>
           </div>
 
@@ -308,7 +400,7 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
               <span>网络异常，已暂停轮询</span>
               <button
                 type="button"
-                :class="['sx-btn-danger !h-24px !px-8px !text-11px', focusRing]"
+                :class="['sx-btn-danger !h-28px !px-10px !text-12px', focusRing]"
                 @click="fs.retryPolling"
               >
                 重试
@@ -322,10 +414,21 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
               class="min-h-0 min-w-0 flex flex-1 flex-col gap-8px overflow-y-auto"
             >
               <EntryPhone
-                :shop-name="profile?.title"
+                :profile="profile"
                 :results="previewResults"
                 :running="previewHistoryId == null && running"
+                :closeup-names="previewCloseupNames"
               />
+              <p
+                v-if="previewHistoryId == null && runNotice"
+                class="m-0 flex items-center justify-center gap-8px text-center text-12px leading-18px text-muted"
+                role="status"
+              >
+                {{ runNotice }}
+                <button type="button" :class="smallBtn" @click="activeTab = 'history'; fs.loadHistory()">
+                  去历史刷新
+                </button>
+              </p>
               <p
                 v-if="previewHistoryId == null && runFailed"
                 class="m-0 text-center text-12px leading-18px text-danger"
@@ -352,26 +455,26 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
               <n-spin :show="historyLoading" class="min-h-160px flex flex-1 flex-col">
                 <div v-if="historyError" class="sx-empty min-h-160px flex-1" role="alert">
                   <span class="sx-empty-title !text-danger">加载失败</span>
-                  <button type="button" :class="smallBtn" @click="fs.loadHistory">重试</button>
+                  <button type="button" :class="smallBtn" @click="fs.loadHistory()">重试</button>
                 </div>
-                <p v-else-if="!historyLoading && !history.length" class="sx-empty m-0 min-h-160px flex-1">
-                  <span class="sx-empty-title">还没有生成记录</span>
-                </p>
+                <PageEmpty
+                  v-else-if="!historyLoading && !history.length"
+                  compact
+                  text="还没有生成记录"
+                  description="提交全案后，生成的图和计费明细会出现在这里。"
+                />
                 <ul v-else class="m-0 flex flex-col list-none gap-8px p-0" aria-label="生成记录">
                   <li
                     v-for="row in history"
                     :key="row.workflowHistoryId"
                     :class="[
-                      'flex flex-col gap-8px border border-solid rounded-lg p-10px transition-[border-color,background,box-shadow] duration-mid ease-sx motion-reduce:transition-none',
+                      'min-w-0 flex flex-col gap-6px border border-solid rounded-lg p-10px transition-[border-color,background,box-shadow] duration-mid ease-sx motion-reduce:transition-none',
                       previewHistoryId === row.workflowHistoryId
                         ? 'border-violet-line sx-grad-tint shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
                         : 'border-line bg-white hover:(border-violet-line shadow-raised)',
                     ]"
                   >
                     <div class="flex items-center gap-8px">
-                      <span class="text-11px leading-16px text-muted font-mono tabular-nums">{{
-                        formatTime(row.createdAt)
-                      }}</span>
                       <span
                         :class="[
                           chipCls,
@@ -384,33 +487,84 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
                       >
                         {{ STATUS_LABEL[row.status] ?? row.status }}
                       </span>
-                    </div>
-                    <button
-                      type="button"
-                      :class="['grid grid-cols-5 cursor-pointer gap-4px border-none bg-transparent p-0', focusRing]"
-                      :aria-label="`预览 ${formatTime(row.createdAt)} 的生成结果`"
-                      @click="showHistory(row.workflowHistoryId)"
-                    >
+                      <span class="text-11px leading-16px text-muted font-mono tabular-nums">{{
+                        formatTime(row.createdAt)
+                      }}</span>
                       <span
-                        v-for="url in Object.values(rowResults(row)).flat().slice(0, 5)"
+                        v-if="historyPoints(row)"
+                        class="ml-auto shrink-0 text-11px leading-16px text-ink-2 tabular-nums"
+                        >{{ historyPoints(row) }}</span
+                      >
+                    </div>
+                    <div class="truncate text-12px font-600 leading-18px text-ink" :title="historyTitle(row)">
+                      {{ historyTitle(row) }}
+                    </div>
+                    <p
+                      v-if="historyFailed(row)"
+                      class="m-0 text-12px leading-18px text-danger"
+                      role="note"
+                    >
+                      {{ row.error || '生成失败' }}
+                    </p>
+                    <div
+                      v-if="historyThumbs(row).length"
+                      class="flex gap-4px overflow-x-auto pb-2px [scrollbar-width:thin]"
+                      role="group"
+                      :aria-label="`${formatTime(row.createdAt)} 的生成结果`"
+                    >
+                      <button
+                        v-for="(url, i) in historyThumbs(row)"
                         :key="url"
-                        class="aspect-square overflow-hidden rounded-sm border border-solid border-line-soft bg-sunken"
+                        type="button"
+                        :class="[
+                          'h-56px w-56px shrink-0 cursor-pointer overflow-hidden rounded-sm border border-solid border-line-soft bg-sunken p-0',
+                          focusRing,
+                        ]"
+                        :aria-label="`预览第 ${i + 1} 张`"
+                        @click="showHistory(row.workflowHistoryId)"
                       >
                         <img :src="url" alt="" class="h-full w-full object-cover" loading="lazy" />
-                      </span>
-                    </button>
-                    <button
-                      v-if="row.status === 'SUCCEED'"
-                      type="button"
-                      :class="[
-                        continueFrom?.historyId === row.workflowHistoryId ? smallTintBtn : smallBtn,
-                        'self-start',
-                      ]"
-                      :aria-pressed="continueFrom?.historyId === row.workflowHistoryId"
-                      @click="onContinue(row.workflowHistoryId)"
-                    >
-                      继续生成
-                    </button>
+                      </button>
+                    </div>
+                    <div class="flex items-center gap-8px">
+                      <button
+                        v-if="row.status === 'SUCCEED'"
+                        type="button"
+                        :class="continueFrom?.historyId === row.workflowHistoryId ? smallTintBtn : smallBtn"
+                        :aria-pressed="continueFrom?.historyId === row.workflowHistoryId"
+                        @click="onContinue(row.workflowHistoryId)"
+                      >
+                        继续生成
+                      </button>
+                      <n-popconfirm
+                        positive-text="删除"
+                        negative-text="取消"
+                        @positive-click="onDeleteHistory(row.workflowHistoryId)"
+                      >
+                        <template #trigger>
+                          <IconButton
+                            class="ml-auto"
+                            size="sm"
+                            variant="danger"
+                            :label="isLLTerminal(row.status) ? '删除这条记录' : '生成中的记录不能删除'"
+                            :disabled="!isLLTerminal(row.status)"
+                            :loading="deletingHistoryId === row.workflowHistoryId"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="1.8"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            >
+                              <path v-for="d in trashIcon" :key="d" :d="d" />
+                            </svg>
+                          </IconButton>
+                        </template>
+                        删除后不可恢复，确认删除这条记录？
+                      </n-popconfirm>
+                    </div>
                   </li>
                 </ul>
               </n-spin>
@@ -454,7 +608,7 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
                 >
                   <span
                     :class="[
-                      'h-24px w-24px flex shrink-0 items-center justify-center box-border rounded-full border border-solid text-11px font-600 font-mono tabular-nums',
+                      'h-28px w-28px flex shrink-0 items-center justify-center box-border rounded-full border border-solid text-11px font-600 font-mono tabular-nums',
                       'transition-[background,border-color,color] duration-mid ease-sx motion-reduce:transition-none',
                       {
                         done: 'border-violet-line bg-violet-soft text-violet-ink',
@@ -463,15 +617,27 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
                       }[stepState(index)],
                     ]"
                   >
-                    {{ index + 1 }}
+                    <svg
+                      v-if="stepState(index) === 'done'"
+                      viewBox="0 0 24 24"
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="3"
+                      aria-hidden="true"
+                    >
+                      <path d="M5 12l5 5 9-10" />
+                    </svg>
+                    <template v-else>{{ index + 1 }}</template>
                   </span>
-                  <span>{{ label }}</span>
+                  <span>{{ label }}<span v-if="stepState(index) === 'done'" class="sr-only">（已完成）</span></span>
                 </li>
                 <li
                   v-if="index < STEP_LABELS.length - 1"
                   :class="[
                     'mx-10px h-1px w-28px transition-colors duration-mid',
-                    index < stepCurrent ? 'bg-violet-line' : 'bg-line',
+                    stepDone[index] ? 'bg-violet-line' : 'bg-line',
                   ]"
                   aria-hidden="true"
                 />
@@ -490,22 +656,30 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
                     <path v-for="d in ICONS.sparkle" :key="d" :d="d" />
                   </svg>
                 </span>
-                <h2 id="ll-card-setup" class="m-0 sx-title-card">选择品牌档案</h2>
+                <h2 id="ll-card-setup" class="m-0 sx-title-card">
+                  <template v-if="profile">整体设计要求<em class="text-muted font-400 not-italic">（选填）</em></template>
+                  <template v-else>选择品牌档案</template>
+                </h2>
                 <button
                   type="button"
                   :class="[
                     pill,
                     focusRing,
                     'ml-auto max-w-220px text-11px',
-                    template ? '!border-violet-line sx-grad-tint !text-violet-ink' : '',
+                    templates.length ? '!border-violet-line sx-grad-tint !text-violet-ink' : '',
                   ]"
-                  :aria-label="template ? `设计模板：${template.title}（点击更换）` : '选择模板'"
+                  :aria-label="
+                    templates.length
+                      ? `设计模板：${templates.map((t) => t.title).join('、')}（点击更换）`
+                      : templateChipText
+                  "
+                  :title="templates.length ? templates.map((t) => t.title).join('、') : undefined"
                   @click="openTemplatePicker"
                 >
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path v-for="d in ICONS.albums" :key="d" :d="d" />
                   </svg>
-                  <span class="truncate">{{ template?.title || '选择模板' }}</span>
+                  <span class="truncate">{{ templateChipText }}</span>
                   <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                     <path v-for="d in ICONS.chevron" :key="d" :d="d" />
                   </svg>
@@ -596,6 +770,53 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
                       取消
                     </button>
                   </div>
+                  <p
+                    v-if="continueFrom"
+                    class="m-0 text-11px leading-16px text-placeholder"
+                  >
+                    继续生成沿用上一轮的整体设计要求与模板，下面的修改只用于新的全案
+                  </p>
+                  <div class="grid grid-cols-1 gap-14px md:grid-cols-2">
+                    <label
+                      v-for="field in [
+                        {
+                          key: 'requirement',
+                          label: '总需求',
+                          placeholder: '例如：夏季新品推广，整体清爽高级，突出新品套餐和到店优惠…',
+                        },
+                        {
+                          key: 'style',
+                          label: '风格需求',
+                          placeholder: '对主题、色调等风格的描述，例如：国潮插画风，暖色调…',
+                        },
+                      ]"
+                      :key="field.key"
+                      class="min-w-0 flex flex-col gap-6px"
+                    >
+                      <span class="text-12px font-500 leading-18px text-ink-2">{{ field.label }}</span>
+                      <span class="relative block">
+                        <textarea
+                          :value="field.key === 'requirement' ? requirement : styleRequirement"
+                          :maxlength="REQUIREMENT_MAX_LENGTH"
+                          rows="4"
+                          :placeholder="field.placeholder"
+                          :class="[
+                            'box-border block h-120px w-full resize-none rounded-lg border border-solid border-control bg-white shadow-inset-input px-12px pb-24px pt-8px text-13px leading-[19.5px] text-ink outline-none [font-family:inherit]',
+                            'transition-[border-color,box-shadow] duration-fast ease-sx motion-reduce:transition-none',
+                            'placeholder:text-placeholder hover:border-control-hover focus:(border-violet shadow-focus)',
+                          ]"
+                          @input="onRequirementInput(field.key, $event)"
+                        />
+                        <em
+                          class="pointer-events-none absolute bottom-4px right-10px text-10px text-placeholder not-italic leading-14px tabular-nums"
+                        >
+                          {{ (field.key === 'requirement' ? requirement : styleRequirement).length }}/{{
+                            REQUIREMENT_MAX_LENGTH
+                          }}
+                        </em>
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </n-spin>
             </section>
@@ -630,7 +851,7 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
                   :max-length="ITEM_MAX_LENGTH"
                   :selected="sections[section.key].selected"
                   :items="sections[section.key].items"
-                  :disabled="!profile"
+                  :disabled="running"
                   @toggle="toggleSection(section.key)"
                   @add="addItem(section.key)"
                   @remove="removeItem(section.key, $event)"
@@ -699,14 +920,24 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
               >
                 <path v-for="d in ICONS.sparkle" :key="d" :d="d" />
               </svg>
-              <b class="text-16px font-600 leading-22px text-ink font-mono tabular-nums">{{ estimatedCost ?? 0 }}</b>
-              <span class="text-12px leading-18px text-muted">点数</span>
+              <b
+                class="text-16px font-600 leading-22px text-ink font-mono tabular-nums"
+                :title="
+                  estimatedCost == null
+                    ? '勾选图种并添加内容后显示预计消耗'
+                    : estimateIsMinimum
+                      ? '继续生成沿用上一轮的版数，这里按 1 版估算，实际以扣点为准'
+                      : undefined
+                "
+                >{{ costText }}</b
+              >
+              <span class="text-12px leading-18px text-muted">点数{{ estimateIsMinimum && estimatedCost != null ? '起' : '' }}</span>
               <n-tooltip :show="billingTipShow" placement="top">
                 <template #trigger>
                   <button
                     type="button"
                     :class="[
-                      'h-20px w-20px flex cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-0 text-placeholder transition-colors duration-fast hover:text-violet-ink',
+                      'h-24px w-24px flex cursor-pointer items-center justify-center rounded-full border-none bg-transparent p-0 text-placeholder transition-colors duration-fast hover:text-violet-ink sx-hit',
                       focusRing,
                     ]"
                     aria-label="查看计费明细"
@@ -727,14 +958,26 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
                     </svg>
                   </button>
                 </template>
-                <span class="flex flex-col gap-2px text-12px">
+                <span class="max-w-280px flex flex-col gap-2px text-12px">
                   <b>计费明细</b>
-                  <span v-if="estimatedCost == null">勾选图种并添加内容后显示</span>
+                  <span v-if="!costLines.length">勾选图种并添加内容后显示</span>
                   <template v-else>
-                    <span v-for="line in costLines" :key="line.key">
-                      {{ line.title }}：{{ line.unit }} × {{ line.count }} = {{ (line.unit ?? 0) * line.count }} 点数
+                    <span v-for="line in costLines" :key="line.key" class="tabular-nums">
+                      <template v-if="line.unit != null">
+                        {{ line.title }} ×{{ line.count }}（{{ line.unit }} 点数/张）= {{ line.unit * line.count }} 点数
+                      </template>
+                      <template v-else>{{ line.title }} ×{{ line.count }}：暂无单价</template>
                     </span>
+                    <span class="mt-2px font-600 tabular-nums">
+                      {{
+                        estimatedCost == null
+                          ? '共 — 点数（部分图种暂无单价）'
+                          : `共 ${costText} 点数${estimateIsMinimum ? '起' : ''}`
+                      }}
+                    </span>
+                    <span v-if="estimateIsMinimum">继续生成沿用上一轮的版数，这里按 1 版估算，实际以扣点为准</span>
                   </template>
+                  <em v-if="blockReason" class="mt-2px text-[#ff7b72] not-italic">{{ blockReason }}</em>
                 </span>
               </n-tooltip>
             </div>
@@ -743,6 +986,7 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
               type="button"
               :disabled="submitDisabled"
               :aria-busy="submitting || running"
+              :title="submitTitle"
               :class="[
                 'sx-btn-primary shrink-0 !h-44px !px-40px !rounded-xl !text-14px',
                 'transition-[background,border-color,box-shadow,color] duration-fast ease-sx motion-reduce:transition-none',
@@ -772,8 +1016,9 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
       :user-templates="userTemplates"
       :loading="templatesLoading"
       :error="templatesError"
-      :current="template"
-      @select="onSelectTemplate"
+      :current="templates"
+      :profile-name="profile?.title"
+      @confirm="onConfirmTemplates"
       @retry="fs.loadTemplates"
     />
     <ProfileImagePicker
@@ -781,6 +1026,8 @@ function stepState(index: number): 'done' | 'current' | 'todo' {
       :images="profile?.images ?? []"
       :selected="imagePickerSelected"
       :max="imagePickerMax"
+      :section-title="imagePickerTitle"
+      :profile-name="profile?.title ?? ''"
       @confirm="onImagesPicked"
     />
   </n-config-provider>

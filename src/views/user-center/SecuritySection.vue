@@ -69,7 +69,7 @@ async function onSubmit() {
 
     <form class="flex flex-col gap-16px max-w-420px" novalidate @submit.prevent="onSubmit">
       <div v-for="f in FIELDS" :key="f.key" class="flex flex-col gap-6px">
-        <label :for="f.id" class="sx-label">{{ f.label }}</label>
+        <label :for="f.id" class="text-13px font-500 text-ink-2">{{ f.label }}</label>
         <input
           :id="f.id"
           v-model="form[f.key]"
@@ -82,7 +82,7 @@ async function onSubmit() {
           :class="inputClass(!!errors[f.key])"
           @blur="validate(f.key)"
         />
-        <p v-if="errors[f.key]" :id="`${f.id}-err`" role="alert" class="m-0 text-11px text-danger">
+        <p v-if="errors[f.key]" :id="`${f.id}-err`" role="alert" class="m-0 text-12px text-danger">
           {{ errors[f.key] }}
         </p>
       </div>

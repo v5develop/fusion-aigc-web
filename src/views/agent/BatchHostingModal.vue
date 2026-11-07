@@ -29,6 +29,9 @@ import { useIdempotentSubmit } from '@/views/studio/hooks.ts'
 import { useStudioUploader } from '@/views/studio/components/StudioImageUpload/useStudioUploader.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
+import { batchQuoteEcomImage } from '@/api/agent.ts'
+import type { IBatchEcomQuote } from '@/api/agent.ts'
+import { emitBillingBlock } from '@/utils/billingGuide'
 
 const props = defineProps<{
   show: boolean
@@ -48,13 +51,17 @@ const message = useMessage()
 const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)'
 const T_BTN =
   '[transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s,box-shadow_0.11s,color_0.11s] motion-reduce:transition-none'
-const BTN_SM = `inline-flex h-32px flex-none items-center justify-center gap-6px rounded-3px border border-solid px-10px text-11px leading-none whitespace-nowrap cursor-pointer select-none ${T_BTN}`
+const BTN_SM = `inline-flex h-28px flex-none items-center justify-center gap-6px rounded-14px border border-solid px-12px text-12px leading-none whitespace-nowrap cursor-pointer select-none ${T_BTN}`
 const BTN_DEFAULT =
   'border-control bg-[linear-gradient(#fff,#fbfcfc)] font-500 text-ink-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] enabled:hover:(border-control-hover bg-[linear-gradient(#fff,#f7f8f9)] text-ink) enabled:active:(border-control-press bg-[linear-gradient(#f3f4f5,#f7f8f9)] shadow-press text-ink) disabled:(border-line bg-none bg-surface3 shadow-none text-placeholder cursor-default)'
+const BTN_DANGER =
+  'border-#f0c9c7 bg-white font-500 text-#c24545 enabled:hover:(bg-#fdf6f6 border-#e8b4b1) disabled:(opacity-50 cursor-default)'
+const SOFT_CARD =
+  'border border-solid border-#c9cdd0 bg-[linear-gradient(#fff,#f8f9fa)] shadow-[0_6px_16px_rgba(31,35,41,0.08),inset_0_1px_0_#fff]'
 const BTN_PRIMARY =
   'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)] font-600 text-white shadow-btn enabled:hover:(border-violet-press bg-[linear-gradient(#9a6fae,#875c9a)]) enabled:active:(border-#5c3d6b bg-none bg-violet-press shadow-[inset_0_1px_3px_rgba(40,24,48,0.35)]) disabled:(border-violet-line bg-none bg-violet-disabled shadow-none text-white/80 cursor-default)'
 const MODAL =
-  'flex max-h-[calc(100vh-48px)] max-w-[calc(100vw-48px)] flex-col overflow-hidden rounded-12px border border-solid border-line bg-white shadow-pop'
+  'flex max-h-[calc(100vh-48px)] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-12px border border-solid border-line bg-white shadow-pop'
 const MODAL_HEAD = 'flex h-52px flex-none items-center gap-8px border-b border-solid border-line pl-18px pr-10px'
 const MODAL_X =
   'ml-auto grid h-26px w-26px place-items-center rounded-4px border-none bg-transparent p-0 text-#8a919c cursor-pointer hover:bg-surface3'
@@ -288,6 +295,19 @@ function removeImage(t: TaskDraft, i: number) {
   t.images.splice(i, 1)
 }
 
+/** 提交 / 估价共用的请求体：每个任务 = 描述 + 参考图 + 一个模块（共用设置） */
+function buildTasks() {
+  const module = {
+    imageType: imageType.value,
+    resolution: resolution.value,
+    aspectRatio: aspectRatio.value,
+    agentSkillId: props.skillId,
+    language: props.languageName || DEFAULT_LANGUAGE,
+    num: num.value,
+  }
+  return tasks.value.map((t) => ({ content: t.content.trim(), imageUrls: [...t.images], modules: [module] }))
+}
+
 const idem = useIdempotentSubmit()
 idem.bindForm(
   title,
@@ -310,20 +330,12 @@ async function submit() {
   if (!formReady.value) return
   submitting.value = true
   const key = idem.take()
-  const module = {
-    imageType: imageType.value,
-    resolution: resolution.value,
-    aspectRatio: aspectRatio.value,
-    agentSkillId: props.skillId,
-    language: props.languageName || DEFAULT_LANGUAGE,
-    num: num.value,
-  }
   try {
     const res = await batchSubmitEcomImage(
       {
         // 批次名称原型标「可选」，服务端必填：留空时用技能名
         title: title.value.trim() || props.skillTitle,
-        tasks: tasks.value.map((t) => ({ content: t.content.trim(), imageUrls: [...t.images], modules: [module] })),
+        tasks: buildTasks(),
       },
       key,
     )
@@ -499,12 +511,47 @@ watch(
 
 onUnmounted(stopPoll)
 
-const fieldLabel = 'text-11px leading-16px text-muted'
+const fieldLabel = 'text-10px leading-14px text-placeholder'
+const CELL = `flex min-w-0 flex-col gap-4px rounded-12px px-11px py-9px ${SOFT_CARD}`
+
+const totalImages = computed(() => tasks.value.length * (Number(num.value) || 1))
+
+// ---------------- 提交前估价（POST /batch-hosting/ecom-image/quote） ----------------
+// 表单齐了才估（服务端走与提交同一套校验，缺图 / 缺描述必然被拒）；防抖 400ms，只认最后一次响应；
+// 失败静默（SILENT_ERROR_URLS），底栏退回本地的「任务数 × 张数」。
+const quote = ref<IBatchEcomQuote | null>(null)
+let quoteTimer: ReturnType<typeof setTimeout> | null = null
+let quoteSeq = 0
+const quoteSig = computed(() =>
+  visible.value && view.value === 'form' && formReady.value ? JSON.stringify(buildTasks()) : '',
+)
+watch(quoteSig, (sig) => {
+  if (quoteTimer) clearTimeout(quoteTimer)
+  quoteTimer = null
+  const id = ++quoteSeq
+  if (!sig) {
+    quote.value = null
+    return
+  }
+  quoteTimer = setTimeout(async () => {
+    quoteTimer = null
+    try {
+      const res = await batchQuoteEcomImage({ tasks: buildTasks() })
+      if (id === quoteSeq) quote.value = res.data ?? null
+    } catch {
+      if (id === quoteSeq) quote.value = null
+    }
+  }, 400)
+})
+onUnmounted(() => {
+  if (quoteTimer) clearTimeout(quoteTimer)
+  quoteSeq++
+})
 </script>
 
 <template>
   <n-modal v-model:show="visible">
-    <div role="dialog" aria-modal="true" aria-labelledby="agent-batch-dialog-title" :class="[MODAL, 'h-600px w-720px']">
+    <div role="dialog" aria-modal="true" aria-labelledby="agent-batch-dialog-title" :class="[MODAL, 'h-660px w-880px']">
       <div :class="MODAL_HEAD">
         <strong id="agent-batch-dialog-title" class="text-15px font-600 leading-20px text-ink">一键铺货</strong>
         <span class="text-11px leading-16px text-muted">批量提交 AGENT 生成任务</span>
@@ -522,7 +569,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
         </button>
       </div>
 
-      <div role="group" aria-label="一键铺货" class="flex flex-none gap-4px px-18px pb-4px pt-12px">
+      <div role="group" aria-label="一键铺货" class="flex flex-none gap-4px px-20px pb-4px pt-12px">
         <button
           v-for="t in [
             { key: 'form', label: '一键铺货' },
@@ -546,47 +593,46 @@ const fieldLabel = 'text-11px leading-16px text-muted'
 
       <!-- 表单：照原型 .batch-body -->
       <form v-if="view === 'form'" class="flex min-h-0 flex-1 flex-col" @submit.prevent="submit">
-        <div ref="taskListEl" class="flex min-h-0 flex-1 flex-col gap-10px overflow-y-auto px-18px py-10px">
+        <div ref="taskListEl" class="flex min-h-0 flex-1 flex-col gap-10px overflow-y-auto px-20px py-10px">
           <input
             v-model="title"
             maxlength="100"
             placeholder="批次名称（可选）"
             aria-label="批次名称（可选）"
-            class="box-border h-32px w-full flex-none rounded-4px border border-solid border-control bg-white px-10px text-12px text-ink shadow-inset-input outline-none placeholder:text-placeholder hover:border-control-hover focus:border-violet"
+            class="box-border h-36px w-full flex-none rounded-12px border border-solid border-control bg-white px-12px text-12px text-ink shadow-inset-input outline-none placeholder:text-placeholder hover:border-control-hover focus:border-violet"
           />
-          <div class="grid flex-none grid-cols-3 gap-8px rounded-6px border border-solid border-line bg-#fafbfc p-10px">
-            <div class="flex min-w-0 flex-col gap-4px">
+          <div class="grid flex-none grid-cols-2 gap-8px sm:grid-cols-5">
+            <div :class="CELL">
               <span :class="fieldLabel">技能</span>
-              <b class="truncate text-12px font-500 leading-28px text-ink">{{ skillTitle || '—' }}</b>
+              <b class="truncate text-12px font-600 leading-28px text-ink-2">{{ skillTitle || '—' }}</b>
             </div>
-            <div class="col-span-2 flex min-w-0 flex-col gap-4px">
-              <span :class="fieldLabel">画质与比例</span>
-              <div class="flex gap-6px">
-                <n-select
-                  v-model:value="resolution"
-                  :options="resolutionOptions"
-                  :loading="infoLoading"
-                  :disabled="!info"
-                  size="small"
-                  aria-label="画质"
-                  class="min-w-0 flex-1"
-                />
-                <n-select
-                  v-model:value="aspectRatio"
-                  :options="ratioOptions"
-                  :loading="infoLoading"
-                  :disabled="!info"
-                  size="small"
-                  aria-label="比例"
-                  class="min-w-0 flex-1"
-                />
-              </div>
+            <div :class="CELL">
+              <span :class="fieldLabel">画质</span>
+              <n-select
+                v-model:value="resolution"
+                :options="resolutionOptions"
+                :loading="infoLoading"
+                :disabled="!info"
+                size="small"
+                aria-label="画质"
+              />
             </div>
-            <div class="flex min-w-0 flex-col gap-4px">
+            <div :class="CELL">
+              <span :class="fieldLabel">比例</span>
+              <n-select
+                v-model:value="aspectRatio"
+                :options="ratioOptions"
+                :loading="infoLoading"
+                :disabled="!info"
+                size="small"
+                aria-label="比例"
+              />
+            </div>
+            <div :class="CELL">
               <span :class="fieldLabel">输出语言</span>
-              <b class="truncate text-12px font-500 leading-28px text-ink">{{ languageLabel }}</b>
+              <b class="truncate text-12px font-600 leading-28px text-ink-2">{{ languageLabel }}</b>
             </div>
-            <div class="flex min-w-0 flex-col gap-4px">
+            <div :class="CELL">
               <span :class="fieldLabel">生图类型</span>
               <n-select
                 v-model:value="imageType"
@@ -597,9 +643,9 @@ const fieldLabel = 'text-11px leading-16px text-muted'
                 aria-label="生图类型"
               />
             </div>
-            <div class="flex min-w-0 flex-col gap-4px">
+            <div :class="[CELL, 'col-span-2 sm:col-span-5 sm:!flex-row sm:!items-center sm:!gap-10px']">
               <span :class="fieldLabel">生图数量</span>
-              <n-input-number v-model:value="num" :min="1" :max="9" :precision="0" size="small" aria-label="生图数量" />
+              <n-input-number v-model:value="num" :min="1" :max="9" :precision="0" size="small" aria-label="生图数量" class="sm:!w-140px" />
             </div>
           </div>
           <p v-if="infoError" class="m-0 flex-none text-11px leading-16px text-danger" role="alert">{{ infoError }}</p>
@@ -607,14 +653,17 @@ const fieldLabel = 'text-11px leading-16px text-muted'
           <div
             v-for="(t, i) in tasks"
             :key="t.key"
-            class="flex flex-none gap-10px rounded-8px border border-solid border-line bg-white p-10px shadow-card"
-            :class="dragging && dragTask === t.key && 'sx-drop'"
+            :class="[
+              'flex flex-none gap-12px rounded-14px px-14px py-12px',
+              SOFT_CARD,
+              dragging && dragTask === t.key && 'sx-drop',
+            ]"
             :data-task-key="t.key"
             @mouseenter="pointedTask = t.key"
             @mouseleave="pointedTask = null"
           >
             <span
-              class="grid h-22px w-22px flex-none place-items-center rounded-full bg-violet-soft text-11px font-600 text-violet-ink tabular-nums"
+              class="grid h-22px w-22px flex-none place-items-center rounded-full border border-solid border-#e2d3ee bg-white text-11px font-600 text-violet-ink tabular-nums"
               aria-hidden="true"
               >{{ i + 1 }}</span
             >
@@ -626,7 +675,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
                   v-if="tasks.length > 1"
                   type="button"
                   :aria-label="`删除任务 ${i + 1}`"
-                  :class="[MODAL_X, '!h-22px !w-22px', FOCUS]"
+                  :class="[MODAL_X, '!ml-auto !h-32px !w-32px !rounded-full hover:(!bg-#fdf6f6 !text-#c24545)', FOCUS]"
                   @click="removeTask(t.key)"
                 >
                   <svg
@@ -649,7 +698,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
                 rows="2"
                 maxlength="2000"
                 :aria-label="`任务 ${i + 1} 任务描述`"
-                class="box-border w-full resize-none rounded-4px border border-solid border-control bg-white px-10px py-6px text-12px leading-18px text-ink outline-none hover:border-control-hover focus:border-violet"
+                class="box-border w-full resize-none rounded-12px border border-solid border-control bg-white px-10px py-6px text-12px leading-18px text-ink outline-none hover:border-control-hover focus:border-violet"
               />
               <div class="flex flex-wrap items-center gap-6px">
                 <span v-for="(url, j) in t.images" :key="url" class="relative inline-flex">
@@ -663,7 +712,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
                   <button
                     type="button"
                     :aria-label="`删除参考图 ${j + 1}`"
-                    class="absolute right-[-6px] top-[-6px] grid h-16px w-16px place-items-center rounded-full border-none bg-ink/70 p-0 text-white cursor-pointer"
+                    class="absolute right-[-8px] top-[-8px] grid h-22px w-22px place-items-center rounded-full border-none bg-ink/70 p-0 text-white cursor-pointer sx-hit after:-inset-6px [@media(pointer:coarse)]:after:-inset-10px sx-focus"
                     @click="removeImage(t, j)"
                   >
                     <svg
@@ -712,11 +761,45 @@ const fieldLabel = 'text-11px leading-16px text-muted'
             aria-hidden="true"
             @change="onFileChange"
           />
+          <button
+            type="button"
+            :class="[
+              'flex h-36px flex-none items-center justify-center gap-6px rounded-14px border border-dashed border-#d7c9e2 bg-[rgba(248,243,252,0.5)] text-12px text-violet-ink cursor-pointer hover:(border-violet-line bg-#faf5fd)',
+              FOCUS,
+            ]"
+            @click="addTask"
+          >
+            <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            添加任务
+          </button>
           <AssetPickerModal v-model:show="assetShow" :limit="assetRoom" @select="addTaskAssets" />
         </div>
-        <div class="flex flex-none items-center gap-8px border-t border-solid border-line-soft px-18px py-10px">
-          <button type="button" :class="[BTN_SM, BTN_DEFAULT, FOCUS]" @click="addTask">+ 添加任务</button>
-          <span class="flex-1" />
+        <div class="flex flex-none items-center gap-8px border-t border-solid border-line-soft px-20px py-10px">
+          <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-8px text-12px leading-16px text-placeholder tabular-nums" role="status">
+            <template v-if="quote">
+              <span
+                >共 {{ quote.taskCount }} 个任务 · {{ quote.imageCount }} 张 · 约 {{ quote.totalPoints }} 点数{{
+                  quote.complete ? '' : ' 起'
+                }}</span
+              >
+              <span v-if="!quote.complete" class="text-11px">（部分规格未报价，实际以扣除为准）</span>
+              <span v-if="quote.sufficient">余额 {{ quote.balance }} 点数</span>
+              <template v-else>
+                <span class="text-#c24545">点数不足（余额 {{ quote.balance }} 点数）</span>
+                <button
+                  type="button"
+                  class="h-28px cursor-pointer border-none bg-transparent px-4px text-12px text-violet-ink underline underline-offset-2"
+                  @click="emitBillingBlock(3003)"
+                >
+                  去充值
+                </button>
+              </template>
+            </template>
+            <template v-else>共 {{ tasks.length }} 个任务 · {{ totalImages }} 张</template>
+          </span>
+          <button type="button" :class="[BTN_SM, BTN_DEFAULT, FOCUS]" @click="visible = false">取消</button>
           <button
             type="submit"
             :disabled="!formReady || submitting"
@@ -731,7 +814,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
 
       <!-- 历史记录：列表 → 详情 -->
       <div v-else class="flex min-h-0 flex-1 flex-col">
-        <div v-if="detailId == null" class="flex min-h-0 flex-1 flex-col gap-8px overflow-y-auto px-18px py-10px">
+        <div v-if="detailId == null" class="flex min-h-0 flex-1 flex-col gap-8px overflow-y-auto px-20px py-10px">
           <div v-if="listLoading && !rows.length" class="flex flex-1 items-center justify-center">
             <n-spin size="small" />
           </div>
@@ -764,7 +847,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
         </div>
 
         <template v-else>
-          <div class="flex min-h-0 flex-1 flex-col gap-10px overflow-y-auto px-18px py-10px">
+          <div class="flex min-h-0 flex-1 flex-col gap-10px overflow-y-auto px-20px py-10px">
             <div v-if="detailLoading && !detail" class="flex flex-1 items-center justify-center">
               <n-spin size="small" />
             </div>
@@ -815,7 +898,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
                       :aria-checked="selectedItems.includes(itemId(it))"
                       :aria-label="`任务 ${t.index + 1} ${it.imageType ?? ''}`"
                       :class="[
-                        'absolute left-10px top-10px grid h-16px w-16px place-items-center rounded-3px border border-solid p-0 cursor-pointer',
+                        'absolute left-10px top-10px grid h-20px w-20px place-items-center rounded-4px border border-solid p-0 cursor-pointer sx-hit after:-inset-6px [@media(pointer:coarse)]:after:-inset-10px',
                         selectedItems.includes(itemId(it))
                           ? 'border-violet bg-violet text-white'
                           : 'border-control bg-white/90',
@@ -840,7 +923,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
               </section>
             </template>
           </div>
-          <div class="flex flex-none flex-col gap-8px border-t border-solid border-line-soft px-18px py-10px">
+          <div class="flex flex-none flex-col gap-8px border-t border-solid border-line-soft px-20px py-10px">
             <div v-if="confirming" class="flex items-center gap-8px text-11px leading-16px text-muted">
               <span class="flex-1">删除后不可撤销，请谨慎操作。</span>
               <button type="button" :class="[BTN_SM, BTN_DEFAULT, FOCUS]" @click="confirming = ''">取消</button>
@@ -848,7 +931,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
                 type="button"
                 :disabled="deleting"
                 :aria-busy="deleting"
-                :class="[BTN_SM, BTN_DEFAULT, '!text-danger', FOCUS]"
+                :class="[BTN_SM, BTN_DANGER, FOCUS]"
                 @click="confirmDelete"
               >
                 删除
@@ -858,7 +941,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
               <button
                 type="button"
                 :disabled="!selectedItems.length"
-                :class="[BTN_SM, BTN_DEFAULT, FOCUS]"
+                :class="[BTN_SM, BTN_DANGER, FOCUS]"
                 @click="confirming = 'items'"
               >
                 删除（{{ selectedItems.length }}）
@@ -867,7 +950,7 @@ const fieldLabel = 'text-11px leading-16px text-muted'
               <button
                 type="button"
                 :disabled="!detail"
-                :class="[BTN_SM, BTN_DEFAULT, FOCUS]"
+                :class="[BTN_SM, BTN_DANGER, FOCUS]"
                 @click="confirming = 'batch'"
               >
                 删除

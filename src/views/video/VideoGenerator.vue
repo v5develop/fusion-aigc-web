@@ -9,12 +9,12 @@ import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import type { ICreationSubmit } from '@/api/types.ts'
 import { creationHistory } from '@/api/methods.ts'
-import { useInitCheckTaskStatus } from '@/views/picture/hooks.ts'
+import { useInitCheckTaskStatus } from '@/views/image/hooks.ts'
 import { useQuotePreview } from '@/utils/hooks'
 import { useEntryCodeFromQuery } from '@/utils/hooks/useEntryCodeFromQuery'
 import { videoModelOpsFor } from '@/utils/modelCatalog'
 import { useMessage } from 'naive-ui'
-import { showDownloadBtn, isFromAigcChat } from '@/views/picture/utils.ts'
+import { showDownloadBtn, isFromAigcChat } from '@/views/image/utils.ts'
 import { downloadImagesAsZip, getDownloadableUrls, zipNameOf } from '@/utils/download'
 import { getMetaData, isMixedSize, buildResubmitParams, applySameStyleRecipe } from './utils.ts'
 import { useSameStyleRecipe } from '@/utils/hooks/useSameStyleRecipe'
@@ -50,7 +50,7 @@ const loading = ref(false)
 // 发送按钮 loading：仅在提交请求期间为 true，提交成功即恢复，生成进度看历史列表
 const btnLoading = ref(false)
 // 容器深链指定的创作场景。放在 _formData 之后消费：首页带入是「用户上一秒刚做的选择」，
-// 而 query 是进场地址——站内跳转（router.push({ name: 'video' })）本来就不带 query，
+// 而 query 是进场地址——站内跳转（router.push({ name: 'video-generate' })）本来就不带 query，
 // 两条路径天然互斥，写死优先级只是防以后首页加了 query 两边打架。
 const { entryCode: queryEntryCode, syncToUrl } = useEntryCodeFromQuery(entryCodeOps)
 
@@ -533,7 +533,7 @@ const getSourceVideo = (inputParams: any): string => {
 </template>
 
 <style scoped lang="less">
-@import '../picture/index.less';
+@import '../image/index.less';
 
 .message-group__images {
   grid-template-columns: repeat(auto-fill, 480px);

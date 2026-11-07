@@ -11,6 +11,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
+import IconButton from '@/components/IconButton/index.vue'
 import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
 import { studioCancelBatch, studioDeleteBatch } from '@/api/studio.ts'
 import type { StudioBatchDetail } from '@/api/studioTypes.ts'
@@ -36,9 +37,6 @@ const ctl = props.history
 /** 头部「N 个进行中」 */
 const runningCount = computed(() => ctl.items.value.filter((d) => !isBatchTerminal(d.batch.status)).length)
 
-/** 历史卡操作钮（原型 .v3-hist__act：20×20 / r4，hover surface3） */
-const ACT_BTN =
-  'grid w-20px h-20px place-items-center p-0 border-none rounded-sm bg-transparent text-muted cursor-pointer hover:bg-surface3 hover:text-ink sx-focus [&_svg]:block [&_svg]:w-13px [&_svg]:h-13px'
 
 // ---------------- 操作 ----------------
 
@@ -133,9 +131,6 @@ function prevPage() {
   page.value -= 1
   listEl.value?.scrollTo({ top: 0 })
 }
-
-const PAGER_BTN =
-  'grid w-26px h-26px place-items-center p-0 box-border border border-solid border-line rounded-sm bg-white text-ink-2 cursor-pointer enabled:hover:(border-control text-ink) disabled:(opacity-40 cursor-default) sx-focus'
 </script>
 
 <template>
@@ -162,7 +157,7 @@ const PAGER_BTN =
         type="search"
         placeholder="搜索提示词"
         aria-label="搜索历史记录"
-        class="h-30px w-full box-border rounded-sm border border-solid border-line bg-white pl-27px pr-8px text-11px text-ink outline-none placeholder:text-placeholder hover:border-control focus:(border-violet shadow-[0_0_0_2px_rgba(138,99,159,0.16)])"
+        class="h-34px w-full box-border rounded-15px border border-solid border-line bg-white pl-27px pr-8px text-13px text-ink outline-none placeholder:text-placeholder hover:border-control focus:(border-violet shadow-[0_0_0_2px_rgba(138,99,159,0.16)])"
       />
     </div>
 
@@ -176,23 +171,23 @@ const PAGER_BTN =
         <div
           v-for="d in paged"
           :key="d.batch.id"
-          class="flex gap-10px items-center p-10px border border-solid rounded-lg cursor-pointer transition-[border-color,background-color,box-shadow] duration-fast"
+          class="sx-squircle flex flex-none gap-10px items-center min-h-74px box-border p-10px border border-solid rounded-18px cursor-pointer transition-[border-color,background-color,box-shadow] duration-fast"
           :class="
             d.batch.id === selectedId
-              ? 'border-violet-line bg-gradient-to-b from-white to-violet-tint shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+              ? 'border-violet-line bg-gradient-to-b from-white to-#faf4fd shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
               : 'border-line bg-white hover:(border-control shadow-[0_1px_2px_rgba(31,35,41,0.05)])'
           "
           @click="emit('select', d)"
         >
           <!-- 缩略图 44 / r6（原型 .v3-hist__stack） -->
           <div
-            class="flex w-44px h-44px flex-[0_0_44px] box-border items-center justify-center overflow-hidden border border-solid border-line rounded-md bg-surface3"
+            class="flex w-44px h-44px flex-[0_0_44px] box-border items-center justify-center overflow-hidden border border-solid border-line rounded-14px bg-surface3"
           >
             <img
               v-if="d.batch.cover_url"
               :src="d.batch.cover_url"
               alt=""
-              class="block w-full h-full rounded-5px object-cover"
+              class="block w-full h-full rounded-13px object-cover"
             />
             <span v-else class="text-11px text-placeholder">{{
               (KIND_LABEL[d.batch.kind] ?? '批次').slice(0, 2)
@@ -200,7 +195,7 @@ const PAGER_BTN =
           </div>
           <div class="flex flex-1 min-w-0 flex-col gap-6px">
             <div class="flex gap-6px items-start justify-between">
-              <p class="m-0 min-w-0 line-clamp-2 text-12px leading-18px text-ink">
+              <p class="m-0 min-w-0 line-clamp-1 text-13px leading-18px text-ink">
                 {{ KIND_LABEL[d.batch.kind] ?? d.batch.kind }} · {{ d.batch.task_total }}张 · 成功
                 {{ d.batch.task_done }} · 失败 {{ d.batch.task_failed }} · {{ d.batch.estimated_points }}点
               </p>
@@ -214,7 +209,7 @@ const PAGER_BTN =
             </div>
             <div
               v-else-if="d.batch.error_reason"
-              class="overflow-hidden text-11px leading-16px text-danger whitespace-nowrap text-ellipsis"
+              class="overflow-hidden text-12px leading-16px text-danger whitespace-nowrap text-ellipsis"
               :title="d.batch.error_reason"
             >
               {{ d.batch.error_reason }}
@@ -224,8 +219,8 @@ const PAGER_BTN =
               <span class="flex-none text-11px leading-16px text-muted tabular-nums whitespace-nowrap">{{
                 formatTime(d.batch.created_at)
               }}</span>
-              <span class="ml-auto flex items-center">
-                <button type="button" :class="ACT_BTN" aria-label="重新编辑" title="重新编辑" @click="reedit(d)">
+              <span class="ml-auto flex items-center gap-8px">
+                <IconButton label="重新编辑" size="sm" @click="reedit(d)">
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
@@ -238,10 +233,10 @@ const PAGER_BTN =
                     <path d="M4 20h4L19 9l-4-4L4 16z" />
                     <path d="M13.5 6.5l4 4" />
                   </svg>
-                </button>
+                </IconButton>
                 <n-popconfirm v-if="!isBatchTerminal(d.batch.status)" @positive-click="cancelBatch(d)">
                   <template #trigger>
-                    <button type="button" :class="ACT_BTN" aria-label="取消批次" title="取消批次">
+                    <IconButton label="取消批次" size="sm">
                       <svg
                         viewBox="0 0 24 24"
                         fill="none"
@@ -254,18 +249,13 @@ const PAGER_BTN =
                         <circle cx="12" cy="12" r="8.5" />
                         <path d="M9 9l6 6M15 9l-6 6" />
                       </svg>
-                    </button>
+                    </IconButton>
                   </template>
                   只会取消还没开始的任务，已开始的继续跑完，确定取消？
                 </n-popconfirm>
                 <n-popconfirm v-else @positive-click="removeBatch(d)">
                   <template #trigger>
-                    <button
-                      type="button"
-                      :class="[ACT_BTN, 'hover:!bg-danger-soft hover:!text-danger']"
-                      aria-label="删除批次"
-                      title="删除批次"
-                    >
+                    <IconButton label="删除批次" size="sm" variant="danger">
                       <svg
                         viewBox="0 0 24 24"
                         fill="none"
@@ -277,7 +267,7 @@ const PAGER_BTN =
                       >
                         <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
                       </svg>
-                    </button>
+                    </IconButton>
                   </template>
                   删除后历史里不再显示（已入素材库的成品图不受影响），确定删除？
                 </n-popconfirm>
@@ -332,7 +322,7 @@ const PAGER_BTN =
           <div v-if="ctl.loadingMore.value" class="pt-8px pb-2px text-11px text-center">加载中…</div>
           <div
             v-else-if="ctl.hasMore.value"
-            class="ll-link pt-8px pb-2px !text-11px text-center"
+            class="ll-link py-8px !text-13px text-center"
             @click="ctl.loadMore()"
           >
             加载更多
@@ -347,10 +337,9 @@ const PAGER_BTN =
       v-if="ctl.items.value.length"
       class="flex flex-none items-center justify-center gap-10px px-12px pt-8px pb-10px"
     >
-      <button type="button" :class="PAGER_BTN" :disabled="page <= 1" aria-label="上一页" @click="prevPage">
+      <IconButton label="上一页" :disabled="page <= 1" @click="prevPage">
         <svg
-          class="h-14px w-14px"
-          viewBox="0 0 24 24"
+                    viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
           stroke-width="2"
@@ -360,18 +349,11 @@ const PAGER_BTN =
         >
           <path d="M15 18l-6-6 6-6" />
         </svg>
-      </button>
-      <span class="text-11px leading-16px text-muted tabular-nums" aria-live="polite">{{ page }} / {{ pages }}</span>
-      <button
-        type="button"
-        :class="PAGER_BTN"
-        :disabled="(page >= pages && !canFetchMore) || ctl.loadingMore.value"
-        aria-label="下一页"
-        @click="nextPage"
-      >
+      </IconButton>
+      <span class="text-12px leading-16px text-muted tabular-nums" aria-live="polite">{{ page }} / {{ pages }}</span>
+      <IconButton label="下一页" :disabled="(page >= pages && !canFetchMore) || ctl.loadingMore.value" @click="nextPage">
         <svg
-          class="h-14px w-14px"
-          viewBox="0 0 24 24"
+                    viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
           stroke-width="2"
@@ -381,7 +363,7 @@ const PAGER_BTN =
         >
           <path d="M9 18l6-6-6-6" />
         </svg>
-      </button>
+      </IconButton>
     </div>
   </div>
 </template>

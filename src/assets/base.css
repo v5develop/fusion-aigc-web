@@ -56,3 +56,34 @@ body {
 video::-webkit-media-controls-panel {
   background: linear-gradient(to top, rgba(0, 0, 0, 0.3), transparent 20%);
 }
+
+/* ---- Naive 全局覆盖（原型 canvas-v31.css .wf-modal / sx-scoped.css .sx-modal、v3-theme.css 选择菜单） ---- */
+/* 遮罩：墨色 .32（Modal / Drawer 同一档；n-image 预览走自己的 .n-image-preview-overlay，不受影响） */
+.n-modal-mask,
+.n-drawer-mask {
+  background-color: rgba(31, 35, 41, 0.32);
+}
+/* 弹窗卡片：圆角 r18 已在 Card 主题，这里补 squircle，与 sx-squircle 一致 */
+.n-modal .n-card,
+.n-card.n-modal {
+  corner-shape: squircle;
+}
+/* 弹窗关闭钮：视觉 28，点击区外扩到 32（触屏 40） */
+.n-card-header__close {
+  position: relative;
+  flex: none;
+}
+.n-card-header__close::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}
+@media (pointer: coarse) {
+  .n-card-header__close::after {
+    inset: -6px;
+  }
+}
+/* 选择菜单：选项圆角 6（容器 r10 由主题给，二者共用同一变量） */
+.n-base-select-option::before {
+  border-radius: 6px;
+}

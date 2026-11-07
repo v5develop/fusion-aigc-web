@@ -53,7 +53,7 @@ function pick(opt: CreationOption) {
       role="radiogroup"
       :aria-labelledby="labelId"
       :aria-disabled="disabled || undefined"
-      class="flex-1 min-w-0 p-3px gap-2px box-border rounded-6px border border-solid border-line bg-surface3"
+      class="sx-squircle flex-1 min-w-0 p-3px gap-2px box-border rounded-8px border border-solid border-line bg-surface3 shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
       :class="options.length > 3 ? 'grid grid-cols-[repeat(auto-fit,minmax(64px,1fr))]' : 'flex flex-wrap'"
     >
       <button
@@ -63,7 +63,7 @@ function pick(opt: CreationOption) {
         role="radio"
         :aria-checked="modelValue === opt.value"
         :disabled="disabled || opt.disabled"
-        class="flex-1 min-w-0 h-30px box-border px-6px rounded-4px border border-solid text-11px leading-none whitespace-nowrap cursor-pointer outline-none [transition:background_300ms_cubic-bezier(0.4,0,0.2,1),border-color_300ms_cubic-bezier(0.4,0,0.2,1),color_300ms_cubic-bezier(0.4,0,0.2,1),box-shadow_300ms_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2) active:shadow-[inset_0_1px_2px_rgba(80,55,95,0.16)] disabled:(opacity-45 cursor-not-allowed)"
+        class="flex-1 min-w-0 h-32px box-border px-6px rounded-4px border border-solid text-13px leading-none whitespace-nowrap cursor-pointer outline-none [transition:background_300ms_cubic-bezier(0.4,0,0.2,1),border-color_300ms_cubic-bezier(0.4,0,0.2,1),color_300ms_cubic-bezier(0.4,0,0.2,1),box-shadow_300ms_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2) active:shadow-[inset_0_1px_2px_rgba(80,55,95,0.16)] disabled:(opacity-45 cursor-not-allowed)"
         :class="
           modelValue === opt.value
             ? 'border-violet-line bg-[linear-gradient(180deg,#ffffff_0%,#f8f3fc_100%)] font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
@@ -92,7 +92,7 @@ function pick(opt: CreationOption) {
         role="radio"
         :aria-checked="modelValue === opt.value"
         :disabled="disabled || opt.disabled"
-        class="ll-pill outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2) disabled:(opacity-50 cursor-not-allowed)"
+        class="ll-pill !min-h-32px !text-13px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2) disabled:(opacity-50 cursor-not-allowed)"
         :class="modelValue === opt.value ? 'll-pill-active' : ''"
         @click="pick(opt)"
       >

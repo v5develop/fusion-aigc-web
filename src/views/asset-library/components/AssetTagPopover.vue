@@ -12,6 +12,7 @@ import { assetLibBatchTag, assetLibTagCreate, assetLibTags, assetLibUpdate } fro
 import type { IAssetLibAsset, IAssetLibTag } from '@/api/assetLibrary.ts'
 
 const message = useMessage()
+const emit = defineEmits<{ changed: [] }>()
 
 const MENU_WIDTH = 260
 const MENU_HEIGHT = 360
@@ -164,6 +165,7 @@ async function pick(o: IOption) {
     if (o.tag && !on) await assetLibBatchTag({ asset_ids: [target.id], tag_ids: [o.tag.id] })
     else await assetLibUpdate(target.id, { tags: nextTags })
     message.success(o.tag && !on ? `已放入「${o.tag.name}」` : '已移出标签')
+    emit('changed')
   } catch (err) {
     rollback()
     reportError(err)
@@ -226,6 +228,7 @@ async function createTag() {
   showCreate.value = false
   if (!created?.id) return
   tags.value.push({ ...created, asset_count: 0 })
+  emit('changed')
   const target = createFor
   createFor = null
   if (!target || target.tags.includes(created.name)) return
@@ -234,6 +237,7 @@ async function createTag() {
   try {
     await assetLibBatchTag({ asset_ids: [target.id], tag_ids: [tag.id] })
     message.success(`已放入「${tag.name}」`)
+    emit('changed')
   } catch (err) {
     rollback()
     reportError(err)

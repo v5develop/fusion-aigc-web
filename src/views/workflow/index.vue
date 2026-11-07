@@ -561,6 +561,16 @@ const STATUS: Record<string, { text: string; cls: string }> = {
   CANCELLED: { text: '已取消', cls: 'll-chip-warning' },
 }
 const statusOf = (s: string) => STATUS[s] ?? { text: s || '未知', cls: 'll-chip-warning' }
+/**
+ * 进行中历史卡的进度（历史卡进度条口径）：子任务终态占比（FAN_OUT 分组同任务中心口径）；
+ * 没有子任务清单时按 6% 起步，避免进度条空转。完成后整行换成状态胶囊，不再显示进度。
+ */
+const progressOf = (item: WorkflowHistoryItem) => {
+  const tasks = item.data?.result?.tasks ?? []
+  if (!tasks.length) return 6
+  const terminal = tasks.filter((t) => isWorkflowTerminal(t.status)).length
+  return Math.min(99, Math.max(6, Math.round((100 * terminal) / tasks.length)))
+}
 const formatTime = (v?: string | null) => (v ? v.replace('T', ' ').slice(0, 16) : '')
 
 /** 结果舞台：当前查看第几个产物（图片在前、视频在后）；换记录时回到第一个 */
@@ -865,9 +875,9 @@ const headBtn =
       </div>
     </section>
 
-    <!-- 中：历史记录（原型 StudioHistoryColumn 卡片口径） -->
+    <!-- 中：历史记录（2026-11-06 材质：三栏同 r18；卡片统一高 74） -->
     <section
-      class="ll-card !rounded-8px flex min-h-0 flex-col overflow-hidden max-[1439px]:max-h-480px"
+      class="ll-card flex min-h-0 flex-col overflow-hidden max-[1439px]:max-h-480px"
       aria-labelledby="wf-history-title"
     >
       <CreationHistoryHeader
@@ -883,7 +893,7 @@ const headBtn =
         >
           <span
             v-if="mapped && history.loading.value"
-            class="flex-none w-16px h-16px box-border rounded-full border-2 border-solid border-#ede3f2 border-t-violet animate-spin animate-duration-800 motion-reduce:animate-none"
+            class="flex-none w-16px h-16px box-border rounded-full border-2 border-solid border-#ede3f2 border-t-violet animate-spin animate-duration-800"
             aria-hidden="true"
           />
           <span class="min-w-0 flex flex-col gap-2px">
@@ -899,24 +909,24 @@ const headBtn =
           <li
             v-for="item in history.items.value"
             :key="item.workflowHistoryId"
-            class="group relative flex items-center gap-10px p-10px rounded-8px border border-solid [transition:border-color_110ms,background_110ms,box-shadow_110ms] motion-reduce:transition-none"
+            class="group relative flex items-stretch gap-10px h-74px box-border p-10px rounded-18px border border-solid [transition:border-color_110ms,background_110ms,box-shadow_110ms] motion-reduce:transition-none"
             :class="
               current?.workflowHistoryId === item.workflowHistoryId
-                ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
-                : 'border-line bg-white hover:(border-#c9cfd6 shadow-[0_1px_2px_rgba(31,35,41,0.05)])'
+                ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#faf4fd_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
+                : 'border-line bg-white hover:(border-#aeb4b9 shadow-[0_8px_18px_rgba(31,35,41,0.08)])'
             "
           >
             <!-- 整卡选中：按钮铺满卡面（删除按钮压在其上） -->
             <button
               type="button"
-              class="absolute inset-0 m-0 p-0 rounded-8px border-none bg-transparent cursor-pointer"
+              class="absolute inset-0 m-0 p-0 rounded-18px border-none bg-transparent cursor-pointer"
               :class="focusRing"
               :aria-pressed="current?.workflowHistoryId === item.workflowHistoryId"
               :aria-label="`${formatTime(item.createdAt)} ${statusOf(item.status).text}`"
               @click="selectedId = item.workflowHistoryId"
             />
             <span
-              class="relative flex-none w-44px h-44px box-border rounded-6px border border-solid border-line bg-surface3 flex items-center justify-center pointer-events-none"
+              class="relative flex-none w-44px h-44px self-center box-border rounded-14px border border-solid border-line bg-surface3 flex items-center justify-center pointer-events-none"
               :class="
                 outputsOf(item).images.length > 2
                   ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb,6px_-6px_0_-1px_#fff,6px_-6px_0_0_#e5e7eb]'
@@ -929,7 +939,7 @@ const headBtn =
                 v-if="thumbOf(item)"
                 :src="thumbOf(item)"
                 alt=""
-                class="block w-full h-full rounded-5px object-cover"
+                class="block w-full h-full rounded-13px object-cover"
               />
               <span v-else class="text-11px text-placeholder">—</span>
               <span
@@ -939,20 +949,31 @@ const headBtn =
                 >{{ outputsOf(item).images.length }}</span
               >
             </span>
-            <span class="min-w-0 flex-1 flex flex-col justify-between gap-6px pointer-events-none">
-              <span class="ll-chip self-start" :class="statusOf(item.status).cls">{{
+            <span class="min-w-0 flex-1 self-stretch flex flex-col justify-between gap-4px pointer-events-none">
+              <span v-if="!isWorkflowTerminal(item.status)" class="flex items-center gap-6px">
+                <span
+                  class="relative flex-1 h-4px rounded-full bg-#eceef0 shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden"
+                >
+                  <span
+                    class="absolute inset-y-0 left-0 rounded-full sx-grad-progress [transition:width_160ms_linear] motion-reduce:transition-none"
+                    :style="{ width: `${progressOf(item)}%` }"
+                  />
+                </span>
+                <span class="flex-none text-11px font-600 leading-16px text-violet-ink tabular-nums">{{ progressOf(item) }}%</span>
+              </span>
+              <span v-else class="ll-chip self-start" :class="statusOf(item.status).cls">{{
                 statusOf(item.status).text
               }}</span>
-              <span class="flex items-center gap-4px min-w-0">
+              <span class="flex items-center gap-8px min-w-0">
                 <span class="flex-none text-11px leading-16px text-placeholder">{{ formatTime(item.createdAt) }}</span>
                 <!-- 重新编辑：老记录（无 requestParams）用 aria-disabled 而非 disabled，仍可聚焦、悬停能看到原因 -->
                 <button
                   v-if="isWorkflowTerminal(item.status)"
                   type="button"
-                  class="relative z-1 grid place-items-center w-20px h-20px p-0 rounded-4px border-none bg-transparent text-placeholder pointer-events-auto opacity-0 transition-colors group-hover:opacity-100 focus-visible:opacity-100"
+                  class="relative z-1 grid place-items-center w-24px h-24px box-border p-0 rounded-6px border border-solid border-line bg-[linear-gradient(#fff,#f8f9fa)] text-muted pointer-events-auto shadow-[inset_0_1px_0_#fff,0_1px_1px_rgba(31,35,41,0.04)] sx-hit sx-reveal"
                   :class="[
                     focusRing,
-                    canRestore(item) ? 'cursor-pointer hover:(bg-surface3 text-ink)' : 'cursor-not-allowed',
+                    canRestore(item) ? 'cursor-pointer hover:(border-#aeb4b9 bg-white text-ink)' : 'cursor-not-allowed',
                   ]"
                   :aria-disabled="canRestore(item) ? undefined : 'true'"
                   :aria-label="item.data?.requestParams ? '重新编辑' : `重新编辑（${RESTORE_DISABLED_TIP}）`"
@@ -960,7 +981,7 @@ const headBtn =
                   @click="restoreFrom(item)"
                 >
                   <svg
-                    class="w-13px h-13px"
+                    class="w-14px h-14px"
                     :class="canRestore(item) ? '' : 'opacity-40'"
                     viewBox="0 0 24 24"
                     fill="none"
@@ -976,14 +997,14 @@ const headBtn =
                 <button
                   v-if="isWorkflowTerminal(item.status)"
                   type="button"
-                  class="relative z-1 grid place-items-center w-20px h-20px p-0 rounded-4px border-none bg-transparent text-placeholder cursor-pointer pointer-events-auto opacity-0 transition-colors group-hover:opacity-100 focus-visible:opacity-100 hover:(bg-surface3 text-danger)"
+                  class="relative z-1 grid place-items-center w-24px h-24px p-0 rounded-6px border-none bg-transparent text-placeholder cursor-pointer pointer-events-auto sx-hit sx-reveal hover:(bg-surface3 text-danger)"
                   :class="focusRing"
                   :aria-label="`删除 ${formatTime(item.createdAt)} 的记录`"
                   title="删除"
                   @click="confirmDelete(item)"
                 >
                   <svg
-                    class="w-13px h-13px"
+                    class="w-14px h-14px"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -1038,7 +1059,7 @@ const headBtn =
             role="status"
           >
             <span
-              class="w-34px h-34px box-border rounded-full border-2 border-solid border-#ede3f2 border-t-violet animate-spin animate-duration-800 motion-reduce:animate-none"
+              class="w-34px h-34px box-border rounded-full border-2 border-solid border-#ede3f2 border-t-violet animate-spin animate-duration-800"
               aria-hidden="true"
             />
             <span class="text-11px text-muted">任务进行中，结果出来后会自动显示</span>

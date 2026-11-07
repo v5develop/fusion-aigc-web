@@ -85,7 +85,7 @@ export interface IFeedItem {
   sameStyle: boolean
   /**
    * 出自哪个创作入口。可能为 null（运营手灌的素材没配同款配方、也没关联来源任务）。
-   * route 为空时用它跳通用创作页：/picture?entryCode=xxx
+   * route 为空时用它跳通用创作页：/image/generate?entryCode=xxx
    */
   entryCode: string | null
   /**

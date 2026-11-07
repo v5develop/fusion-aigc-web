@@ -3,8 +3,8 @@
  * 电商功能页中栏：历史记录（原型 StudioHistoryColumn ml 版，规范 §5.10）。列宽 224，与左右两栏同材质（r8 白板）。
  *
  * <p>数据就是页面 provide 的 recordsData（本标签会话里的各批生成），这里只换展示：每批一张历史卡
- * （内边距 10、gap 10、1px line、r10；缩略 44 / r6，多张用 3/6px 偏移叠影 + 张数角标；第一行 12/18 两行截断，
- * 时间 11/16）。点一张卡 = 右栏结果切到这一批；有新批次出现时自动跟随最新一批。
+ * （2026-11-06 材质：统一高 74、r18 squircle；缩略 44 / r14，多张用 3/6px 偏移叠影 + 张数角标；第一行 12/18 单行截断，
+ * 进行中带 4px 进度条 + 百分比，完成后时间 + 状态胶囊）。点一张卡 = 右栏结果切到这一批；有新批次出现时自动跟随最新一批。
  */
 import { computed, inject, ref, unref, useId, watch, type Ref } from 'vue'
 import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
@@ -20,6 +20,13 @@ const { title } = defineProps<{
 const recordsData = inject<Ref<any[] | undefined> | any[] | undefined>('recordsData')
 const groups = computed<any[]>(() => unref(recordsData) ?? [])
 const selectedId = inject(EC_SELECTED_TASK_KEY, ref<string | null>(null))
+
+/** 点了一张历史卡（Container 在 <1440 时据此切回「生成结果」分段） */
+const emit = defineEmits<{ select: [taskId: string] }>()
+const pick = (taskId: string) => {
+  selectedId.value = taskId
+  emit('select', taskId)
+}
 const groupMediaType = inject<'image' | 'video'>('recordMediaType', 'image')
 
 const titleId = `ec-history-title-${useId()}`
@@ -40,6 +47,14 @@ const stackOf = (g: any): string[] =>
 const shortTime = (t?: string) => {
   const m = String(t ?? '').match(/^\d{4}-(\d{2}-\d{2})[ T](\d{2}:\d{2})/)
   return m ? `${m[1]} ${m[2]}` : String(t ?? '')
+}
+
+/** 进行中批次的进度：终态子任务占比（与任务中心 FAN_OUT 口径一致），无子任务时给个 6% 起步 */
+const progressOf = (g: any) => {
+  const list = g.contents ?? []
+  if (!list.length) return 6
+  const done = list.filter((c: any) => c.status === 2 || c.status === 3 || c.blocked).length
+  return Math.min(99, Math.max(6, Math.round((100 * done) / list.length)))
 }
 
 const statusText = (g: any) => (isRunning(g) ? '生成中' : isFailed(g) ? '生成失败' : '')
@@ -102,22 +117,22 @@ const EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都
       <li v-for="item in groups" :key="item.taskId">
         <button
           type="button"
-          class="sx-hist-card sx-focus w-full items-center box-border text-left transition-[border-color,background,box-shadow] duration-fast ease-sx motion-reduce:transition-none"
+          class="sx-hist-card sx-focus w-full h-74px items-center box-border text-left transition-[border-color,background,box-shadow] duration-fast ease-sx motion-reduce:transition-none"
           :class="current?.taskId === item.taskId ? 'sx-hist-card-on shadow-[0_1px_2px_rgba(31,35,41,0.05)]' : ''"
           :aria-pressed="current?.taskId === item.taskId"
-          :aria-label="`${item.createTime ?? ''} ${statusText(item)} ${title}`"
-          @click="selectedId = item.taskId"
+          :aria-label="`${item.createTime ?? ''} ${statusText(item) || '已完成'} ${title}`"
+          @click="pick(item.taskId)"
         >
           <!-- 进行中：骨架（原型），状态写在第一行 -->
           <span
             v-if="isRunning(item) && !stackOf(item).length"
-            class="flex-none w-44px h-44px rounded-md bg-sunken animate-pulse motion-reduce:animate-none"
+            class="flex-none w-44px h-44px self-center rounded-14px bg-sunken animate-pulse motion-reduce:animate-none"
             aria-hidden="true"
           />
-          <!-- 缩略 44 / r6；多张用 3/6px 偏移叠影表示，张数角标高 16、10px -->
+          <!-- 缩略 44 / r14（内图同心 r13）；多张用 3/6px 偏移叠影表示，张数角标高 16、10px -->
           <span
             v-else
-            class="relative flex-none grid place-items-center w-44px h-44px box-border rounded-md border border-solid border-line bg-surface3 text-placeholder"
+            class="relative flex-none grid place-items-center w-44px h-44px self-center box-border rounded-14px border border-solid border-line bg-surface3 text-placeholder"
             :class="
               stackOf(item).length >= 3
                 ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb,6px_-6px_0_-1px_#fff,6px_-6px_0_0_#e5e7eb]'
@@ -131,7 +146,7 @@ const EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都
               v-if="stackOf(item)[0] && !isVideoUrl(stackOf(item)[0])"
               :src="withWatermark(stackOf(item)[0])"
               alt=""
-              class="absolute inset-0 block h-full w-full rounded-plate object-cover object-center"
+              class="absolute inset-0 block h-full w-full rounded-13px object-cover object-center"
             />
             <span v-else class="text-11px">{{ groupMediaType === 'video' ? '视频' : '—' }}</span>
             <span
@@ -141,16 +156,35 @@ const EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都
             >
           </span>
 
-          <span class="min-w-0 flex-1 flex flex-col justify-between gap-6px">
+          <span class="min-w-0 flex-1 self-stretch flex flex-col justify-between gap-4px">
             <span
-              class="line-clamp-2 text-12px leading-18px"
+              class="line-clamp-1 text-12px leading-18px"
               :class="isFailed(item) ? 'text-danger' : isRunning(item) ? 'text-violet-ink' : 'text-ink'"
             >
               <template v-if="statusText(item)">{{ statusText(item) }} · </template>{{ title }}
             </span>
-            <span class="text-11px leading-16px text-muted tabular-nums whitespace-nowrap">{{
-              shortTime(item.createTime)
-            }}</span>
+            <!-- 进行中：4px 进度条（轨 #eceef0 内凹，紫渐变填充）+ 百分比 11/600；完成后该行由状态胶囊顶替 -->
+            <span v-if="isRunning(item)" class="flex items-center gap-6px">
+              <span class="relative flex-1 h-4px rounded-full bg-#eceef0 shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden">
+                <span
+                  class="absolute inset-y-0 left-0 rounded-full sx-grad-progress [transition:width_160ms_linear] motion-reduce:transition-none"
+                  :style="{ width: `${progressOf(item)}%` }"
+                />
+              </span>
+              <span class="flex-none text-11px font-600 leading-16px text-violet-ink tabular-nums">{{ progressOf(item) }}%</span>
+            </span>
+            <span v-else class="flex items-center gap-4px min-w-0">
+              <span class="flex-none text-11px leading-16px text-muted tabular-nums whitespace-nowrap">{{
+                shortTime(item.createTime)
+              }}</span>
+              <span
+                class="flex-none ml-auto inline-flex items-center h-16px px-6px rounded-full text-10px leading-14px whitespace-nowrap"
+                :class="isFailed(item) ? 'bg-danger-soft text-danger' : 'bg-success-soft text-success'"
+              >
+                <i class="w-5px h-5px rounded-full mr-3px" :class="isFailed(item) ? 'bg-danger' : 'bg-success'" aria-hidden="true"></i>
+                {{ isFailed(item) ? '失败' : '已完成' }}
+              </span>
+            </span>
           </span>
         </button>
       </li>

@@ -78,7 +78,7 @@ const sourceRefs = computed(() => {
         placeholder="输入提示词…"
         :aria-label="`${data.title || '文字'} 提示词`"
       />
-      <footer class="flex shrink-0 h-32px items-center gap-8px text-[#7f7f7f] text-10px font-500 tabular-nums">
+      <footer class="flex shrink-0 h-32px items-center gap-8px text-[#7f7f7f] text-11px font-500 tabular-nums">
         {{ text.length }} / {{ TEXT_MAX }}
       </footer>
       <div v-if="sourceRefs.length" class="flex flex-col gap-4px">

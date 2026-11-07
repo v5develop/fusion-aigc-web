@@ -1,17 +1,22 @@
 <script setup lang="ts">
 /**
- * 「AI 图片」「AI 视频」导航首页（新原型 #/picture、#/video 落地页），两页共用，内容见 ./landing.ts；
+ * 「AI 图片」「AI 视频」导航首页（新原型 AI 图片 / AI 视频落地页，路由 /image、/video），两页共用，内容见 ./landing.ts；
  * 本地生活导航首页（#/local-life，无原型）也用这个组件，内容见 views/local-life/landingData.ts。
  *
- * <p>尺寸、阴影、渐变、过渡、入场节奏逐值取自原型 views/explore/AiExploreView.vue（设计规范 §6「探索落地页」、§7.13）。
+ * <p>尺寸、阴影、渐变、过渡、入场节奏逐值取自原型 views/ai/AiExploreView.vue（设计规范 §6「探索落地页」、§7.13，
+ * 2026-11-06 对齐轮：卡片 r18 squircle、封面实拍图、紫底主卡 3D 倾斜）。
  * 原型按视口高度分四档（默认 / ≥960 / ≤880 / ≤760）收放卡高与间距，这里用 UnoCSS 的高度媒体查询变体逐档写。
- * 原型 banner 右侧是实拍图，本仓库没有这些图，用同色调的柔和渐变块占位，不外链原型图片；
- * 原型 banner 的鼠标 3D 倾斜（useTilt）不搬，只保留上抬 2px。
+ * 原型 banner 右侧是实拍图：有封面的条目用真图（public/images/tool-covers，名称对齐原型 toolCovers.ts），
+ * 没有的（本地生活导航首页）沿用同色调渐变占位。
  */
+import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { plazaTemplateList, stashPlazaTemplate, type IPlazaTemplate } from '@/api/plaza.ts'
+import { useTilt } from '@/utils/composables/useTilt.ts'
+import { toolCover } from './toolCovers.ts'
 import type { LandingBanner, LandingPageData } from './landing'
 
-defineProps<{ data: LandingPageData }>()
+const props = defineProps<{ data: LandingPageData }>()
 
 // 高度档位的媒体查询变体（区间互斥，不用比先后）：≥960 = [@media(min-height:960px)]，761–880 = [@media(min-height:761px)_and_(max-height:880px)]，≤760 = [@media(max-height:760px)]。
 // 类名必须整串写成字面量，UnoCSS 只扫源码文本，拼接出来的类不会生成。
@@ -48,7 +53,7 @@ const sectionAnim = [
   'animate-[motion-enter-up_240ms_cubic-bezier(0.4,0,0.2,1)_620ms_both]',
 ]
 
-/** banner 右侧实拍图的占位色：取原图主色调的柔和渐变（近似，非原图） */
+/** banner 右侧实拍图（按工具名查原型同款封面，没有的条目回落同色调渐变占位） */
 const photoTint: Record<string, string> = {
   'ai-digital-model': 'bg-[linear-gradient(135deg,#d6eef0_0%,#7fc3c9_55%,#2f8f99_100%)]',
   'ai-posture-fission': 'bg-[linear-gradient(160deg,#cfeaf3_0%,#f4e7b0_55%,#e9c85a_100%)]',
@@ -61,40 +66,70 @@ const photoTint: Record<string, string> = {
   'local-life-shop-profile': 'bg-[linear-gradient(135deg,#d6eef0_0%,#7fc3c9_55%,#2f8f99_100%)]',
   'local-life-copywriting': 'bg-[linear-gradient(160deg,#cfeaf3_0%,#f4e7b0_55%,#e9c85a_100%)]',
 }
+const bannerPhoto = (b: LandingBanner) => toolCover(b.title)
+
+/** 三张 banner 卡的 3D 倾斜（原型 useTilt：rotateX 8 / rotateY 10 / 上抬 -2px / 图片反向位移 10·6；只写 CSS 变量） */
+const tilt = useTilt({ prefix: 'hero', rotateX: 8, rotateY: 10, lift: '-2px', imageX: 10, imageY: 6 })
+const heroTransform =
+  '[transform:perspective(800px)_rotateX(var(--hero-rx,0deg))_rotateY(var(--hero-ry,0deg))_translateY(var(--hero-lift,0px))] [transform-style:preserve-3d] will-change-transform motion-reduce:!transform-none'
+const imgBase = '[transform:translate3d(var(--hero-img-x,0px),var(--hero-img-y,0px),0)_scale(1.02)]'
+const imgHover =
+  'group-hover:[transform:translate3d(var(--hero-img-x,0px),var(--hero-img-y,0px),0)_scale(1.04)]'
+
+/**
+ * 底部爆款货架：创意广场模板里取前 4 条**能一键复刻**（有 agentSkillId）的；
+ * 页面没开货架（data.shelf 为假）不请求；失败或一条都没有整块不渲染（不放占位）。
+ * 多拉一页再筛，避免前几条恰好没关联技能时货架空掉。
+ */
+const SHELF_SIZE = 4
+const SHELF_SCAN = 24
+const shelf = ref<IPlazaTemplate[]>([])
+const shelfAnim = 'animate-[motion-enter-up_320ms_cubic-bezier(0.4,0,0.2,1)_760ms_both]'
+onMounted(async () => {
+  if (!props.data.shelf) return
+  try {
+    const res = await plazaTemplateList({ page: 1, size: SHELF_SCAN })
+    shelf.value = (res.data?.data ?? []).filter((t) => !!t.agentSkillId).slice(0, SHELF_SIZE)
+  } catch {
+    shelf.value = []
+  }
+})
+const shelfCover = (t: IPlazaTemplate) => t.payload?.result?.[0] ?? t.payload?.image_urls?.[0] ?? ''
+const shelfTarget = (t: IPlazaTemplate) => ({ path: '/agent', query: { plazaTemplateId: String(t.plazaTemplateId) } })
+const shelfMeta = (t: IPlazaTemplate) => (t.tags ?? []).slice(1, 3).join(' · ')
 
 const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2'
 
-/** 原型 .explore-hero：r12、1px 描边、180ms ease 过渡；白卡 hover 换 violet-line 描边 + 双层阴影，紫卡 hover 只上抬 */
+/** 原型 .explore-hero：r18 squircle（2026-11-06 档位）、1px 描边、180ms ease 过渡；白卡 hover 换 violet-line 描边 + 双层阴影，紫卡 hover 只上抬 */
 function bannerClass(b: LandingBanner) {
   return [
-    'group relative block overflow-hidden box-border p-0 rounded-12px border border-solid no-underline text-left',
+    'group relative block overflow-hidden box-border p-0 rounded-18px border border-solid no-underline text-left sx-squircle',
     heroH,
     'transition-[border-color,box-shadow,transform] duration-180 ease-[ease] motion-reduce:transition-none',
+    heroTransform,
     focusRing,
     b.accent
       ? 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_1px_rgba(90,60,110,0.18),0_2px_4px_rgba(90,60,110,0.18)]'
       : 'border-line bg-white shadow-[0_10px_16px_rgba(0,0,0,0.04)]',
     b.route
-      ? [
-          'cursor-pointer hover:-translate-y-2px motion-reduce:hover:transform-none',
-          b.accent
-            ? ''
-            : 'hover:border-violet-line hover:shadow-[0_2px_4px_rgba(31,35,41,0.06),0_10px_24px_rgba(31,35,41,0.08)] active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.08)]',
-        ]
+      ? 'cursor-pointer hover:border-violet-line hover:shadow-[0_2px_4px_rgba(31,35,41,0.06),0_10px_24px_rgba(31,35,41,0.08)] active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.08)]'
       : 'cursor-not-allowed',
   ]
 }
+
+/** 工具卡封面：卡高 × 16/9 的左封面（原型 .explore-card__cover），文本让位到封面右侧 */
+const hasCover = (name: string) => !!toolCover(name)
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto box-border bg-page" :class="pageClass">
-    <div class="max-w-1180px flex flex-col" :class="deckGap">
+  <div class="h-full overflow-y-auto overflow-x-hidden box-border bg-page" :class="pageClass">
+    <div class="mx-auto w-full max-w-1180px flex flex-col" :class="deckGap">
       <h1 class="m-0 text-24px font-600 leading-32px text-ink motion-reduce:animate-none" :class="headAnim">
         {{ data.title }}
       </h1>
 
-      <!-- 三张入口 banner：前两张白卡、第三张藤紫卡（原型列宽 1fr 1fr 1.16fr） -->
+      <!-- 三张入口 banner：前两张白卡、第三张藤紫卡（原型列宽 1fr 1fr 1.16fr；紫卡跟手 3D 倾斜） -->
       <ul
         aria-label="推荐功能"
         class="m-0 p-0 list-none grid grid-cols-[1fr_1fr_1.16fr] motion-reduce:animate-none"
@@ -106,17 +141,30 @@ function bannerClass(b: LandingBanner) {
             v-bind="b.route ? { to: b.route } : { role: 'link', 'aria-disabled': 'true', tabindex: 0 }"
             :aria-label="b.route ? `${b.title}：${b.desc}` : `${b.title}（即将开放）`"
             :class="bannerClass(b)"
+            @pointermove="tilt.onMove"
+            @pointerleave="tilt.onLeave"
+            @pointercancel="tilt.onCancel"
           >
-            <!-- 实拍图占位：右侧 46%，常态 scale 1.02、悬停 1.04（原型 transform 160ms ease-out）；紫卡上 0.24 + luminosity -->
+            <!-- 实拍图：右侧 46%，常态 scale 1.02、悬停 1.04（原型 transform 160ms ease-out）；紫卡上 0.24 + luminosity + 视差 -->
             <span
               aria-hidden="true"
-              class="absolute top-0 right-0 h-full w-[46%] scale-[1.02] transition-transform duration-160 ease-[ease-out] motion-reduce:transition-none motion-reduce:transform-none"
-              :class="[
-                photoTint[b.id],
-                b.accent ? 'opacity-24 mix-blend-luminosity' : 'opacity-92',
-                b.route ? 'group-hover:scale-[1.04]' : '',
-              ]"
-            />
+              class="absolute top-0 right-0 h-full w-[46%] overflow-hidden"
+              :class="!bannerPhoto(b) ? photoTint[b.id] : ''"
+            >
+              <img
+                v-if="bannerPhoto(b)"
+                :src="bannerPhoto(b)"
+                alt=""
+                loading="lazy"
+                class="block h-full w-full object-cover transition-transform duration-160 ease-[ease-out] motion-reduce:transition-none motion-reduce:!transform-none"
+                :class="[b.accent ? 'opacity-24 mix-blend-luminosity' : 'opacity-92', imgBase, b.route ? imgHover : '']"
+              />
+              <span
+                v-else
+                class="absolute inset-0 transition-transform duration-160 ease-[ease-out] motion-reduce:transition-none motion-reduce:!transform-none"
+                :class="[b.accent ? 'opacity-24 mix-blend-luminosity' : 'opacity-92', imgBase, b.route ? imgHover : '']"
+              />
+            </span>
             <!-- 原型的整卡遮罩：白卡左实右透，紫卡藤紫 0.92 → 0.18 -->
             <span
               aria-hidden="true"
@@ -188,21 +236,35 @@ function bannerClass(b: LandingBanner) {
               :is="tool.route ? RouterLink : 'div'"
               v-bind="tool.route ? { to: tool.route } : { role: 'link', 'aria-disabled': 'true', tabindex: 0 }"
               :aria-label="tool.route ? `${tool.name}：${tool.tagline}` : `${tool.name}（即将开放）`"
-              class="group relative flex items-center gap-12px box-border px-14px rounded-10px bg-white border border-solid border-line no-underline shadow-[0_10px_16px_rgba(0,0,0,0.04)] transition-[border-color,background,box-shadow,color] duration-110 motion-reduce:transition-none"
+              class="group relative flex items-center gap-12px box-border rounded-18px bg-white border border-solid border-line no-underline shadow-[0_10px_16px_rgba(0,0,0,0.04)] sx-squircle transition-[border-color,background,box-shadow,color] duration-110 motion-reduce:transition-none overflow-hidden"
               :class="[
                 cardH,
                 focusRing,
+                hasCover(tool.name) ? '!px-0' : 'px-14px',
                 tool.route
                   ? 'cursor-pointer hover:border-violet-line hover:bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] hover:shadow-[0_1px_2px_rgba(31,35,41,0.05)] active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.1)]'
                   : 'cursor-not-allowed',
               ]"
             >
+              <!-- 封面卡（原型 .explore-card 带封面版）：左封面 16:9 满高、右缘 18px 白渐隐融进卡底，悬停 1.05 -->
               <span
-                v-if="tool.hot"
-                class="absolute top-8px right-8px inline-flex items-center h-18px box-border px-6px rounded-full border border-solid border-violet-line bg-[linear-gradient(#fff,#f8f3fc)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-10px font-600 leading-16px whitespace-nowrap text-violet-ink"
-                >最常用</span
+                v-if="hasCover(tool.name)"
+                class="relative self-stretch aspect-[16/9] shrink-0 overflow-hidden bg-surface2"
+                aria-hidden="true"
               >
+                <img
+                  :src="toolCover(tool.name)"
+                  alt=""
+                  loading="lazy"
+                  class="block h-full w-full object-cover transition-transform duration-200 ease-out motion-reduce:transition-none group-hover:scale-[1.05]"
+                  :class="tool.route ? '' : 'opacity-60'"
+                />
+                <span
+                  class="absolute inset-y-0 right-0 w-18px bg-[linear-gradient(90deg,transparent,#fff)] pointer-events-none"
+                />
+              </span>
               <span
+                v-else
                 class="shrink-0 grid place-items-center w-40px h-40px box-border rounded-8px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff] text-violet-ink"
               >
                 <svg
@@ -219,20 +281,31 @@ function bannerClass(b: LandingBanner) {
                   :innerHTML="tool.icon"
                 />
               </span>
-              <span class="min-w-0 flex-1 flex flex-col gap-2px" :class="tool.hot ? 'pr-44px' : ''">
-                <span class="flex items-center gap-6px min-w-0">
+              <span
+                class="min-w-0 flex-1 flex flex-col gap-2px"
+                :class="hasCover(tool.name) ? 'pl-10px pr-10px items-center text-center' : ''"
+              >
+                <span
+                  class="flex items-center min-w-0 max-w-full"
+                  :class="hasCover(tool.name) ? 'justify-center flex-wrap-reverse gap-x-6px gap-y-2px' : 'gap-6px'"
+                >
                   <span
-                    class="truncate text-14px font-600 leading-20px transition-colors duration-110 motion-reduce:transition-none"
+                    class="truncate max-w-full text-14px font-600 leading-20px transition-colors duration-110 motion-reduce:transition-none"
                     :class="tool.route ? 'text-ink group-hover:text-violet-ink' : 'text-muted'"
                     >{{ tool.name }}</span
+                  >
+                  <span
+                    v-if="tool.hot"
+                    class="shrink-0 inline-flex items-center h-16px box-border px-5px rounded-full border border-solid border-violet-line bg-[linear-gradient(#fff,#f8f3fc)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-10px font-600 leading-14px text-violet-ink"
+                    >最常用</span
                   >
                   <span v-if="!tool.route" class="ll-chip shrink-0 text-muted bg-surface3 border border-line"
                     >即将开放</span
                   >
                 </span>
-                <span class="truncate text-11px leading-17px text-muted">{{ tool.tagline }}</span>
+                <span class="truncate max-w-full text-11px leading-17px text-muted">{{ tool.tagline }}</span>
               </span>
-              <!-- 原型 .explore-card__chev：13px 箭头，常态隐藏，悬停 / 键盘聚焦时显出（110ms） -->
+              <!-- 原型 .explore-card__chev：13px 箭头，悬停 / 键盘聚焦时显出（110ms）；封面卡上箭头绝对定位到右缘 -->
               <svg
                 v-if="tool.route"
                 viewBox="0 0 24 24"
@@ -245,10 +318,59 @@ function bannerClass(b: LandingBanner) {
                 stroke-linejoin="round"
                 aria-hidden="true"
                 class="shrink-0 text-placeholder opacity-0 transition-opacity duration-110 group-hover:opacity-100 group-hover:text-violet-ink group-focus-visible:opacity-100 group-focus-visible:text-violet-ink motion-reduce:transition-none"
+                :class="hasCover(tool.name) ? 'absolute right-10px top-1/2 -translate-y-1/2' : ''"
               >
                 <path d="m9 6 6 6-6 6" />
               </svg>
             </component>
+          </li>
+        </ul>
+      </section>
+
+      <!-- 底部：爆款货架（创意广场前 4 个可一键复刻的模板；没有数据整块不出）；4 列 → <1024 两列 → <640 一列 -->
+      <section
+        v-if="data.shelf && shelf.length"
+        aria-labelledby="landing-shelf"
+        class="flex flex-col gap-10px min-h-0 motion-reduce:animate-none"
+        :class="shelfAnim"
+      >
+        <header class="flex items-baseline gap-8px px-2px">
+          <h2 id="landing-shelf" class="m-0 text-15px font-600 leading-22px text-ink">试着复刻这些爆款</h2>
+          <RouterLink
+            to="/plaza"
+            class="ml-auto inline-flex items-center gap-2px text-12px text-violet-ink no-underline hover:underline"
+            >去逛逛 ›</RouterLink
+          >
+        </header>
+        <ul
+          class="m-0 p-0 list-none grid grid-cols-4 gap-12px [@media(max-width:1023px)]:grid-cols-2 [@media(max-width:639px)]:grid-cols-1"
+        >
+          <li v-for="t in shelf" :key="t.plazaTemplateId" class="min-w-0">
+            <RouterLink
+              :to="shelfTarget(t)"
+              @click="stashPlazaTemplate(t)"
+              class="flex flex-col box-border p-7px rounded-18px border border-solid border-line bg-[linear-gradient(180deg,#fff_0%,#faf6fd_100%)] shadow-[0_2px_6px_rgba(31,35,41,0.05)] no-underline sx-squircle transition-[border-color,box-shadow,transform] duration-140 hover:border-violet-line hover:shadow-[0_8px_18px_rgba(31,35,41,0.09)] hover:-translate-y-1px motion-reduce:transition-none motion-reduce:hover:transform-none"
+              :class="focusRing"
+            >
+              <span class="relative block w-full aspect-[16/9] overflow-hidden rounded-9px bg-surface2">
+                <img
+                  v-if="shelfCover(t)"
+                  :src="shelfCover(t)"
+                  :alt="t.title"
+                  loading="lazy"
+                  class="block h-full w-full object-cover"
+                />
+                <span
+                  v-if="t.tags?.length"
+                  class="absolute left-6px top-6px inline-flex items-center h-18px px-6px rounded-full bg-white/92 text-10px text-[#4a4f57] shadow-[0_1px_3px_rgba(31,35,41,0.12)]"
+                  >{{ t.tags[0] }}</span
+                >
+              </span>
+              <span class="flex flex-col gap-3px min-w-0 pt-8px px-3px pb-3px">
+                <span class="truncate text-13px font-600 leading-18px text-ink">{{ t.title }}</span>
+                <span v-if="shelfMeta(t)" class="truncate text-11px leading-16px text-muted">{{ shelfMeta(t) }}</span>
+              </span>
+            </RouterLink>
           </li>
         </ul>
       </section>

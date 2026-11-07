@@ -8,10 +8,13 @@ export interface IVideoItem {
 
 <script setup lang="ts">
 import { upload } from '@/api/ossUpload.ts'
+import IconButton from '@/components/IconButton/index.vue'
 import { ACCEPT_VIDEO } from '@/utils/utils'
 import { useDialog, useMessage } from 'naive-ui'
-import { computed, defineAsyncComponent, ref, watch, onMounted } from 'vue'
+import { computed, defineAsyncComponent, ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
+import { mapWithConcurrency, useUploadBusyReporter } from '@/components/uploadBusy'
 import {
   UPLOAD_ENTRY_ASSET_LABEL,
   badgeClass,
@@ -73,6 +76,10 @@ const emit = defineEmits<{
   'badge-click': [key: string, index: number]
 }>()
 const videoList = defineModel<IVideoItem[]>('videoList', { required: true })
+/** 是否有上传在进行（含替换 / 资产库取封面）；父级可 v-model:uploading 拦提交 */
+const uploadingModel = defineModel<boolean>('uploading', { default: false })
+/** 是否留有上传失败的格子；父级可 v-model:failed 拦提交 */
+const failedModel = defineModel<boolean>('failed', { default: false })
 
 // 本地状态，用于实时更新UI
 const localVideoList = ref<IVideoItem[]>([])
@@ -92,7 +99,68 @@ watch(
 
 const loading = ref(false)
 
+// ---------------- 逐条上传状态（原型 MlReferenceSlots：上传中 / 上传失败叠在格子里，失败可重试） ----------------
+interface PendingUpload {
+  id: number
+  file: File
+  status: 'uploading' | 'failed'
+}
+let pendingSeq = 0
+const pending = ref<PendingUpload[]>([])
+/**
+ * 正在替换的那一条：记旧地址而不是下标——替换期间用户可能删掉别的视频，
+ * 完成时按旧地址重新定位，找不到就丢弃结果，绝不覆盖到别的视频上。
+ */
+const replacingUrl = ref<string | null>(null)
+const replacingAt = computed(() => {
+  if (replacingUrl.value === null) return null
+  const i = localVideoList.value.findIndex((v) => v.url === replacingUrl.value)
+  return i >= 0 ? i : null
+})
+const uploadingCount = computed(() => pending.value.filter((p) => p.status === 'uploading').length)
+const failedCount = computed(() => pending.value.filter((p) => p.status === 'failed').length)
+// 原 loading 语义：有上传在进行时禁用拖入 / 资产库入口
+const busy = computed(() => loading.value || replacingUrl.value !== null || uploadingCount.value > 0)
+const limit = computed(() => limitNumber ?? 1)
+/*
+ * 失败格的计数口径（两处刻意不同）：
+ * - occupied（已传 + 上传中 + 失败）：只用于「还能再加几个」的容量判断与提示（选文件截断、拖入 / 粘贴 max、资产库余量），
+ *   因为失败格随时可能重试成功，不算进去会超限；
+ * - shown（已传 + 上传中，不含失败）：只决定上传按钮是否隐藏——失败格不该把入口藏掉，
+ *   点了按钮若余量被失败格占满，会提示先移除失败的视频。
+ */
+const occupied = computed(() => localVideoList.value.length + pending.value.length)
+const shown = computed(() => localVideoList.value.length + uploadingCount.value)
+const dropPending = (id: number) => {
+  const idx = pending.value.findIndex((p) => p.id === id)
+  if (idx >= 0) pending.value.splice(idx, 1)
+}
+const dismissFailed = () => pending.value.filter((p) => p.status === 'failed').forEach((p) => dropPending(p.id))
+
+// 卸载后上传回调一律不再写 videoList（页面已离开，回写会落到别的表单状态上）
+let unmounted = false
+onBeforeUnmount(() => (unmounted = true))
+
+// 父级把列表清空（如提交后重置表单）：失败格一并收掉；上传中的不动，传完照常入组
+watch(
+  () => [videoList.value, videoList.value?.length ?? 0] as const,
+  ([list, len], [prevList, prevLen]) => {
+    if (len === 0 && (list !== prevList || prevLen > 0)) dismissFailed()
+  },
+)
+
+// 忙碌状态：v-model:uploading / v-model:failed + 外壳登记（uploadBusy.ts）
+watch(busy, (v) => (uploadingModel.value = v), { immediate: true })
+watch(failedCount, (n) => (failedModel.value = n > 0), { immediate: true })
+useUploadBusyReporter('video', () => ({ uploading: busy.value, failed: failedCount.value > 0 }))
+
 const message = useMessage()
+const warnFull = () =>
+  message.warning(
+    failedCount.value && shown.value < limit.value
+      ? `最多上传${limit.value}个视频，请先重试或移除上传失败的视频`
+      : `最多上传${limit.value}个视频`,
+  )
 const dialog = useDialog()
 const uploadRef = ref<HTMLInputElement | null>(null)
 
@@ -231,16 +299,20 @@ const setAt = (index: number, item: IVideoItem) => {
 // 替换：复用同一个 input，单选
 const replaceIndex = ref<number | null>(null)
 const openReplace = (index: number) => {
+  if (replacingUrl.value !== null) return
   replaceIndex.value = index
   uploadRef.value!.multiple = false
   uploadRef.value!.click()
 }
 
-// 预览
-const previewUrl = ref('')
+// 预览：全屏灯箱，带上本组件全部视频（←/→ 切换、下载）
 const previewShow = ref(false)
+const previewIndex = ref(0)
+const previewItems = computed(() =>
+  localVideoList.value.map((v) => ({ url: v.url, type: 'video' as const, name: v.name })),
+)
 const openPreview = (index: number) => {
-  previewUrl.value = localVideoList.value[index]?.url ?? ''
+  previewIndex.value = index
   previewShow.value = true
 }
 
@@ -248,13 +320,11 @@ const openPreview = (index: number) => {
 const assetShow = ref(false)
 const assetIndex = ref(-1)
 const assetLimit = computed(() =>
-  assetIndex.value >= 0 ? 1 : Math.max(1, (limitNumber ?? 1) - localVideoList.value.length),
+  assetIndex.value >= 0 ? 1 : Math.max(1, (limitNumber ?? 1) - occupied.value),
 )
 const openAsset = (index: number) => {
-  if (loading.value) return
-  if (index < 0 && localVideoList.value.length >= (limitNumber ?? 1)) {
-    return message.warning(`最多上传${limitNumber ?? 1}个视频`)
-  }
+  if (busy.value) return
+  if (index < 0 && occupied.value >= limit.value) return warnFull()
   assetIndex.value = index
   assetShow.value = true
 }
@@ -264,16 +334,20 @@ const onAssetSelect = async (urls: string[]) => {
   loading.value = true
   try {
     if (target >= 0) {
+      const oldUrl = localVideoList.value[target]?.url
       const [item] = await toItems(urls.slice(0, 1))
-      if (item) setAt(target, item)
+      if (unmounted || !item) return
+      const idx = localVideoList.value.findIndex((v) => v.url === oldUrl)
+      if (idx >= 0) setAt(idx, item)
       return
     }
     const fresh = urls.filter((u) => !localVideoList.value.some((v) => v.url === u))
-    const remaining = (limitNumber ?? 1) - localVideoList.value.length
-    localVideoList.value.push(...(await toItems(fresh.slice(0, Math.max(0, remaining)))))
+    const items = await toItems(fresh.slice(0, Math.max(0, limit.value - occupied.value)))
+    if (unmounted) return
+    localVideoList.value.push(...items)
     videoList.value = [...localVideoList.value]
   } finally {
-    loading.value = false
+    if (!unmounted) loading.value = false
   }
 }
 
@@ -307,59 +381,94 @@ const uploadFiles = async (fileArray: File[], replacing: number | null) => {
     }
   }
 
-  // 替换某一条：不受数量限制
+  // 替换某一条：不受数量限制；遮罩叠在该行，失败保留原视频。完成时按旧地址重新定位，原视频已不在就丢弃
   if (replacing !== null) {
-    loading.value = true
+    const oldUrl = localVideoList.value[replacing]?.url
+    if (oldUrl == null) return
+    replacingUrl.value = oldUrl
     try {
       const urls = await upload(fileArray.slice(0, 1))
       const [item] = await toItems(urls.slice(0, 1))
-      if (item) setAt(replacing, item)
+      if (unmounted || !item) return
+      const idx = localVideoList.value.findIndex((v) => v.url === oldUrl)
+      if (idx >= 0) setAt(idx, item)
     } catch {
-      message.error('视频上传失败，请重试')
+      if (!unmounted) message.error('视频上传失败，请重试')
     } finally {
-      loading.value = false
-      if (uploadRef.value) uploadRef.value.value = ''
+      if (!unmounted) {
+        replacingUrl.value = null
+        if (uploadRef.value) uploadRef.value.value = ''
+      }
     }
     return
   }
 
-  // 检查数量限制
-  const remaining = (limitNumber ?? 1) - localVideoList.value.length
+  // 检查数量限制（失败格也占余量，见 occupied 注释）
+  const remaining = limit.value - occupied.value
   if (remaining <= 0) {
-    return message.warning(`最多上传${limitNumber}个视频`)
+    if (uploadRef.value) uploadRef.value.value = ''
+    return warnFull()
   }
 
-  loading.value = true
+  const batch = fileArray.slice(0, remaining).map((file) => ({ id: ++pendingSeq, file, status: 'uploading' as const }))
+  pending.value.push(...batch)
+  if (uploadRef.value) uploadRef.value.value = ''
 
-  try {
-    const urls = await upload(fileArray)
-    const newVideos: IVideoItem[] = []
-
-    for (const url of urls.slice(0, remaining)) {
-      const thumbnail = await extractVideoThumbnail(url)
-      newVideos.push({
-        url,
-        thumbnail,
-        name: getFileName(url),
-      })
+  // 逐条上传（最多 3 条并行），全部结束后按原顺序一次性入组；失败的留在格子里可重试
+  const items = await mapWithConcurrency(batch, 3, (b) => uploadOne(b.file))
+  if (unmounted) return
+  const ok: IVideoItem[] = []
+  batch.forEach((b, i) => {
+    const item = items[i]
+    if (item) {
+      ok.push(item)
+      dropPending(b.id)
+    } else {
+      const cur = pending.value.find((p) => p.id === b.id)
+      if (cur) cur.status = 'failed'
     }
-
-    localVideoList.value.push(...newVideos)
+  })
+  if (ok.length) {
+    localVideoList.value.push(...ok)
     videoList.value = [...localVideoList.value]
-  } catch {
-    message.error('视频上传失败，请重试')
-  } finally {
-    loading.value = false
-    if (uploadRef.value) {
-      uploadRef.value.value = ''
-    }
   }
+}
+
+/** 单条上传 + 取封面；失败返回 null */
+const uploadOne = async (file: File): Promise<IVideoItem | null> => {
+  try {
+    const urls = await upload([file])
+    const [item] = await toItems(urls.slice(0, 1))
+    return item ?? null
+  } catch {
+    return null
+  }
+}
+
+/** 失败行「重试」 */
+const retryPending = async (id: number) => {
+  const target = pending.value.find((p) => p.id === id)
+  if (!target || target.status === 'uploading') return
+  target.status = 'uploading'
+  const item = await uploadOne(target.file)
+  if (unmounted) return
+  const cur = pending.value.find((p) => p.id === id)
+  if (!cur) return
+  if (!item) {
+    cur.status = 'failed'
+    return
+  }
+  dropPending(id)
+  localVideoList.value.push(item)
+  videoList.value = [...localVideoList.value]
 }
 
 const beforeUpload = () => {
   // 上次「替换」若取消了选文件，这里清掉，避免普通上传被当成替换
   replaceIndex.value = null
   if (uploadRef.value) uploadRef.value.multiple = multiple
+  // 余量被失败格占满：先提示，免得选完文件才被拒
+  if (occupied.value >= limit.value) return warnFull()
   uploadRef.value?.click()
 }
 
@@ -368,8 +477,8 @@ const dropRef = ref<HTMLElement | null>(null)
 const { dragging } = useFileDropPaste(dropRef, {
   accept: 'video',
   multiple: () => multiple,
-  max: () => Math.max(1, (limitNumber ?? 1) - localVideoList.value.length),
-  disabled: loading,
+  max: () => Math.max(1, limit.value - occupied.value),
+  disabled: busy,
   onFiles: (files) => {
     replaceIndex.value = null
     uploadFiles(files, null)
@@ -397,9 +506,18 @@ const LIMIT_TIPS =
 const UPLOAD_BTN =
   'sx-btn !h-40px min-w-130px !px-16px !gap-8px !text-14px [font-family:inherit] ' +
   'transition-[border-color,color,box-shadow] duration-fast ease-sx motion-reduce:transition-none'
-const DELETE_BTN =
-  'w-16px h-16px p-0 flex-shrink-0 rounded-full flex items-center justify-center cursor-pointer ' +
-  'bg-ink hover:bg-black/70 transition-colors duration-fast ease-sx motion-reduce:transition-none sx-focus'
+// 视频行（一格）：r12；缩略图内圆角跟随
+const ROW =
+  'group relative flex items-center gap-12px px-12px py-8px rounded-12px bg-violet-soft border border-solid border-violet-line'
+// 上传中 / 失败遮罩（原型 .ml-role__status：rgba(31,35,41,.35) + 白字 14/600）
+const STATUS_MASK =
+  'absolute inset-0 z-10 flex items-center justify-center gap-8px rounded-[inherit] bg-[rgba(31,35,41,0.35)] text-white text-14px font-600'
+const SPINNER =
+  'block w-16px h-16px rounded-full border-2 border-solid border-white/40 border-t-white animate-spin motion-reduce:animate-none'
+// 重试 / 移除：视觉 28 高，after 外扩到 ≥32 命中（§10 可点区域）
+const MASK_BTN =
+  'relative h-28px px-12px rounded-full border-none bg-white/92 text-ink text-12px font-500 leading-none cursor-pointer ' +
+  'hover:bg-white sx-focus after:(content-empty absolute -inset-2px rounded-full) [@media(pointer:coarse)]:after:-inset-6px'
 </script>
 
 <template>
@@ -416,9 +534,8 @@ const DELETE_BTN =
         @change="handleUpload"
         class="hidden"
       />
-      <template
-        v-if="(multiple && localVideoList.length < (limitNumber ?? 1)) || (!multiple && localVideoList.length === 0)"
-      >
+      <!-- 按钮显隐只看已传 + 上传中（失败格不藏入口，见 shown 注释） -->
+      <template v-if="(multiple && shown < limit) || (!multiple && shown === 0)">
         <!-- #empty：上传入口；作用域 { open, openAsset, count, limit } -->
         <slot
           name="empty"
@@ -440,7 +557,7 @@ const DELETE_BTN =
               class="sx-btn-ghost !h-40px !px-12px !text-14px text-violet"
               :aria-label="UPLOAD_ENTRY_ASSET_LABEL.video"
               :title="UPLOAD_ENTRY_ASSET_LABEL.tooltip"
-              :disabled="loading || isBadgeDisabled(entryAssetBadge, -1)"
+              :disabled="busy || isBadgeDisabled(entryAssetBadge, -1)"
               @click.stop="onBadge(entryAssetBadge, -1)"
             >
               {{ UPLOAD_ENTRY_ASSET_LABEL.tooltip }}
@@ -457,13 +574,9 @@ const DELETE_BTN =
         class="mt-16px w-full gap-8px px-12px"
         :class="listClass"
         :style="listStyle"
-        v-if="localVideoList.length > 0"
+        v-if="occupied > 0"
       >
-        <div
-          class="group relative flex items-center gap-12px px-12px py-8px rounded-lg bg-violet-soft border border-solid border-violet-line"
-          v-for="(item, i) in localVideoList"
-          :key="item.url"
-        >
+        <div :class="ROW" v-for="(item, i) in localVideoList" :key="item.url">
           <!-- #tile：已传视频；作用域 { item, index, remove, replace, preview } -->
           <slot
             name="tile"
@@ -473,16 +586,19 @@ const DELETE_BTN =
             :replace="() => openReplace(i)"
             :preview="() => openPreview(i)"
           >
-            <div
-              class="relative flex-shrink-0 rounded-lg overflow-hidden"
+            <button
+              type="button"
+              class="relative flex-shrink-0 p-0 border-none bg-transparent rounded-lg overflow-hidden cursor-zoom-in sx-focus"
               :style="{ width: `${tileSize}px`, height: `${thumbHeight}px` }"
+              :aria-label="`预览视频 ${item.name ?? ''}`"
+              @click="openPreview(i)"
             >
               <img :src="item.thumbnail" :alt="item.name" class="block w-full h-full object-cover" />
-            </div>
-            <span class="flex-1 text-14px text-ink truncate">{{ item.name }}</span>
-            <button v-if="!hasBadges" type="button" :class="DELETE_BTN" aria-label="删除视频" @click="deleteVideo(i)">
-              <i class="icon-ic_ds_return-2 text-white text-8px" aria-hidden="true"></i>
             </button>
+            <span class="flex-1 text-14px text-ink truncate">{{ item.name }}</span>
+            <IconButton v-if="!hasBadges" label="删除视频" size="sm" variant="danger" @click="deleteVideo(i)">
+              <i class="icon-ic_ds_return-2" aria-hidden="true"></i>
+            </IconButton>
           </slot>
 
           <!-- 角标（badgeActions）：原型 .sx-medbtn，位置 / 显隐见 ImageUpload/uploadBadges.ts -->
@@ -508,6 +624,36 @@ const DELETE_BTN =
               <path :d="b.path" />
             </svg>
           </button>
+
+          <!-- 替换中：遮罩叠在该行 -->
+          <div v-if="replacingAt === i" :class="STATUS_MASK" role="status">
+            <span :class="SPINNER" aria-hidden="true"></span>
+            <span>上传中</span>
+          </div>
+        </div>
+
+        <!-- 上传中 / 上传失败：占同一格，失败可重试或移除 -->
+        <div v-for="p in pending" :key="`pending-${p.id}`" :class="ROW">
+          <div
+            class="flex-shrink-0 rounded-lg bg-white/70 grid place-items-center text-placeholder"
+            :style="{ width: `${tileSize}px`, height: `${thumbHeight}px` }"
+          >
+            <i class="icon-ic_ds_CloudUpload1 text-18px" aria-hidden="true"></i>
+          </div>
+          <span class="flex-1 text-14px text-ink truncate">{{ p.file.name }}</span>
+          <div v-if="p.status === 'uploading'" :class="STATUS_MASK" role="status">
+            <span :class="SPINNER" aria-hidden="true"></span>
+            <span>上传中</span>
+          </div>
+          <div v-else :class="STATUS_MASK" role="alert">
+            <span>上传失败</span>
+            <button type="button" :class="MASK_BTN" :aria-label="`重试上传 ${p.file.name}`" @click.stop="retryPending(p.id)">
+              重试
+            </button>
+            <button type="button" :class="MASK_BTN" aria-label="移除上传失败的视频" @click.stop="dropPending(p.id)">
+              移除
+            </button>
+          </div>
         </div>
       </div>
 
@@ -524,10 +670,8 @@ const DELETE_BTN =
       </slot>
     </div>
 
-    <!-- 角标「预览」 -->
-    <n-modal v-if="hasBadges" v-model:show="previewShow">
-      <video :src="previewUrl" controls autoplay class="block max-w-[80vw] max-h-[80vh] rounded-lg bg-black"></video>
-    </n-modal>
+    <!-- 预览（缩略图点击 / 角标 preview / #tile 的 preview()）：全屏灯箱，带全部视频 -->
+    <MediaLightbox v-model:show="previewShow" v-model:index="previewIndex" :items="previewItems" />
 
     <AssetPickerModal
       v-if="entryAssetBadge"

@@ -1,54 +1,163 @@
 <script setup lang="ts">
 /**
- * 资产库增强：Java 素材库（/api/v1/asset）之上的增强视图（Go 网关 /api/v1/asset-library）。
- * 分类条计数 / 筛选 / 收藏 / 标签（批量打标签 + 标签管理）/ 版本与相关资产详情。
- * 素材本身的新增删除仍走素材库，本页只做增强展示与编目。
+ * 资产（/assets，对齐原型 5185 AssetsView）：五个顶层域 图片 / 视频 / 音频 / 提示词 / 官方资产库，
+ * 域放在地址 ?domain=…（默认 image），链接可分享、返回键可回到上一个域。
+ *
+ * 域 → 接口：
+ *   图片     Go 资产库 /api/v1/asset-library/assets  media=image，域内保留 Java 聚合分类树（/api/v1/asset/categories）
+ *   视频     同上 media=video（kind_group=video 的二级分类在后端还没有数据来源，不用它筛）
+ *   音频     没有后端：只放空态，不造假数据
+ *   提示词   提示词库 /api/v1/prompt-library（见 PromptDomain）
+ *   官方资产库 同上 source=official，二级分类按 kind（模特 / 场景 / 妆容 / 发型 / 配饰）
+ * 图片 / 视频的来源只用后端真实存在的 source（全部 / AI 生成 / 上传 / 官方）。
+ *
+ * 增强能力照旧：分类条、比例 / 收藏筛选、标签带与标签筛选、收藏、单卡打标签、多选批量打标签、
+ * 标签管理、详情（版本 / 相关资产 / 生成结果 / 原图·校色后，← / → 翻上一个下一个）。
+ * 资产的新增 / 删除仍走素材库，本页不提供删除（官方资产也就不会被删）。
  */
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { NButton, NConfigProvider, NSelect, NSwitch, useMessage } from 'naive-ui'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { NConfigProvider, NSwitch, useMessage } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
-import { assetCategoryTree, assetLibCategories, assetLibList, assetLibUpdate } from '@/api/assetLibrary.ts'
-import type { AssetLibKindGroup, IAssetCategoryNode, IAssetLibAsset, IAssetLibCategory } from '@/api/assetLibrary.ts'
+import { assetCategoryTree, assetLibCategories, assetLibList, assetLibTags, assetLibUpdate } from '@/api/assetLibrary.ts'
+import type {
+  AssetLibKindGroup,
+  IAssetCategoryNode,
+  IAssetLibAsset,
+  IAssetLibCategory,
+  IAssetLibListParams,
+  IAssetLibTag,
+} from '@/api/assetLibrary.ts'
 import { useDebounce } from '@/utils/hooks'
+import PageEmpty from '@/components/PageEmpty/index.vue'
+import PageLoadError from '@/components/PageLoadError/index.vue'
 import AssetCard from './components/AssetCard.vue'
+import AssetPager from './components/AssetPager.vue'
 import DetailModal from './components/DetailModal.vue'
 import TagManagerModal from './components/TagManagerModal.vue'
 import BatchTagModal from './components/BatchTagModal.vue'
 import AssetTagPopover from './components/AssetTagPopover.vue'
+import PromptDomain from './components/PromptDomain.vue'
+import { useAssetsInCanvas } from './useInCanvas.ts'
+import {
+  PILL_CLS,
+  PILL_COUNT_CLS,
+  PILL_OFF,
+  PILL_ON,
+  ROW_CLS,
+  ROW_LABEL_CLS,
+  SEARCH_CLS,
+  TOOL_CLS,
+  TOOL_ON,
+} from './ui.ts'
 
 defineOptions({ name: 'asset-library' })
 
 const message = useMessage()
+const route = useRoute()
+const router = useRouter()
 
-// ---------------- 分类条 ----------------
+// ---------------- 顶层域（地址 ?domain=…） ----------------
 
-/** 卡片 / 详情上的 kind 中文名（编目用的 kind，与分类条无关） */
+type Domain = 'image' | 'video' | 'audio' | 'prompt' | 'official'
+
+const DOMAINS: { key: Domain; label: string }[] = [
+  { key: 'image', label: '图片' },
+  { key: 'video', label: '视频' },
+  { key: 'audio', label: '音频' },
+  { key: 'prompt', label: '提示词' },
+  { key: 'official', label: '官方资产库' },
+]
+
+function parseDomain(v: unknown): Domain {
+  const s = Array.isArray(v) ? v[0] : v
+  return DOMAINS.some((d) => d.key === s) ? (s as Domain) : 'image'
+}
+
+const domain = ref<Domain>(parseDomain(route.query.domain))
+// 地址里的 domain 非法：回退到图片的同时把地址也纠正过来（replace，不留历史）
+{
+  const raw = Array.isArray(route.query.domain) ? route.query.domain[0] : route.query.domain
+  if (raw != null && raw !== domain.value) void router.replace({ query: { ...route.query, domain: domain.value } })
+}
+/** 走资产列表的域（图片 / 视频 / 官方） */
+const isAssetDomain = computed(() => domain.value === 'image' || domain.value === 'video' || domain.value === 'official')
+
+/** 点页签：写进地址（push，返回键回到上一个域），真正切换由下面的地址监听完成 */
+function setDomain(next: Domain) {
+  if (next === domain.value) return
+  void router.push({ query: { ...route.query, domain: next } })
+}
+
+// 地址变化 → 切域（只认本页的路由，离开本页时 query 变空不算切回图片）
+watch(
+  () => route.query.domain,
+  (v) => {
+    if (route.name !== 'asset-library') return
+    const next = parseDomain(v)
+    if (next !== domain.value) applyDomain(next)
+  },
+)
+
+/** 切域：来源 / 分类 / 收藏 / 多选清零，关键词与标签、比例保留 */
+function applyDomain(next: Domain) {
+  domain.value = next
+  filters.source = ''
+  filters.favorite_only = false
+  officialKind.value = ''
+  activeGroup.value = ''
+  activeSub.value = ''
+  exitSelect()
+  tagPopover.value?.close()
+  detailId.value = null
+  void nextTick(syncBeam)
+}
+
+// 页签之间平移的一束紫气（原型 relay-beam，340ms）：位置靠量，不写死
+const domainNav = ref<HTMLElement | null>(null)
+const beamX = ref(0)
+const beamReady = ref(false)
+const BEAM_W = 56
+function syncBeam() {
+  const el = domainNav.value?.querySelector<HTMLElement>('[aria-selected="true"]')
+  if (el) beamX.value = el.offsetLeft + el.offsetWidth / 2 - BEAM_W / 2
+}
+let navObserver: ResizeObserver | null = null
+
+/** 页签键盘：← / → 在五个域之间移动并切换（tablist 惯例） */
+function onDomainKey(e: KeyboardEvent) {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+  e.preventDefault()
+  const i = DOMAINS.findIndex((d) => d.key === domain.value)
+  const next = DOMAINS[(i + (e.key === 'ArrowRight' ? 1 : DOMAINS.length - 1)) % DOMAINS.length]!
+  setDomain(next.key)
+  void nextTick(() => domainNav.value?.querySelector<HTMLElement>(`[data-domain="${next.key}"]`)?.focus())
+}
+
+// ---------------- 图片域：Java 聚合分类树 ----------------
+
+/** 卡片上的 kind 中文名 */
 const KIND_LABELS: Record<string, string> = {
-  all: '全部',
   model: '模特',
   scene: '场景',
   makeup: '妆容',
   hair: '发型',
   accessory: '配饰',
-  uncategorized: '其他分类',
 }
-const kindLabel = (key: string) => KIND_LABELS[key] ?? key
+const kindLabel = (key: string) => (key ? (KIND_LABELS[key] ?? key) : '')
 
 /**
- * 分类条：Java 聚合分类树（GET /api/v1/asset/categories）。首项「全部」不是分类、不传 entry_codes；
+ * 分类条：GET /api/v1/asset/categories。首项「全部」不是分类、不传 entry_codes；
  * 其后一级 tab，选中有二级的一级时出二级 chip（首个为该组「全部」= 各二级入口码之并）。
  * 二级里 __other 结尾的「其他」是后端合成的虚拟分类，照常渲染（key 用 categoryCode，id 可能为 null）。
  */
 const tree = ref<IAssetCategoryNode[]>([])
-/** Go 分类计数：只取 all 作「全部」计数（随来源 / 类型变化） */
+/** Go 分类计数：图片 / 视频域取 all 作「全部」计数；官方域取各 kind 计数 */
 const categories = ref<IAssetLibCategory[]>([])
-/** 选中的一级 categoryCode；空 = 全部 */
 const activeGroup = ref('')
-/** 选中的二级 categoryCode；空 = 该组全部 */
 const activeSub = ref('')
 
 const countOf = (key: string) => categories.value.find((c) => c.key === key)?.count ?? 0
-/** 当前来源 / 类型下的资产总数（分类条「全部」计数） */
 const allCount = computed(() => countOf('all'))
 
 const childrenOf = (n: IAssetCategoryNode) => n.children ?? []
@@ -66,7 +175,6 @@ const groupItems = computed(() => [
   { key: '', label: '全部', count: allCount.value },
   ...tree.value.map((n) => ({ key: n.categoryCode, label: n.categoryName, count: n.count ?? 0 })),
 ])
-/** 二级 chip：首个为该组「全部」（key 空），没有二级时不显示 */
 const subItems = computed(() => {
   const node = activeNode.value
   const kids = node ? childrenOf(node) : []
@@ -85,10 +193,18 @@ function selectGroup(key: string) {
 function selectSub(key: string) {
   activeSub.value = activeSub.value === key ? '' : key
 }
+/** 分类条末尾「我的收藏」与筛选面板的收藏开关同一个 favorite_only：选分类 = 关掉只看收藏 */
+function pickGroup(key: string) {
+  filters.favorite_only = false
+  selectGroup(key)
+}
+function pickFavorite() {
+  selectGroup('')
+  filters.favorite_only = true
+}
 
 /**
- * 当前分类的列表筛选：null = 不限（全部）。
- * 按素材类型的节点（创作素材 / 其下二级）走 kind_group / kind；旧的入口码节点仍走 entry_codes。
+ * 当前分类的列表筛选：null = 不限。按素材类型的节点走 kind_group / kind；入口码节点走 entry_codes。
  * entry_codes 为空串 = 选中的节点没有任何入口（直接视为空列表，不发请求）。
  */
 function categoryFilter(): { kind?: string; kind_group?: AssetLibKindGroup; entry_codes?: string } | null {
@@ -106,46 +222,48 @@ async function loadTree() {
     const res = await assetCategoryTree()
     tree.value = Array.isArray(res.data) ? res.data : []
   } catch {
-    // 分类树拉失败不挡列表：分类条只剩「全部」
-    tree.value = []
+    tree.value = [] // 分类树拉失败不挡列表：分类条只剩「全部」
   }
-  // 选中的分类已不在树里：回到全部
   if (activeGroup.value && !activeNode.value) selectGroup('')
 }
 
-async function loadCategories() {
-  try {
-    const res = await assetLibCategories({
-      source: filters.source || undefined,
-      media: filters.media || undefined,
-    })
-    categories.value = res.data?.items ?? []
-  } catch {
-    // 计数拉失败不挡列表：「全部」计数置 0，下次换筛选会重试
-    categories.value = []
-  }
+// ---------------- 官方资产库：kind 二级分类 ----------------
+
+const OFFICIAL_KINDS = [
+  { key: '', label: '全部' },
+  { key: 'model', label: '模特' },
+  { key: 'scene', label: '场景' },
+  { key: 'makeup', label: '妆容' },
+  { key: 'hair', label: '发型' },
+  { key: 'accessory', label: '配饰' },
+]
+const officialKind = ref('')
+function pickOfficialKind(key: string) {
+  officialKind.value = key && officialKind.value !== key ? key : ''
 }
 
 // ---------------- 筛选 ----------------
 
-const SOURCE_OPTIONS = [
-  { label: '全部来源', value: '' },
-  { label: '我的素材', value: 'input' }, // input = official + upload
-  { label: 'AI 生成', value: 'generated' },
-  { label: '官方', value: 'official' },
-  { label: '上传', value: 'upload' },
+/** 图片 / 视频的来源：只用后端 source 真实取值，不造「智能体 / 画布」这类后端分不出来的来源 */
+const SOURCE_TABS = [
+  { value: '', label: '全部' },
+  { value: 'generated', label: 'AI 生成' },
+  { value: 'upload', label: '上传' },
+  { value: 'official', label: '官方' },
 ]
 
 const filters = reactive({
   source: '',
-  media: '',
   favorite_only: false,
   q: '',
   tag: '',
   aspect_ratio: '',
 })
+/** 来源再点一次回到「全部」 */
+function pickSource(v: string) {
+  filters.source = v && filters.source !== v ? v : ''
+}
 
-/** 比例（素材的 aspect_ratio 精确匹配） */
 const RATIO_OPTIONS = [
   { label: '全部', value: '' },
   { label: '1:1', value: '1:1' },
@@ -155,153 +273,190 @@ const RATIO_OPTIONS = [
   { label: '16:9', value: '16:9' },
 ]
 
-// 页头范围 / 类型切换（原型：输入资产 / 生成结果；图片 / 视频）：再点一次取消，回到「全部」
-const SCOPE_TABS = [
-  { label: '输入资产', value: 'input' },
-  { label: '生成结果', value: 'generated' },
-]
-const MEDIA_TABS = [
-  { label: '图片', value: 'image' },
-  { label: '视频', value: 'video' },
-]
-function toggleSource(v: string) {
-  filters.source = filters.source === v ? '' : v
-}
-function toggleMedia(v: string) {
-  filters.media = filters.media === v ? '' : v
-}
-
-/**
- * 分类条末尾的「我的收藏」tab：与筛选面板的收藏开关同一个 filters.favorite_only。
- * 选它 = 回到全部分类 + 只看收藏；选任一分类 tab = 关掉只看收藏。收藏没有计数源，不显示计数。
- */
-function pickGroup(key: string) {
-  filters.favorite_only = false
-  selectGroup(key)
-}
-function pickFavorite() {
-  selectGroup('')
-  filters.favorite_only = true
-}
-
 const filterOpen = ref(false)
-const activeFilterCount = computed(
-  () => (filters.source ? 1 : 0) + (filters.favorite_only ? 1 : 0) + (filters.aspect_ratio ? 1 : 0),
+const activeFilterCount = computed(() => (filters.favorite_only ? 1 : 0) + (filters.aspect_ratio ? 1 : 0))
+
+/** 关键词防抖后才进查询 */
+const debouncedQ = ref('')
+useDebounce({ data: () => filters.q, callback: () => (debouncedQ.value = filters.q.trim()) })
+
+/** 有没有任何筛选在生效（空态据此给「清除筛选」） */
+const hasFilter = computed(
+  () =>
+    !!filters.source ||
+    !!filters.tag ||
+    filters.favorite_only ||
+    !!filters.aspect_ratio ||
+    !!activeGroup.value ||
+    !!officialKind.value,
 )
-const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)'
-const TAB_CLS =
-  'inline-flex items-center h-28px px-10px rounded-6px border-none bg-transparent text-12px cursor-pointer ' + FOCUS
-const TOOL_CLS =
-  'inline-flex items-center gap-6px h-34px px-10px rounded-8px border border-solid border-line bg-white text-13px font-500 text-ink-2 cursor-pointer whitespace-nowrap hover:border-line-strong ' +
-  FOCUS
+function clearFilters() {
+  filters.source = ''
+  filters.tag = ''
+  filters.favorite_only = false
+  filters.aspect_ratio = ''
+  officialKind.value = ''
+  selectGroup('')
+}
 
-/** 空态文案（原型） */
-const emptyCopy = computed(() => {
-  if (filters.source === 'generated')
-    return { title: '还没有生成结果', desc: '在画布里执行模型节点，成功后会自动出现在这里。' }
-  if (filters.media === 'video')
-    return { title: '没有匹配的视频资产', desc: '输入资产里还没有视频；画布生成的视频在「生成结果」范围。' }
-  return { title: '没有匹配的素材', desc: '换个关键词，或从画布生成后再回来。' }
-})
+// ---------------- 标签带（我的标签字典） ----------------
 
-// ---------------- 列表 ----------------
-
-const PAGE_SIZE = 20
-
-const items = ref<IAssetLibAsset[]>([])
-const total = ref(0)
-const page = ref(0)
-const loading = ref(false)
-const loadingMore = ref(false)
-const hasMore = computed(() => items.value.length < total.value)
-
-async function loadPage(p: number): Promise<IAssetLibAsset[]> {
-  const cat = categoryFilter()
-  // 选中的旧分类没有任何入口：不发请求（不传 entry_codes 会变成「不限」）
-  if (cat?.entry_codes === '') {
-    total.value = 0
-    return []
+const tags = ref<IAssetLibTag[]>([])
+async function loadTags() {
+  try {
+    const res = await assetLibTags()
+    tags.value = (res.data?.items ?? []).slice().sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+  } catch {
+    // 拉失败沿用上次的字典
   }
-  const res = await assetLibList({
-    ...(cat ?? {}),
-    entry_codes: cat?.entry_codes || undefined,
-    source: filters.source || undefined,
-    media: filters.media || undefined,
+}
+function toggleTag(name: string) {
+  filters.tag = filters.tag === name ? '' : name
+}
+
+// ---------------- 列表（分页） ----------------
+
+const PAGE_SIZE = 32
+
+/** 当前域的列表参数；null = 非资产域；'empty' = 选中的分类没有任何入口（不发请求） */
+const listParams = computed<IAssetLibListParams | 'empty' | null>(() => {
+  const base: IAssetLibListParams = {
     aspect_ratio: filters.aspect_ratio || undefined,
     tag: filters.tag || undefined,
     favorite_only: filters.favorite_only || undefined,
-    q: filters.q || undefined,
-    page: p,
-    page_size: PAGE_SIZE,
-  })
-  total.value = res.data?.total ?? 0
-  return res.data?.items ?? []
-}
-
-/** 首屏 / 筛选变化：回到第 1 页，多选状态一并清掉 */
-async function reload() {
-  loading.value = true
-  try {
-    items.value = await loadPage(1)
-    page.value = 1
-    selectedIds.value = []
-  } finally {
-    loading.value = false
+    q: debouncedQ.value || undefined,
   }
-}
-
-/** 触底 / 按钮加载下一页 */
-async function loadMore() {
-  if (loadingMore.value || loading.value || !hasMore.value) return
-  loadingMore.value = true
-  try {
-    const next = page.value + 1
-    items.value.push(...(await loadPage(next)))
-    page.value = next
-  } finally {
-    loadingMore.value = false
+  switch (domain.value) {
+    case 'official':
+      return { ...base, source: 'official', kind: officialKind.value || undefined }
+    case 'video':
+      return { ...base, source: filters.source || undefined, media: 'video' }
+    case 'image': {
+      const cat = categoryFilter()
+      if (cat?.entry_codes === '') return 'empty'
+      return {
+        ...base,
+        ...(cat ?? {}),
+        entry_codes: cat?.entry_codes || undefined,
+        source: filters.source || undefined,
+        media: 'image',
+      }
+    }
+    default:
+      return null
   }
-}
-
-/**
- * 静默刷新已加载的全部分页（变更后的同步）：各页并发拉取后原样拼接，
- * 不打乱用户已看到的顺序，也不动筛选与多选。
- */
-async function silentRefresh() {
-  if (!page.value) return
-  const pages = await Promise.all(Array.from({ length: page.value }, (_, i) => loadPage(i + 1)))
-  items.value = pages.flat()
-}
-
-// 筛选变化：分类条计数随 source / media 变，列表重查
-watch(
-  () => [filters.source, filters.media, filters.favorite_only, filters.tag],
-  () => {
-    void loadCategories()
-    void reload()
-  },
-)
-// 比例不影响分类计数，只重查列表
-watch([activeGroup, activeSub, () => filters.aspect_ratio], () => {
-  void reload()
 })
-useDebounce({ data: () => filters.q, callback: () => void reload() })
+const listKey = computed(() => JSON.stringify(listParams.value))
+
+const items = ref<IAssetLibAsset[]>([])
+const total = ref(0)
+const page = ref(1)
+const loading = ref(false)
+const loadError = ref(false)
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
+
+/** 详情跨页翻到下一页 / 上一页后要打开的位置 */
+let pendingEdge: 'first' | 'last' | null = null
+let seq = 0
+
+/** 拉当前页。silent = 变更后的静默同步：不出加载态、失败不清空 */
+async function load(silent = false) {
+  const params = listParams.value
+  if (!params) return
+  const cur = ++seq
+  if (!silent) {
+    loading.value = true
+    loadError.value = false
+  }
+  try {
+    if (params === 'empty') {
+      items.value = []
+      total.value = 0
+      return
+    }
+    const res = await assetLibList({ ...params, page: page.value, page_size: PAGE_SIZE })
+    if (cur !== seq) return
+    items.value = res.data?.items ?? []
+    total.value = res.data?.total ?? 0
+    // 取消收藏等让本页空了：退到最后一页
+    if (!items.value.length && total.value > 0 && page.value > 1) {
+      page.value = Math.ceil(total.value / PAGE_SIZE)
+      return
+    }
+    if (pendingEdge && items.value.length) {
+      const target = pendingEdge === 'first' ? items.value[0] : items.value[items.value.length - 1]
+      if (target) detailId.value = target.id
+    }
+    pendingEdge = null
+  } catch {
+    if (cur !== seq) return
+    pendingEdge = null
+    if (!silent) {
+      items.value = []
+      total.value = 0
+      loadError.value = true
+    }
+  } finally {
+    if (cur === seq) loading.value = false
+  }
+}
+const silentRefresh = () => load(true)
+
+let catSeq = 0
+async function loadCategories() {
+  if (!isAssetDomain.value) return
+  const d = domain.value
+  const cur = ++catSeq
+  try {
+    const res = await assetLibCategories(
+      d === 'official'
+        ? { source: 'official' }
+        : { source: filters.source || undefined, media: d },
+    )
+    if (cur === catSeq && d === domain.value) categories.value = res.data?.items ?? []
+  } catch {
+    if (cur !== catSeq) return
+    categories.value = [] // 计数拉失败不挡列表
+  }
+}
+
+const scroller = ref<HTMLElement | null>(null)
+
+// 查询条件变化：回到第 1 页（已在第 1 页就直接拉），多选清空
+watch(listKey, () => {
+  selectedIds.value = []
+  selectedAssets.clear()
+  pendingEdge = null
+  if (page.value !== 1) page.value = 1
+  else void load()
+})
+watch(page, () => {
+  void load()
+  scroller.value?.scrollTo({ top: 0 })
+})
+// 计数只随域与来源变
+watch([domain, () => filters.source], () => {
+  categories.value = []
+  void loadCategories()
+})
 
 onMounted(() => {
   void loadTree()
   void loadCategories()
-  void reload()
+  void loadTags()
+  void load()
+  void nextTick(() => {
+    syncBeam()
+    requestAnimationFrame(() => (beamReady.value = true))
+  })
+  if (domainNav.value && 'ResizeObserver' in window) {
+    navObserver = new ResizeObserver(syncBeam)
+    navObserver.observe(domainNav.value)
+  }
 })
+onBeforeUnmount(() => navObserver?.disconnect())
 
-// 触底加载：滚动容器距底 240px 内预取下一页
-const scroller = ref<HTMLElement | null>(null)
-function onScroll() {
-  const el = scroller.value
-  if (!el || loading.value || loadingMore.value || !hasMore.value) return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) void loadMore()
-}
-
-// ---------------- 收藏（即点即存，静默成功） ----------------
+// ---------------- 收藏（即点即存） ----------------
 
 async function toggleFavorite(asset: IAssetLibAsset) {
   const next = !asset.favorite
@@ -315,26 +470,53 @@ async function toggleFavorite(asset: IAssetLibAsset) {
   if (!next && filters.favorite_only) {
     items.value = items.value.filter((i) => i.id !== asset.id)
     total.value = Math.max(0, total.value - 1)
+    // 本页被取空且不在第 1 页：退到最后一个有效页（page 变化会触发重查）
+    if (!items.value.length && page.value > 1) page.value = Math.min(page.value - 1, pageCount.value)
   }
 }
 
 // ---------------- 多选与批量打标签 ----------------
 
+const selectMode = ref(false)
 const selectedIds = ref<number[]>([])
+/** 多选态：点了「选择」，或已经勾了任意一张（悬停多选框直接勾也算） */
+const selecting = computed(() => selectMode.value || selectedIds.value.length > 0)
+
+/** 已选资产的快照：已选跨页保留，翻页后 items 里没有它们，「用于画布」要靠这里取地址 */
+const selectedAssets = new Map<number, IAssetLibAsset>()
+function rememberSelected(asset: IAssetLibAsset | undefined) {
+  if (asset) selectedAssets.set(asset.id, asset)
+}
 
 function toggleSelect(id: number) {
   const i = selectedIds.value.indexOf(id)
   if (i >= 0) selectedIds.value.splice(i, 1)
-  else selectedIds.value.push(id)
+  else {
+    selectedIds.value.push(id)
+    rememberSelected(items.value.find((it) => it.id === id))
+  }
+}
+/** 本页：把当前页全部并进已选（跨页已选的保留） */
+function selectPage() {
+  items.value.forEach(rememberSelected)
+  selectedIds.value = [...new Set([...selectedIds.value, ...items.value.map((i) => i.id)])]
+}
+function exitSelect() {
+  selectMode.value = false
+  selectedIds.value = []
+  selectedAssets.clear()
 }
 
-/** 选择本页：勾选当前已加载的全部资产（批量打标签上限仍在 openBatchTag 校验） */
-function selectPage() {
-  selectedIds.value = items.value.map((i) => i.id)
+// 多选「用于画布」：已选的图片 / 视频一起带进一张新画布
+const { opening: openingCanvas, openAssetsInCanvas } = useAssetsInCanvas()
+function useSelectedInCanvas() {
+  const picked = selectedIds.value
+    .map((id) => selectedAssets.get(id) ?? items.value.find((it) => it.id === id))
+    .filter((a): a is IAssetLibAsset => !!a)
+  void openAssetsInCanvas(picked)
 }
 
 const showBatchTag = ref(false)
-
 function openBatchTag() {
   if (!selectedIds.value.length) return
   if (selectedIds.value.length > 100) {
@@ -343,64 +525,232 @@ function openBatchTag() {
   }
   showBatchTag.value = true
 }
-
 function onBatchTagged() {
-  selectedIds.value = []
+  exitSelect()
   void silentRefresh()
+  void loadTags()
 }
 
-// ---------------- 标签管理 / 详情 ----------------
+// ---------------- 标签管理 / 单卡打标签 / 详情 ----------------
 
 const showTagManager = ref(false)
 
-/** 标签重命名/删除会影响卡片上的标签名；若删掉的正被用作筛选，清掉筛选 */
+/** 标签重命名 / 删除会影响卡片上的标签名；若删掉的正被用作筛选，清掉筛选 */
 function onTagsChanged(deletedName?: string) {
+  void loadTags()
   if (deletedName && filters.tag === deletedName) {
-    filters.tag = '' // watch 会触发整页重查
+    filters.tag = '' // 查询条件变了，watch 会整页重查
     return
   }
   void silentRefresh()
 }
 
-const detailId = ref<number | null>(null)
+function onPopoverChanged() {
+  void loadTags()
+  void silentRefresh()
+}
+function onDetailChanged() {
+  void loadTags()
+  void silentRefresh()
+}
 
-/** 单卡快捷打标签浮层（页面一个实例，卡片唤起） */
 const tagPopover = ref<InstanceType<typeof AssetTagPopover> | null>(null)
+function editTags(asset: IAssetLibAsset, el: HTMLElement) {
+  tagPopover.value?.open(asset, el)
+}
 
+const detailId = ref<number | null>(null)
 function openDetail(asset: IAssetLibAsset) {
   detailId.value = asset.id
 }
+
+/** 详情里的上一个 / 下一个：按当前筛选的顺序走，越过本页边界就翻页（翻完打开新页首 / 尾） */
+const detailIndex = computed(() =>
+  detailId.value == null ? -1 : items.value.findIndex((i) => i.id === detailId.value),
+)
+// 跨页加载中 items 暂时换了一批，detailIndex 会变 -1：沿用上次的值，避免翻页钮被摘掉、焦点丢失
+const navPrev = ref(false)
+const navNext = ref(false)
+watchEffect(() => {
+  if (loading.value && detailIndex.value < 0) return
+  navPrev.value = detailIndex.value > 0 || (detailIndex.value === 0 && page.value > 1)
+  navNext.value = detailIndex.value >= 0 && (detailIndex.value < items.value.length - 1 || page.value < pageCount.value)
+})
+const detailHasPrev = navPrev
+const detailHasNext = navNext
+function openSibling(delta: 1 | -1) {
+  const i = detailIndex.value
+  if (i < 0 || loading.value) return
+  const target = items.value[i + delta]
+  if (target) {
+    detailId.value = target.id
+    return
+  }
+  const nextPage = page.value + delta
+  if (nextPage < 1 || nextPage > pageCount.value) return
+  pendingEdge = delta > 0 ? 'first' : 'last'
+  page.value = nextPage
+}
+
+// ---------------- 空态 ----------------
+
+const emptyCopy = computed(() => {
+  if (debouncedQ.value) return { text: '没有匹配的资产', desc: '换个关键词试试。' }
+  if (filters.tag) return { text: `「${filters.tag}」下没有资产`, desc: '换个标签，或清除筛选。' }
+  if (filters.favorite_only) return { text: '还没有收藏', desc: '点卡片右上角的星标，常用的资产会集中到这里。' }
+  if (hasFilter.value) return { text: '没有符合筛选的资产', desc: '换个来源或分类，或清除筛选。' }
+  switch (domain.value) {
+    case 'video':
+      return { text: '还没有视频资产', desc: '用 AI 视频工具生成的视频会自动出现在这里。' }
+    case 'official':
+      return { text: '还没有官方资产', desc: '官方资产库暂时没有记录。' }
+    default:
+      return { text: '还没有图片资产', desc: '生成的图片和上传的素材会自动出现在这里。' }
+  }
+})
 </script>
 
 <template>
   <n-config-provider :theme-overrides="llTheme" abstract>
-    <div class="h-full flex flex-col bg-page text-ink">
-      <header class="flex items-center gap-8px shrink-0 px-20px py-14px bg-white border-b border-b-solid border-line">
-        <h1 class="sr-only">资产</h1>
-        <span class="grid text-muted" aria-hidden="true">
-          <svg
-            class="w-20px h-20px"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-            stroke-linejoin="round"
-          >
-            <path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
-          </svg>
-        </span>
-        <label
-          class="flex items-center gap-6px w-230px h-30px ml-14px px-10px rounded-6px border border-solid border-line bg-surface2 text-placeholder focus-within:(border-violet-line bg-white)"
+    <div class="h-full min-h-0 flex flex-col overflow-hidden bg-page text-ink">
+      <h1 class="sr-only">资产</h1>
+      <!-- 第一层：五个域（56 高）+ 右侧操作 -->
+      <header class="flex items-center gap-10px shrink-0 h-56px px-20px bg-white border-b border-b-solid border-line-soft">
+        <nav
+          ref="domainNav"
+          class="relative flex items-stretch shrink-0 h-56px gap-1px"
+          role="tablist"
+          aria-label="资产类型"
+          @keydown="onDomainKey"
         >
-          <svg
-            class="w-14px h-14px shrink-0"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
+          <span
+            class="asset-beam"
+            :class="beamReady && 'is-ready'"
+            :style="{ transform: `translateX(${beamX}px)` }"
             aria-hidden="true"
           >
+            <i class="absolute left-1/2 bottom-2px w-16px h-2px -ml-8px rounded-full bg-violet" />
+          </span>
+          <button
+            v-for="d in DOMAINS"
+            :key="d.key"
+            type="button"
+            role="tab"
+            :data-domain="d.key"
+            :aria-selected="domain === d.key"
+            :tabindex="domain === d.key ? 0 : -1"
+            class="relative z-1 inline-flex items-center justify-center h-56px px-13px max-lg:px-8px border-none bg-transparent text-13px font-500 whitespace-nowrap cursor-pointer transition-colors duration-mid sx-focus focus-visible:-outline-offset-4"
+            :class="domain === d.key ? 'text-ink' : 'text-muted hover:text-ink'"
+            @click="setDomain(d.key)"
+          >
+            {{ d.label }}
+          </button>
+        </nav>
+
+        <div v-if="isAssetDomain" class="flex items-center gap-8px ml-auto min-w-0">
+          <template v-if="!selecting">
+            <button type="button" :class="TOOL_CLS" @click="selectMode = true">选择</button>
+            <button
+              type="button"
+              :aria-expanded="filterOpen"
+              :class="[TOOL_CLS, (filterOpen || activeFilterCount) && TOOL_ON]"
+              @click="filterOpen = !filterOpen"
+            >
+              筛选<span v-if="activeFilterCount" class="text-11px tabular-nums">{{ activeFilterCount }}</span>
+            </button>
+            <button type="button" :class="TOOL_CLS" @click="showTagManager = true">标签管理</button>
+          </template>
+          <template v-else>
+            <span class="text-12px font-600 text-violet-ink whitespace-nowrap" aria-live="polite">已选 {{ selectedIds.length }}</span>
+            <button
+              type="button"
+              :class="TOOL_CLS"
+              :disabled="!selectedIds.length"
+              :title="selectedIds.length ? undefined : '先勾选要打标签的资产'"
+              @click="openBatchTag"
+            >
+              批量打标签
+            </button>
+            <button
+              type="button"
+              :class="TOOL_CLS"
+              :disabled="!selectedIds.length || openingCanvas"
+              :aria-busy="openingCanvas || undefined"
+              :title="selectedIds.length ? '新建一张画布，把已选素材放进去' : '先勾选要用于画布的资产'"
+              @click="useSelectedInCanvas"
+            >
+              {{ openingCanvas ? '正在创建画布…' : '用于画布' }}
+            </button>
+            <button type="button" :class="TOOL_CLS" @click="selectPage">选择本页</button>
+            <button type="button" :class="TOOL_CLS" @click="exitSelect">取消</button>
+          </template>
+        </div>
+        <router-link
+          v-else-if="domain === 'prompt'"
+          to="/prompt-library"
+          class="sx-btn ml-auto no-underline"
+        >
+          管理提示词
+        </router-link>
+      </header>
+
+      <!-- 第二层：来源 / 官方分类 + 标签带 + 搜索（44 高） -->
+      <div v-if="isAssetDomain" :class="ROW_CLS">
+        <template v-if="domain === 'official'">
+          <span :class="ROW_LABEL_CLS">分类</span>
+          <div class="flex items-center gap-6px shrink-0" role="group" aria-label="官方资产分类">
+            <button
+              v-for="k in OFFICIAL_KINDS"
+              :key="k.key || '__all'"
+              type="button"
+              :aria-pressed="officialKind === k.key"
+              :class="[PILL_CLS, officialKind === k.key ? PILL_ON : PILL_OFF]"
+              @click="pickOfficialKind(k.key)"
+            >
+              {{ k.label }}
+              <em v-if="categories.length" :class="PILL_COUNT_CLS" class="not-italic">{{ countOf(k.key || 'all') }}</em>
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <span :class="ROW_LABEL_CLS">来源</span>
+          <div class="flex items-center gap-6px shrink-0" role="group" aria-label="来源">
+            <button
+              v-for="s in SOURCE_TABS"
+              :key="s.value || '__all'"
+              type="button"
+              :aria-pressed="filters.source === s.value"
+              :class="[PILL_CLS, filters.source === s.value ? PILL_ON : PILL_OFF]"
+              @click="pickSource(s.value)"
+            >
+              {{ s.label }}
+            </button>
+          </div>
+        </template>
+
+        <template v-if="tags.length">
+          <span class="shrink-0 w-1px h-20px mx-2px bg-line" aria-hidden="true" />
+          <span :class="ROW_LABEL_CLS">标签</span>
+          <div
+            class="flex items-center gap-6px min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            role="group"
+            aria-label="按标签筛选"
+          >
+            <button
+              v-for="t in tags"
+              :key="t.id"
+              type="button"
+              :aria-pressed="filters.tag === t.name"
+              :class="[PILL_CLS, filters.tag === t.name ? PILL_ON : PILL_OFF]"
+              @click="toggleTag(t.name)"
+            >
+              {{ t.name }}<em :class="PILL_COUNT_CLS" class="not-italic">{{ t.asset_count }}</em>
+            </button>
+          </div>
+        </template>
+
+        <label :class="SEARCH_CLS">
+          <svg class="w-13px h-13px shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
             <circle cx="11" cy="11" r="6.5" />
             <path d="m16 16 4 4" />
           </svg>
@@ -408,241 +758,184 @@ function openDetail(asset: IAssetLibAsset) {
             v-model="filters.q"
             type="search"
             aria-label="搜索资产"
-            placeholder="搜索资产"
+            placeholder="搜索标题 / 提示词"
             class="min-w-0 flex-1 border-none outline-none bg-transparent text-12px text-ink placeholder:text-placeholder"
           />
         </label>
-        <div
-          class="flex gap-2px p-2px ml-6px rounded-8px border border-solid border-line bg-surface2"
-          role="group"
-          aria-label="资产范围"
-        >
-          <button
-            v-for="s in SCOPE_TABS"
-            :key="s.value"
-            type="button"
-            :aria-pressed="filters.source === s.value"
-            :class="[
-              TAB_CLS,
-              filters.source === s.value ? 'bg-violet-soft text-violet-ink' : 'text-muted hover:text-ink',
-            ]"
-            @click="toggleSource(s.value)"
-          >
-            {{ s.label }}
-            <span v-if="filters.source === s.value" class="ml-6px text-11px">{{ allCount }}</span>
-          </button>
-        </div>
-        <div class="flex gap-8px ml-auto" role="group" aria-label="资产类型">
-          <button
-            v-for="m in MEDIA_TABS"
-            :key="m.value"
-            type="button"
-            :aria-pressed="filters.media === m.value"
-            :class="[
-              'inline-flex items-center gap-6px min-w-82px h-34px px-14px rounded-8px border border-solid text-14px font-500 cursor-pointer',
-              filters.media === m.value
-                ? 'bg-violet-soft border-violet-line text-violet-ink'
-                : 'bg-transparent border-transparent text-muted hover:text-ink',
-              FOCUS,
-            ]"
-            @click="toggleMedia(m.value)"
-          >
-            {{ m.label }}
-          </button>
-        </div>
-      </header>
+      </div>
 
-      <div ref="scroller" class="flex-1 min-h-0 overflow-auto px-20px pb-32px" @scroll="onScroll">
-        <div class="flex items-start gap-12px pt-20px pb-16px">
-          <div class="flex flex-col gap-8px min-w-0">
-            <div class="flex flex-wrap items-center gap-8px">
-              <button
-                v-for="g in groupItems"
-                :key="g.key || '__all'"
-                type="button"
-                :aria-pressed="!filters.favorite_only && activeGroup === g.key"
-                :class="[
-                  'inline-flex items-center gap-6px h-34px px-10px rounded-8px border border-solid text-13px font-500 cursor-pointer',
-                  !filters.favorite_only && activeGroup === g.key
-                    ? 'bg-violet-soft border-violet-line text-violet-ink'
-                    : 'bg-white border-line text-ink-2 hover:border-line-strong',
-                  FOCUS,
-                ]"
-                @click="pickGroup(g.key)"
-              >
-                {{ g.label }}
-                <span
-                  class="px-5px py-1px rounded-4px text-10px"
-                  :class="
-                    !filters.favorite_only && activeGroup === g.key
-                      ? 'bg-white/70 text-violet-ink'
-                      : 'bg-surface3 text-muted'
-                  "
-                  >{{ g.count }}</span
-                >
-              </button>
-              <button
-                type="button"
-                :aria-pressed="filters.favorite_only"
-                :class="[
-                  'inline-flex items-center gap-6px h-34px px-10px rounded-8px border border-solid text-13px font-500 cursor-pointer',
-                  filters.favorite_only
-                    ? 'bg-violet-soft border-violet-line text-violet-ink'
-                    : 'bg-white border-line text-ink-2 hover:border-line-strong',
-                  FOCUS,
-                ]"
-                @click="pickFavorite"
-              >
-                我的收藏
-              </button>
-              <button
-                v-if="filters.tag"
-                type="button"
-                :class="[
-                  'inline-flex items-center gap-4px h-34px px-10px rounded-8px border border-solid border-violet-line bg-info-soft text-13px text-violet-ink cursor-pointer',
-                  FOCUS,
-                ]"
-                title="点击清除"
-                @click="filters.tag = ''"
-              >
-                标签：{{ filters.tag }} ×
-              </button>
-            </div>
-            <div
-              v-if="subItems.length"
-              class="flex flex-wrap items-center gap-8px pl-12px"
-              role="group"
-              :aria-label="`${groupItems.find((g) => g.key === activeGroup)?.label ?? ''}二级分类`"
+      <!-- 提示词域：自带筛选条与列表 -->
+      <PromptDomain v-if="domain === 'prompt'" v-model:q="filters.q" />
+
+      <!-- 音频：没有后端，只放空态 -->
+      <div v-else-if="domain === 'audio'" class="flex-1 min-h-0 overflow-auto px-20px">
+        <PageEmpty text="还没有音频资产" description="音频资产还没有开放，开放后生成的配音、音乐会自动出现在这里。" />
+      </div>
+
+      <div v-else ref="scroller" class="flex-1 min-h-0 overflow-auto px-20px pt-14px pb-20px">
+        <!-- 图片域：聚合分类条 -->
+        <div v-if="domain === 'image'" class="flex flex-col gap-8px mb-12px">
+          <div class="flex flex-wrap items-center gap-8px" role="group" aria-label="资产分类" title="分类数量统计全部来源，不随来源、媒体筛选变化">
+            <button
+              v-for="g in groupItems"
+              :key="g.key || '__all'"
+              type="button"
+              :aria-pressed="!filters.favorite_only && activeGroup === g.key"
+              :class="[PILL_CLS, !filters.favorite_only && activeGroup === g.key ? PILL_ON : PILL_OFF]"
+              @click="pickGroup(g.key)"
             >
-              <button
-                v-for="c in subItems"
-                :key="c.key || '__all'"
-                type="button"
-                :aria-pressed="activeSub === c.key"
-                :class="[
-                  'inline-flex items-center gap-6px h-30px px-10px rounded-8px border border-solid text-12px font-500 cursor-pointer',
-                  activeSub === c.key
-                    ? 'bg-violet-soft border-violet-line text-violet-ink'
-                    : 'bg-white border-line text-muted hover:border-line-strong hover:text-ink-2',
-                  FOCUS,
-                ]"
-                @click="selectSub(c.key)"
-              >
-                {{ c.label }}
-                <span
-                  class="px-5px py-1px rounded-4px text-10px"
-                  :class="activeSub === c.key ? 'bg-white/70 text-violet-ink' : 'bg-surface3 text-muted'"
-                  >{{ c.count }}</span
-                >
-              </button>
-            </div>
-          </div>
-          <div class="flex items-center gap-6px ml-auto shrink-0">
-            <span class="mr-6px text-12px text-muted whitespace-nowrap">共 {{ total }} 项</span>
+              {{ g.label }}<em :class="PILL_COUNT_CLS" class="not-italic">{{ g.count }}</em>
+            </button>
             <button
               type="button"
-              :aria-expanded="filterOpen"
-              :class="[TOOL_CLS, filterOpen || activeFilterCount ? 'border-violet-line text-violet-ink' : '']"
-              @click="filterOpen = !filterOpen"
+              :aria-pressed="filters.favorite_only"
+              :class="[PILL_CLS, filters.favorite_only ? PILL_ON : PILL_OFF]"
+              @click="pickFavorite"
             >
-              筛选<span v-if="activeFilterCount" class="px-5px rounded-4px bg-violet-soft text-10px">{{
-                activeFilterCount
-              }}</span>
+              我的收藏
             </button>
-            <button type="button" :class="TOOL_CLS" @click="selectPage">
-              <span aria-hidden="true">✓</span> 选择本页
-            </button>
-            <button type="button" :class="TOOL_CLS" title="新建标签 / 标签管理" @click="showTagManager = true">
-              <span aria-hidden="true">+</span> 新建标签
+          </div>
+          <div
+            v-if="subItems.length"
+            class="flex flex-wrap items-center gap-6px pl-12px"
+            role="group"
+            :aria-label="`${activeNode?.categoryName ?? ''}二级分类`"
+          >
+            <button
+              v-for="c in subItems"
+              :key="c.key || '__all'"
+              type="button"
+              :aria-pressed="activeSub === c.key"
+              :class="[PILL_CLS, activeSub === c.key ? PILL_ON : PILL_OFF]"
+              @click="selectSub(c.key)"
+            >
+              {{ c.label }}<em :class="PILL_COUNT_CLS" class="not-italic">{{ c.count }}</em>
             </button>
           </div>
         </div>
 
+        <!-- 筛选面板：比例 / 只看收藏 -->
         <div
           v-if="filterOpen"
-          class="flex flex-wrap items-center gap-12px px-14px py-10px mb-12px rounded-8px border border-solid border-line bg-white"
+          class="flex flex-wrap items-center gap-12px px-14px py-8px mb-12px sx-squircle rounded-14px border border-solid border-line bg-white"
         >
-          <label class="flex items-center gap-8px text-12px text-ink-2">
-            来源
-            <n-select v-model:value="filters.source" :options="SOURCE_OPTIONS" size="small" class="w-130px" />
-          </label>
-          <div class="flex items-center gap-6px text-12px text-ink-2" role="group" aria-label="比例">
-            <span class="mr-2px">比例</span>
+          <div class="flex flex-wrap items-center gap-6px" role="group" aria-label="比例">
+            <span :class="ROW_LABEL_CLS" class="mr-2px">比例</span>
             <button
               v-for="r in RATIO_OPTIONS"
-              :key="r.value"
+              :key="r.value || '__all'"
               type="button"
               :aria-pressed="filters.aspect_ratio === r.value"
-              :class="[
-                'inline-flex items-center h-26px px-8px rounded-6px border border-solid text-12px cursor-pointer',
-                filters.aspect_ratio === r.value
-                  ? 'bg-violet-soft border-violet-line text-violet-ink'
-                  : 'bg-white border-line text-ink-2 hover:border-line-strong',
-                FOCUS,
-              ]"
+              :class="[PILL_CLS, filters.aspect_ratio === r.value ? PILL_ON : PILL_OFF]"
               @click="filters.aspect_ratio = r.value"
             >
               {{ r.label }}
             </button>
           </div>
-          <label class="flex items-center gap-6px text-12px text-ink-2 whitespace-nowrap">
+          <label class="flex items-center gap-6px min-h-32px text-12px text-ink-2 whitespace-nowrap cursor-pointer">
             <n-switch v-model:value="filters.favorite_only" size="small" />
-            仅看收藏
+            只看收藏
           </label>
         </div>
 
-        <div
-          v-if="selectedIds.length"
-          class="flex items-center gap-12px px-14px py-8px mb-12px border border-solid border-violet-line rounded-8px bg-violet-soft text-13px text-violet-ink"
-        >
-          <span>已选 {{ selectedIds.length }} 项</span>
-          <n-button size="small" type="primary" @click="openBatchTag">批量打标签</n-button>
-          <n-button size="small" quaternary @click="selectedIds = []">取消选择</n-button>
-        </div>
-
-        <div
-          v-loading="loading"
-          class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-7 gap-16px min-h-240px"
-        >
-          <AssetCard
-            v-for="item in items"
-            :key="item.id"
-            :asset="item"
-            :kind-label="kindLabel(item.kind || 'uncategorized')"
-            :checked="selectedIds.includes(item.id)"
-            @toggle-select="toggleSelect"
-            @toggle-favorite="toggleFavorite"
-            @open="openDetail"
-            @filter-tag="(name: string) => (filters.tag = name)"
-            @edit-tags="(a: IAssetLibAsset, el: HTMLElement) => tagPopover?.open(a, el)"
-          />
-          <div
-            v-if="!loading && !items.length"
-            class="col-span-full flex flex-col items-center justify-center gap-6px h-360px text-muted"
-          >
-            <strong class="text-13px">{{ emptyCopy.title }}</strong>
-            <p class="m-0 text-12px">{{ emptyCopy.desc }}</p>
-          </div>
-        </div>
-
-        <div v-if="hasMore || loadingMore" class="text-center pt-16px pb-4px">
+        <!-- 生效中的标签筛选（标签带可能滚出视野，这里给个明确的清除口） -->
+        <div v-if="filters.tag" class="flex items-center gap-8px mb-12px">
           <button
             type="button"
-            class="p-0 border-none bg-transparent text-13px text-violet-ink cursor-pointer hover:text-violet-press focus-visible:(outline outline-2 outline-violet outline-offset-2)"
-            @click="loadMore"
+            class="inline-flex items-center gap-4px h-30px px-10px rounded-15px border border-solid border-violet-line bg-info-soft text-12px text-violet-ink cursor-pointer sx-focus"
+            :aria-label="`清除标签筛选 ${filters.tag}`"
+            @click="filters.tag = ''"
           >
-            {{ loadingMore ? '加载中…' : '加载更多' }}
+            标签：{{ filters.tag }} <span aria-hidden="true">×</span>
           </button>
         </div>
-        <div v-else-if="!loading && items.length" class="text-center pt-16px pb-4px text-13px text-placeholder">
-          已加载全部 {{ total }} 项
-        </div>
+
+        <PageLoadError v-if="loadError && !loading" subtitle="资产列表没有取到，请检查网络后重试" retryable @retry="load()" />
+        <template v-else>
+          <div
+            v-loading="loading"
+            class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-7 wide:grid-cols-8 items-start gap-8px min-h-240px"
+          >
+            <AssetCard
+              v-for="item in items"
+              :key="item.id"
+              :asset="item"
+              :kind-label="kindLabel(item.kind)"
+              :checked="selectedIds.includes(item.id)"
+              :selecting="selecting"
+              @toggle-select="toggleSelect"
+              @toggle-favorite="toggleFavorite"
+              @open="openDetail"
+              @filter-tag="toggleTag"
+              @edit-tags="editTags"
+            />
+            <div v-if="!loading && !items.length" class="col-span-full h-360px">
+              <PageEmpty :text="emptyCopy.text" :description="emptyCopy.desc">
+                <button v-if="debouncedQ" type="button" class="sx-btn" @click="filters.q = ''">清除搜索</button>
+                <button v-else-if="hasFilter" type="button" class="sx-btn" @click="clearFilters">清除筛选</button>
+              </PageEmpty>
+            </div>
+          </div>
+
+          <AssetPager v-model:page="page" :total="total" :page-size="PAGE_SIZE" :disabled="loading" />
+        </template>
       </div>
     </div>
 
-    <DetailModal v-model="detailId" @changed="silentRefresh" />
+    <DetailModal
+      v-model="detailId"
+      :has-prev="detailHasPrev"
+      :has-next="detailHasNext"
+      @changed="onDetailChanged"
+      @prev="openSibling(-1)"
+      @next="openSibling(1)"
+    />
     <TagManagerModal v-model:show="showTagManager" @changed="onTagsChanged" />
     <BatchTagModal v-model:show="showBatchTag" :asset-ids="selectedIds" @success="onBatchTagged" />
-    <AssetTagPopover ref="tagPopover" />
+    <AssetTagPopover ref="tagPopover" @changed="onPopoverChanged" />
   </n-config-provider>
 </template>
+
+<style scoped lang="less">
+// 页签之间平移的一束紫气（原型 relay-beam）：宽束白底紫气，模糊 + 左右渐隐；渐变与遮罩原子类写不下
+.asset-beam {
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  z-index: 0;
+  width: 56px;
+  height: 56px;
+  pointer-events: none;
+  opacity: 0;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 30px 26px at 50% 88%, rgba(174, 135, 196, 0.12), rgba(174, 135, 196, 0) 76%),
+      linear-gradient(
+        to top,
+        rgba(174, 135, 196, 0.14) 0%,
+        rgba(174, 135, 196, 0.2) 38%,
+        rgba(174, 135, 196, 0.09) 70%,
+        rgba(174, 135, 196, 0) 100%
+      );
+    mask-image: linear-gradient(to right, transparent 0%, #000 16%, #000 84%, transparent 100%);
+    filter: blur(12px);
+  }
+
+  &.is-ready {
+    opacity: 1;
+    transition:
+      transform 0.34s cubic-bezier(0.22, 0.61, 0.36, 1),
+      opacity 0.28s ease;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .asset-beam.is-ready {
+    transition: none;
+  }
+}
+</style>

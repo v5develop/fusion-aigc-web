@@ -7,7 +7,7 @@ import { useUserInfoStore } from '@/stores/userInfo'
 import warnIcon from '@/assets/icons/billing-warn.svg'
 
 /**
- * BillingGuideHost - 「积分不足 / 请先订阅」引导弹框
+ * BillingGuideHost - 「点数不足 / 请先订阅」引导弹框
  *
  * <p>背景：提交创作时后端可能返回 3003（点数余额不足）/ 3004（功能权限已过期）/
  * 46012（业务已过期）。这三类失败用户<b>可以自助解决</b>——去订阅套餐或买加油包就能继续，
@@ -34,7 +34,7 @@ interface GuideCopy {
  * （`code` 恰好等于 'toString' 之类时取到函数，`??` 兜底不生效）。同 DeviceNoticeHost。
  */
 const GUIDE_COPY = new Map<number, GuideCopy>([
-  [3003, { title: '积分不足', desc: '创作积分快用完啦～ 补点电继续玩转创作', action: '购买加油包' }],
+  [3003, { title: '点数不足', desc: '创作点数快用完啦～ 补点电继续玩转创作', action: '购买加油包' }],
   [3004, { title: '请先订阅', desc: '解锁订阅，AI创作随便玩～', action: '订阅套餐' }],
 ])
 // 46012「业务已过期」与 3004 是同一件事的两个抛出点，共用文案
@@ -49,7 +49,7 @@ const canBuy = hasBillingPage()
 
 const { updateUserInfo } = useUserInfoStore()
 
-/** 用户去买了：回到本页时刷新一次积分，让导航栏立刻显示新余额 */
+/** 用户去买了：回到本页时刷新一次点数，让导航栏立刻显示新余额 */
 let offFocus: (() => void) | null = null
 
 function watchFocus() {

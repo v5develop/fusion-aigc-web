@@ -1,14 +1,14 @@
 /**
- * 「AI 图片」「AI 视频」导航首页的内容表（对齐新原型 #/picture、#/video 的落地页）。
+ * 「AI 图片」「AI 视频」导航首页的内容表（对齐新原型 AI 图片 / AI 视频的落地页（本仓库路由 /image、/video））。
  *
  * <p>标题、描述、分组、短说明逐字抄自原型截图；名称、图标、路由一律取首页工具箱注册表（views/home/tools.ts），
  * 注册表里没有的条目（或没有 route 的）显示为「即将开放」，不自造路由。
- * 例外只有一条，是已有页面：视频生成指向 /video 自身，
- * 带上生成页本来就认的深链参数 entryCode=textToVideo，否则点了等于原地不动。
- * 原「本地生活」分组已移到本地生活导航首页（views/local-life/landingData.ts）。
+ * 商拍换装 / 姿态复刻指向商拍工作室页（/studio/*）；「图片生成」「视频生成」指向原型同名工具页（见下方常量）。
+ * 末尾「本地生活」分组复用本地生活导航首页（views/local-life/landingData.ts）里的条目，名称、图标、路由同源。
  */
 import { tools, type ToolItem } from '@/views/home/tools'
 import { workflowRouteOf } from '@/views/workflow/schemas'
+import { localLifeLanding, localLifeBannerTools } from '@/views/local-life/landingData'
 
 export interface LandingTool {
   /** 注册表 id；注册表没有的条目用本地 id，仅作 key */
@@ -42,22 +42,25 @@ export interface LandingPageData {
   title: string
   banners: LandingBanner[]
   sections: LandingSection[]
+  /** 底部「试着复刻这些爆款」货架（创意广场模板），仅 AI 图片 / AI 视频 */
+  shelf?: boolean
 }
 
 const byId = new Map<string, ToolItem>(tools.map((t) => [t.id, t]))
 
 /**
- * 带这些 query 进 /picture、/video 的是生成页的既有入口（容器深链 entryCode、做同款 sameStyleId/sameStyleSource），
- * 照旧打开生成页；不带的（左侧导航点进来）才是导航首页。
+ * 「图片生成」「视频生成」以原型为准：就是工具页 image-generate / ai-video-generator（原型 data/tools.ts，
+ * 历史 ai-image-generator / ai-video-generator），与左侧导航目录同一个页面；首屏主卡与分组卡都指向它，一个名字一个页面。
+ * 原通用生图 / 生视频页（/image/generate、/video/generate）原型里没有，不放卡片，只承接老深链与做同款。
  */
-const GENERATOR_QUERY_KEYS = ['entryCode', 'sameStyleId', 'sameStyleSource'] as const
-
-export function isGeneratorEntry(query: Record<string, unknown>): boolean {
-  return GENERATOR_QUERY_KEYS.some((k) => query[k] != null && query[k] !== '')
+const IMAGE_GENERATE_TOOL_ROUTE = '/tools/image-generate'
+const VIDEO_GENERATE_TOOL_ROUTE = '/tools/ai-video-generator'
+/** 商拍换装 / 姿态复刻走商拍工作室（Go 网关 /api/v1/studio，含多人配对等新能力） */
+const STUDIO_ROUTES: Record<string, string> = {
+  'ai-digital-model': '/studio/ai-digital-model',
+  'ai-posture-fission': '/studio/ai-posture-fission',
+  'image-generate': IMAGE_GENERATE_TOOL_ROUTE,
 }
-
-/** 视频生成：工具页 /tools/ai-video-generator（/video 不带参数仍是本导航首页，带 entryCode 进通用生视频页） */
-const VIDEO_GENERATE_ROUTE = '/tools/ai-video-generator'
 
 /**
  * 注册表里没有的条目所用图标：按原型截图的图形意思画的近似件（24×24、单色 currentColor），非原型原件。
@@ -91,37 +94,44 @@ function tool([id, name, tagline, extra]: Spec): LandingTool {
     id,
     name: t?.name ?? name,
     tagline,
-    route: t?.route,
+    route: STUDIO_ROUTES[id] ?? t?.route,
     icon: t?.icon ?? EXTRA_ICONS.singleClone,
     ...extra,
   }
+}
+
+/** 取本地生活导航首页里的条目（按路由），保证名称 / 图标 / 路由同源；找不到就直接丢掉，不自造 */
+function llTools(...routes: string[]): LandingTool[] {
+  const all = [...localLifeBannerTools, ...localLifeLanding.sections.flatMap((x) => x.tools)]
+  return routes.map((r) => all.find((t) => t.route === r)).filter((t): t is LandingTool => !!t)
 }
 
 const section = (label: string, specs: Spec[]): LandingSection => ({ label, tools: specs.map(tool) })
 
 export const pictureLanding: LandingPageData = {
   title: 'AI 图片',
+  shelf: true,
   banners: [
     {
       id: 'ai-digital-model',
       title: '商拍换装',
       desc: '整套换装，保留原来的姿势',
       cta: '去看看',
-      route: byId.get('ai-digital-model')?.route,
+      route: STUDIO_ROUTES['ai-digital-model'],
     },
     {
       id: 'ai-posture-fission',
       title: '姿态复刻',
       desc: '同一个人，换一个姿势',
       cta: '去看看',
-      route: byId.get('ai-posture-fission')?.route,
+      route: STUDIO_ROUTES['ai-posture-fission'],
     },
     {
       id: 'image-generate',
       title: '图片生成',
       desc: '输入一句话，生成第一张可用的图',
       cta: '开始生成',
-      route: byId.get('image-generate')?.route,
+      route: IMAGE_GENERATE_TOOL_ROUTE,
       accent: true,
     },
   ],
@@ -159,11 +169,21 @@ export const pictureLanding: LandingPageData = {
       ['ai-digital-model', '商拍换装', '整套换装'],
       ['ai-posture-fission', '姿态复刻', '同人换姿势'],
     ]),
+    {
+      label: '本地生活',
+      tools: llTools(
+        '/local-life/full-set',
+        '/local-life/note',
+        '/local-life/poster',
+        '/local-life/long-image',
+      ),
+    },
   ],
 }
 
 export const videoLanding: LandingPageData = {
   title: 'AI 视频',
+  shelf: true,
   banners: [
     {
       id: 'model-sell',
@@ -184,7 +204,7 @@ export const videoLanding: LandingPageData = {
       title: '视频生成',
       desc: '一句话生成一段可用的短视频',
       cta: '开始生成',
-      route: VIDEO_GENERATE_ROUTE,
+      route: VIDEO_GENERATE_TOOL_ROUTE,
       accent: true,
     },
   ],
@@ -192,7 +212,7 @@ export const videoLanding: LandingPageData = {
     section('视频处理', [
       ['ai-video-enhance', '视频高清', '提升画质', { hot: true }],
       ['ai-video-translate', '视频翻译', '配音翻译'],
-      ['ai-video-generator', '视频生成', '文生视频', { route: VIDEO_GENERATE_ROUTE }],
+      ['ai-video-generator', '视频生成', '文生视频'],
       ['ai-video-clone', '视频复刻', '参照原片生成'],
     ]),
     section('电商', [
@@ -218,5 +238,15 @@ export const videoLanding: LandingPageData = {
         { icon: EXTRA_ICONS.voiceSell, hot: true, route: workflowRouteOf('video-product-talk') },
       ],
     ]),
+    {
+      label: '本地生活',
+      tools: llTools(
+        '/local-life/explore-shop',
+        '/local-life/short-drama',
+        '/local-life/voiceover',
+        '/local-life/action-transfer',
+        '/local-life/video-remake',
+      ),
+    },
   ],
 }

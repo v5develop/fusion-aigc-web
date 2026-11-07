@@ -11,6 +11,11 @@ import { toApiError } from '@/api/index.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 
+const props = defineProps<{
+  /** 首页点了未能映射到接口的模板：按此标题预选（命中则选中，未命中不动） */
+  hint?: string
+}>()
+
 const emit = defineEmits<{ created: [id: string] }>()
 
 const message = useMessage()
@@ -37,6 +42,13 @@ watch(show, (v) => {
   void loadTemplates()
 })
 
+function applyHint() {
+  const h = props.hint?.replace(/\s+/g, '')
+  if (!h) return
+  const hit = templates.value.find((t) => t.title.replace(/\s+/g, '').includes(h))
+  if (hit) selected.value = hit
+}
+
 watch(scope, () => {
   void loadTemplates()
 })
@@ -51,6 +63,7 @@ async function loadTemplates() {
     const res = await canvasTemplates(scope.value)
     if (cur !== loadSeq) return
     templates.value = res.data?.items ?? []
+    if (!selected.value) applyHint()
   } catch {
     // 业务失败拦截器已 toast；网络失败在这里兜底
     if (cur === loadSeq) templates.value = []

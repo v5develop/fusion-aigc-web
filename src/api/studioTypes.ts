@@ -63,6 +63,20 @@ export interface StudioPoseSubmitReq {
   resolution?: string
   /** 宽:高；空 = 按人物图比例自动取最近档 */
   aspect_ratio?: string
+  /** 原图人数（2–4，取自 /pose/preview 的 source.person_count）；传 mappings 时必填。单人原图不传 */
+  source_person_count?: number
+  /** 多人配对（用户在预览里确认 / 反转后的结果）；不传的姿势图按默认配对（左→左、右→右） */
+  mappings?: StudioPoseMapping[]
+}
+
+/** 一张姿势图的多人配对 */
+export interface StudioPoseMapping {
+  /** 姿势序号（从 0 起） */
+  pose_index: number
+  /** mapping[i] = 原图第 i 位人物（左→右）取姿势图第几位人物（左→右，从 0 起）；-1 = 保持原姿势 */
+  mapping: number[]
+  /** 预览返回的该姿势图人数（1–4） */
+  pose_person_count: number
 }
 
 /** 图片生成：count 张拆 count 个任务 */
@@ -93,6 +107,51 @@ export interface StudioSubmitResp {
   replayed: boolean
   /** 参数修正提示（如 Seedream 4K → 2K），可直接展示 */
   warnings: string[]
+}
+
+// ---------------- 姿态复刻 · 多人配对预览（POST /pose/preview，免费只读，慢） ----------------
+
+export interface StudioPosePreviewReq {
+  source_image_url: string
+  pose_image_urls: string[]
+}
+
+export interface StudioPosePerson {
+  /** P1…P4，按画面左→右 */
+  label: string
+  /** 画面左侧 / 画面右侧 … */
+  position: string
+  primary: boolean
+  /** 只有原图人物有 */
+  gender_age: string
+  /** 原图为服装摘要，姿势图为动作剪影 */
+  summary: string
+}
+
+export interface StudioPosePeople {
+  person_count: number
+  people: StudioPosePerson[]
+  group: string
+  interaction: string
+  /** true = 超过 4 人，只分析了前 4 位 */
+  people_truncated: boolean
+}
+
+export interface StudioPosePreviewItem {
+  pose_index: number
+  /** 读图失败时为 null，原因见 error */
+  pose: StudioPosePeople | null
+  /** 默认配对，长度 = 原图人数 */
+  default_mapping: number[]
+  error: string
+}
+
+export interface StudioPosePreviewResp {
+  source: StudioPosePeople
+  /** 原图单人时为 [] */
+  poses: StudioPosePreviewItem[]
+  /** 原图 ≥2 人 */
+  mapping_enabled: boolean
 }
 
 // ---------------- 提交前报价 ----------------

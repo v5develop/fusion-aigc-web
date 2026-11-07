@@ -89,7 +89,7 @@ const submit = () => {
 </script>
 
 <template>
-  <Container title="爆款视频" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="爆款视频" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus" :submit-hint="`一条商品图生成一条 ${formData.duration} 秒短片`">
     <template #default>
       <div>
         <SectionTitle>商品图</SectionTitle>
@@ -172,7 +172,7 @@ const submit = () => {
           >
             <video class="flex-1 min-h-0 w-full rounded-md bg-sunken" controls :src="item.url"></video>
             <div class="text-13px font-600 leading-20px text-ink">{{ item.title }}</div>
-            <div class="text-11px leading-16px text-muted">{{ item.desc }}</div>
+            <div class="text-12px leading-16px text-muted">{{ item.desc }}</div>
           </div>
         </div>
       </Sample>

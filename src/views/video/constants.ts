@@ -1,4 +1,4 @@
-import { getMap } from '@/views/picture/constants.ts'
+import { getMap } from '@/views/image/constants.ts'
 import { videoModelOpsFor } from '@/utils/modelCatalog'
 
 // 生视频模型下拉（含各模型自己的分辨率档）：与生图同源，由服务端下发，后台停用即不出现。

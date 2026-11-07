@@ -17,7 +17,7 @@ defineEmits<{ retry: [] }>()
     <span>网络异常，已暂停轮询</span>
     <button
       type="button"
-      class="cursor-pointer rounded-4px border border-solid border-danger-line bg-white px-8px py-2px text-11px font-500 text-danger hover:border-danger outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
+      class="cursor-pointer rounded-4px border border-solid border-danger-line bg-white px-12px h-32px text-13px font-500 text-danger hover:border-danger outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
       @click="$emit('retry')"
     >
       重试

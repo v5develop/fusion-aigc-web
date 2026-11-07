@@ -32,7 +32,7 @@ https://{BASE_URL}/#/e-commerce/product-kit?unionToken=xxx
 
 | 模块 | 是否带 entryCode | 原因 |
 |---|---|---|
-| 图片 | ✅ 带 | `/picture` 一个页面装了 2 个功能 |
+| 图片 | ✅ 带 | `/image` 一个页面装了 2 个功能 |
 | 视频 | ✅ 带 | `/video` 一个页面装了 4 个功能 |
 | 电商 | ❌ 不带 | 14 个功能各有独立路径，路径本身已唯一定位 |
 
@@ -40,7 +40,7 @@ https://{BASE_URL}/#/e-commerce/product-kit?unionToken=xxx
 
 `entryCode` 传了非法值、空值或不传时，页面**降级到该页默认功能**，不会白屏或报错：
 
-- `/picture` 默认 → 图生图（`imageToImage`）
+- `/image` 默认 → 图生图（`imageToImage`）
 - `/video` 默认 → 图生视频（`imageToVideo`）
 
 ### 1.5 其它说明
@@ -52,12 +52,14 @@ https://{BASE_URL}/#/e-commerce/product-kit?unionToken=xxx
 
 ## 2. 图片
 
-页面路径 `/picture`，2 个功能，**需带 entryCode**。
+页面路径 `/image`，2 个功能，**需带 entryCode**。
+
+> 注意：旧路径 `/picture` 已于 2026-11-07 移除（全局守卫会把带 entryCode 的 `/image` 重定向到 `/image/generate`），接入方请更新链接。
 
 | 功能 | entryCode | 链接 |
 |---|---|---|
-| 文生图 | `textToImage` | `https://{BASE_URL}/#/picture?entryCode=textToImage` |
-| 图生图 | `imageToImage` | `https://{BASE_URL}/#/picture?entryCode=imageToImage` |
+| 文生图 | `textToImage` | `https://{BASE_URL}/#/image?entryCode=textToImage` |
+| 图生图 | `imageToImage` | `https://{BASE_URL}/#/image?entryCode=imageToImage` |
 
 ---
 

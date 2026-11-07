@@ -31,6 +31,19 @@ export function normalizeHandle(handle?: string | null): CanvasInputHandle | nul
   return null
 }
 
+/**
+ * 同口内参考的排序键（run 请求 references[].index 与控制台「图N」共用，保证两边编号一致）：
+ * 首帧（image1）、尾帧（image2）固定排在最前、各占一个序号，普通参考按连线 data.order 接在后面。
+ * 首尾帧不参与拖拽排序，它们自己的 order 值不再影响普通参考的编号，拖拽后「图N」连续且稳定。
+ */
+export function compareRefOrder(
+  a: { handle?: string | null; order?: number },
+  b: { handle?: string | null; order?: number },
+): number {
+  const rank = (handle?: string | null) => (handle === 'image1' ? 0 : handle === 'image2' ? 1 : 2)
+  return rank(a.handle) - rank(b.handle) || (a.order ?? 0) - (b.order ?? 0)
+}
+
 export function edgeColorForHandle(handle?: string | null): string {
   const normalized = normalizeHandle(handle)
   if (!normalized) return INPUT_HANDLE_RULES.image.color
@@ -199,6 +212,20 @@ function sourceMediaOf(
   }
 }
 
+/**
+ * 工具节点的输入图（连到 image 口的上游成品；没连线时用 data.sourceNodeId 指定的上游）。
+ * 与 buildReferences 同口径：候选单独连线取对应候选。节点上的裁剪框选 / 预览用。
+ */
+export function toolSourceImage(nodes: CanvasEditorNode[], edges: CanvasEditorEdge[], toolId: string): string {
+  const tool = nodes.find((node) => node.id === toolId)
+  if (!tool || tool.data.kind !== 'tool') return ''
+  const edge = edges.find((item) => item.target === toolId && (item.targetHandle ?? 'image') === 'image')
+  const sourceId = edge?.source ?? tool.data.sourceNodeId ?? ''
+  const source = sourceId ? nodes.find((node) => node.id === sourceId) : undefined
+  if (!source || source.type === 'module') return ''
+  return sourceMediaOf(source, edge ? candidateIndexOf(edge.sourceHandle) : -1).image ?? ''
+}
+
 /** 把引用对象去掉内部排序字段，按口语义补 1..n 序号 */
 function emitRef(ref: IRawRef, index?: number): ICanvasRunRef {
   const out: ICanvasRunRef = {
@@ -271,7 +298,7 @@ export function buildReferences(
     const group = groups[key]
     if (!group) continue
     delete groups[key]
-    group.sort((a, b) => a.order - b.order)
+    group.sort(compareRefOrder)
     for (const ref of group) {
       if (key === 'prompt' || key === 'garment' || key === 'image-in') {
         out.push(emitRef(ref, 1))
@@ -357,6 +384,26 @@ export function makeImageNode(position?: { x: number; y: number }): CanvasEditor
     type: 'image',
     position: position ?? { x: 140, y: 160 },
     data: { title: '图片', subtitle: '图片', kind: 'input', image: '' },
+  }
+}
+
+/** 成组生成的分组底板（旧数据没有 isGroup 标记，按「分组」副标题认） */
+export function isGroupPlate(node: CanvasEditorNode | undefined): boolean {
+  return !!node && node.type === 'module' && (node.data.isGroup === true || node.data.subtitle === '分组')
+}
+
+/** 分组底板（2026-11-06 二轮「成组」）：虚线板，成员按几何包含算，拖板带成员走 */
+export function makeModuleNode(
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  title = '分组',
+): CanvasEditorNode {
+  return {
+    id: nextNodeId('mod'),
+    type: 'module',
+    position,
+    data: { title, subtitle: '分组', kind: 'module', isGroup: true, width: size.width, height: size.height },
+    zIndex: -1,
   }
 }
 

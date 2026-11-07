@@ -23,7 +23,8 @@ export interface ITaskCenterFilter {
 }
 
 export interface ITaskCenterQuery extends ITaskCenterFilter {
-  statusBucket?: string
+  /** 空 = 全部；active = 排队中 + 生成中；或 success / failed / cancelled 等单桶 */
+  statusBucket?: 'active' | TaskStatusBucket | string
   page: number
   /** 上限 50 */
   pageSize: number
@@ -123,6 +124,34 @@ export function taskCenterDelete(taskId: string) {
 export function taskCenterCollect(taskId: string, collected: boolean) {
   const url = `/api/v1/creation/task-center/tasks/${encodeURIComponent(taskId)}/collect`
   return collected ? put<boolean>(url, {}) : del<boolean>(url)
+}
+
+/** 任务详情里的素材库产物引用（校色后按 image 对号定位资产） */
+export interface ITaskCenterAssetRef {
+  id: number
+  image: string
+  cover: string
+  /** 带水印副本地址（免费用户在工具页看到的是它；无副本时不下发） */
+  watermark?: string | null
+}
+
+/** 单条任务详情（状态口径与列表一致，另带素材库产物引用） */
+export interface ITaskCenterTask {
+  taskId: string
+  status: number
+  statusBucket: string
+  statusLabel: string
+  createTime: string
+  progress: number
+  coverUrl: string
+  assetGroupId: string
+  blocked: boolean
+  assets: ITaskCenterAssetRef[]
+}
+
+/** 单条任务详情：结果图「校色后存为资产版本」靠它定位素材库资产 */
+export function taskCenterTask(taskId: string) {
+  return get<ITaskCenterTask>(`/api/v1/creation/task-center/tasks/${encodeURIComponent(taskId)}`)
 }
 
 /** 任务的原始提交参数（只能查自己的任务） */

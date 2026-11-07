@@ -156,7 +156,7 @@ export const MEDBTN =
   'hover:border-violet hover:text-violet-ink active:from-surface3 active:to-white active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.12)] ' +
   'disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-control disabled:hover:text-ink-2 ' +
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2 ' +
-  "after:content-[''] after:absolute after:-inset-4px [&_svg]:block [&_svg]:w-12px [&_svg]:h-12px"
+  "after:content-[''] after:absolute after:-inset-6px [@media(pointer:coarse)]:after:-inset-12px [&_svg]:block [&_svg]:w-12px [&_svg]:h-12px"
 
 const PLACEMENT_INSIDE: Record<UploadBadgePlacement, string> = {
   'top-right': 'top-4px right-4px',
@@ -181,7 +181,7 @@ const PLACEMENT_OUTSIDE: Record<UploadBadgePlacement, string> = {
 const HOVER_REVEAL =
   'opacity-0 pointer-events-none transition-opacity duration-160 ease-[ease] motion-reduce:transition-none ' +
   'group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto ' +
-  'focus-visible:opacity-100 focus-visible:pointer-events-auto'
+  'focus-visible:opacity-100 focus-visible:pointer-events-auto [@media(hover:none)]:(opacity-100 pointer-events-auto)'
 
 export function badgeClass(badge: ResolvedUploadBadge): string {
   const pos = (badge.outside ? PLACEMENT_OUTSIDE : PLACEMENT_INSIDE)[badge.placement]

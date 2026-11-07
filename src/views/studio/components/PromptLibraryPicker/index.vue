@@ -99,7 +99,7 @@ const excerpt = (item: IPromptLibItem) => item.prompt.replace(/\s+/g, ' ').trim(
           <span
             v-for="t in TABS"
             :key="t.key"
-            class="ll-pill"
+            class="ll-pill !min-h-32px !text-13px"
             :class="{ 'll-pill-active': tab === t.key }"
             @click="tab = t.key"
           >{{ t.label }}</span>
@@ -126,7 +126,7 @@ const excerpt = (item: IPromptLibItem) => item.prompt.replace(/\s+/g, ' ').trim(
 
         <div v-if="!loading && !items.length" class="py-40px text-center text-placeholder text-12px">这个页签下没有匹配的提示词，换个关键词试试</div>
         <div v-if="loadingMore" class="py-6px pb-2px text-11px text-center">加载中…</div>
-        <div v-else-if="hasMore && items.length" class="ll-link pt-6px pb-2px !text-11px text-center" @click="loadMore">加载更多（{{ items.length }}/{{ total }}）</div>
+        <div v-else-if="hasMore && items.length" class="ll-link pt-6px pb-2px !text-13px text-center" @click="loadMore">加载更多（{{ items.length }}/{{ total }}）</div>
       </div>
     </div>
   </n-modal>

@@ -1,4 +1,5 @@
 import './assets/base.css'
+import './assets/motion.css'
 import './assets/iconfont/iconfont.css'
 import './assets/dropdown.less'
 import 'virtual:uno.css'

@@ -202,7 +202,7 @@ async function handleLogin() {
     <!-- 登录区 -->
     <main class="flex-1 flex items-start md:items-center justify-center px-16px py-24px md:p-48px">
       <div
-        class="login-card relative w-full max-w-400px overflow-hidden rounded-16px border border-white/90 bg-gradient-to-b from-white via-white to-violet-soft/60 px-24px py-28px sm:px-36px sm:py-36px shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(31,35,41,0.05),0_30px_60px_-30px_rgba(95,63,111,0.35)] backdrop-blur-sm"
+        class="login-card sx-squircle relative w-full max-w-400px overflow-hidden rounded-18px border border-white/90 bg-gradient-to-b from-white via-white to-violet-soft/60 px-24px py-28px sm:px-36px sm:py-36px shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(31,35,41,0.05),0_30px_60px_-30px_rgba(95,63,111,0.35)] backdrop-blur-sm"
       >
         <span
           class="pointer-events-none absolute -top-80px -right-60px w-220px h-220px rounded-full bg-violet/15 blur-[56px]"
@@ -296,7 +296,7 @@ async function handleLogin() {
 @focus-ring: 0 0 0 3px rgba(135, 95, 154, 0.16);
 
 .login-input {
-  --n-border-radius: 8px !important;
+  --n-border-radius: 15px !important;
   --n-border-hover: 1px solid @violet !important;
   --n-border-focus: 1px solid @violet !important;
   --n-box-shadow-focus: @focus-ring !important;
@@ -305,7 +305,7 @@ async function handleLogin() {
 }
 
 .send-btn {
-  --n-border-radius: 8px !important;
+  --n-border-radius: 14px !important;
   --n-color: @violet-soft !important;
   --n-color-hover: @violet-soft-2 !important;
   --n-color-pressed: @violet-soft-2 !important;
@@ -327,7 +327,7 @@ async function handleLogin() {
 .login-btn {
   --n-height: 44px !important;
   --n-font-size: 15px !important;
-  --n-border-radius: 8px !important;
+  --n-border-radius: 14px !important;
   --n-color: @violet !important;
   --n-color-hover: @violet-hover !important;
   --n-color-pressed: @violet-press !important;
@@ -350,7 +350,8 @@ async function handleLogin() {
 
 .send-btn:focus-visible,
 .login-btn:focus-visible {
-  outline: none;
-  box-shadow: @focus-ring;
+  outline: 2px solid @violet;
+  outline-offset: 2px;
+  box-shadow: none;
 }
 </style>

@@ -16,6 +16,7 @@ import PromptBox from '../components/PromptBox/index.vue'
 import PromptActions from '../components/PromptActions/index.vue'
 import SettingsBar from '../components/SettingsBar/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
+import IconButton from '@/components/IconButton/index.vue'
 import {
   llCopywritingAiWrite,
   llDigitalHumanList,
@@ -30,6 +31,10 @@ import {
   llNoteUpdate,
 } from '@/api/localLife.ts'
 import type { ILNote, ILNoteOptions } from '@/api/localLifeTypes.ts'
+import HistoryList from '../components/HistoryList/index.vue'
+import HistoryCard from '../components/HistoryList/HistoryCard.vue'
+import { useHistorySelection } from '../components/HistoryList/selection.ts'
+import ResultPreview from '../components/ResultPreview/index.vue'
 import { useAgreement, useLLList, usePollingWhile } from '../hooks.ts'
 import { NOTE_STATUS_MAP, formatTime, isNoteRunning } from '../constants.ts'
 
@@ -88,23 +93,31 @@ function pickCopy(c: { id: number; body: string }) {
   showCopyPicker.value = false
 }
 
-// ---------------- 右侧列表 ----------------
+// ---------------- 中栏历史列表 ----------------
 
-const view = ref<'list' | 'detail'>('list')
 const listCtl = useLLList<ILNote>((params) => llNoteList(params), isNoteRunning)
 
 onMounted(() => void listCtl.reload())
 
-// 有待确认的笔记时列表项给个明显的「去确认」引导
+// 三栏：中栏历史选中哪条，右栏就展示哪条的详情（null = 跟随最新）
+const { current, select, selectId, followLatest } = useHistorySelection(listCtl.items)
+const runningCount = computed(() => listCtl.items.value.filter(isNoteRunning).length)
+// 有待确认的笔记时在历史列头下给个明显的提醒（与改版前列表标题旁的「N 条待确认」同口径：只数已加载的）
 const pendingCount = computed(() => listCtl.items.value.filter((n) => n.status === 1).length)
 
 async function removeItem(item: ILNote) {
   await llNoteRemove(item.id)
   message.success('已删除')
-  if (activeNote.value?.id === item.id) {
-    view.value = 'list'
+  if (detailId === item.id) {
+    openSeq++
+    detailId = null
+    stopNotePoll()
     activeNote.value = null
+    editingResult.value = false
   }
+  // 先在本地摘掉这条，选中项立即回落到最新一条（不等列表刷新）；随后静默刷新对齐服务端
+  listCtl.items.value = listCtl.items.value.filter((n) => n.id !== item.id)
+  listCtl.total.value = Math.max(0, listCtl.total.value - 1)
   void listCtl.refresh()
 }
 
@@ -112,6 +125,12 @@ async function removeItem(item: ILNote) {
 
 const activeNote = ref<ILNote | null>(null)
 const detailLoading = ref(false)
+/** 0 构思(0/2) · 1 待确认(1) · 2 出图(3/4/5) */
+const stepIndex = computed(() => {
+  const st = activeNote.value?.status
+  if (st === 1) return 1
+  return st === 3 || st === 4 || st === 5 ? 2 : 0
+})
 
 // 编辑态（规划与成果共用一套字段）
 const editForm = reactive({ title: '', content: '', tags: '' })
@@ -128,10 +147,12 @@ const genCountOptions = computed(() => {
   return Array.from({ length: planned }, (_, i) => ({ label: `${i + 1}张`, value: i + 1 }))
 })
 
-const { start: startNotePoll } = usePollingWhile(
-  () => llNoteDetail(activeNote.value!.id),
+const { start: startNotePoll, stop: stopNotePoll } = usePollingWhile(
+  () => llNoteDetail(detailId!),
   (data) => {
     if (!data) return true
+    // 兜底：回来的不是当前展示的这条（已切走）就收掉这条链
+    if (data.id !== detailId) return false
     activeNote.value = data
     if (data.status === 0 || data.status === 3) return true
     void listCtl.refresh()
@@ -147,20 +168,73 @@ const { start: startNotePoll } = usePollingWhile(
   3000,
 )
 
+/** 右栏正在展示 / 正在载入的笔记 id（比 activeNote 早一步更新，用来判断「是不是同一条」与丢弃过期响应） */
+let detailId: number | null = null
+let openSeq = 0
+/** 详情载入失败的 id：右栏显示「重试」而不是一直转圈 */
+const detailErrorId = ref<number | null>(null)
+
 async function openDetail(id: number, opts: { silent?: boolean } = {}) {
-  view.value = 'detail'
+  const seq = ++openSeq
+  // 切到别的笔记：先停掉上一条的轮询（在途结果也作废），免得它把详情写回当前
+  if (detailId !== id) {
+    stopNotePoll()
+    editingResult.value = false
+    activeNote.value = null
+  }
+  detailId = id
+  detailErrorId.value = null
   detailLoading.value = !opts.silent
   try {
     const res = await llNoteDetail(id)
+    if (seq !== openSeq) return // 期间又切了别的，丢弃过期结果
     activeNote.value = res.data
     if (res.data?.status === 1) {
       fillEditForm(res.data)
       genCount.value = res.data.image_count
     }
     if (res.data && isNoteRunning(res.data)) startNotePoll()
+  } catch {
+    // 失败提示由请求层弹出；这里只把右栏切到可重试的状态
+    if (seq === openSeq && !activeNote.value) detailErrorId.value = id
   } finally {
-    detailLoading.value = false
+    if (seq === openSeq) detailLoading.value = false
   }
+}
+
+// 历史列选中项变了（点卡 / 跟随最新 / 删除后回落）→ 载入它的详情；没有记录则清空右栏。
+// 只盯 id 这个原始值：列表每轮轮询都会换一批新对象，盯对象会每 3 秒多打一次详情
+watch(
+  () => current.value?.id,
+  (id) => {
+    if (id == null) {
+      openSeq++
+      detailId = null
+      stopNotePoll()
+      activeNote.value = null
+      detailErrorId.value = null
+    } else if (detailId !== id) {
+      void openDetail(id)
+    }
+  },
+  { immediate: true },
+)
+
+// 选中项状态在列表里变了、而右栏这条没有在轮询（例如在别的窗口点了重新构思）→ 静默重载一次；
+// 在轮询的由详情轮询自己跟进，不重复请求
+watch(
+  () => current.value?.status,
+  (status) => {
+    const note = activeNote.value
+    if (status == null || !note || current.value?.id !== note.id) return
+    if (status !== note.status && !isNoteRunning(note)) void openDetail(note.id, { silent: true })
+  },
+)
+
+/** 点历史卡：选中；已经在右栏展示的这条不重载（规划页 / 编辑态里改了一半的内容不能被冲掉），只有上次载入失败才重试 */
+function onSelectItem(item: ILNote) {
+  select(item)
+  if (detailId !== item.id || detailErrorId.value === item.id) void openDetail(item.id)
 }
 
 // ---------------- 动作 ----------------
@@ -195,8 +269,15 @@ async function submit() {
     form.topic = ''
     form.materials = []
     form.copywriting_id = undefined
+    // 明确选中接口返回的新笔记（不依赖「新记录排第一」）；选中项变化由上面的 watch 载入详情，
+    // 新记录万一还没进列表（刷新失败），直接载入它的详情，等下一轮列表对上
     await listCtl.refresh()
-    await openDetail(res.data.id, { silent: true })
+    if (res.data?.id) {
+      selectId(res.data.id)
+      if (detailId !== res.data.id) void openDetail(res.data.id, { silent: true })
+    } else {
+      followLatest()
+    }
   } finally {
     submitting.value = false
   }
@@ -205,11 +286,13 @@ async function submit() {
 const replanning = ref(false)
 async function replan() {
   if (!activeNote.value || replanning.value) return
+  const id = activeNote.value.id
   replanning.value = true
   try {
-    await llNoteReplan(activeNote.value.id, genCount.value ?? undefined, llIdempotencyHeaders())
+    await llNoteReplan(id, genCount.value ?? undefined, llIdempotencyHeaders())
     message.success('重新构思中')
-    await openDetail(activeNote.value.id, { silent: true })
+    // 等待期间切到了别的笔记就不把右栏拉回来，列表刷新会反映这条的新状态
+    if (detailId === id) await openDetail(id, { silent: true })
     void listCtl.refresh()
   } finally {
     replanning.value = false
@@ -223,10 +306,11 @@ async function confirmGenerate() {
 
   if (!(await ensureAgreed())) return
 
+  const id = activeNote.value.id
   generating.value = true
   try {
     await llNoteGenerate(
-      activeNote.value.id,
+      id,
       {
         title: editForm.title.trim() || undefined,
         content: editForm.content.trim() || undefined,
@@ -236,7 +320,7 @@ async function confirmGenerate() {
       llIdempotencyHeaders(),
     )
     message.success('开始生成图片')
-    await openDetail(activeNote.value.id, { silent: true })
+    if (detailId === id) await openDetail(id, { silent: true })
     void listCtl.refresh()
   } finally {
     generating.value = false
@@ -254,16 +338,20 @@ function beginEditResult() {
 const savingResult = ref(false)
 async function saveResult() {
   if (!activeNote.value || savingResult.value) return
+  const id = activeNote.value.id
   savingResult.value = true
   try {
-    const res = await llNoteUpdate(activeNote.value.id, {
+    const res = await llNoteUpdate(id, {
       title: editForm.title.trim(),
       content: editForm.content.trim(),
       tags: editForm.tags.trim() ? editForm.tags.trim().split(/\s+/) : [],
       image_urls: activeNote.value.image_urls ?? [],
     })
-    activeNote.value = res.data
-    editingResult.value = false
+    // 保存期间切到了别的笔记：不把这条写回右栏
+    if (detailId === id) {
+      activeNote.value = res.data
+      editingResult.value = false
+    }
     message.success('已保存')
     void listCtl.refresh()
   } finally {
@@ -287,14 +375,10 @@ function openImage(url: string) {
   previewUrl.value = url
   imagePreviewShow.value = true
 }
-
-watch(view, (v) => {
-  if (v === 'list') activeNote.value = null
-})
 </script>
 
 <template>
-  <Workbench title="图文笔记" :submit="submit" :loading="submitting" submit-text="开始构思">
+  <Workbench title="图文笔记" :submit="submit" :loading="submitting" submit-text="开始构思" submit-hint="先出文案；确认后再按文案配图" :history-count="listCtl.total.value">
     <template #default>
       <FormCard title="笔记类型">
         <ChipGroup
@@ -366,240 +450,250 @@ watch(view, (v) => {
       />
     </template>
 
-    <template #right>
-      <div class="h-full min-h-0 flex flex-col">
-        <!-- 列表 -->
-        <template v-if="view === 'list'">
-          <div class="flex flex-none items-baseline gap-8px mb-14px text-16px font-600 leading-22px text-ink">
-            我的笔记
-            <span v-if="pendingCount" class="sx-chip flex-shrink-0 ll-chip-warning self-center"
-              >{{ pendingCount }} 条待确认</span
-            >
+    <template #history>
+      <HistoryList
+        :count="listCtl.total.value"
+        :running="runningCount"
+        :loading="listCtl.loading.value"
+        :has-more="listCtl.hasMore.value"
+        :loading-more="listCtl.loadingMore.value"
+        @load-more="listCtl.loadMore()"
+      >
+        <template v-if="pendingCount" #extra>
+          <span class="sx-chip flex-shrink-0 ll-chip-warning" role="status">{{ pendingCount }} 条待确认</span>
+        </template>
+        <HistoryCard
+          v-for="item in listCtl.items.value"
+          :key="item.id"
+          :title="item.title || item.topic"
+          :summary="item.title ? item.content || item.topic : ''"
+          :status="NOTE_STATUS_MAP[item.status]?.type ?? 'running'"
+          :status-label="NOTE_STATUS_MAP[item.status]?.label ?? ''"
+          :time="item.create_time"
+          :thumb="item.image_urls?.[0]"
+          :count="item.image_urls?.length ?? 0"
+          placeholder="笔记"
+          :fail-reason="item.status === 2 || item.status === 5 ? item.fail_reason || (item.status === 2 ? '构思失败' : '生成失败') : ''"
+          :eta-sec="90"
+          :selected="current?.id === item.id"
+          @select="onSelectItem(item)"
+        >
+          <template #actions>
+            <n-popconfirm @positive-click="removeItem(item)">
+              <template #trigger>
+                <IconButton label="删除笔记" size="sm" variant="danger">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" /></svg>
+                </IconButton>
+              </template>
+              确定删除这条笔记？
+            </n-popconfirm>
+          </template>
+        </HistoryCard>
+      </HistoryList>
+    </template>
+
+    <!-- 预览区：选中笔记的构思 / 规划确认 / 成果 -->
+    <template #preview>
+      <div v-if="activeNote" v-loading="detailLoading" class="flex-1 min-h-0 overflow-auto p-16px">
+        <div class="flex items-center gap-10px">
+          <span class="sx-chip flex-shrink-0" :class="`ll-chip-${NOTE_STATUS_MAP[activeNote.status]?.type}`">{{
+            NOTE_STATUS_MAP[activeNote.status]?.label
+          }}</span>
+          <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
+            {{ activeNote.title || activeNote.topic }}
+          </h2>
+          <!-- 改版前详情头的删除（历史卡上也有一个）：同一个接口、同样的二次确认 -->
+          <n-popconfirm @positive-click="removeItem(activeNote!)">
+            <template #trigger>
+              <IconButton label="删除笔记" variant="danger" class="flex-none">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" /></svg>
+              </IconButton>
+            </template>
+            确定删除这条笔记？
+          </n-popconfirm>
+        </div>
+        <div class="mt-8px mb-14px text-11px leading-16px text-muted tabular-nums">
+          {{ activeNote.note_type_label }} · 套图 {{ activeNote.image_count }}张 ·
+          {{ formatTime(activeNote.create_time) }}
+        </div>
+
+        <!-- 两步进度：构思 → 确认 → 出图 -->
+        <ol class="m-0 mb-14px p-0 list-none flex items-center gap-8px text-12px" aria-label="笔记进度">
+          <li
+            v-for="(step, i) in ['构思文案', '确认内容', '生成配图']"
+            :key="step"
+            class="flex items-center gap-6px"
+            :class="i <= stepIndex ? 'text-violet-ink font-600' : 'text-muted'"
+            :aria-current="i === stepIndex ? 'step' : undefined"
+          >
+            <span
+              class="w-18px h-18px grid place-items-center rounded-full text-11px border border-solid"
+              :class="i <= stepIndex ? 'border-violet-line bg-violet-soft' : 'border-line'"
+              >{{ i + 1 }}</span
+            >{{ step }}
+            <span v-if="i < 2" class="w-16px h-1px bg-line" aria-hidden="true" />
+          </li>
+        </ol>
+
+        <!-- 构思中 / 生成中 -->
+        <div
+          v-if="activeNote.status === 0 || activeNote.status === 3"
+          class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+        >
+          <n-spin size="small" />
+          <span>{{ activeNote.status === 0 ? 'AI 构思中，标题正文马上就来…' : '图片生成中，请稍候…' }}</span>
+        </div>
+
+        <!-- 构思失败 / 生成失败 -->
+        <div
+          v-else-if="activeNote.status === 2 || activeNote.status === 5"
+          class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex flex-col items-center justify-center gap-12px p-40px text-13px text-ink-2"
+        >
+          <p class="m-0 text-danger">
+            {{ activeNote.fail_reason || (activeNote.status === 2 ? '构思失败' : '生成失败') }}
+          </p>
+          <n-button
+            size="medium"
+            type="primary"
+            :loading="replanning || generating"
+            @click="activeNote.status === 2 ? replan() : confirmGenerate()"
+          >
+            {{ activeNote.status === 2 ? '重新构思' : '重试生成' }}
+          </n-button>
+        </div>
+
+        <!-- 待确认：规划页 -->
+        <template v-else-if="activeNote.status === 1">
+          <div
+            class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px leading-18px text-alert-warning"
+          >
+            以下是 AI 构思的内容，可以修改后确认生成；也可以换个思路重新构思。
           </div>
-          <div class="flex-1 min-h-0 overflow-auto" v-loading="listCtl.loading.value">
-            <div
-              v-for="item in listCtl.items.value"
-              :key="item.id"
-              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)"
-              @click="openDetail(item.id)"
-            >
-              <img
-                v-if="item.image_urls?.length"
-                class="w-64px h-64px flex-none rounded-8px object-cover"
-                :src="item.image_urls[0]"
-                alt=""
+          <div
+            class="flex flex-col gap-12px p-16px rounded-lg border border-solid border-line bg-white shadow-card-v3"
+          >
+            <Field label="标题">
+              <n-input
+                v-model:value="editForm.title"
+                size="small"
+                maxlength="30"
+                show-count
+                placeholder="笔记标题"
               />
-              <div
-                v-else
-                class="w-64px h-64px flex-none flex items-center justify-center rounded-8px border border-solid border-violet-soft-2 sx-grad-icon shadow-[inset_0_1px_0_#fff] text-24px"
-              >
-                📝
+            </Field>
+            <Field label="正文">
+              <n-input
+                v-model:value="editForm.content"
+                type="textarea"
+                :rows="8"
+                show-count
+                placeholder="笔记正文，话题用 # 或空格分隔写在下面"
+              />
+            </Field>
+            <Field label="话题">
+              <n-input
+                v-model:value="editForm.tags"
+                size="small"
+                placeholder="用空格分隔，如：探店 咖啡 周末去哪儿"
+              />
+            </Field>
+            <Field :label="`套图数量（最多 ${activeNote.image_count} 张，只能改少）`">
+              <ChipGroup v-model="genCount" :options="genCountOptions" label="套图数量" />
+            </Field>
+            <Field v-if="activeNote.material_urls?.length" label="参考素材">
+              <div class="flex flex-wrap gap-8px">
+                <img
+                  v-for="url in activeNote.material_urls"
+                  :key="url"
+                  :src="url"
+                  alt=""
+                  class="w-64px h-64px rounded-md object-cover border border-solid border-line-soft"
+                />
               </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-8px">
-                  <span class="flex-1 truncate text-14px font-600 leading-20px text-ink">{{
-                    item.title || item.topic
-                  }}</span>
-                  <span class="sx-chip flex-shrink-0" :class="`ll-chip-${NOTE_STATUS_MAP[item.status]?.type}`">{{
-                    NOTE_STATUS_MAP[item.status]?.label
-                  }}</span>
-                </div>
-                <div class="my-4px line-clamp-2 text-12px leading-18px text-ink-2">
-                  {{ item.content || item.topic }}
-                </div>
-                <div class="text-11px leading-16px text-muted">
-                  {{ item.note_type_label }} · {{ formatTime(item.create_time) }}
-                </div>
-              </div>
-            </div>
-            <div
-              v-if="!listCtl.loading.value && !listCtl.items.value.length"
-              class="sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
-            >
-              还没有笔记，左侧开始构思吧
-            </div>
-            <div
-              v-if="listCtl.hasMore.value"
-              class="ll-link transition-colors duration-fast block text-center py-8px"
-              @click="listCtl.loadMore()"
-            >
-              加载更多
-            </div>
+            </Field>
+          </div>
+          <div class="flex gap-8px mt-14px">
+            <n-button size="medium" :loading="replanning" @click="replan">重新构思</n-button>
+            <n-button size="medium" type="primary" :loading="generating" @click="confirmGenerate">确认生成</n-button>
           </div>
         </template>
 
-        <!-- 详情 / 规划 / 成果 -->
-        <template v-else>
-          <button
-            type="button"
-            class="flex-none w-fit mb-12px -ml-8px sx-btn-ghost !h-28px !px-8px hover:!text-violet-ink transition-colors duration-fast"
-            @click="view = 'list'"
-          >
-            ← 返回列表
-          </button>
-          <div v-if="activeNote" class="flex-1 min-h-0 overflow-auto" v-loading="detailLoading">
-            <div class="flex items-center gap-10px">
-              <span class="sx-chip flex-shrink-0" :class="`ll-chip-${NOTE_STATUS_MAP[activeNote.status]?.type}`">{{
-                NOTE_STATUS_MAP[activeNote.status]?.label
-              }}</span>
-              <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
-                {{ activeNote.title || activeNote.topic }}
-              </h2>
-              <n-popconfirm @positive-click="removeItem(activeNote!)">
-                <template #trigger
-                  ><span class="ll-danger-link transition-colors duration-fast flex-none text-12px"
-                    >删除</span
-                  ></template
-                >
-                确定删除这条笔记？
-              </n-popconfirm>
-            </div>
-            <div class="mt-8px mb-14px text-11px leading-16px text-muted tabular-nums">
-              {{ activeNote.note_type_label }} · 套图 {{ activeNote.image_count }}张 ·
-              {{ formatTime(activeNote.create_time) }}
-            </div>
-
-            <!-- 构思中 / 生成中 -->
-            <div
-              v-if="activeNote.status === 0 || activeNote.status === 3"
-              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
-            >
-              <n-spin size="small" />
-              <span>{{ activeNote.status === 0 ? 'AI 构思中，标题正文马上就来…' : '图片生成中，请稍候…' }}</span>
-            </div>
-
-            <!-- 构思失败 / 生成失败 -->
-            <div
-              v-else-if="activeNote.status === 2 || activeNote.status === 5"
-              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex flex-col items-center justify-center gap-12px p-40px text-13px text-ink-2"
-            >
-              <p class="m-0 text-danger">
-                {{ activeNote.fail_reason || (activeNote.status === 2 ? '构思失败' : '生成失败') }}
-              </p>
-              <n-button
-                size="small"
-                type="primary"
-                :loading="replanning || generating"
-                @click="activeNote.status === 2 ? replan() : confirmGenerate()"
-              >
-                {{ activeNote.status === 2 ? '重新构思' : '重试生成' }}
-              </n-button>
-            </div>
-
-            <!-- 待确认：规划页 -->
-            <template v-else-if="activeNote.status === 1">
-              <div
-                class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px leading-18px text-alert-warning"
-              >
-                以下是 AI 构思的内容，可以修改后确认生成；也可以换个思路重新构思。
+        <!-- 已完成 -->
+        <template v-else-if="activeNote.status === 4">
+          <div class="bg-white rounded-lg border border-solid border-line shadow-card-v3 p-14px">
+            <template v-if="!editingResult">
+              <div class="mb-8px text-16px font-600 leading-22px text-ink">{{ activeNote.title }}</div>
+              <div class="mb-10px whitespace-pre-wrap text-13px leading-22px text-ink">
+                {{ activeNote.content }}
               </div>
-              <div
-                class="flex flex-col gap-12px p-16px rounded-lg border border-solid border-line bg-white shadow-card-v3"
-              >
-                <Field label="标题">
-                  <n-input
-                    v-model:value="editForm.title"
-                    size="small"
-                    maxlength="30"
-                    show-count
-                    placeholder="笔记标题"
-                  />
-                </Field>
-                <Field label="正文">
-                  <n-input
-                    v-model:value="editForm.content"
-                    type="textarea"
-                    :rows="8"
-                    placeholder="笔记正文，话题用 # 或空格分隔写在下面"
-                  />
-                </Field>
-                <Field label="话题">
-                  <n-input
-                    v-model:value="editForm.tags"
-                    size="small"
-                    placeholder="用空格分隔，如：探店 咖啡 周末去哪儿"
-                  />
-                </Field>
-                <Field :label="`套图数量（最多 ${activeNote.image_count} 张，只能改少）`">
-                  <ChipGroup v-model="genCount" :options="genCountOptions" label="套图数量" />
-                </Field>
-                <Field v-if="activeNote.material_urls?.length" label="参考素材">
-                  <div class="flex flex-wrap gap-8px">
-                    <img
-                      v-for="url in activeNote.material_urls"
-                      :key="url"
-                      :src="url"
-                      alt=""
-                      class="w-64px h-64px rounded-md object-cover border border-solid border-line-soft"
-                    />
-                  </div>
-                </Field>
-              </div>
-              <div class="flex gap-8px mt-14px">
-                <n-button size="small" :loading="replanning" @click="replan">重新构思</n-button>
-                <n-button size="small" type="primary" :loading="generating" @click="confirmGenerate">确认生成</n-button>
+              <div v-if="activeNote.tags?.length" class="flex flex-wrap gap-x-8px gap-y-4px mb-12px">
+                <span v-for="tag in activeNote.tags" :key="tag" class="text-12px text-violet-ink">#{{ tag }}</span>
               </div>
             </template>
+            <div v-else class="flex flex-col gap-12px">
+              <Field label="标题">
+                <n-input
+                  v-model:value="editForm.title"
+                  size="small"
+                  maxlength="30"
+                  show-count
+                  placeholder="笔记标题"
+                />
+              </Field>
+              <Field label="正文">
+                <n-input v-model:value="editForm.content" type="textarea" :rows="8" placeholder="笔记正文" />
+              </Field>
+              <Field label="话题">
+                <n-input v-model:value="editForm.tags" size="small" placeholder="空格分隔" />
+              </Field>
+            </div>
 
-            <!-- 已完成 -->
-            <template v-else-if="activeNote.status === 4">
-              <div class="bg-white rounded-lg border border-solid border-line shadow-card-v3 p-14px">
-                <template v-if="!editingResult">
-                  <div class="mb-8px text-16px font-600 leading-22px text-ink">{{ activeNote.title }}</div>
-                  <div class="mb-10px whitespace-pre-wrap text-13px leading-22px text-ink">
-                    {{ activeNote.content }}
-                  </div>
-                  <div v-if="activeNote.tags?.length" class="flex flex-wrap gap-x-8px gap-y-4px mb-12px">
-                    <span v-for="tag in activeNote.tags" :key="tag" class="text-12px text-violet-ink">#{{ tag }}</span>
-                  </div>
-                </template>
-                <div v-else class="flex flex-col gap-12px">
-                  <Field label="标题">
-                    <n-input
-                      v-model:value="editForm.title"
-                      size="small"
-                      maxlength="30"
-                      show-count
-                      placeholder="笔记标题"
-                    />
-                  </Field>
-                  <Field label="正文">
-                    <n-input v-model:value="editForm.content" type="textarea" :rows="8" placeholder="笔记正文" />
-                  </Field>
-                  <Field label="话题">
-                    <n-input v-model:value="editForm.tags" size="small" placeholder="空格分隔" />
-                  </Field>
-                </div>
-
-                <div class="grid grid-cols-3 gap-10px mt-14px">
-                  <div
-                    v-for="(url, i) in activeNote.image_urls"
-                    :key="url"
-                    class="relative overflow-hidden rounded-8px cursor-pointer"
-                    @click="openImage(url)"
-                  >
-                    <img :src="url" alt="" class="block w-full aspect-[3/4] object-cover" />
-                    <span
-                      class="absolute top-6px left-6px w-20px h-20px flex items-center justify-center rounded-full bg-black/50 text-11px text-white"
-                      >{{ i + 1 }}</span
-                    >
-                  </div>
-                </div>
+            <div class="grid grid-cols-3 gap-10px mt-14px">
+              <div
+                v-for="(url, i) in activeNote.image_urls"
+                :key="url"
+                class="relative overflow-hidden rounded-8px cursor-pointer"
+                @click="openImage(url)"
+              >
+                <img :src="url" alt="" class="block w-full aspect-[3/4] object-cover" />
+                <IconButton
+                  label="下载配图"
+                  variant="overlay"
+                  class="!absolute bottom-6px right-6px"
+                  :href="url"
+                  download
+                  target="_blank"
+                  @click.stop
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14" /></svg>
+                </IconButton>
+                <span
+                  class="absolute top-6px left-6px w-20px h-20px flex items-center justify-center rounded-full bg-black/50 text-11px text-white"
+                  >{{ i + 1 }}</span
+                >
               </div>
-              <div class="flex gap-8px mt-14px">
-                <template v-if="!editingResult">
-                  <n-button size="small" @click="beginEditResult">编辑文案</n-button>
-                  <n-button size="small" :loading="replanning" @click="replan">重新生成</n-button>
-                </template>
-                <template v-else>
-                  <n-button size="small" type="primary" :loading="savingResult" @click="saveResult">保存</n-button>
-                  <n-button size="small" @click="editingResult = false">取消</n-button>
-                </template>
-              </div>
+            </div>
+          </div>
+          <div class="flex gap-8px mt-14px">
+            <template v-if="!editingResult">
+              <n-button size="medium" @click="beginEditResult">编辑文案</n-button>
+              <n-button size="medium" :loading="replanning" @click="replan">重新生成</n-button>
+            </template>
+            <template v-else>
+              <n-button size="medium" type="primary" :loading="savingResult" @click="saveResult">保存</n-button>
+              <n-button size="medium" @click="editingResult = false">取消</n-button>
             </template>
           </div>
         </template>
       </div>
+      <div v-else-if="current && detailErrorId === current.id" class="flex-1 grid place-items-center p-16px">
+        <div class="flex flex-col items-center gap-10px text-13px leading-20px text-ink-2" role="status">
+          笔记详情没有加载出来
+          <n-button size="small" @click="openDetail(current.id)">重新加载</n-button>
+        </div>
+      </div>
+      <div v-else-if="current" class="flex-1 grid place-items-center"><n-spin size="small" /></div>
+      <ResultPreview v-else :active="false" />
     </template>
   </Workbench>
 

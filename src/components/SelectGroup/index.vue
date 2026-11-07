@@ -105,7 +105,7 @@ function renderLabel(field: string, option: DropdownOption) {
             role="button"
             tabindex="0"
             :aria-label="`清除${item.placeholder ?? ''}`"
-            class="flex-none grid place-items-center w-16px h-16px rounded-full text-placeholder cursor-pointer hover:text-ink-2 sx-focus"
+            class="flex-none grid place-items-center w-20px h-20px rounded-full text-placeholder cursor-pointer hover:text-ink-2 sx-focus sx-hit"
             @click="(e: Event) => onClear(item.field, item.options, e)"
             @keydown.enter.stop.prevent="(e: Event) => onClear(item.field, item.options, e)"
           >

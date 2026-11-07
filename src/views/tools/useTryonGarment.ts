@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { upload } from '@/api/ossUpload.ts'
 import { toApiError } from '@/api/index.ts'
@@ -30,19 +30,30 @@ export const OUTFIT: OutfitItem[] = [
 const OUTFIT_MAP: Record<string, OutfitItem> = Object.fromEntries(OUTFIT.map((item) => [item.key, item]))
 export const outfitLabel = (key: string) => OUTFIT_MAP[key]?.label ?? key
 
-/** 选一个就取消另一个（原型口径：连衣裙 ↔ 上衣/下装、文胸 ↔ 上衣/连衣裙、内裤 ↔ 下装/连衣裙） */
-const CONFLICT: Record<string, string[]> = {}
-for (const [a, b] of [
+/**
+ * 互斥单品对，选一个就取消另一个（原型口径，与 studio/constants.ts OUTFIT_CONFLICTS、Go itemExclusive 同一份）：
+ * 连衣裙 ↔ 上衣/下装、文胸 ↔ 上衣/连衣裙、内裤 ↔ 下装/连衣裙
+ */
+export const OUTFIT_CONFLICT_PAIRS = [
   ['dress', 'top'],
   ['dress', 'bottom'],
   ['bra', 'top'],
   ['bra', 'dress'],
   ['panties', 'bottom'],
   ['panties', 'dress'],
-] as const) {
+] as const
+const CONFLICT: Record<string, string[]> = {}
+for (const [a, b] of OUTFIT_CONFLICT_PAIRS) {
   ;(CONFLICT[a] = CONFLICT[a] ?? []).push(b)
   ;(CONFLICT[b] = CONFLICT[b] ?? []).push(a)
 }
+
+/** 弹窗说明句：按互斥对的左项归组 →「连衣裙与上衣 / 下装互斥，文胸与上衣 / 连衣裙互斥，内裤与下装 / 连衣裙互斥」 */
+export const OUTFIT_CONFLICT_TEXT = (() => {
+  const groups = new Map<string, string[]>()
+  for (const [a, b] of OUTFIT_CONFLICT_PAIRS) groups.set(a, [...(groups.get(a) ?? []), b])
+  return [...groups].map(([a, list]) => `${outfitLabel(a)}与${list.map(outfitLabel).join(' / ')}互斥`).join('，')
+})()
 
 /** 弹窗里 6 个固定角度格：上传前就告诉用户这一格放什么角度 */
 export const ANGLES = ['正面', '背面', '侧面', '细节', '平铺', '其他'] as const
@@ -68,6 +79,16 @@ export interface ToolImageUploadOptions {
 export function useToolImageUpload(spec: () => UploadSpec, options: ToolImageUploadOptions = {}) {
   const message = useMessage()
   const uploading = ref(false)
+  /**
+   * 代号：清空 / 换掉 / 卸载时 +1（invalidate），还在路上的上传回来发现代号变了就整批丢弃，
+   * 不把旧结果追加进已经清空或换过的格子里
+   */
+  let generation = 0
+  function invalidate() {
+    generation += 1
+    uploading.value = false
+  }
+  if (getCurrentScope()) onScopeDispose(invalidate)
   const exts = () =>
     spec()
       .accept.split(',')
@@ -102,20 +123,23 @@ export function useToolImageUpload(spec: () => UploadSpec, options: ToolImageUpl
       else valid.push(f)
     }
     if (!valid.length) return []
+    const mine = ++generation
     uploading.value = true
     try {
-      return await (options.upload ?? upload)(valid)
+      const urls = await (options.upload ?? upload)(valid)
+      return mine === generation ? urls : []
     } catch (err) {
+      if (mine !== generation) return []
       // 业务失败请求层已 toast，这里只补传输层 / 对象存储的失败提示
       const apiErr = toApiError(err)
       if (!apiErr || apiErr.code === -1) message.error('上传失败，请检查网络后重试')
       return []
     } finally {
-      uploading.value = false
+      if (mine === generation) uploading.value = false
     }
   }
 
-  return { uploading, uploadFiles, acceptUrl }
+  return { uploading, uploadFiles, acceptUrl, invalidate }
 }
 
 /** 回填用的整份状态（角度用中文 ANGLES；role 为单品 key） */
@@ -233,6 +257,7 @@ export function useTryonGarment(spec: () => UploadSpec, options: ToolImageUpload
 
   /** 清空服装图（入口右上角删除）：单品选择留着，图全清 */
   function clear() {
+    uploader.invalidate()
     photos.value = []
     look.value = ''
   }
@@ -246,6 +271,7 @@ export function useTryonGarment(spec: () => UploadSpec, options: ToolImageUpload
 
   /** 整份回填（重新编辑）：不做上传、不弹提示；单品按原顺序、最多 3 件；角度撞了顺次补空角度，都占满落「其他」（同 place） */
   function restore(state: TryonGarmentState) {
+    uploader.invalidate()
     selected.value = state.selected.filter((key) => !!OUTFIT_MAP[key]).slice(0, MAX_ITEMS)
     mode.value = state.mode === 'together' && selected.value.length >= 2 ? 'together' : 'separate'
     const next: GarmentPhoto[] = []

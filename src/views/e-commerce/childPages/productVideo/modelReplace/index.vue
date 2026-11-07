@@ -120,15 +120,16 @@ function useModelList() {
 </script>
 
 <template>
-  <Container title="模特替换" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus">
+  <Container title="模特替换" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus" submit-hint="场景与镜头不变，只替换出镜模特">
     <template #titleExtra>
       <!-- 使用说明弹层：raw + sx-pop（line 描边、r10、shadow-pop），与触发钮隔 8 -->
       <n-popover raw trigger="click" placement="bottom-start" :show-arrow="false">
         <template #trigger>
           <button
             type="button"
-            class="grid place-items-center p-0 border-none rounded-sm bg-transparent text-placeholder cursor-pointer hover:text-ink-2 sx-focus"
+            class="sx-iconbtn-quiet sx-iconbtn"
             aria-label="使用说明"
+            title="使用说明"
           >
             <svg class="block" viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor" aria-hidden="true">
               <path
@@ -142,7 +143,7 @@ function useModelList() {
         </template>
         <div class="my-8px sx-pop max-w-234px p-14px box-border" role="note" aria-label="使用说明">
           <div class="text-14px font-600 leading-20px text-ink">上传单人正面站立图，一键生成视频</div>
-          <div class="mt-6px text-11px leading-17px text-muted">
+          <div class="mt-6px text-12px leading-18px text-muted">
             拍摄：必须露出人脸，只有一人不能多人，正面站立，露出完整人体，背景简单更佳。
           </div>
         </div>
@@ -151,11 +152,11 @@ function useModelList() {
     <template #default>
       <div>
         <SectionTitle>参考视频</SectionTitle>
-        <p class="-mt-4px mb-8px text-11px leading-17px text-muted">
+        <p class="-mt-4px mb-8px text-12px leading-18px text-muted">
           上传参考样片，AI 精准复刻镜头运镜、色调与画面整体风格
         </p>
         <VideoUpload fromAsset v-model:videoList="formData.videoUrl" btnName="上传参考视频">
-          <span class="mt-12px text-11px leading-17px text-muted">视频过长时，将自动压缩至15秒，确保最佳效果。</span>
+          <span class="mt-12px text-12px leading-18px text-muted">视频过长时，将自动压缩至15秒，确保最佳效果。</span>
         </VideoUpload>
 
         <div v-loading="pagingData.loading" class="relative">

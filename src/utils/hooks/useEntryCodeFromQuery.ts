@@ -32,7 +32,7 @@ export function useEntryCodeFromQuery(options: readonly { value: string }[]) {
    * <p>用 replace 不用 push：切下拉不是一次页面跳转，进历史栈会让返回键
    * 在下拉选项之间一格格倒退，容器侧的返回逻辑会很怪。
    *
-   * <p>对 /picture、/video 安全：非电商页 keep-alive 的 cacheKey 恒为 undefined，
+   * <p>对 /image/generate、/video/generate 安全：非电商页 keep-alive 的 cacheKey 恒为 undefined，
    * 同一条 record 只变 query 走的是 patch 而非 remount，表单与历史列表都不会丢。
    */
   const syncToUrl = (next: string) => {

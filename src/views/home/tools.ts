@@ -4,6 +4,7 @@
  * <p>名称、分类、描述、输入形态逐条抄自 v1.0 原型 `src/data/tools.ts`；
  * 图标路径抄自原型 `src/components/icons/qi-tool-icons.mjs`（24×24 网格、单色 currentColor）。
  * `route` 只填本项目已存在的页面；没有对应页面的工具留空，首页展示为「即将开放」。
+ * 商拍换装 / 姿态复刻指向 /studio 完整版；数字人口播指向 /local-life/voiceover。
  * 12 个 Java v1 工具接到共用工具页 `/tools/<id>`（views/tools/schemas.ts 以同一个 id 查 schema）。
  */
 export type ToolCategory = 'retouch' | 'edit' | 'generate' | 'video'
@@ -120,6 +121,12 @@ const ICONS = {
   videoGenerate: `
     <path d="M3 6v12l7.4-6z" fill="currentColor" stroke="none"/>
     <path d="M17.6 7.4c.39 3.02 1.78 4.41 4.8 4.8-3.02.39-4.41 1.78-4.8 4.8-.39-3.02-1.78-4.41-4.8-4.8 3.02-.39 4.41-1.78 4.8-4.8z" fill="currentColor" stroke="none"/>`,
+  talkingSell: `
+    <rect x="4.8" y="2.8" width="4.6" height="7.8" rx="2.3"/>
+    <path d="M2.8 9.8a4.3 4.3 0 0 0 8.6 0"/>
+    <path d="M7.1 14.1v4.7M4.6 18.8h5"/>
+    <path d="M13.4 8.8h7.2l.7 8.4a1.7 1.7 0 0 1-1.7 1.8h-5.2a1.7 1.7 0 0 1-1.7-1.8z"/>
+    <path d="M15.1 8.8V7.3a2 2 0 0 1 4 0v1.5"/>`,
   videoClone: `
     <rect x="3.1" y="3.2" width="17.8" height="12.4" rx="2.6"/>
     <path d="M10.1 6.4 14.6 9.4 10.1 12.4z" fill="currentColor" stroke="none"/>
@@ -215,7 +222,8 @@ export const tools: ToolItem[] = [
     category: 'edit',
     description: '选单品、传服装与模特，AI 把衣服穿到模特身上；细节裁切与提示词由系统完成。',
     inputShape: 'dual-image',
-    route: '/tools/ai-digital-model',
+    // 完整版在商拍工作室；/tools/ai-digital-model 仍可深链（共用工具页 schema），但不再从目录进入
+    route: '/studio/ai-digital-model',
     icon: ICONS.changeClothes,
   },
   {
@@ -224,7 +232,8 @@ export const tools: ToolItem[] = [
     category: 'edit',
     description: '上传一张人物图，再放最多 9 张姿势参考图；身份与服装不变，只换动作与神态表情。',
     inputShape: 'single-image',
-    route: '/tools/ai-posture-fission',
+    // 同上：完整版 /studio/ai-posture-fission
+    route: '/studio/ai-posture-fission',
     icon: ICONS.pose,
   },
   {
@@ -292,5 +301,15 @@ export const tools: ToolItem[] = [
     inputShape: 'video',
     route: '/tools/ai-video-clone',
     icon: ICONS.videoClone,
+  },
+  {
+    // 本地生活下的数字人口播页（外部路由，没有 /tools 工具页 schema）
+    id: 'ai-voiceover',
+    name: '数字人口播',
+    category: 'video',
+    description: '输入口播文案 + 人物图与背景，生成一段口播视频。',
+    inputShape: 'text-image-video',
+    route: '/local-life/voiceover',
+    icon: ICONS.talkingSell,
   },
 ]

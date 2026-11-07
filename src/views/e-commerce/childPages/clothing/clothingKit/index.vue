@@ -17,7 +17,7 @@ import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { publicTemplate } from '@/api/methods.ts'
 import { ageOps, genderOps, skinOps, sceneOps } from '@/views/e-commerce/childPages/constants.ts'
 // 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
-import { modelOps } from '@/views/picture/constants.ts'
+import { modelOps } from '@/views/image/constants.ts'
 import { useMessage } from 'naive-ui'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'

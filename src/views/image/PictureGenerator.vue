@@ -50,7 +50,7 @@ const loading = ref(false)
 // 与 loading 解耦，避免后端某张子图卡在处理中时把发送按钮永久锁死（且刷新也无法恢复）。
 const btnLoading = ref(false)
 // 容器深链指定的创作场景。放在 _formData 之后消费：首页带入是「用户上一秒刚做的选择」，
-// 而 query 是进场地址——站内跳转（router.push({ name: 'picture' })）本来就不带 query，
+// 而 query 是进场地址——站内跳转（router.push({ name: 'image-generate' })）本来就不带 query，
 // 两条路径天然互斥，写死优先级只是防以后首页加了 query 两边打架。
 const { entryCode: queryEntryCode, syncToUrl } = useEntryCodeFromQuery(entryCodeOps)
 

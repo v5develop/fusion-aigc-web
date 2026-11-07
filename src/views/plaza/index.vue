@@ -41,29 +41,32 @@ function onTabKeydown(e: KeyboardEvent, index: number) {
 
 <template>
   <div class="h-full flex flex-col bg-page">
-    <div class="shrink-0 flex flex-col gap-16px px-24px pt-24px pb-8px">
-      <h1 class="m-0 text-20px font-600 leading-28px text-ink">创意广场</h1>
-      <div class="flex flex-wrap gap-8px" role="tablist" aria-label="广场分类">
-        <button
-          v-for="(tab, index) in TABS"
-          :id="`plaza-tab-${tab.key}`"
-          :key="tab.key"
-          ref="tabRefs"
-          type="button"
-          role="tab"
-          :aria-selected="active === tab.key"
-          aria-controls="plaza-tab-panel"
-          :tabindex="active === tab.key ? 0 : -1"
-          :class="[
-            'h-32px cursor-pointer rounded-8px border-none px-12px text-14px transition-colors',
-            'focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet focus-visible:outline-offset-2',
-            active === tab.key ? 'bg-violet-soft text-violet-ink font-600' : 'bg-white text-ink-2 hover:text-violet',
-          ]"
-          @click="select(tab.key)"
-          @keydown="onTabKeydown($event, index)"
-        >
-          {{ tab.label }}
-        </button>
+    <div class="shrink-0 px-20px pt-18px">
+      <div class="mx-auto flex max-w-1180px flex-col gap-12px pb-12px">
+        <h1 class="m-0 text-20px font-600 leading-28px text-ink">创意广场</h1>
+        <!-- 原型 .ref-tabs：纯文字页签 15px，选中 600 墨色，间距 20；py-5px 把命中高度撑到 32（-my-5px 抵消，版面不变） -->
+        <div class="flex items-center gap-20px" role="tablist" aria-label="广场分类">
+          <button
+            v-for="(tab, index) in TABS"
+            :id="`plaza-tab-${tab.key}`"
+            :key="tab.key"
+            ref="tabRefs"
+            type="button"
+            role="tab"
+            :aria-selected="active === tab.key"
+            aria-controls="plaza-tab-panel"
+            :tabindex="active === tab.key ? 0 : -1"
+            :class="[
+              'cursor-pointer border-none bg-transparent px-0 py-5px -my-5px text-15px leading-22px [transition:color_0.12s] motion-reduce:transition-none',
+              'focus-visible:(outline outline-2 outline-violet outline-offset-2)',
+              active === tab.key ? 'font-600 text-ink' : 'font-500 text-muted hover:text-ink',
+            ]"
+            @click="select(tab.key)"
+            @keydown="onTabKeydown($event, index)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
       </div>
     </div>
 

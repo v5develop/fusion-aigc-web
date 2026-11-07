@@ -30,7 +30,7 @@ const CHIP_BADGE =
 const CHIP_CROP = 'block shrink-0 w-16px h-16px overflow-hidden rounded-3px bg-no-repeat'
 const CHIP_LABEL = 'max-w-72px overflow-hidden whitespace-nowrap text-ellipsis text-ink-2'
 const CHIP_CLOSE =
-  'shrink-0 w-14px h-14px p-0 border-none rounded-7px bg-transparent text-muted text-12px leading-none cursor-pointer hover:bg-surface2 hover:text-ink focus-visible:outline-none focus-visible:shadow-focus'
+  'relative shrink-0 w-14px h-14px p-0 after:content-empty after:absolute after:-inset-y-1px after:-inset-x-4px border-none rounded-7px bg-transparent text-muted text-12px leading-none cursor-pointer hover:bg-surface2 hover:text-ink focus-visible:outline-none focus-visible:shadow-focus'
 const CHIP_TIP =
   'absolute left-50% top-[calc(100%+6px)] z-20 hidden w-96px h-96px overflow-hidden rounded-8px border border-solid border-line bg-white bg-no-repeat -translate-x-50% pointer-events-none shadow-pop group-hover:block'
 

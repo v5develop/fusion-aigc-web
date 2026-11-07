@@ -36,6 +36,10 @@ export interface CanvasNodeData {
   subtitle?: string
   width?: number
   height?: number
+  /** true = 已锁定：拖不动，仍可选中 / 解锁 / 删除（随快照持久化） */
+  locked?: boolean
+  /** true = 「成组」生成的分组底板（可选中 / 拖动带成员走）；模板模块底板不带此标记，只作视觉框、不挡画布操作 */
+  isGroup?: boolean
   /** text=提示词 / input=输入图 / result=结果图 / video-input=视频输入 / model=图片生成 / video=视频生成 / tool=工具 / module=分组框 */
   kind?: 'text' | 'input' | 'result' | 'video-input' | 'model' | 'video' | 'tool' | 'module'
   // ---- 文本节点 ----
@@ -108,6 +112,12 @@ export interface CanvasNodeData {
   candidates?: string[]
   /** 当前选中的候选下标（服务端以 select-candidate 记录为准） */
   selectedCandidate?: number
+  /**
+   * 用户移除的候选下标（下标不重排，candidate-N 连线照旧对应）。
+   * fp = 产出这批候选的 URL 列表指纹：候选换了（新的一次成功运行）才作废；失败重跑 / 刷新回填不影响。
+   * runId 是旧数据的键（没有 fp 时按 runId 比对）。
+   */
+  hiddenCandidates?: { fp?: string; runId?: string; indices: number[] }
 }
 
 export interface CanvasEditorNode {

@@ -8,7 +8,7 @@ import ImageUpload from '@/components/ImageUpload/index.vue'
 import ImageRequirement from './ImageRequirement/index.vue'
 import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
 // 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
-import { modelOps } from '@/views/picture/constants.ts'
+import { modelOps } from '@/views/image/constants.ts'
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import CheckboxGroup from '@/components/CheckboxGroup/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
@@ -128,7 +128,7 @@ const customResultHandle = (urls: string[]) => {
         <SectionTitle>复刻要求（选填）</SectionTitle>
         <!-- 提示词框（原型 `.op-prompt`）：r6、line 描边、常驻内影，聚焦只加深内影；右下角计数 N / 3000 -->
         <div
-          class="flex flex-col p-12px rounded-md border border-solid border-line bg-white shadow-well transition-shadow duration-mid ease-sx motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.18),inset_0_1px_0_rgba(31,35,41,0.08)]"
+          class="flex flex-col p-12px rounded-md border border-solid border-line bg-white shadow-well transition-shadow duration-mid ease-sx motion-reduce:transition-none focus-within:border-violet focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.18),inset_0_1px_0_rgba(31,35,41,0.08)]"
         >
           <textarea
             v-model="formData.allStyle"

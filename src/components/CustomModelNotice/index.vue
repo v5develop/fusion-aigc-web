@@ -51,12 +51,12 @@ function onAgree() {
             <h2 :id="titleId" class="m-0 text-16px font-600 leading-22px text-ink">视频主体功能使用须知</h2>
             <button
               type="button"
-              class="grid place-items-center w-26px h-26px p-0 rounded-sm border-none bg-transparent text-muted cursor-pointer hover:(bg-surface3 text-ink) sx-focus"
+              class="grid place-items-center w-32px h-32px p-0 rounded-sm border-none bg-transparent text-muted cursor-pointer hover:(bg-surface3 text-ink) sx-focus"
               aria-label="关闭"
               @click="onMaskClick"
             >
               <svg
-                class="w-14px h-14px"
+                class="w-16px h-16px"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"

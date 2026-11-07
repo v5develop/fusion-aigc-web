@@ -1,4 +1,5 @@
 // @unocss-include
+import type { InjectionKey } from 'vue'
 /**
  * 编辑器共用的原子类组合，数值取自原型 src/styles/canvas-v31.css（画布 v3.1 皮肤）：
  * 卡片 r8 + 1px 描边 + 节点投影；头部 36px；控件 r4；图标钮 28px；说明字 ≥ 11px。
@@ -69,7 +70,7 @@ export const CANVAS_OK = 'border-[#bcd8c9] bg-[#eaf3ee] text-success'
 export const CANVAS_ERR = 'border-[#e4b7b4] bg-[#fbeeed] text-danger'
 
 /** 生成节点的执行钮：浅绿底 + 绿描边（canvas-v31 .wf-model-node__actions button.is-run，hover 见 .wf-console__run） */
-export const NODE_RUN_BTN = `grid shrink-0 w-28px h-28px p-0 place-items-center border border-solid ${CANVAS_OK} rounded-4px cursor-pointer hover:border-[#a4c9b6] hover:bg-[#e0eee6] disabled:opacity-50 disabled:cursor-not-allowed nodrag ${FOCUS_RING}`
+export const NODE_RUN_BTN = `relative grid shrink-0 w-28px h-28px after:content-empty after:absolute after:-inset-3px p-0 place-items-center border border-solid ${CANVAS_OK} rounded-4px cursor-pointer hover:border-[#a4c9b6] hover:bg-[#e0eee6] disabled:opacity-50 disabled:cursor-not-allowed nodrag ${FOCUS_RING}`
 
 /** 生成节点的徽标（超强模型等）：琥珀浅底（.wf-model-node__badge） */
 export const NODE_BADGE =
@@ -89,18 +90,28 @@ export const CHECKER_BG =
 /** 运行中 / 失败 / 部分成功提示条的公共骨架（.wf-model-node__running / __error：居中、r4、11px） */
 export const NODE_NOTICE = 'flex items-center justify-center gap-6px mt-6px px-8px py-5px rounded-4px text-11px'
 
-/** 浮动工具条（左竖条 / 底横条） */
+/** 浮动工具条（左竖条 / 底横条）：浮层 r18；按钮用 IconButton quiet（32px）。触屏上按钮命中区外扩 4px，间距放到 8px 免得互相覆盖；桌面外观不变 */
 export const TOOLBAR =
-  'absolute z-5 flex gap-2px p-6px border border-solid border-line rounded-8px bg-white/96 shadow-[0_1px_2px_rgba(16,24,40,0.06),0_4px_12px_rgba(31,35,41,0.06)]'
+  'sx-squircle absolute z-5 flex gap-2px [@media(pointer:coarse)]:gap-8px p-6px border border-solid border-line rounded-18px bg-white/96 shadow-[0_1px_2px_rgba(16,24,40,0.06),0_4px_12px_rgba(31,35,41,0.06)]'
 
-/** 工具条 28px 按钮；is-on / aria-disabled 态用属性选择器表达 */
-export const TOOLBAR_BTN = `grid w-28px h-28px p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink [&.is-on]:border-violet-line [&.is-on]:bg-violet-soft [&.is-on]:text-violet-ink [&.is-on]:shadow-[inset_0_1px_2px_rgba(31,35,41,0.1),inset_0_0_0_1px_rgba(31,35,41,0.03)] aria-disabled:opacity-30 aria-disabled:cursor-not-allowed aria-disabled:hover:border-transparent aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted ${FOCUS_RING}`
+/**
+ * 顶栏普通按钮（5185 .wf-top-btn 新版）：32px / r14 squircle / 0.8px #d9d9d9 描边 / 白→#f8f9fa 板材 + 内高光 + 短投影。
+ * 32px 即命中区下限，不再另补伪元素。
+ */
+export const TOP_BTN = `sx-squircle inline-flex shrink-0 items-center h-32px gap-5px px-12px border-[0.8px] border-solid border-[#d9d9d9] rounded-14px bg-gradient-to-b from-white to-[#f8f9fa] text-ink-2 text-13px font-500 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(31,35,41,0.05)] hover:border-[#c9cfd6] hover:from-[#fafafa] hover:to-[#f1f3f5] hover:text-ink aria-disabled:opacity-50 aria-disabled:cursor-not-allowed ${FOCUS_RING}`
 
-/** 顶栏普通按钮（.wf-top-btn）：30px / r4 / 控件描边 #c9cfd6 / 白渐变板材 + 内高光内底线 + 短投影 */
-export const TOP_BTN = `inline-flex shrink-0 items-center h-30px gap-5px px-10px border border-solid border-control rounded-4px bg-gradient-to-b from-white to-#fbfcfc text-ink-2 text-13px font-500 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] hover:border-control-hover hover:from-surface2 hover:to-surface2 hover:text-ink aria-disabled:opacity-50 aria-disabled:cursor-not-allowed ${FOCUS_RING}`
-
-/** 顶栏主按钮「执行模型」（.wf-top-btn.is-primary）：藤紫渐变 + 深描边；hover #926ba6→#835a96；按下 #6b487c→#5f3f6f 内凹 */
-export const TOP_BTN_PRIMARY = `inline-flex shrink-0 items-center h-30px gap-5px px-10px border border-solid border-violet-border rounded-4px bg-gradient-to-b from-violet-top to-violet-bottom text-white text-13px font-500 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_1px_rgba(90,60,110,0.18),0_2px_4px_rgba(90,60,110,0.18)] hover:from-#926ba6 hover:to-#835a96 active:border-violet-press active:from-violet-deep active:to-violet-press active:shadow-[inset_0_1px_3px_rgba(31,35,41,0.24)] aria-disabled:opacity-50 aria-disabled:cursor-not-allowed ${FOCUS_RING}`
+/** 顶栏主按钮「执行模型」：藤紫渐变 #7b5591→#6a487b + 0 4px 12px 紫调投影；hover 提亮、按下内凹 */
+export const TOP_BTN_PRIMARY = `sx-squircle inline-flex shrink-0 items-center h-32px gap-5px px-14px border-[0.8px] border-solid border-[#6a487b] rounded-14px bg-gradient-to-b from-[#7b5591] to-[#6a487b] text-white text-13px font-500 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_4px_12px_rgba(106,72,123,0.24)] hover:from-[#86609c] hover:to-[#74508a] active:from-[#6b487c] active:to-[#5f3f6f] active:shadow-[inset_0_1px_3px_rgba(31,35,41,0.24)] aria-disabled:opacity-50 aria-disabled:cursor-not-allowed ${FOCUS_RING}`
 
 /** 多选操作条按钮（原型 v3.1 .wf-selection-bar button：28px / r4 / 13px）；悬停走藤紫浅底 */
 export const SELECTION_BTN = `inline-flex items-center h-28px gap-4px px-8px border border-solid border-transparent rounded-4px bg-transparent text-ink-2 text-13px cursor-pointer hover:border-violet-line hover:bg-violet-soft hover:text-violet-ink ${FOCUS_RING}`
+
+/**
+ * 节点菜单（「…」与右键共用一份定义）：画布页 provide 打开函数，NodeMenu 注入后把菜单开在「…」下方。
+ * 没注入到（节点组件被单独使用）时 NodeMenu 退回自带的下拉菜单。
+ */
+export interface INodeMenuHost {
+  /** trigger：「…」按钮本身，菜单关闭时把焦点还给它 */
+  open: (nodeId: string, anchor: DOMRect, trigger?: HTMLElement) => void
+}
+export const NODE_MENU_HOST: InjectionKey<INodeMenuHost> = Symbol('canvas-node-menu-host')

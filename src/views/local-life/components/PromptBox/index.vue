@@ -38,7 +38,7 @@ const MIN_H = { sm: 'min-h-112px', md: 'min-h-160px', lg: 'min-h-220px' } as con
 
 <template>
   <div
-    class="flex flex-col box-border p-12px rounded-md border border-solid border-line shadow-[inset_0_0_10px_rgba(31,35,41,0.085),inset_0_1px_0_rgba(31,35,41,0.04)] [transition:box-shadow_110ms,border-color_110ms] motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05),0_0_0_3px_rgba(135,95,154,0.14)]"
+    class="flex flex-col box-border p-12px rounded-md border border-solid border-line shadow-[inset_0_0_10px_rgba(31,35,41,0.085),inset_0_1px_0_rgba(31,35,41,0.04)] [transition:box-shadow_110ms,border-color_110ms] motion-reduce:transition-none focus-within:border-violet focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05),0_0_0_3px_rgba(135,95,154,0.14)]"
     :class="[MIN_H[size], disabled ? 'bg-surface3 cursor-not-allowed' : 'bg-white']"
   >
     <textarea

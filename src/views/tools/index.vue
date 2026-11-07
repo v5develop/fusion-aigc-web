@@ -2,8 +2,9 @@
 /**
  * 工具箱共用工具页 /tools/:toolId（各工具按 schemas.ts 渲染）。
  *
- * <p>版式对齐新版原型（工具详情页）：贴边目录栏 160（可收起）/ 操作 460（工具头卡 + 上传 + 参数，自己滚，
- * 底部固定提交栏）/ 历史 224 / 结果卡 + 功能介绍卡。操作栏内边距 13，正好放下 s1.1 的 B3.1 上传卡 434×742。
+ * <p>版式对齐新版原型（工具详情页）：贴边目录栏 160（可收起）/ 操作 460（功能卡固定在顶、上传 + 参数自己滚，
+ * 底部固定「模型卡 | 设置」+ 提交栏）/ 历史 224 / 结果卡 + 功能介绍卡。进页不选记录：结果列先放功能介绍，
+ * 用户点了某条或本次新建了记录才展示结果。操作栏内边距 13，正好放下 s1.1 的 B3.1 上传卡 434×742。
  * 阴影、渐变、过渡时长照抄原型计算样式。提交打 Java v1 现有路由（schema.javaRoute），请求体按 schema 的
  * javaKey 映射组装；结果与历史都取 GET /api/v1/tools/{toolTitle}/histories（异步工具只回任务号）。
  */
@@ -26,6 +27,20 @@ import {
 } from '@/api/tools.ts'
 import { useUserInfoStore } from '@/stores/userInfo'
 import {
+  COLORFIX_DEFAULT,
+  colorFixDataUrlToFile,
+  colorFixFilter,
+  colorFixImage,
+  loadColorFix,
+  saveColorFix,
+  type ColorFixParams,
+} from '@/utils/colorfix.ts'
+import { goUploadImage } from '@/api/goUpload.ts'
+import { assetLibAddVersion } from '@/api/assetLibrary.ts'
+import { taskCenterTask } from '@/api/taskCenter.ts'
+import IconButton from '@/components/IconButton/index.vue'
+import ColorFixPanel from './ColorFixPanel.vue'
+import {
   findToolSchema,
   isFieldVisible,
   restoreToolForm,
@@ -37,6 +52,7 @@ import {
 import { catalogFor, catalogKindOf, catalogKinds } from './catalog'
 import { isTerminal, useToolHistory } from './useToolHistory'
 import { takeRefill } from '@/utils/refillHandoff'
+import { downloadImage } from '@/utils/download'
 import ToolUploadSlot from './ToolUploadSlot.vue'
 import ToolTryonMaterials from './ToolTryonMaterials.vue'
 import MaskPainter from './MaskPainter.vue'
@@ -45,26 +61,22 @@ import { inpaintImages, inpaintMissingReason, type InpaintBoxes } from './inpain
 import PollingOfflineBanner from './PollingOfflineBanner.vue'
 import ToolImageCompare from './ToolImageCompare.vue'
 import ToolMediaPreview, { type PreviewItem } from './ToolMediaPreview.vue'
-import CreationImageSettings from '@/components/creation/CreationImageSettings.vue'
 import CreationSettingsRow from '@/components/creation/CreationSettingsRow.vue'
 import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
-import {
-  creationSettingsSummary,
-  toCreationOptions,
-  type CreationOption,
-  type CreationSettingKey,
-  type CreationSettingsConfig,
-  type CreationSettingsRowItem,
-  type CreationSettingsValue,
-} from '@/components/creation/types'
+import CreationModelPicker from '@/components/creation/CreationModelPicker.vue'
+import CreationOptionPills from '@/components/creation/CreationOptionPills.vue'
+import NumberStepper from '@/components/creation/NumberStepper.vue'
+import MediaLightbox, { type LightboxItem } from '@/components/MediaLightbox/index.vue'
+import type { PromptWriteBizType } from '@/api/promptWrite.ts'
+import type { CreationOption, CreationSettingsRowItem } from '@/components/creation/types'
 
 /** Java 同步抠图「等不及」的专用码（ErrorCode.TASK_PROCESSING） */
 const TASK_PROCESSING_CODE = 3010
 
+/** 文字替换的一条识别结果：text 是用户改写后的文字，与原文 targetText 不同（去首尾空白）才算「改过」、才会提交 */
 interface Region {
   targetText: string
   text: string
-  include: boolean
   rect: {
     angle: number
     height: number
@@ -87,7 +99,56 @@ const schema = computed<ToolSchema | undefined>(() => findToolSchema(toolId.valu
 const catalog = computed(() => catalogFor(toolId.value))
 /** 当前工具在目录里的条目：头卡的图标与短说明取这里 */
 const currentEntry = computed(() => catalog.value.groups.flatMap((g) => g.entries).find((e) => e.id === toolId.value))
-const catalogCollapsed = ref(false)
+// 目录：≥1440 展开 160 / 收起 44（用户切换）；<1440 固定收起 44，展开时以浮层盖在内容上（外点 / Esc / 换路由收起）
+const wideViewport = ref(typeof window === 'undefined' || window.matchMedia('(min-width: 1440px)').matches)
+const userCollapsed = ref(false)
+const overlayOpen = ref(false)
+const catalogCollapsed = computed(() => (wideViewport.value ? userCollapsed.value : !overlayOpen.value))
+const catalogOverlay = computed(() => !wideViewport.value && overlayOpen.value)
+const catalogNav = ref<HTMLElement | null>(null)
+function toggleCatalog() {
+  if (wideViewport.value) userCollapsed.value = !userCollapsed.value
+  else overlayOpen.value = !overlayOpen.value
+}
+let wideMql: MediaQueryList | undefined
+const onWideChange = (e: MediaQueryListEvent) => {
+  wideViewport.value = e.matches
+  overlayOpen.value = false
+}
+const onCatalogOutside = (e: PointerEvent) => {
+  if (overlayOpen.value && !catalogNav.value?.contains(e.target as Node)) overlayOpen.value = false
+}
+// Esc 收起浮层后把焦点还给「展开目录」按钮（焦点原本可能在浮层条目上，收起后会掉到 body）
+const onCatalogEsc = (e: KeyboardEvent) => {
+  if (e.key !== 'Escape' || !overlayOpen.value) return
+  overlayOpen.value = false
+  void nextTick(() => document.getElementById('tool-catalog-toggle')?.focus())
+}
+// 浮层里点任一条目（含当前工具——路由不变，换路由的 watch 收不到）都收起浮层
+const onCatalogItemClick = () => {
+  if (catalogOverlay.value) overlayOpen.value = false
+}
+onMounted(() => {
+  wideMql = window.matchMedia('(min-width: 1440px)')
+  wideViewport.value = wideMql.matches
+  wideMql.addEventListener('change', onWideChange)
+  document.addEventListener('pointerdown', onCatalogOutside, true)
+  document.addEventListener('keydown', onCatalogEsc)
+})
+onBeforeUnmount(() => {
+  wideMql?.removeEventListener('change', onWideChange)
+  document.removeEventListener('pointerdown', onCatalogOutside, true)
+  document.removeEventListener('keydown', onCatalogEsc)
+})
+watch(
+  () => route.fullPath,
+  () => (overlayOpen.value = false),
+)
+/** 功能卡缩略：目录给了封面图（cover）就用封面，否则用图标框 */
+const entryCover = computed(() => {
+  const cover = (currentEntry.value as { cover?: unknown } | undefined)?.cover
+  return typeof cover === 'string' && cover ? cover : ''
+})
 
 // 功能卡（原型 FunctionSwitcher ml）：整卡是按钮，点开在卡正下方 8px 展开功能面板（宽 = max(320, 卡宽)、最高 min(680, 视口余高)）；
 // 面板头「切换功能」+ AI 图片 / AI 视频分段 + 关闭，下面按目录分组 3 列。点外面、Esc、窗口缩放或页面滚动都会收起；切到别的工具后自动收起
@@ -302,8 +363,17 @@ async function loadVideoModels() {
   videoModelsLoaded.value = true
 }
 
-const currentVideoModel = computed(() => videoModels.value.find((m) => m.model === values.model))
+/** model-configs 的一项（displayName = 品牌名；refs = 视频模型参考素材上限，见 api/tools.ts） */
+type ModelConfigExt = ModelConfig
+
+const currentVideoModel = computed<ModelConfigExt | undefined>(() =>
+  videoModels.value.find((m) => m.model === values.model),
+)
 const VIDEO_RATIO_LABELS: Record<string, string> = { adaptive: '自适应' }
+/** 清晰度显示名：超分档（1440p-esr / 2160p-esr）写成 2K / 4K，其余大写 */
+const VIDEO_RESOLUTION_LABELS: Record<string, string> = { '1440p-esr': '2K', '2160p-esr': '4K' }
+const videoResolutionLabel = (r: string) => VIDEO_RESOLUTION_LABELS[r.toLowerCase()] ?? r.toUpperCase()
+const modelName = (m: ModelConfigExt) => m.displayName?.trim() || m.model
 
 /** 当前模型这一档清晰度的配置（清晰度按小写对齐：h3 / happyhorse 下发的是大写 768P、2K） */
 function videoSizeOf(m: ModelConfig | undefined, resolution: unknown) {
@@ -311,41 +381,136 @@ function videoSizeOf(m: ModelConfig | undefined, resolution: unknown) {
   return m.size?.find((x) => x.resolution?.toLowerCase() === resolution.toLowerCase())
 }
 
+/** 视频模型的时长区间；服务端没建模（duration 为空）时只给契约默认的 4 秒 */
+const videoDurationRange = computed<[number, number] | null>(() => {
+  const m = currentVideoModel.value
+  if (!m) return null
+  const [min, max] = m.duration ?? []
+  return Number.isInteger(min) && Number.isInteger(max) && min! > 0 && max! >= min! ? [min!, max!] : [4, 4]
+})
+
+// ---------------- 图片生成的模型（image-model-configs 下发多个模型时才出模型卡） ----------------
+
+/** 「重新编辑」时模型表还没到：先记下，表到了再对回 */
+let pendingImageModel = ''
+/** 图片模型的界面取值键（不进 schema、不在 values 的普通字段里出网，提交时按需落成 model） */
+const IMAGE_MODEL_KEY = '__imageModel'
+const imageModelChoices = computed<ModelConfigExt[]>(() =>
+  (imageModels.value ?? []).filter((m) => m && typeof m.model === 'string' && m.model),
+)
+/** 多于一个模型才让用户选；只有一个时照旧按它报价、不传 model */
+const imageModelSelectable = computed(() => schema.value?.price === 'image-model-configs' && imageModelChoices.value.length > 1)
+const currentImageModel = computed<ModelConfigExt | undefined>(
+  () => imageModelChoices.value.find((m) => m.model === values[IMAGE_MODEL_KEY]) ?? imageModelChoices.value[0],
+)
+/** 图片生成工具且模型表已到：分辨率 / 比例按所选（默认第一项）模型的 size[] 出 */
+const imageModelDriven = computed(() => schema.value?.price === 'image-model-configs' && !!currentImageModel.value?.size?.length)
+/** 所选图片模型的分辨率档（原样大小写）；没建模返回 null = 用 schema 选项 */
+const imageModelResolutions = computed<string[] | null>(() => {
+  if (!imageModelDriven.value) return null
+  const list = (currentImageModel.value?.size ?? []).map((x) => x.resolution).filter(Boolean)
+  return list.length ? list : null
+})
+/** 所选图片模型在当前分辨率下的比例；没建模返回 null */
+const imageModelRatios = computed<string[] | null>(() => {
+  if (!imageModelDriven.value) return null
+  const list = videoSizeOf(currentImageModel.value, values.resolution)?.aspectRatio
+  return list?.length ? list : null
+})
+
 /** 字段的可选项：静态取 schema.options，dynamic 按当前模型 / 清晰度现算 */
 function fieldOptions(f: ToolField): CreationOption<string>[] {
-  if (!f.dynamic) return (f.options ?? []).map((o) => ({ label: o, value: o }))
+  if (!f.dynamic) {
+    let opts = f.options ?? []
+    // 图片生成：分辨率 / 比例取所选模型的 size[]（schema 里有同名档就沿用它的写法，回填与出网口径不变）
+    if (f.key === 'resolution' && imageModelResolutions.value) {
+      opts = imageModelResolutions.value.map(
+        (r) => (f.options ?? []).find((o) => o.toLowerCase() === r.toLowerCase()) ?? r.toUpperCase(),
+      )
+    } else if (f.key === 'aspectRatio' && imageModelRatios.value) {
+      opts = imageModelRatios.value.map((r) => (f.options ?? []).find((o) => o === r) ?? r)
+    }
+    return opts.map((o) => ({ label: o, value: o }))
+  }
   const m = currentVideoModel.value
   switch (f.dynamic) {
     case 'videoModel':
-      return videoModels.value.map((x) => ({
-        label: x.description ? `${x.model}（${x.description}）` : x.model,
+      // 模型卡列表：品牌名（没有写 model）+ description 作副标题；不报价（原型 ModelSelect），提交值是 model
+      return videoModels.value.map((x: ModelConfigExt) => ({
+        label: modelName(x),
         value: x.model,
+        description: x.description || undefined,
       }))
     case 'videoResolution':
       return (m?.size ?? [])
         .filter((x) => typeof x.resolution === 'string' && x.resolution)
-        .map((x) => ({ label: x.resolution.toUpperCase(), value: x.resolution.toLowerCase() }))
+        .map((x) => ({ label: videoResolutionLabel(x.resolution), value: x.resolution.toLowerCase() }))
     case 'videoRatio':
       return (videoSizeOf(m, values.resolution)?.aspectRatio ?? []).map((r) => ({
         label: VIDEO_RATIO_LABELS[r] ?? r,
         value: r,
       }))
     case 'videoDuration': {
-      if (!m) return []
-      const [min, max] = m.duration ?? []
-      // 服务端没建模时长（duration 为空）：只给契约默认的 4 秒
-      const range = Number.isInteger(min) && Number.isInteger(max) && min! > 0 && max! >= min! ? [min!, max!] : [4, 4]
-      return Array.from({ length: range[1]! - range[0]! + 1 }, (_, i) => {
-        const n = range[0]! + i
+      const range = videoDurationRange.value
+      if (!range) return []
+      return Array.from({ length: range[1] - range[0] + 1 }, (_, i) => {
+        const n = range[0] + i
         return { label: `${n} 秒`, value: String(n) }
       })
     }
   }
 }
 
+/** 动态字段换模型后的默认档：时长 4 秒（在区间内）否则最短、清晰度 720P、比例 16:9；都没有就第一档 */
+function preferredOption(f: ToolField, opts: CreationOption<string>[]): string {
+  const has = (v: string) => opts.some((o) => o.value === v)
+  if (f.dynamic === 'videoDuration' && has('4')) return '4'
+  if (f.dynamic === 'videoResolution' && has('720p')) return '720p'
+  if (f.dynamic === 'videoRatio' && has('16:9')) return '16:9'
+  return opts[0]!.value
+}
+
+/** 当前视频模型的参考素材上限（refs 没下发 = 不限，按槽位 schema 的 max） */
+const videoRefs = computed(() => currentVideoModel.value?.refs ?? null)
+/** 参考图上限：refs.maxImages，缺省 9 */
+const refImageCap = computed(() => {
+  const n = videoRefs.value?.maxImages
+  return typeof n === 'number' && n >= 0 ? n : 9
+})
+/** 当前模型明确不支持参考视频（refs.maxVideos === 0）：参考视频槽换成说明、已传的清空 */
+const refVideoBlocked = computed(() => videoRefs.value?.maxVideos === 0)
+/** 当前模型明确不支持参考图（refs.maxImages === 0）：参考图槽同样换成说明、已传的清空（不能留一个上限 0 的空槽） */
+const refImageBlocked = computed(() => videoRefs.value?.maxImages === 0)
+/** 上传槽的实际上限：视频模型的参考素材槽（needsMode）按 refs 收紧 */
+function slotMax(u: ToolUpload) {
+  if (!u.needsMode || !currentVideoModel.value) return u.max
+  if (u.kind === 'video') {
+    const cap = videoRefs.value?.maxVideos
+    return typeof cap === 'number' && cap > 0 ? Math.min(u.max, cap) : u.max
+  }
+  return Math.min(u.max, refImageCap.value)
+}
+const slotSpecs = computed(() => new Map((schema.value?.uploads ?? []).map((u) => [u.slot, { ...u, max: slotMax(u) }])))
+const specOf = (u: ToolUpload) => slotSpecs.value.get(u.slot) ?? u
+/** 「当前模型最多 N 张参考图、M 段参考视频」/「…，不支持参考视频」；只在有参考素材槽、且模型下发了 refs 时显示 */
+const refLimitText = computed(() => {
+  const r = videoRefs.value
+  if (!r || !schema.value?.uploads.some((u) => u.needsMode)) return ''
+  if (refImageBlocked.value) {
+    if (r.maxVideos === 0) return '当前模型不支持参考图和参考视频'
+    return typeof r.maxVideos === 'number' ? `当前模型不支持参考图，最多 ${r.maxVideos} 段参考视频` : '当前模型不支持参考图'
+  }
+  const images = `${refImageCap.value} 张参考图`
+  if (r.maxVideos === 0) return `当前模型最多 ${images}，不支持参考视频`
+  if (typeof r.maxVideos === 'number') return `当前模型最多 ${images}、${r.maxVideos} 段参考视频`
+  return `当前模型最多 ${images}`
+})
+
 /** 视频模型支不支持这个上传槽（supportedModes 为空 = 服务端没建模，按都支持） */
 function uploadEnabled(u: ToolUpload) {
   if (!u.needsMode) return true
+  if (u.kind === 'video' && refVideoBlocked.value) return false
+  if (u.kind !== 'video' && refImageBlocked.value) return false
   const modes = currentVideoModel.value?.supportedModes ?? []
   return !modes.length || modes.includes(u.needsMode)
 }
@@ -370,11 +535,13 @@ function setUploads(slot: number, urls: string[]) {
   uploads[slot] = urls
 }
 
-function clampNumber(f: ToolField) {
-  const n = Math.round(Number(values[f.key]))
-  const fallback = f.min ?? 1
-  values[f.key] = Math.min(f.max ?? Infinity, Math.max(f.min ?? -Infinity, Number.isFinite(n) ? n : fallback))
+/** 各上传入口是否正在上传（键 = 槽位 / 素材板）：任何一个在传就不让提交，免得漏掉还没回来的图 */
+const uploadingSlots = reactive<Record<string, boolean>>({})
+function setUploading(key: string, busy: boolean) {
+  if (busy) uploadingSlots[key] = true
+  else delete uploadingSlots[key]
 }
+const anyUploading = computed(() => Object.keys(uploadingSlots).length > 0)
 
 /**
  * 「重新编辑」换上的单图：下面两个 singleImage 监听见到它时不清空回填的识别结果、也不自动识别
@@ -436,16 +603,53 @@ watch(
     for (const f of s.fields) {
       if (!f.dynamic) continue
       const opts = fieldOptions(f)
-      if (opts.length && !opts.some((o) => o.value === values[f.key])) values[f.key] = opts[0]!.value
+      if (opts.length && !opts.some((o) => o.value === values[f.key])) values[f.key] = preferredOption(f, opts)
     }
-    for (const u of s.uploads) if (!uploadEnabled(u) && uploads[u.slot]?.length) uploads[u.slot] = []
+    for (const u of s.uploads) {
+      if (!uploadEnabled(u) && uploads[u.slot]?.length) uploads[u.slot] = []
+      // 换到参考素材上限更小的模型：多出来的从后往前裁掉
+      const cap = slotMax(u)
+      if ((uploads[u.slot]?.length ?? 0) > cap) uploads[u.slot] = uploads[u.slot]!.slice(0, cap)
+    }
   },
   { immediate: true },
 )
+// 图片生成多模型：模型表到了先落默认模型；换模型后不再支持的分辨率 / 比例落到该模型第一档
+watch(
+  () => [imageModelDriven.value, currentImageModel.value?.model, values.resolution],
+  () => {
+    const s = schema.value
+    if (!s || !imageModelDriven.value) return
+    if (pendingImageModel && imageModelChoices.value.some((m) => m.model === pendingImageModel))
+      values[IMAGE_MODEL_KEY] = pendingImageModel
+    pendingImageModel = ''
+    if (!values[IMAGE_MODEL_KEY] && currentImageModel.value) values[IMAGE_MODEL_KEY] = currentImageModel.value.model
+    for (const f of s.fields) {
+      if (f.dynamic || (f.key !== 'resolution' && f.key !== 'aspectRatio')) continue
+      const opts = fieldOptions(f)
+      if (opts.length && !opts.some((o) => o.value === values[f.key])) values[f.key] = opts[0]!.value
+    }
+  },
+  { immediate: true },
+)
+
 /** 上传槽位的显示顺序：s1.1 产品替换「替换素材」在上、底图片格在下（只换显示顺序，校验与提交仍按 schema 顺序） */
 const displayUploads = computed(() =>
-  [...(schema.value?.uploads ?? [])].sort((a, b) => Number(b.layout === 'material') - Number(a.layout === 'material')),
+  [...(schema.value?.uploads ?? [])]
+    .filter((u) => !mlPromptUploads.value.includes(u))
+    .sort((a, b) => Number(b.layout === 'material') - Number(a.layout === 'material')),
 )
+/**
+ * 原型 ml 一体框：有提示词、且有 ml 版式参考图槽的工具，参考图槽收进提示词框顶部（计数「0/9」+ 我的提示词书本钮一行）。
+ * 局部重绘 / 消除不收：框选与涂抹要先有图，图槽得留在它们上面。
+ */
+const mlPromptUploads = computed<ToolUpload[]>(() => {
+  const s = schema.value
+  if (!s || !s.fields.some((f) => f.type === 'textarea')) return []
+  if (s.fields.some((f) => f.type === 'inpaint-region' || f.type === 'mask')) return []
+  return s.uploads.filter((u) => u.layout === 'ml')
+})
+const mlPrompt = computed(() => mlPromptUploads.value.length > 0)
 /** 商拍换装素材板的两个槽位：服装图（clothImageUrl）/ 模特图（modelImageUrl）；缺一个就退回通用槽位 */
 const tryonSlots = computed(() => {
   const list = schema.value?.uploads ?? []
@@ -463,41 +667,91 @@ const singleImage = computed(() => uploads[0]?.[0] ?? '')
  */
 const compact = computed(() => !!schema.value?.uploads.some((u) => u.layout === 'video'))
 
-// 图片设置（目标分辨率 / 画幅比例 / 生成张数）交给共用的 CreationImageSettings：
-// 这几个字段合成一组，放进底部设置行（原型「图片设置 3:4 · 1K · 1 张 ▾」）的弹层；取值仍写回 values[key]，请求体不变
-const SETTING_KEYS: readonly string[] = ['resolution', 'aspectRatio', 'count'] satisfies CreationSettingKey[]
-const isSettingField = (f: ToolField) => SETTING_KEYS.includes(f.key) && (f.type === 'chips' || f.type === 'stepper')
-const settingFields = computed(() => visibleFields.value.filter(isSettingField))
-/** 表单里渲染的字段：设置字段改由底部设置行承载 */
-const formFields = computed(() => visibleFields.value.filter((f) => !isSettingField(f)))
-const settingsConfig = computed<CreationSettingsConfig>(() =>
-  Object.fromEntries(
-    settingFields.value.map((f) => [
-      f.key,
-      {
-        label: f.label,
-        required: f.required,
-        // 张数原为 min–max 的数字框，这里列成同范围的胶囊，取值仍是数字
-        options:
-          f.type === 'stepper'
-            ? toCreationOptions(Array.from({ length: (f.max ?? 1) - (f.min ?? 1) + 1 }, (_, i) => (f.min ?? 1) + i))
-            : fieldOptions(f),
-      },
-    ]),
-  ),
+/**
+ * 底部设置行（原型 OperatePanel ml「模型卡 | 设置」）：
+ * - 模型（视频模型 dynamic=videoModel，或图片生成多模型时的模型卡）单独一张 44 高卡，点开 CreationModelPicker；
+ * - 其余所有「非模型、非提示词」的参数（分辨率 / 比例 / 张数 / 语言 / 目标语言 / 时长 / 开关 / 下拉 / 预设与自定义尺寸）
+ *   一律收进「图片设置 / 视频设置」弹层，按钮上拼摘要（比例 · 分辨率 · N 张 · 语言 · 时长）；
+ * - 需要醒目可见的留在表单里：涂抹蒙版、框选区域、识别结果、配音音色（带试听）。
+ * 取值仍写回 values[key]，请求体不变。
+ */
+const FORM_ONLY_TYPES = new Set(['textarea', 'mask', 'region-list', 'inpaint-region', 'voice'])
+/** 「输入润色」开关（原型 .op-prompt__rewrite）：收进提示词框底行，取值仍写回 values[key] */
+const rewriteField = computed(
+  () => visibleFields.value.find((f) => f.type === 'switch' && f.key === 'rewritePrompt') ?? null,
 )
-const settingsValue = computed<CreationSettingsValue>(() =>
-  Object.fromEntries(settingFields.value.map((f) => [f.key, values[f.key]])),
+const modelField = computed(() => visibleFields.value.find((f) => f.dynamic === 'videoModel') ?? null)
+const isPopoverField = (f: ToolField) =>
+  !FORM_ONLY_TYPES.has(f.type) && f !== rewriteField.value && f.dynamic !== 'videoModel'
+const settingFields = computed(() => visibleFields.value.filter(isPopoverField))
+/** 表单里渲染的字段：设置字段改由底部设置行承载，模型改由模型卡承载，润色开关进提示词框 */
+const promptFields = computed(() =>
+  visibleFields.value.filter((f) => !isPopoverField(f) && f !== rewriteField.value && f.dynamic !== 'videoModel'),
 )
-function onSettings(v: CreationSettingsValue) {
-  for (const f of settingFields.value) values[f.key] = v[f.key as CreationSettingKey]
+const rewriteValue = computed({
+  get: () => (rewriteField.value ? !!values[rewriteField.value.key] : false),
+  set: (v: boolean) => {
+    if (rewriteField.value) values[rewriteField.value.key] = v
+  },
+})
+/** 生成类工具：提示词框显示「我的提示词」入口（原型 ImageGenerate / AiVideoGenerator 等四页） */
+const libraryEnabled = computed(() => !!schema.value?.promptLibrary)
+/** schema.helpBizType → 提示词框「AI帮写」（只认 prompt-write 已有的业务类型） */
+const helpBizType = computed(() => schema.value?.helpBizType as PromptWriteBizType | undefined)
+
+/** 比例转换「自定义尺寸」：宽 / 高两个 number 字段合成一行「输出尺寸（像素）」 */
+const SIZE_KEYS = ['width', 'height']
+const sizePair = computed(() => {
+  const w = settingFields.value.find((f) => f.key === 'width' && f.type === 'number')
+  const h = settingFields.value.find((f) => f.key === 'height' && f.type === 'number')
+  return w && h ? { w, h } : null
+})
+const SIZE_INVALID = '请填写 64～8192 之间的宽高'
+function sizeValid(f: ToolField) {
+  const n = Number(values[f.key])
+  return Number.isInteger(n) && n >= (f.min ?? 64) && n <= (f.max ?? 8192)
 }
+/** 设置弹层里逐个渲染的字段（宽高合成一行，由 sizePair 单独渲染） */
+const popoverRows = computed(() =>
+  settingFields.value.filter((f) => !(sizePair.value && SIZE_KEYS.includes(f.key))),
+)
+
+/** 设置摘要的一段：选项写显示名，张数加「张」，时长加「秒」，开关只在开着时写名字 */
+function summaryPart(f: ToolField): string {
+  const v = values[f.key]
+  if (v === undefined || v === null || v === '') return ''
+  if (f.type === 'switch') return v ? f.label : ''
+  if (f.key === 'count') return `${v} 张`
+  if (f.dynamic === 'videoDuration') return `${v} 秒`
+  if (f.type === 'number' || f.type === 'stepper') return String(v)
+  return fieldOptions(f).find((o) => o.value === v)?.label ?? String(v)
+}
+const settingsSummary = computed(() => {
+  const order = ['aspectRatio', 'resolution', 'count']
+  const fields = [...settingFields.value].sort((a, b) => {
+    const ia = order.indexOf(a.key)
+    const ib = order.indexOf(b.key)
+    return (ia < 0 ? order.length : ia) - (ib < 0 ? order.length : ib)
+  })
+  const parts: string[] = []
+  for (const f of fields) {
+    if (sizePair.value && SIZE_KEYS.includes(f.key)) {
+      if (f.key === 'width') parts.push(`${values.width ?? '?'}×${values.height ?? '?'}`)
+      continue
+    }
+    if (f.uiOnly) continue // 「尺寸方式」这类界面分支由后面的取值本身说明（比例 · 分辨率，或 宽×高）
+    const part = summaryPart(f)
+    if (part) parts.push(part)
+  }
+  return parts.join(' · ')
+})
+
 /**
  * 只有一个档位字段（chips、≤4 档）时照原型 ChoiceFieldButton inline 摆在提交按钮上方，分段片直接点选；取值仍写回 values[key]。
  * ←/→ 循环切换，焦点跟到新选中的那一片（原型 move）。
  */
 const inlineSetting = computed(() => {
-  const only = settingFields.value.length === 1 ? settingFields.value[0] : undefined
+  const only = settingFields.value.length === 1 && !modelField.value && !imageModelSelectable.value ? settingFields.value[0] : undefined
   return only && only.type === 'chips' && fieldOptions(only).length <= 4 ? only : undefined
 })
 const inlineOptions = computed(() => (inlineSetting.value ? fieldOptions(inlineSetting.value) : []))
@@ -513,24 +767,66 @@ function moveInline(step: number) {
   values[f.key] = inlineOptions.value[next]!.value
   void nextTick(() => inlineSegs[next]?.focus())
 }
-/** 底部设置行：有设置字段才出一枚按钮；视频工具叫「视频设置」（原型视频高清「视频设置 1080P」） */
-const settingItems = computed<CreationSettingsRowItem[]>(() =>
-  settingFields.value.length
-    ? [
-        {
-          key: 'settings',
-          icon: 'gear',
-          label: schema.value?.media === 'video' ? '视频设置' : '图片设置',
-          value: creationSettingsSummary(settingsConfig.value, settingsValue.value),
-        },
-      ]
-    : [],
-)
+
+/** 模型卡的选项与取值（视频模型 / 图片多模型二选一） */
+const modelOptions = computed<CreationOption<string>[]>(() => {
+  if (modelField.value) return fieldOptions(modelField.value)
+  if (imageModelSelectable.value)
+    return imageModelChoices.value.map((m) => ({
+      label: modelName(m),
+      value: m.model,
+      description: m.description || undefined,
+    }))
+  return []
+})
+const pickedModel = computed({
+  get: () => String((modelField.value ? values[modelField.value.key] : currentImageModel.value?.model) ?? ''),
+  set: (v: string) => {
+    if (modelField.value) values[modelField.value.key] = v
+    else values[IMAGE_MODEL_KEY] = v
+  },
+})
+const hasModelCard = computed(() => !!modelField.value || imageModelSelectable.value)
+
+/** 底部设置行：模型卡（有模型时）+ 设置按钮（有设置字段时）；只有设置时设置按钮占满整行 */
+const settingItems = computed<CreationSettingsRowItem[]>(() => {
+  const list: CreationSettingsRowItem[] = []
+  if (hasModelCard.value) {
+    const name = modelOptions.value.find((o) => o.value === pickedModel.value)?.label
+    list.push({
+      key: 'model',
+      icon: 'sparkle',
+      label: '模型',
+      value: name ?? (videoModelsLoaded.value || imageModels.value ? '暂无可用模型' : '加载中…'),
+      ariaLabel: schema.value?.media === 'video' ? '视频模型' : '生图模型',
+    })
+  }
+  if (settingFields.value.length && !inlineSetting.value) {
+    list.push({
+      key: 'settings',
+      icon: 'gear',
+      label: schema.value?.media === 'video' ? '视频设置' : '图片设置',
+      value: settingsSummary.value || '默认',
+    })
+  }
+  return list
+})
 
 const reasonId = `tool-submit-reason-${useId()}`
+const hintId = `tool-submit-hint-${useId()}`
+/** 设置弹层里每一行（原型 SettingsPopover 设置行）：最小高 48、内边距 8 0、纵向 gap 6 */
+const setRowCls = 'flex flex-col gap-6px min-h-48px box-border py-8px'
+/** 提示词框顶行的参考图计数「0/9」（多个槽时逐个写） */
+const mlCountText = computed(() =>
+  mlPromptUploads.value
+    .filter((u) => uploadEnabled(u))
+    .map((u) => `${uploads[u.slot]?.length ?? 0}/${specOf(u).max}`)
+    .join(' · '),
+)
 
-// 换图后蒙版与识别结果都作废
+// 换图后蒙版与识别结果都作废（蒙版画布换图时也会发 change(false)，这里先同步清掉，不等它回报）
 watch(singleImage, (url) => {
+  maskHasStroke.value = false
   if (url && url === restoredImage) return
   regions.value = []
 })
@@ -563,14 +859,30 @@ function playAudition() {
   audio = new Audio(auditionUrl.value)
   void audio.play().catch(() => message.error('试听播放失败'))
 }
+onBeforeUnmount(() => {
+  audio?.pause()
+  audio = null
+})
 
 // ---------------- 文字识别（文字替换） ----------------
 
+/**
+ * 识别是同步接口、要几秒：识别中用户换了图，旧图的结果不能落到新图上。
+ * 每次识别记下图址，回来时图已换就丢弃；识别中又换了图（自动识别被 loading 挡住）先记一笔，本次结束后对新图补跑。
+ */
+let ocrQueued = false
 async function runOcr() {
-  if (!singleImage.value || ocrLoading.value) return
+  const url = singleImage.value
+  if (!url) return
+  if (ocrLoading.value) {
+    ocrQueued = true
+    return
+  }
+  ocrQueued = false
   ocrLoading.value = true
   try {
-    const res = await toolOcr(singleImage.value)
+    const res = await toolOcr(url)
+    if (singleImage.value !== url) return
     const list = res.data?.Results ?? []
     regions.value = list
       .filter((r) => r.Text && r.TextRectangles?.Pos?.length === 4)
@@ -578,8 +890,8 @@ async function runOcr() {
         const t = r.TextRectangles!
         return {
           targetText: r.Text!,
-          text: r.Text!,
-          include: true,
+          // 改写框初始为空（占位「改成…」）：没改的条目不提交
+          text: '',
           rect: {
             angle: t.Angle ?? 0,
             height: Math.round(t.Height ?? 0),
@@ -592,11 +904,21 @@ async function runOcr() {
       })
     if (!regions.value.length) message.warning('没有识别到可替换的文字')
   } catch (err) {
-    reportError(err, '文字识别失败')
+    if (singleImage.value === url) reportError(err, '文字识别失败')
   } finally {
     ocrLoading.value = false
+    if (ocrQueued) {
+      ocrQueued = false
+      const next = singleImage.value
+      // 补跑只针对换上来的新图（回填的原图不自动识别，识别单独计费）
+      if (next && next !== url && next !== restoredImage && hasRegionField.value) void runOcr()
+    }
   }
 }
+
+/** 改过的条目：去首尾空白后非空、且与原文不同 */
+const isChanged = (r: Region) => !!r.text.trim() && r.text.trim() !== r.targetText.trim()
+const changedRegions = computed(() => regions.value.filter(isChanged))
 
 // 文字替换：原图上传后自动识别（复用 runOcr / toolOcr，无需点按钮）
 const hasRegionField = computed(() => !!schema.value?.fields.some((f) => f.type === 'region-list'))
@@ -610,6 +932,7 @@ watch(singleImage, (url) => {
 const disabledReason = computed(() => {
   const s = schema.value
   if (!s) return ''
+  if (anyUploading.value) return '图片上传中'
   for (const u of s.uploads) {
     if (u.required && uploadEnabled(u) && !uploads[u.slot]?.length) return `还没上传${u.label.replace(/（.*）/, '')}`
   }
@@ -620,8 +943,8 @@ const disabledReason = computed(() => {
       continue
     }
     if (f.type === 'region-list') {
-      if (!regions.value.length) return '请先识别图片中的文字'
-      if (!regions.value.some((r) => r.include && r.text.trim())) return '至少保留一条要替换的文字'
+      if (!regions.value.length) return ocrLoading.value ? '正在识别图片中的文字' : '请先识别图片中的文字'
+      if (!changedRegions.value.length) return '请至少修改一处文案再提交'
       continue
     }
     if (f.type === 'inpaint-region') {
@@ -631,6 +954,10 @@ const disabledReason = computed(() => {
     }
     if (f.type === 'voice') {
       if (!selectedVoice.value) return voicesLoaded.value && !voices.value.length ? '暂无可用音色' : '请选择配音音色'
+      continue
+    }
+    if (sizePair.value && SIZE_KEYS.includes(f.key)) {
+      if (!sizeValid(sizePair.value.w) || !sizeValid(sizePair.value.h)) return SIZE_INVALID
       continue
     }
     const v = values[f.key]
@@ -651,19 +978,36 @@ const disabledReason = computed(() => {
 const fanOutCount = computed(() => {
   const s = schema.value
   if (!s) return 0
-  const fan = s.uploads.find(
-    (u) => u.javaKey !== 'imageUrls' && u.javaKey !== 'images' && u.max > 1 && uploadEnabled(u),
-  )
+  const fan = fanSlot(s)
   return fan ? Math.max(uploads[fan.slot]?.length ?? 0, 1) : 1
 })
+
+/**
+ * 逐张提交的槽：单值键多张（原逻辑），或 schema.perItemSubmit 时的数组键 imageUrls（比例转换：一张图一个任务，
+ * 每次传 imageUrls:[url]）；局部重绘的 images 不拆
+ */
+function fanSlot(s: ToolSchema) {
+  return s.uploads.find(
+    (u) =>
+      u.javaKey !== 'images' &&
+      (u.javaKey !== 'imageUrls' || !!s.perItemSubmit) &&
+      u.max > 1 &&
+      uploadEnabled(u),
+  )
+}
+
+/** schema.submitLabel 优先（图片生成「立即生成」），否则 submit.label */
+const baseSubmitLabel = computed(() => schema.value?.submitLabel || schema.value?.submit.label || '')
 
 /** 提交按钮主文案：countLabel 的工具有图时写任务数（原型「开始换装（2 张）」）；计费与提交逻辑不看它 */
 const submitLabel = computed(() => {
   const s = schema.value
   if (!s) return ''
-  const fan = s.uploads.find((u) => u.javaKey !== 'imageUrls' && u.javaKey !== 'images' && u.max > 1)
+  const fan = fanSlot(s)
   const n = fan ? (uploads[fan.slot]?.length ?? 0) : 0
-  return s.submit.countLabel && n ? `${s.submit.label}（${n} 张）` : s.submit.label
+  const label = baseSubmitLabel.value
+  if (s.sync && syncResultUrl.value) return '重新抠图'
+  return s.submit.countLabel && n ? `${label}（${n} 张）` : label
 })
 
 // 预计消耗：GET /api/v1/features/biz-points 进页读一次（切工具不重读）；失败或该工具无报价时保持原文案
@@ -705,7 +1049,8 @@ const modelEstimate = computed<{ points: number; unit: string } | null>(() => {
   if (s?.price === 'image-model-configs') {
     const res = s.fields.find((f) => f.key === 'resolution')
     const tier = res ? toJavaValue(res, values[res.key]) : undefined
-    const unit = videoSizeOf(imageModels.value?.[0], tier)?.points
+    // 按所选模型（默认第一项）的单价报
+    const unit = videoSizeOf(currentImageModel.value, tier)?.points
     if (typeof unit !== 'number') return null
     const count = Number(values.count ?? 1)
     return { points: unit * (Number.isFinite(count) && count > 0 ? count : 1), unit: '' }
@@ -751,9 +1096,12 @@ const costLine = computed<{ num: string; suffix: string } | { text: string }>(()
 function fieldEntries(f: ToolField): [string, unknown][] {
   if (f.uiOnly) return []
   if (f.type === 'region-list') {
-    const info = regions.value
-      .filter((r) => r.include && r.text.trim())
-      .map((r) => ({ targetText: r.targetText, text: r.text.trim(), textRectangles: r.rect }))
+    // 只提交改过的条目（与原文不同且非空）；没改的原样保留，不送去替换
+    const info = changedRegions.value.map((r) => ({
+      targetText: r.targetText,
+      text: r.text.trim(),
+      textRectangles: r.rect,
+    }))
     return [['textInformation', info]]
   }
   if (f.type === 'voice') {
@@ -782,16 +1130,19 @@ async function buildBodies(s: ToolSchema): Promise<Record<string, unknown>[]> {
     base.maskUrl = maskUrl
   }
 
-  let fan: { key: string; urls: string[] } | null = null
+  let fan: { key: string; urls: string[]; asArray: boolean } | null = null
   for (const u of s.uploads) {
     const urls = uploads[u.slot] ?? []
     if (!urls.length || !uploadEnabled(u)) continue
     if (u.javaKey === 'images') continue // 局部重绘：地址已随区域进了 images
-    if (u.javaKey === 'imageUrls') base.imageUrls = [...urls]
-    else if (u.max > 1) fan = { key: u.javaKey, urls }
+    if (u.javaKey === 'imageUrls' && s.perItemSubmit && urls.length > 1) fan = { key: u.javaKey, urls, asArray: true }
+    else if (u.javaKey === 'imageUrls') base.imageUrls = [...urls]
+    else if (u.max > 1) fan = { key: u.javaKey, urls, asArray: false }
     else base[u.javaKey] = urls[0]
   }
-  return fan ? fan.urls.map((url) => ({ ...base, [fan!.key]: url })) : [base]
+  // 图片生成多模型：只有让用户选了模型时才传 model（CoreToolSubmissionRequest.model）
+  if (imageModelSelectable.value && currentImageModel.value) base.model = currentImageModel.value.model
+  return fan ? fan.urls.map((url) => ({ ...base, [fan!.key]: fan!.asArray ? [url] : url })) : [base]
 }
 
 // ---------------- 提交 ----------------
@@ -801,20 +1152,28 @@ async function onSubmit() {
   if (!s || submitting.value || disabledReason.value) return
   submitting.value = true
   progressText.value = ''
+  ensureBaseline()
+  const submitAt = Date.now()
   let done = 0
   let total = 0
   try {
     if (s.sync) {
-      await submitSync()
+      await submitSync(submitAt)
       return
     }
     const bodies = await buildBodies(s)
     total = bodies.length
+    // 先按「号未知」记一笔：请求超时 / 断网时任务可能已在服务端建好，靠时间兜底认领
+    unknownSubmitAt.value ??= submitAt
+    let allKnown = true
     for (const body of bodies) {
       if (total > 1) progressText.value = `正在提交 ${done + 1} / ${total}`
-      await submitTool(s.javaRoute, body)
+      const res = await submitTool(s.javaRoute, body)
+      if (!rememberSubmission(res.data)) allKnown = false
       done += 1
     }
+    // 这一轮全部成功且都拿到了号：撤掉本次记的时间兜底（之前没认领完的那笔保留）
+    if (allKnown && unknownSubmitAt.value === submitAt) unknownSubmitAt.value = null
   } catch (err) {
     reportError(err, '提交失败，请重试')
   } finally {
@@ -833,12 +1192,14 @@ async function onSubmit() {
 }
 
 /** 同步抠图：成功直接出图；3010 = 任务仍在跑（拦截器已提示），结果会出现在历史里 */
-async function submitSync() {
+async function submitSync(submitAt: number) {
   syncResultUrl.value = ''
   try {
     const res = await submitCutout(singleImage.value)
     syncResultUrl.value = res.data?.url ?? ''
   } catch (err) {
+    // 等不及转异步 / 传输层失败：结果可能出现在历史里，但不带号，按提交时刻认领
+    unknownSubmitAt.value ??= submitAt
     if (toApiError(err)?.code !== TASK_PROCESSING_CODE) throw err
   } finally {
     selectedId.value = null
@@ -877,6 +1238,15 @@ const RESTORE_DISABLED_TIP = '旧记录不支持重新编辑'
 const formRef = ref<HTMLFormElement | null>(null)
 
 /**
+ * 表单只认显式提交（底部提交按钮 / 在它上面按回车空格）：单行输入框里按回车会触发浏览器的隐式提交，
+ * 文字替换逐条改写时一回车就扣点提交了。这里拦掉所有 input 上的回车（多行 textarea 换行不受影响，
+ * 按钮 / 开关不是 input 不受影响）；表单里目前没有「回车即提交」的单行字段。
+ */
+function blockImplicitSubmit(e: KeyboardEvent) {
+  if (e.target instanceof HTMLInputElement) e.preventDefault()
+}
+
+/**
  * 用原始提交体回填整张表单：先回到默认值，再按 restoreToolForm 的映射覆盖；图片 / 视频地址原样放进槽位（不重新上传）。
  * 没有 requestParams 的老记录入口是禁用的，这里也直接返回——不拿 payload 拼半张表单误导用户。
  * 不触发提交：用户确认后自己点提交按钮。
@@ -893,6 +1263,11 @@ async function restoreFrom(item: ToolHistoryItem) {
   selectedId.value = item.aiToolHistoryId
   for (const [slot, urls] of Object.entries(r.uploads)) uploads[Number(slot)] = urls
   Object.assign(values, r.values)
+  // 图片生成：回填当时选的模型（模型表里还有它才回填；没有就保持默认第一项）
+  if (s.price === 'image-model-configs' && typeof params.model === 'string') {
+    if (imageModelChoices.value.some((m) => m.model === params.model)) values[IMAGE_MODEL_KEY] = params.model
+    else pendingImageModel = params.model
+  }
   const lost: string[] = []
   if (r.voice) {
     const hit = voices.value.find((v) => v.model === r.voice!.voiceModel && v.voiceKey === r.voice!.voiceKey)
@@ -902,7 +1277,7 @@ async function restoreFrom(item: ToolHistoryItem) {
   if (hasRegionField.value) {
     // 文字替换：识别结果随提交体回填；回填的原图不自动重新识别（识别单独计费），要重识别用户自己点
     restoredImage = uploads[0]?.[0] ?? ''
-    if (r.regions) regions.value = r.regions.map((x) => ({ ...x, include: true }))
+    if (r.regions) regions.value = r.regions.map((x) => ({ ...x }))
     else lost.push('识别结果')
   }
   if (r.needsMask) lost.push('涂抹区域')
@@ -941,9 +1316,70 @@ watch(
   { immediate: true },
 )
 
-const current = computed<ToolHistoryItem | null>(
-  () => history.items.value.find((i) => i.aiToolHistoryId === selectedId.value) ?? history.items.value[0] ?? null,
+/**
+ * 进页什么都不选（原型）：用户点了某条、或本标签页刚提交出了记录之后，结果列才展示记录，否则整列是功能介绍。
+ *
+ * <p>「本页提交的」优先按提交响应里的任务号 / 工作流记录号认（ownTaskIds / ownHistoryIds），别的标签页、别的设备
+ * 同时提交的记录不会自己弹出来。响应没带号（同步抠图 3010 转异步、超时 / 断网但服务端可能已建）时退一步：
+ * 不在基线里、且创建时间不早于本次提交（留 60 秒时钟偏差）的才算。基线 = 进页时那页记录；进页那次历史没拉成功的，
+ * 提交前用当时列表补一份，免得把老记录当成新的。
+ */
+const baselineIds = ref<Set<number> | null>(null)
+const ownTaskIds = ref<Set<string>>(new Set())
+const ownHistoryIds = ref<Set<number>>(new Set())
+/** 响应没带号的那次提交时刻（ms）；null = 不需要按时间兜底 */
+const unknownSubmitAt = ref<number | null>(null)
+const CLOCK_SKEW_MS = 60_000
+watch(
+  () => history.loaded.value,
+  (loaded) => {
+    if (loaded && !baselineIds.value) baselineIds.value = new Set(history.items.value.map((i) => i.aiToolHistoryId))
+  },
+  { immediate: true },
 )
+watch(toolId, () => {
+  baselineIds.value = null
+  ownTaskIds.value = new Set()
+  ownHistoryIds.value = new Set()
+  unknownSubmitAt.value = null
+})
+
+/** 提交前：进页那次历史没拉到时，用当前列表补基线 */
+function ensureBaseline() {
+  if (!baselineIds.value) baselineIds.value = new Set(history.items.value.map((i) => i.aiToolHistoryId))
+}
+
+/** 记下本次提交响应里的号：taskId / taskIds（工具路由）、workflowHistoryIds（工作流路由）；一个都没有返回 false */
+function rememberSubmission(data: unknown): boolean {
+  const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  const tasks = [d.taskId, ...(Array.isArray(d.taskIds) ? d.taskIds : [])].filter(
+    (x): x is string => typeof x === 'string' && !!x,
+  )
+  const histories = (Array.isArray(d.workflowHistoryIds) ? d.workflowHistoryIds : []).filter(
+    (x): x is number => typeof x === 'number',
+  )
+  if (tasks.length) ownTaskIds.value = new Set([...ownTaskIds.value, ...tasks])
+  if (histories.length) ownHistoryIds.value = new Set([...ownHistoryIds.value, ...histories])
+  return tasks.length + histories.length > 0
+}
+
+/** 服务端时间串（无时区，按本地时间解析）→ ms；解析不了返回 NaN */
+const createdMs = (v?: string | null) => (v ? new Date(v.replace(' ', 'T')).getTime() : NaN)
+
+function isOwnNew(i: ToolHistoryItem) {
+  if (ownHistoryIds.value.has(i.aiToolHistoryId) || (!!i.taskUid && ownTaskIds.value.has(i.taskUid))) return true
+  const since = unknownSubmitAt.value
+  const base = baselineIds.value
+  if (since === null || !base || base.has(i.aiToolHistoryId)) return false
+  const t = createdMs(i.createdAt)
+  return Number.isFinite(t) && t >= since - CLOCK_SKEW_MS
+}
+
+const current = computed<ToolHistoryItem | null>(() => {
+  const picked = history.items.value.find((i) => i.aiToolHistoryId === selectedId.value)
+  if (picked) return picked
+  return history.items.value.find(isOwnNew) ?? null
+})
 
 const isVideoUrl = (u: string) => /\.(mp4|webm|mov)(\?|#|$)/i.test(u)
 
@@ -965,6 +1401,21 @@ const STATUS: Record<string, { text: string; cls: string }> = {
   CANCELLED: { text: '已取消', cls: 'll-chip-warning' },
 }
 const statusOf = (s: string) => STATUS[s] ?? { text: s || '未知', cls: 'll-chip-warning' }
+/** 历史卡状态胶囊（原型 .v3-hist__status）：999 胶囊 + 语义 soft 底深字 + 5px 状态点 */
+const statusChipCls = (s: string) => {
+  const cls = statusOf(s).cls
+  if (cls === 'll-chip-success') return 'bg-success-soft text-success'
+  if (cls === 'll-chip-error') return 'bg-danger-soft text-danger'
+  if (cls === 'll-chip-warning') return 'bg-warning-soft text-warning'
+  return 'bg-info-soft text-violet-ink'
+}
+const statusDotCls = (s: string) => {
+  const cls = statusOf(s).cls
+  if (cls === 'll-chip-success') return 'bg-success'
+  if (cls === 'll-chip-error') return 'bg-danger'
+  if (cls === 'll-chip-warning') return 'bg-warning'
+  return 'bg-violet'
+}
 
 function formatTime(v?: string | null) {
   if (!v) return ''
@@ -1028,7 +1479,7 @@ const products = computed<PreviewItem[]>(() => {
   ].map((p, i) => ({ ...p, name: `${title} · ${i + 1}` }))
 })
 
-const resultMode = ref<'result' | 'compare'>('result')
+const resultMode = ref<'result' | 'compare' | 'colorfix'>('result')
 const selectedIndex = ref(0)
 watch(
   () => (showSync.value ? `sync:${syncResultUrl.value}` : current.value?.aiToolHistoryId),
@@ -1044,13 +1495,40 @@ const compareAfter = computed(
     products.value.find((p) => p.type === 'image')?.src ||
     '',
 )
-const compareBefore = computed(() => {
-  if (showSync.value) return singleImage.value
-  const item = current.value
-  return item?.inputImageUrls?.[0] ?? item?.payload?.imageUrls?.[0] ?? ''
+/**
+ * 「前后对比」拿哪张输入图（schema.compare）：false = 不对比（图片生成）；不写 = 第 0 张「输入图」；
+ * 商拍换装第 1 张「模特图」、姿态复刻第 1 张「参考姿势图」。指定的那张没有就不给对比，免得标签对不上图。
+ */
+const compareSpec = computed(() => {
+  const c = schema.value?.compare
+  if (c === false) return null
+  return c ?? { index: 0, label: '输入图' }
 })
+const compareBefore = computed(() => {
+  const spec = compareSpec.value
+  if (!spec) return ''
+  if (showSync.value) return spec.index === 0 ? singleImage.value : ''
+  const item = current.value
+  const inputs = (item?.inputImageUrls?.length ? item.inputImageUrls : item?.payload?.imageUrls) ?? []
+  return inputs[spec.index] ?? ''
+})
+const compareLabels = computed<[string, string]>(() => [compareSpec.value?.label ?? '输入图', '生成结果'])
 /** 一进一出的处理类工具：有输入图 + 结果图时给「结果 / 前后对比」两档 */
 const canCompare = computed(() => !!compareAfter.value && !!compareBefore.value)
+/** 校色只在 schema.colorFix 的工具（商拍换装 / 姿态复刻）出现 */
+const colorFixEnabled = computed(() => !!schema.value?.colorFix)
+/** 第三档「校色对比」：校色过的图片结果才有 */
+const canColorCompare = computed(
+  () => colorFixEnabled.value && colorFixTouched.value && selectedProduct.value?.type === 'image',
+)
+watch(canColorCompare, (ok) => {
+  if (!ok && resultMode.value === 'colorfix') resultMode.value = 'result'
+})
+/** 头部名称：记录自带标题时用它，否则写工具名 */
+const recordTitle = computed(() => {
+  const t = (current.value as (ToolHistoryItem & { title?: unknown }) | null)?.title
+  return typeof t === 'string' && t.trim() ? t.trim() : (schema.value?.title ?? '')
+})
 
 const lightboxOpen = ref(false)
 const lightboxIndex = ref(0)
@@ -1059,6 +1537,168 @@ function openLightbox() {
   lightboxIndex.value = Math.min(selectedIndex.value, products.value.length - 1)
   lightboxOpen.value = true
 }
+
+// ---------------- 校色闭环 v1（整图） ----------------
+// 面板五参数改动即时挂在舞台图上（CSS filter 预览）；「完成」/切记录把参数按任务号存 localStorage，
+// 切回记录自动还原；存资产 / 下载时才烘真图（无损 PNG），资产侧原图 + 校色后两版。
+const colorFixPanelOpen = ref(false)
+const colorFix = ref<ColorFixParams>({ ...COLORFIX_DEFAULT })
+/** 本条记录是否校色过：面板动过参数，或 localStorage 里有这条记录的参数 */
+const colorFixTouched = ref(false)
+const colorFixSaving = ref(false)
+
+const colorFixTaskUid = computed(() => (showSync.value ? '' : current.value?.taskUid ?? ''))
+
+// 切记录：读回这条记录的参数（没有就复位默认并视为未校色），面板开着也同步
+watch(colorFixTaskUid, (uid) => {
+  const stored = uid ? loadColorFix(uid) : null
+  colorFix.value = stored ? { ...stored } : { ...COLORFIX_DEFAULT }
+  colorFixTouched.value = !!stored
+  colorFixPanelOpen.value = false
+})
+
+// 面板调参（v-model 直改）：标记已校色并按任务号落 localStorage，切回记录可还原
+watch(
+  colorFix,
+  (v) => {
+    if (!colorFixPanelOpen.value) return
+    colorFixTouched.value = true
+    if (colorFixTaskUid.value) saveColorFix(colorFixTaskUid.value, v)
+  },
+  { deep: true },
+)
+
+/** 舞台图滤镜：校色过（或面板打开在调）才挂，视频与对比模式不挂 */
+const stageFilter = computed(() => {
+  if (!colorFixEnabled.value) return undefined
+  if (!colorFixTouched.value && !colorFixPanelOpen.value) return undefined
+  if (selectedProduct.value?.type !== 'image') return undefined
+  return colorFixFilter(colorFix.value)
+})
+
+function closeColorFixPanel() {
+  colorFixPanelOpen.value = false
+  // 只开了面板没动参数：不落默认参数，否则下次切回会被当成校色过，下载也会烘一遍
+  if (colorFixTouched.value && colorFixTaskUid.value) saveColorFix(colorFixTaskUid.value, colorFix.value)
+}
+
+/**
+ * 存为资产（校色后）：把当前结果烘成 PNG → goUpload 直传 → 按任务号找素材库产物行 →
+ * 图片地址对上号的那条资产追加「校色后」版本（params 里带 colorFix JSON，详情页版本胶囊按它标注）。
+ */
+async function saveAsAsset() {
+  const product = selectedProduct.value
+  if (!product || product.type !== 'image' || colorFixSaving.value) return
+  const uid = colorFixTaskUid.value
+  if (!uid) {
+    message.warning('这条记录没有任务号，无法写入素材库')
+    return
+  }
+  const withColorFix = colorFixEnabled.value && colorFixTouched.value
+  colorFixSaving.value = true
+  try {
+    const detail = await taskCenterTask(uid)
+    const assets = detail.data?.assets ?? []
+    // 对号顺序：①图片地址（去域名与查询串）与原图或水印副本一致 ②任务只有一张资产 ③资产数与图片结果数相同时按序号。
+    // 免费用户在工具页看到的是带水印副本，所以①同时比 image 与 watermark（任务详情接口 2026-11-07 起下发水印地址）。
+    const normalize = (u: string | null | undefined) => (u || '').split('?')[0]?.replace(/^https?:\/\/[^/]+/, '') ?? ''
+    const imageProducts = products.value.filter((x) => x.type === 'image')
+    const byIndex = imageProducts.findIndex((x) => x.src === product.src)
+    const src = normalize(product.src)
+    const target =
+      assets.find((a) => normalize(a.image) === src || (!!a.watermark && normalize(a.watermark) === src)) ??
+      (assets.length === 1 ? assets[0] : undefined) ??
+      (assets.length > 1 && assets.length === imageProducts.length && byIndex >= 0 ? assets[byIndex] : undefined)
+    if (!target) {
+      message.warning(withColorFix ? '这张结果还没有进入素材库，暂不能追加校色版本' : '这张结果还在入库中，稍后再试')
+      return
+    }
+    // 没校色：生成结果完成时已自动入库，这里只确认已在素材库（资产接口只能追加版本，不另建一条）
+    if (!withColorFix) {
+      message.success('这张结果已在素材库，可到资产库查看')
+      return
+    }
+    const baked = await colorFixImage(product.src, colorFix.value)
+    const url = await goUploadImage(colorFixDataUrlToFile(baked, `colorfix-${uid}.png`))
+    await assetLibAddVersion(target.id, {
+      image_url: url,
+      prompt: promptOf(current.value ?? ({} as ToolHistoryItem)) || undefined,
+      params: JSON.stringify({ colorFix: colorFix.value, sourceImage: product.src }),
+    })
+    message.success('已存为资产：原图 + 校色后两版')
+  } catch (err) {
+    reportError(err, '存为资产失败，请重试')
+  } finally {
+    colorFixSaving.value = false
+  }
+}
+
+/** 下载当前选中的结果：校色动过时烘成 PNG（含效果），否则按原地址下载 */
+async function downloadSelected() {
+  const product = selectedProduct.value
+  if (!product) return
+  if (product.type === 'image' && colorFixEnabled.value && colorFixTouched.value) {
+    try {
+      const baked = await colorFixImage(product.src, colorFix.value)
+      const bin = atob(baked.slice(baked.indexOf(',') + 1))
+      const buf = new Uint8Array(bin.length)
+      for (let k = 0; k < bin.length; k++) buf[k] = bin.charCodeAt(k)
+      const url = URL.createObjectURL(new Blob([buf], { type: 'image/png' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${product.name || 'result'}-校色后.png`
+      a.click()
+      // 立刻回收会让部分浏览器（Safari / 旧版 Firefox）下载落空：等下载接手后再回收
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch {
+      // 烘图要跨域读像素（依赖 OSS CORS），失败就退回原地址下载，别让用户拿不到图
+      message.warning('校色效果未能写入，已下载原图')
+      void downloadImage(product.src, product.name)
+    }
+    return
+  }
+  if (product.type === 'video') window.open(product.src, '_blank', 'noopener')
+  else void downloadImage(product.src, product.name)
+}
+
+/** 「下载校色前」：原图原地址 */
+function downloadBeforeColorFix() {
+  const product = selectedProduct.value
+  if (product?.type === 'image') void downloadImage(product.src, `${product.name || 'result'}-校色前`)
+}
+
+// ---------------- 灯箱（历史缩略图 / 抠图结果卡）：共用 MediaLightbox ----------------
+const thumbLightbox = reactive<{ show: boolean; index: number; items: LightboxItem[] }>({ show: false, index: 0, items: [] })
+function openThumbs(urls: string[], index = 0, name = '') {
+  if (!urls.length) return
+  thumbLightbox.items = urls.map((url, i) => ({ url, type: isVideoUrl(url) ? 'video' : 'image', name: urls.length > 1 ? `${name} · ${i + 1}` : name }))
+  thumbLightbox.index = index
+  thumbLightbox.show = true
+}
+
+// ---------------- 抠图 / 消除：换一张 ----------------
+/** 清掉原图与上次结果（抠图结果、涂抹、识别），回到上传空态 */
+function replaceInput() {
+  for (const u of schema.value?.uploads ?? []) uploads[u.slot] = []
+  syncResultUrl.value = ''
+  maskHasStroke.value = false
+  regions.value = []
+}
+
+// ---------------- 进页聚焦提示词（D22） ----------------
+const promptRef = ref<{ focus: () => void } | null>(null)
+function setPromptRef(el: unknown) {
+  promptRef.value = (el as { focus: () => void } | null) ?? null
+}
+watch(
+  () => schema.value?.homeId,
+  () => {
+    // 只在精确指针设备上自动聚焦（触屏会直接弹键盘）；preventScroll 不把页面滚走
+    if (typeof window === 'undefined' || !window.matchMedia('(pointer: fine)').matches) return
+    void nextTick(() => promptRef.value?.focus())
+  },
+  { immediate: true, flush: 'post' },
+)
 
 /** 原型 ToolWorkspaceColumns 历史列 empty-hint 全文（原型展示时切到分号前，按产品要求用全文） */
 const HISTORY_EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都会在这一列留一条；点一条就能在右边看它的产物'
@@ -1076,9 +1716,14 @@ const resultEmptyCls =
   'flex-1 min-h-[220px] flex flex-col items-center justify-center gap-5px p-18px text-center text-11px leading-[1.55] text-muted'
 
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
-/** 输入框（原型 `.sx-input`）：高 34、1px #c9cfd6、r4、inset-input；hover #aeb6bf；焦点 violet 描边 + 3px 光晕 α.14 */
+/** 压在结果图上的毛玻璃胶囊（原型 .v3-cf-edit）：32 高、r16、白 88% + 模糊，13/600 */
+const cfPillCls =
+  'inline-flex items-center gap-4px h-32px box-border px-12px rounded-16px border border-solid border-white/60 bg-white/88 backdrop-blur-[8px] ' +
+  'text-13px font-600 cursor-pointer shadow-[0_1px_3px_rgba(31,35,41,0.12)] [transition:background_120ms,border-color_120ms] hover:(bg-white border-violet-line) ' +
+  'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
+/** 输入框（原型 `.sx-input` 材质对齐档）：高 34、1px #c9cfd6、r15、inset-input；hover #aeb6bf；焦点 violet 描边 + 3px 光晕 α.14 */
 const inputCls =
-  'w-full h-34px box-border rounded-4px border border-solid border-#c9cfd6 bg-white px-10px text-13px text-ink ' +
+  'w-full h-34px box-border rounded-15px border border-solid border-#c9cfd6 bg-white px-10px text-13px text-ink ' +
   'shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] ' +
   '[transition:border-color_110ms,box-shadow_110ms] hover:border-#aeb6bf ' +
   'focus:(border-violet outline-none shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),0_0_0_3px_rgba(135,95,154,0.14)]) ' +
@@ -1111,10 +1756,19 @@ const plateBtnCls =
       没有页面的条目显示「即将开放」。
     -->
     <nav
-      class="relative z-34 flex-none flex min-h-0 flex-col box-border overflow-hidden border-l border-solid border-shell-line bg-white shadow-[10px_0_16px_-12px_rgba(31,35,41,0.22)] [transition:width_0.2s_ease,flex-basis_0.2s_ease] motion-reduce:transition-none"
-      :class="catalogCollapsed ? 'w-44px basis-44px' : 'w-160px basis-160px'"
+      ref="catalogNav"
+      class="relative z-34 flex-none w-44px basis-44px"
+      :class="wideViewport ? (catalogCollapsed ? '' : '!w-160px !basis-160px [transition:width_0.2s_ease,flex-basis_0.2s_ease] motion-reduce:transition-none') : ''"
       aria-labelledby="tool-catalog-title"
     >
+     <div
+      class="flex min-h-0 flex-col box-border overflow-hidden bg-white"
+      :class="
+        catalogOverlay
+          ? 'absolute left-0 top-0 z-40 h-full w-160px border border-solid border-#e2e2e2 rounded-10px shadow-[0_12px_32px_rgba(31,35,41,0.18)]'
+          : 'h-full w-full border-l border-solid border-shell-line shadow-[10px_0_16px_-12px_rgba(31,35,41,0.22)]'
+      "
+     >
       <div
         class="flex-none flex items-center gap-8px h-48px"
         :class="catalogCollapsed ? 'justify-center' : 'justify-between pl-14px pr-8px'"
@@ -1127,18 +1781,15 @@ const plateBtnCls =
           {{ catalog.title }}
         </h2>
         <!-- 原型 .v3-iconbtn：28 / r4、muted，悬停 #f3f4f5 + ink（无过渡）；展开态是菜单图标、收起态是右箭头 -->
-        <button
-          type="button"
-          class="flex-none grid place-items-center w-28px h-28px p-0 rounded-4px border-none bg-transparent text-muted cursor-pointer hover:(bg-surface3 text-ink)"
-          :class="focusRing"
+        <IconButton
+          id="tool-catalog-toggle"
+          variant="quiet"
+          :label="catalogCollapsed ? '展开目录' : '收起目录'"
           :aria-expanded="!catalogCollapsed"
           aria-controls="tool-catalog-list"
-          :aria-label="catalogCollapsed ? '展开目录' : '收起目录'"
-          :title="catalogCollapsed ? '展开目录' : '收起目录'"
-          @click="catalogCollapsed = !catalogCollapsed"
+          @click="toggleCatalog"
         >
           <svg
-            class="w-16px h-16px"
             viewBox="0 0 512 512"
             fill="none"
             stroke="currentColor"
@@ -1150,7 +1801,7 @@ const plateBtnCls =
             <path v-if="catalogCollapsed" stroke-width="48" d="M184 112l144 144-144 144" />
             <path v-else stroke-miterlimit="10" d="M80 160h352M80 256h352M80 352h352" />
           </svg>
-        </button>
+        </IconButton>
       </div>
       <div class="relative flex-1 min-h-0">
         <!-- 上下渐隐：只在还能往那个方向滚时出现（opacity 160ms） -->
@@ -1207,12 +1858,12 @@ const plateBtnCls =
                     "
                     :data-rail-id="e.id"
                     :aria-label="e.route ? `${e.name}，${e.tagline}` : `${e.name}（即将开放）`"
-                    :title="catalogCollapsed ? undefined : e.route ? undefined : '即将开放'"
+                    :title="catalogCollapsed ? undefined : e.route ? e.tagline : '即将开放'"
                     class="flex items-center box-border rounded-6px border border-solid no-underline"
                     :class="[
                       catalogCollapsed
                         ? 'flex-[0_0_36px] justify-center w-36px h-36px p-0 [transition:background_110ms,color_110ms] motion-reduce:transition-none'
-                        : 'justify-start gap-10px w-full h-48px pl-8px pr-14px',
+                        : 'justify-start gap-10px w-full h-48px px-8px',
                       e.route ? focusRing : 'cursor-not-allowed',
                       e.id === toolId
                         ? [
@@ -1226,6 +1877,7 @@ const plateBtnCls =
                           ],
                     ]"
                     @mouseenter="hoveredRail = e.id"
+                    @click="e.route && onCatalogItemClick()"
                     @focus="catalogCollapsed && (showRailTips(), (hoveredRail = e.id))"
                     @blur="catalogCollapsed && hideRailTips()"
                   >
@@ -1243,7 +1895,7 @@ const plateBtnCls =
                     />
                     <template v-else-if="!catalogCollapsed">
                       <span
-                        :class="[tileCls, 'ml-auto w-36px h-36px', e.route ? 'text-violet' : 'text-muted opacity-60']"
+                        :class="[tileCls, 'flex-none w-36px h-36px', e.route ? 'text-violet' : 'text-muted opacity-60']"
                         aria-hidden="true"
                       >
                         <svg
@@ -1258,15 +1910,12 @@ const plateBtnCls =
                           :innerHTML="e.icon"
                         />
                       </span>
-                      <span class="mr-auto min-w-0 w-56px flex-[0_0_56px] flex flex-col">
-                        <span
-                          class="truncate text-13px font-500 leading-[1.3]"
-                          :class="e.route ? 'text-ink' : 'text-muted'"
-                        >
-                          {{ e.name }}
-                        </span>
-                        <!-- 原型每项都写短说明；没开放的项由读屏名「（即将开放）」与悬停提示说明 -->
-                        <span class="truncate text-11px leading-[1.35] text-muted">{{ e.tagline }}</span>
+                      <!-- 单行：名称 14/500/20，说明移到 title 悬停提示 -->
+                      <span
+                        class="flex-1 min-w-0 truncate text-14px font-500 leading-20px"
+                        :class="e.route ? 'text-ink' : 'text-muted'"
+                      >
+                        {{ e.name }}
                       </span>
                     </template>
                   </component>
@@ -1281,6 +1930,7 @@ const plateBtnCls =
           aria-hidden="true"
         />
       </div>
+     </div>
     </nav>
 
     <!--
@@ -1315,34 +1965,37 @@ const plateBtnCls =
 
     <!--
       三栏（原型 ToolWorkspaceColumns ml）：≥1440 时 460 / 224 / 1fr、gap 16、内边距 16（左 15），三栏等高、各栏内部滚动；
-      <1440 单列堆叠、gap 14，整页滚动。
+      <1440 单列堆叠、gap 12，整页滚动。
     -->
     <div
-      class="flex-1 min-w-0 min-h-0 grid grid-cols-1 gap-14px p-16px overflow-y-auto border-l border-solid border-shell-line min-[1440px]:(grid-cols-[460px_224px_minmax(0,1fr)] gap-16px pl-15px overflow-hidden)"
+      class="flex-1 min-w-0 min-h-0 grid grid-cols-1 gap-12px p-16px overflow-y-auto border-l border-solid border-shell-line min-[1440px]:(grid-cols-[460px_224px_minmax(0,1fr)] gap-16px pl-15px overflow-hidden)"
     >
-      <!-- 操作区：功能卡（点开切换功能）+ 上传 + 参数，自己滚；底部固定设置行 + 提交栏 -->
+      <!--
+        操作区：功能卡固定在顶（≥1440 不随表单滚），中间上传 + 参数自己滚，底部固定设置行 + 提交栏
+      -->
       <section class="ll-card flex flex-col min-h-0 overflow-hidden" aria-labelledby="tool-title">
-        <!-- tabindex=-1：「重新编辑」回填后把焦点移到表单开头（程序聚焦落点，不进 Tab 序列，故不画焦点环） -->
-        <form
-          id="tool-form"
-          ref="formRef"
-          tabindex="-1"
-          class="flex-1 min-h-0 overflow-y-auto pt-12px px-12px pb-0 flex flex-col gap-12px [scrollbar-width:thin] [overscroll-behavior:contain] outline-none"
-          @submit.prevent="onSubmit"
-        >
-          <!--
-                功能卡（原型 FunctionSwitcher ml）：高 64、内边距 12 14、gap 12、1px #e9dff2、r10、白→#fbf7fe、0 1 2 α.05；
-                缩略 56×40 / r6、图标 20；名称 15/20·600、说明 11/16；箭头 14 muted。整卡可点（铺满的透明按钮），悬停内容 opacity .82（无过渡）。
-              -->
+        <!--
+          功能卡（原型 FunctionSwitcher ml + 材质对齐）：高 64、内边距 12 14、gap 12、1px #e9dff2、r18 squircle、白→#fbf7fe、0 1 2 α.05；
+          缩略 56×40（目录有封面图用封面，否则图标框）；名称 16/22·600、说明 11/16；箭头 14 muted。
+          整卡可点（铺满的透明按钮），悬停内容 opacity .82（无过渡）。
+        -->
+        <div class="flex-none pt-12px px-12px">
           <div
             :ref="setSwitcherCard"
-            class="group relative flex-none flex items-center gap-12px h-64px box-border px-14px py-12px rounded-10px border border-solid border-[#e9dff2] bg-[linear-gradient(180deg,#fff_0%,#fbf7fe_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
+            class="sx-squircle group relative flex items-center gap-12px h-64px box-border px-14px py-12px rounded-18px border border-solid border-[#e9dff2] bg-[linear-gradient(180deg,#fff_0%,#fbf7fe_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
           >
             <div
               class="min-w-0 flex-1 flex items-center gap-12px h-40px pointer-events-none group-hover:opacity-82"
               :class="switcherOpen ? 'opacity-82' : ''"
             >
-              <span :class="[tileCls, 'w-56px h-40px text-violet']" aria-hidden="true">
+              <span
+                v-if="entryCover"
+                class="sx-squircle flex-none w-56px h-40px box-border overflow-hidden rounded-8px border border-solid border-line bg-surface3"
+                aria-hidden="true"
+              >
+                <img :src="entryCover" alt="" class="block w-full h-full object-cover" draggable="false" />
+              </span>
+              <span v-else :class="[tileCls, 'w-56px h-40px text-violet']" aria-hidden="true">
                 <svg
                   v-if="currentEntry?.icon"
                   class="w-20px h-20px"
@@ -1356,7 +2009,7 @@ const plateBtnCls =
                 />
               </span>
               <div class="min-w-0 flex-1 flex flex-col items-start gap-2px">
-                <h1 id="tool-title" class="m-0 max-w-full truncate text-15px font-600 leading-20px text-ink">
+                <h1 id="tool-title" class="m-0 max-w-full truncate text-16px font-600 leading-22px text-ink">
                   {{ schema.title }}
                 </h1>
                 <p
@@ -1381,7 +2034,7 @@ const plateBtnCls =
             </div>
             <button
               type="button"
-              class="absolute inset-0 w-full h-full p-0 rounded-10px border-none bg-transparent cursor-pointer"
+              class="absolute inset-0 w-full h-full p-0 rounded-18px border-none bg-transparent cursor-pointer"
               :class="focusRing"
               :aria-expanded="switcherOpen"
               aria-haspopup="dialog"
@@ -1390,127 +2043,130 @@ const plateBtnCls =
               @click="toggleSwitcher"
             />
           </div>
-          <!-- 功能面板（原型 .fn-switch__pop.is-ml）：1px line、r10、白底、shadow-pop；出现 / 收起都是淡入 + 4px 上移 120ms ease -->
-          <Teleport to="body">
-            <Transition
-              enter-active-class="[transition:opacity_120ms_ease,transform_120ms_ease] motion-reduce:transition-none"
-              leave-active-class="[transition:opacity_120ms_ease,transform_120ms_ease] motion-reduce:transition-none"
-              enter-from-class="opacity-0 translate-y-4px"
-              leave-to-class="opacity-0 translate-y-4px"
-            >
-              <div
-                v-if="switcherOpen"
-                :id="switcherId"
-                :ref="setSwitcherPop"
-                role="dialog"
-                aria-label="切换功能"
-                class="fixed z-260 flex flex-col box-border overflow-hidden rounded-10px border border-solid border-line bg-white shadow-[0_12px_24px_rgba(31,35,41,0.14),0_2px_6px_rgba(31,35,41,0.06)]"
-                :style="switcherStyle"
-              >
-                <div
-                  class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_#e5e7eb]"
+        </div>
+        <!-- 功能面板（原型 .fn-switch__pop.is-ml）：1px line、r10、白底、shadow-pop；出现 / 收起都是淡入 + 4px 上移 120ms（op-pop），减少动效时直接出现 -->
+        <Teleport to="body">
+          <Transition
+            enter-active-class="[transition:opacity_120ms_ease,transform_120ms_ease] motion-reduce:transition-none"
+            enter-from-class="opacity-0 translate-y-4px"
+            leave-active-class="[transition:opacity_120ms_ease,transform_120ms_ease] motion-reduce:transition-none"
+            leave-to-class="opacity-0 translate-y-4px"
+          >
+            <div
+              v-if="switcherOpen"
+              :id="switcherId"
+                  :ref="setSwitcherPop"
+                  role="dialog"
+                  aria-label="切换功能"
+                  class="fixed z-[6000] flex flex-col box-border overflow-hidden rounded-10px border border-solid border-line bg-white shadow-[0_12px_24px_rgba(31,35,41,0.14),0_2px_6px_rgba(31,35,41,0.06)]"
+                  :style="switcherStyle"
                 >
-                  <b class="min-w-0 flex-1 text-13px font-600 text-muted">切换功能</b>
                   <div
-                    class="inline-flex flex-none gap-2px p-2px box-border rounded-6px border border-solid border-line bg-surface3"
-                    role="tablist"
-                    aria-label="功能大类"
+                    class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_#e5e7eb]"
                   >
-                    <button
-                      v-for="k in catalogKinds"
-                      :key="k.key"
-                      type="button"
-                      role="tab"
-                      class="h-26px box-border px-10px rounded-4px border border-solid text-11px cursor-pointer"
-                      :class="[
-                        focusRing,
-                        switcherKind === k.key
-                          ? 'border-line bg-[linear-gradient(#fff,#f7f8f9)] shadow-[0_1px_2px_rgba(31,35,41,0.07),inset_0_1px_0_#fff] text-ink font-600'
-                          : 'border-transparent bg-transparent text-muted hover:text-ink',
-                      ]"
-                      :aria-selected="switcherKind === k.key"
-                      @click="switcherKind = k.key"
+                    <b class="min-w-0 flex-1 text-13px font-600 text-muted">切换功能</b>
+                    <div
+                      class="inline-flex flex-none gap-2px p-2px box-border rounded-6px border border-solid border-line bg-surface3"
+                      role="tablist"
+                      aria-label="功能大类"
                     >
-                      {{ k.catalog.title }}
-                    </button>
+                      <button
+                        v-for="k in catalogKinds"
+                        :key="k.key"
+                        type="button"
+                        role="tab"
+                        class="h-28px box-border px-12px rounded-4px border border-solid text-13px cursor-pointer"
+                        :class="[
+                          focusRing,
+                          switcherKind === k.key
+                            ? 'border-line bg-[linear-gradient(#fff,#f7f8f9)] shadow-[0_1px_2px_rgba(31,35,41,0.07),inset_0_1px_0_#fff] text-ink font-600'
+                            : 'border-transparent bg-transparent text-muted hover:text-ink',
+                        ]"
+                        :aria-selected="switcherKind === k.key"
+                        @click="switcherKind = k.key"
+                      >
+                        {{ k.catalog.title }}
+                      </button>
+                    </div>
+                    <IconButton label="关闭" variant="quiet" @click="switcherOpen = false">
+                      <svg
+                        viewBox="0 0 512 512"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="32"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M368 368L144 144M368 144L144 368" />
+                      </svg>
+                    </IconButton>
                   </div>
-                  <button
-                    type="button"
-                    aria-label="关闭"
-                    class="relative grid h-26px w-26px place-items-center p-0 rounded-4px border-none bg-transparent text-muted cursor-pointer hover:(bg-surface3 text-ink) after:(content-[''] absolute -inset-3px)"
-                    :class="focusRing"
-                    @click="switcherOpen = false"
-                  >
-                    <svg
-                      class="h-14px w-14px"
-                      viewBox="0 0 512 512"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="32"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
+                  <div class="flex-1 min-h-0 overflow-y-auto pt-4px pb-10px [scrollbar-width:thin]">
+                    <section
+                      v-for="(g, gi) in switcherCatalog.groups"
+                      :key="g.label"
+                      :class="gi ? 'mt-2px shadow-[inset_0_0.8px_0_#eff1f3]' : ''"
+                      :aria-labelledby="`${switcherId}-g${gi}`"
                     >
-                      <path d="M368 368L144 144M368 144L144 368" />
-                    </svg>
-                  </button>
-                </div>
-                <div class="flex-1 min-h-0 overflow-y-auto pt-4px pb-10px [scrollbar-width:thin]">
-                  <section
-                    v-for="(g, gi) in switcherCatalog.groups"
-                    :key="g.label"
-                    :class="gi ? 'mt-2px shadow-[inset_0_0.8px_0_#eff1f3]' : ''"
-                    :aria-labelledby="`${switcherId}-g${gi}`"
-                  >
-                    <p :id="`${switcherId}-g${gi}`" class="m-0 pt-2px px-14px pb-4px text-11px font-500 text-muted">
-                      {{ g.label }}
-                    </p>
-                    <ul class="m-0 p-0 px-8px pb-6px list-none grid grid-cols-3 gap-2px">
-                      <li v-for="e in g.entries" :key="e.id" class="min-w-0">
-                        <component
-                          :is="e.route ? RouterLink : 'div'"
-                          v-bind="
-                            e.route
-                              ? { to: e.route, 'aria-current': e.id === toolId ? 'page' : undefined }
-                              : { 'aria-disabled': 'true' }
-                          "
-                          :title="e.route ? e.tagline : `${e.tagline}（即将开放）`"
-                          :aria-label="e.route ? `${e.name}，${e.tagline}` : `${e.name}（即将开放）`"
-                          class="flex min-w-0 items-center gap-6px h-30px box-border px-6px rounded-6px border border-solid no-underline"
-                          :class="[
-                            e.route ? focusRing : 'cursor-not-allowed opacity-60',
-                            e.id === toolId
-                              ? 'border-violet-line bg-[linear-gradient(#fff,#f3edf8)] text-violet-ink'
-                              : ['border-transparent text-ink-2', e.route ? 'hover:bg-surface3' : ''],
-                          ]"
-                          @click="e.route && (switcherOpen = false)"
-                        >
-                          <span
-                            class="grid flex-[0_0_22px] w-22px h-22px place-items-center box-border rounded-5px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff] text-violet"
-                            aria-hidden="true"
+                      <p :id="`${switcherId}-g${gi}`" class="m-0 pt-2px px-14px pb-4px text-11px font-500 text-muted">
+                        {{ g.label }}
+                      </p>
+                      <ul class="m-0 p-0 px-8px pb-6px list-none grid grid-cols-3 gap-2px">
+                        <li v-for="e in g.entries" :key="e.id" class="min-w-0">
+                          <component
+                            :is="e.route ? RouterLink : 'div'"
+                            v-bind="
+                              e.route
+                                ? { to: e.route, 'aria-current': e.id === toolId ? 'page' : undefined }
+                                : { 'aria-disabled': 'true' }
+                            "
+                            :title="e.route ? e.tagline : `${e.tagline}（即将开放）`"
+                            :aria-label="e.route ? `${e.name}，${e.tagline}` : `${e.name}（即将开放）`"
+                            class="flex min-w-0 items-center gap-6px h-30px box-border px-6px rounded-6px border border-solid no-underline"
+                            :class="[
+                              e.route ? focusRing : 'cursor-not-allowed opacity-60',
+                              e.id === toolId
+                                ? 'border-violet-line bg-[linear-gradient(#fff,#f3edf8)] text-violet-ink'
+                                : ['border-transparent text-ink-2', e.route ? 'hover:bg-surface3' : ''],
+                            ]"
+                            @click="e.route && (switcherOpen = false)"
                           >
-                            <svg
-                              v-if="e.icon"
-                              class="w-13px h-13px"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="1.8"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              :innerHTML="e.icon"
-                            />
-                          </span>
-                          <span class="min-w-0 truncate text-12px font-500">{{ e.name }}</span>
-                        </component>
-                      </li>
-                    </ul>
-                  </section>
+                            <span
+                              class="grid flex-[0_0_22px] w-22px h-22px place-items-center box-border rounded-5px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff] text-violet"
+                              aria-hidden="true"
+                            >
+                              <svg
+                                v-if="e.icon"
+                                class="w-13px h-13px"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.8"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                :innerHTML="e.icon"
+                              />
+                            </span>
+                            <span class="min-w-0 truncate text-12px font-500">{{ e.name }}</span>
+                          </component>
+                        </li>
+                      </ul>
+                    </section>
+                  </div>
                 </div>
-              </div>
-            </Transition>
-          </Teleport>
+          </Transition>
+        </Teleport>
 
+        <!-- tabindex=-1：「重新编辑」回填后把焦点移到表单开头（程序聚焦落点，不进 Tab 序列，故不画焦点环） -->
+        <form
+          id="tool-form"
+          ref="formRef"
+          tabindex="-1"
+          class="flex-1 min-h-0 overflow-y-auto pt-12px px-12px pb-0 flex flex-col gap-12px [scrollbar-width:thin] [overscroll-behavior:contain] outline-none"
+          @submit.prevent="onSubmit"
+          @keydown.enter="blockImplicitSubmit"
+        >
           <!-- 商拍换装：服装图 / 模特图并排在一块素材板里（服装图点开弹窗选单品与角度）；仍写回 slot 0 / slot 1 -->
           <ToolTryonMaterials
             v-if="schema.uploadsView === 'tryon' && tryonSlots"
@@ -1520,6 +2176,7 @@ const plateBtnCls =
             :cloth-spec="tryonSlots.cloth"
             :model-spec="tryonSlots.models"
             :disabled="submitting"
+            @update:uploading="setUploading('tryon', $event)"
             @update:cloth="setUploads(tryonSlots.cloth.slot, $event)"
             @update:models="setUploads(tryonSlots.models.slot, $event)"
           />
@@ -1531,10 +2188,11 @@ const plateBtnCls =
               v-if="uploadEnabled(u)"
               :id="`tool-upload-${u.slot}`"
               :model-value="uploads[u.slot] ?? []"
-              :spec="u"
+              :spec="specOf(u)"
               :layout="u.layout"
               :disabled="submitting"
               asset-picker
+              @update:uploading="setUploading(`slot-${u.slot}`, $event)"
               @update:model-value="setUploads(u.slot, $event)"
             />
             <div v-else>
@@ -1545,13 +2203,67 @@ const plateBtnCls =
             </div>
           </template>
 
-          <template v-for="f in formFields" :key="`${schema.homeId}-${f.key}`">
-            <!-- 涂抹蒙版 -->
-            <div v-if="f.type === 'mask'">
+          <!-- 智能抠图：同步结果卡（透明棋盘格底、最小高 220、右上下载、点图放大）；「换一张」清掉原图与上次结果 -->
+          <section v-if="schema.sync && singleImage" class="flex flex-col gap-8px" aria-labelledby="tool-cutout-title">
+            <div class="flex items-center justify-between gap-8px min-h-32px">
+              <h2 id="tool-cutout-title" class="m-0 text-13px font-600 leading-18px text-ink">抠图结果</h2>
+              <button type="button" class="sx-btn" :disabled="submitting" @click="replaceInput">换一张</button>
+            </div>
+            <div :class="[stageCls, 'sx-squircle min-h-220px h-[min(36vh,320px)] rounded-12px']">
+              <div
+                v-if="submitting"
+                class="absolute inset-0 flex flex-col items-center justify-center gap-8px text-12px text-muted"
+                role="status"
+                aria-live="polite"
+              >
+                <span
+                  class="block w-28px h-28px box-border rounded-full border-2 border-solid border-violet-soft border-t-violet animate-spin [animation-duration:800ms] motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+                正在抠图，请稍候…
+              </div>
+              <template v-else-if="syncResultUrl">
+                <button
+                  type="button"
+                  class="absolute inset-0 w-full h-full p-8px box-border border-none bg-transparent cursor-zoom-in"
+                  :class="focusRing"
+                  aria-label="放大查看抠图结果"
+                  @click="openThumbs([syncResultUrl], 0, '抠图结果')"
+                >
+                  <img :src="syncResultUrl" alt="抠图结果" class="block w-full h-full object-contain" draggable="false" />
+                </button>
+                <IconButton
+                  class="!absolute top-8px right-8px z-2"
+                  label="下载抠图结果"
+                  variant="overlay"
+                  @click="downloadImage(syncResultUrl, `${schema.title}-抠图结果`)"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+                  </svg>
+                </IconButton>
+              </template>
+              <p v-else class="absolute inset-0 m-0 flex items-center justify-center px-18px text-center text-12px leading-18px text-muted">
+                点下方「{{ submitLabel }}」，透明底结果会显示在这里
+              </p>
+            </div>
+          </section>
+
+          <template v-for="f in promptFields" :key="`${schema.homeId}-${f.key}`">
+            <!-- 涂抹蒙版（画布内部归 MaskPainter；这里只接 props / emits，外加「换一张」与操作说明） -->
+            <div v-if="f.type === 'mask'" class="flex flex-col gap-8px">
               <div class="ll-label">
                 <span>{{ f.label }}<span class="text-danger" aria-hidden="true"> *</span></span>
+                <button v-if="singleImage" type="button" class="sx-btn" :disabled="submitting" @click="replaceInput">
+                  换一张
+                </button>
               </div>
-              <MaskPainter v-if="singleImage" :ref="setMaskRef" :src="singleImage" @change="maskHasStroke = $event" />
+              <template v-if="singleImage">
+                <MaskPainter :ref="setMaskRef" :src="singleImage" @change="maskHasStroke = $event" />
+                <p class="m-0 text-12px leading-18px text-muted">
+                  在图上涂抹要消除的区域（涂红处会被抹掉）；放大后可切「移动」拖动画面；涂错了用「撤销」退一笔，或「清空」重来。
+                </p>
+              </template>
               <p v-else class="m-0 ll-empty py-12px">先上传原图，再在图上涂抹要消除的区域</p>
             </div>
 
@@ -1565,13 +2277,13 @@ const plateBtnCls =
               :disabled="submitting"
             />
 
-            <!-- 识别结果（文字替换） -->
-            <div v-else-if="f.type === 'region-list'">
+            <!-- 识别结果（文字替换）：原文在左、改写框在右；只提交改过的条目 -->
+            <div v-else-if="f.type === 'region-list'" class="flex flex-col gap-8px">
               <div class="ll-label">
                 <span id="tool-regions-label">{{ f.label }}<span class="text-danger" aria-hidden="true"> *</span></span>
                 <button
                   type="button"
-                  class="ll-pill"
+                  class="ll-pill !min-h-32px !text-13px"
                   :class="focusRing"
                   :disabled="!singleImage || ocrLoading || submitting"
                   @click="runOcr"
@@ -1589,29 +2301,55 @@ const plateBtnCls =
                 <li
                   v-for="n in 4"
                   :key="n"
-                  class="tool-skeleton-row h-70px box-border rounded-8px bg-surface2"
+                  class="tool-skeleton-row h-50px box-border rounded-12px bg-surface2"
                   aria-hidden="true"
                 />
               </ul>
               <p v-else-if="!regions.length" class="m-0 ll-empty py-12px">
-                {{ singleImage ? '点击「识别文字」，识别结果会列在这里（识别单独计费）' : '先上传原图' }}
+                {{ singleImage ? '没有识别到可替换的文字，可点「重新识别」再试' : '上传后自动识别；结果出来后逐条改写。' }}
               </p>
-              <ul v-else class="m-0 p-0 list-none flex flex-col gap-8px" aria-labelledby="tool-regions-label">
-                <li v-for="(r, i) in regions" :key="i" class="rounded-8px border border-solid border-line p-8px">
-                  <label class="flex items-center gap-6px text-12px text-muted">
-                    <input v-model="r.include" type="checkbox" class="accent-violet" />
-                    <span class="truncate">原文：{{ r.targetText }}</span>
-                  </label>
-                  <input
-                    v-model="r.text"
-                    type="text"
-                    :maxlength="f.maxLength"
-                    :disabled="!r.include"
-                    :aria-label="`替换「${r.targetText}」为`"
-                    :class="[inputCls, 'mt-6px']"
-                  />
-                </li>
-              </ul>
+              <template v-else>
+                <p class="m-0 text-12px leading-18px text-muted" aria-live="polite">
+                  共识别到 {{ regions.length }} 处文字，已修改 {{ changedRegions.length }} 处；只有改过的会被替换。
+                </p>
+                <ul class="m-0 p-0 list-none flex flex-col gap-6px" aria-labelledby="tool-regions-label">
+                  <li
+                    v-for="(r, i) in regions"
+                    :key="i"
+                    class="sx-squircle grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-8px box-border p-8px rounded-12px border border-solid [transition:border-color_110ms,background_110ms] motion-reduce:transition-none"
+                    :class="
+                      isChanged(r)
+                        ? 'border-violet-line bg-[linear-gradient(#fff,#faf6fc)] shadow-[inset_3px_0_0_#875f9a]'
+                        : 'border-line bg-white'
+                    "
+                  >
+                    <span
+                      class="min-w-0 truncate text-13px leading-18px"
+                      :class="isChanged(r) ? 'text-muted line-through decoration-#c9cfd6' : 'text-ink-2'"
+                      :title="r.targetText"
+                      >{{ r.targetText }}</span
+                    >
+                    <input
+                      v-model="r.text"
+                      type="text"
+                      maxlength="100"
+                      placeholder="改成…"
+                      :disabled="submitting"
+                      :aria-label="`把「${r.targetText}」改成`"
+                      :class="[inputCls, isChanged(r) ? '!border-violet-line' : '']"
+                    />
+                    <button
+                      type="button"
+                      class="sx-btn !px-10px"
+                      :disabled="!r.text || submitting"
+                      :aria-label="`还原「${r.targetText}」`"
+                      @click="r.text = ''"
+                    >
+                      还原
+                    </button>
+                  </li>
+                </ul>
+              </template>
             </div>
 
             <!-- 配音音色 -->
@@ -1638,118 +2376,68 @@ const plateBtnCls =
               </select>
             </div>
 
-            <!-- 胶囊单选 -->
-            <div v-else-if="f.type === 'chips'">
-              <div :id="`tool-field-${f.key}-label`" class="ll-label">
-                <span>{{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span></span>
-              </div>
-              <div role="radiogroup" :aria-labelledby="`tool-field-${f.key}-label`" class="flex flex-wrap gap-6px">
-                <button
-                  v-for="opt in fieldOptions(f)"
-                  :key="opt.value"
-                  type="button"
-                  role="radio"
-                  :aria-checked="values[f.key] === opt.value"
-                  class="ll-pill"
-                  :class="[focusRing, values[f.key] === opt.value ? 'll-pill-active' : '']"
-                  @click="values[f.key] = opt.value"
-                >
-                  {{ opt.label }}
-                </button>
-              </div>
-            </div>
-
-            <!-- 下拉 -->
-            <div v-else-if="f.type === 'select'">
-              <div class="ll-label">
-                <label :for="`tool-field-${f.key}`">
-                  {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
-                </label>
-              </div>
-              <select
-                :id="`tool-field-${f.key}`"
-                v-model="values[f.key]"
-                :class="inputCls"
-                :disabled="!fieldOptions(f).length"
-              >
-                <option v-if="!fieldOptions(f).length" :value="undefined">
-                  {{ !f.dynamic || videoModelsLoaded ? `暂无可用${f.label}` : '加载中…' }}
-                </option>
-                <option v-for="opt in fieldOptions(f)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-              </select>
-            </div>
-
-            <!-- 多行文本 -->
+            <!-- 多行文本（原型 .op-prompt__field 一体框）：生成类工具带「我的提示词」入口与「AI帮写」；
+                 ml 版式的参考图槽收进框顶（计数 + 书本钮一行），字段名只给读屏；schema 的 rewritePrompt 开关收进框底行 -->
             <CreationPromptInput
               v-else-if="f.type === 'textarea'"
               :id="`tool-field-${f.key}`"
+              :ref="setPromptRef"
               v-model="values[f.key]"
+              v-model:rewrite="rewriteValue"
               :label="f.label"
               :required="f.required"
               :rows="5"
               :max-length="f.maxLength"
               :placeholder="f.placeholder ?? `请输入${f.label}`"
-            />
-
-            <!-- 数字 / 张数 -->
-            <div v-else-if="f.type === 'number' || f.type === 'stepper'">
-              <div class="ll-label">
-                <label :for="`tool-field-${f.key}`">
-                  {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
-                </label>
-                <span class="text-12px text-placeholder">{{ f.min }}–{{ f.max }}</span>
-              </div>
-              <input
-                :id="`tool-field-${f.key}`"
-                v-model.number="values[f.key]"
-                type="number"
-                :min="f.min"
-                :max="f.max"
-                step="1"
-                :class="inputCls"
-                @change="clampNumber(f)"
-              />
-            </div>
-
-            <!-- 开关 -->
-            <div v-else-if="f.type === 'switch'" class="flex items-center justify-between">
-              <span :id="`tool-field-${f.key}-label`" class="text-13px text-ink-2">{{ f.label }}</span>
-              <button
-                type="button"
-                role="switch"
-                :aria-checked="!!values[f.key]"
-                :aria-labelledby="`tool-field-${f.key}-label`"
-                class="relative flex-none w-34px h-20px box-border p-0 rounded-full border border-solid cursor-pointer [transition:background_180ms_cubic-bezier(0.2,0.7,0.2,1),border-color_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
-                :class="[
-                  focusRing,
-                  values[f.key]
-                    ? 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)]'
-                    : 'border-#c9cfd6 bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]',
-                ]"
-                @click="values[f.key] = !values[f.key]"
-              >
-                <!-- 液态开关 sm 档（原型 SxLiquidSwitch）：34×20、滑块 14 -->
-                <span
-                  class="absolute top-2px w-14px h-14px rounded-full bg-white shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
-                  :class="values[f.key] ? 'left-16px' : 'left-2px'"
-                  aria-hidden="true"
-                />
-              </button>
-            </div>
+              :library="libraryEnabled"
+              :help-biz-type="helpBizType"
+              :show-rewrite="!!rewriteField"
+              :rewrite-hint="rewriteField?.description"
+              :variant="mlPrompt ? 'ml' : 'default'"
+            >
+              <template v-if="mlPrompt" #top-head>
+                <span class="text-11px leading-16px tabular-nums text-placeholder">{{ mlCountText }}</span>
+              </template>
+              <template v-if="mlPrompt" #top>
+                <div class="flex flex-col gap-8px">
+                  <template v-for="u in mlPromptUploads" :key="`${schema.homeId}-ml-${u.slot}`">
+                    <ToolUploadSlot
+                      v-if="uploadEnabled(u)"
+                      :id="`tool-upload-${u.slot}`"
+                      :model-value="uploads[u.slot] ?? []"
+                      :spec="specOf(u)"
+                      :layout="u.layout"
+                      :disabled="submitting"
+                      asset-picker
+                      bare
+                      @update:uploading="setUploading(`slot-${u.slot}`, $event)"
+                      @update:model-value="setUploads(u.slot, $event)"
+                    />
+                    <p v-else class="m-0 text-12px leading-18px text-muted">{{ unsupportedUploadHint(u) }}</p>
+                  </template>
+                </div>
+              </template>
+            </CreationPromptInput>
           </template>
         </form>
 
         <!--
-          底部固定栏（原型参数行 + ToolSubmitBar ml 版）：参数行高 44，与提交按钮间距 8；栏内边距 0 12 12（上沿间距由表单 gap 给）。
-          只有一个档位字段（如高清放大的清晰度）时照原型 ChoiceFieldButton inline：一张 .sx-btn 材质卡，左图标 + 名称，右侧直接是分段片；
-          多个设置字段仍收进「图片设置 / 视频设置」弹层（共用 CreationSettingsRow）。
-          提交按钮整宽 56、r10、内边距 0 12、行距 3，第一行 16/22·600·0.04em，第二行「消耗 N 点」11 白色 74%；加载环在左 14。
-          余额与原因不再单占一行（原型 ml：按钮之外不放信息行）：原因写在按钮 title 上并给读屏（aria-describedby）。
+          底部固定栏（原型参数行 + ToolSubmitBar ml 版）：栏内边距 12（上 12）、gap 8。
+          只有一个档位字段时照原型 ChoiceFieldButton inline（r14 卡 + 分段片）；否则「模型卡 | 设置」两列（没有模型时设置占满整行），
+          设置弹层宽 = 按钮宽。提交按钮 sx-submit（56 高、r14），下面一行 schema.hint（12 muted，同时作按钮悬停提示）。
         -->
         <div class="flex-none flex flex-col gap-8px pt-12px px-12px pb-12px">
+          <p
+            v-if="hasRegionField && changedRegions.length"
+            class="sx-squircle m-0 flex items-center gap-6px min-h-32px box-border px-10px rounded-12px border border-solid border-violet-line bg-info-soft text-12px leading-18px text-violet-ink"
+            role="status"
+          >
+            本次将替换 {{ changedRegions.length }} 处文字
+          </p>
+          <p v-if="refLimitText" class="m-0 text-12px leading-18px text-muted">{{ refLimitText }}</p>
           <div
             v-if="inlineSetting"
-            class="flex items-center gap-6px w-full h-44px box-border pl-11px pr-3px rounded-6px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]"
+            class="sx-squircle flex items-center gap-6px w-full h-44px box-border pl-11px pr-3px rounded-14px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]"
             :class="submitting ? 'opacity-60' : ''"
           >
             <span class="grid flex-[0_0_16px] w-16px h-16px place-items-center text-violet" aria-hidden="true">
@@ -1767,7 +2455,7 @@ const plateBtnCls =
                 />
               </svg>
             </span>
-            <span :id="`tool-inline-${inlineSetting.key}`" class="flex-none text-11px leading-16px text-muted">
+            <span :id="`tool-inline-${inlineSetting.key}`" class="flex-none text-12px leading-18px text-muted">
               {{ inlineSetting.label }}
             </span>
             <!-- 分段片（原型 .sx-seg--picker）：轨道 1px line、r6、#f3f4f5、内边距 3、gap 2、inset-input；
@@ -1775,7 +2463,7 @@ const plateBtnCls =
             <div
               role="radiogroup"
               :aria-labelledby="`tool-inline-${inlineSetting.key}`"
-              class="ml-auto inline-flex flex-none gap-2px p-3px box-border rounded-6px border border-solid border-line bg-surface3 shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
+              class="sx-squircle ml-auto inline-flex flex-none gap-2px p-3px box-border rounded-10px border border-solid border-line bg-surface3 shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
               @keydown.left.prevent="moveInline(-1)"
               @keydown.right.prevent="moveInline(1)"
             >
@@ -1788,7 +2476,7 @@ const plateBtnCls =
                 :aria-checked="values[inlineSetting.key] === opt.value"
                 :tabindex="values[inlineSetting.key] === opt.value || (inlineIndex < 0 && i === 0) ? 0 : -1"
                 :disabled="submitting"
-                class="h-30px box-border px-14px rounded-4px border border-solid text-11px tabular-nums cursor-pointer [transition:border-color_300ms_cubic-bezier(0.4,0,0.2,1),background-color_300ms_cubic-bezier(0.4,0,0.2,1),box-shadow_300ms_cubic-bezier(0.4,0,0.2,1),color_300ms_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none active:enabled:shadow-[inset_0_1px_2px_rgba(80,55,95,0.16)] disabled:(opacity-45 cursor-not-allowed)"
+                class="h-32px box-border px-14px rounded-4px border border-solid text-13px tabular-nums cursor-pointer [transition:border-color_300ms_cubic-bezier(0.4,0,0.2,1),background-color_300ms_cubic-bezier(0.4,0,0.2,1),box-shadow_300ms_cubic-bezier(0.4,0,0.2,1),color_300ms_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none active:enabled:shadow-[inset_0_1px_2px_rgba(80,55,95,0.16)] disabled:(opacity-45 cursor-not-allowed)"
                 :class="[
                   focusRing,
                   values[inlineSetting.key] === opt.value
@@ -1801,53 +2489,193 @@ const plateBtnCls =
               </button>
             </div>
           </div>
-          <CreationSettingsRow v-else-if="settingItems.length" :items="settingItems" :disabled="submitting">
-            <template #settings>
-              <CreationImageSettings
-                :model-value="settingsValue"
-                :fields="settingsConfig"
-                @update:model-value="onSettings"
+          <CreationSettingsRow
+            v-else-if="settingItems.length"
+            :items="settingItems"
+            :disabled="submitting"
+            popover-width="trigger"
+          >
+            <template #model>
+              <CreationModelPicker
+                v-if="modelOptions.length"
+                v-model="pickedModel"
+                :options="modelOptions"
+                :label="schema.media === 'video' ? '视频模型' : '生图模型'"
+                hide-label
+                :disabled="submitting"
               />
+              <p v-else class="m-0 py-12px text-center text-12px text-muted">
+                {{ videoModelsLoaded || imageModels ? '暂无可用模型' : '模型加载中…' }}
+              </p>
+            </template>
+            <template #settings>
+              <div class="flex flex-col">
+                <template v-for="f in popoverRows" :key="`${schema.homeId}-set-${f.key}`">
+                  <!-- 时长：模型区间内的滑杆（单位「秒」） -->
+                  <div v-if="f.dynamic === 'videoDuration'" :class="setRowCls">
+                    <div class="flex items-center justify-between gap-8px">
+                      <label :for="`tool-set-${f.key}`" class="text-12px leading-18px text-ink-2">{{ f.label }}</label>
+                      <span class="text-13px font-500 leading-18px text-ink tabular-nums">{{ values[f.key] ?? '—' }} 秒</span>
+                    </div>
+                    <template v-if="videoDurationRange">
+                      <input
+                        :id="`tool-set-${f.key}`"
+                        type="range"
+                        class="w-full h-24px m-0 accent-violet cursor-pointer disabled:cursor-not-allowed"
+                        :min="videoDurationRange[0]"
+                        :max="videoDurationRange[1]"
+                        step="1"
+                        :value="Number(values[f.key] ?? videoDurationRange[0])"
+                        :disabled="submitting || videoDurationRange[0] === videoDurationRange[1]"
+                        :aria-valuetext="`${values[f.key]} 秒`"
+                        @input="values[f.key] = String(($event.target as HTMLInputElement).value)"
+                      />
+                      <div class="flex justify-between text-11px leading-16px text-muted tabular-nums">
+                        <span>{{ videoDurationRange[0] }} 秒</span>
+                        <span>{{ videoDurationRange[1] }} 秒</span>
+                      </div>
+                    </template>
+                    <p v-else class="m-0 text-12px text-muted">{{ videoModelsLoaded ? '暂无可用时长' : '加载中…' }}</p>
+                  </div>
+
+                  <!-- 数字 / 张数：共用 NumberStepper（值 | − | +） -->
+                  <div v-else-if="f.type === 'number' || f.type === 'stepper'" :class="setRowCls">
+                    <span :id="`tool-set-${f.key}-label`" class="text-12px leading-18px text-ink-2">
+                      {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
+                    </span>
+                    <NumberStepper
+                      v-model="values[f.key]"
+                      class="self-start"
+                      :min="f.min"
+                      :max="f.max"
+                      :aria-label="f.label"
+                      :disabled="submitting"
+                    />
+                  </div>
+
+                  <!-- 开关 -->
+                  <div v-else-if="f.type === 'switch'" :class="[setRowCls, '!flex-row items-center justify-between']">
+                    <span :id="`tool-set-${f.key}-label`" class="text-12px leading-18px text-ink-2">{{ f.label }}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      :aria-checked="!!values[f.key]"
+                      :aria-labelledby="`tool-set-${f.key}-label`"
+                      :disabled="submitting"
+                      class="relative after:(content-empty absolute -inset-x-4px -inset-y-6px rounded-[inherit]) [@media(pointer:coarse)]:after:-inset-y-10px flex-none w-34px h-20px box-border p-0 rounded-full border border-solid cursor-pointer [transition:background_180ms_cubic-bezier(0.2,0.7,0.2,1),border-color_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none disabled:(opacity-50 cursor-not-allowed)"
+                      :class="[
+                        focusRing,
+                        values[f.key]
+                          ? 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)]'
+                          : 'border-#c9cfd6 bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]',
+                      ]"
+                      @click="values[f.key] = !values[f.key]"
+                    >
+                      <span
+                        class="absolute top-2px w-14px h-14px rounded-full bg-white shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
+                        :class="values[f.key] ? 'left-16px' : 'left-2px'"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
+
+                  <!-- 选项多的下拉（如语言）：原生下拉 -->
+                  <div v-else-if="f.type === 'select' && fieldOptions(f).length > 6" :class="setRowCls">
+                    <label :for="`tool-set-${f.key}`" class="text-12px leading-18px text-ink-2">
+                      {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
+                    </label>
+                    <select :id="`tool-set-${f.key}`" v-model="values[f.key]" :class="inputCls" :disabled="submitting">
+                      <option v-for="opt in fieldOptions(f)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                    </select>
+                  </div>
+
+                  <!-- 胶囊 / 少量选项的下拉：分段控件（CreationOptionPills 在设置弹层里自动换分段样式） -->
+                  <CreationOptionPills
+                    v-else
+                    :model-value="values[f.key]"
+                    :options="fieldOptions(f)"
+                    :label="f.label"
+                    :required="f.required"
+                    :disabled="submitting"
+                    @update:model-value="values[f.key] = $event"
+                  />
+                  <p v-if="f.description" class="m-0 -mt-4px pb-6px text-12px leading-18px text-muted">{{ f.description }}</p>
+                </template>
+
+                <!-- 比例转换「自定义尺寸」：宽 / 高合成一行 -->
+                <div v-if="sizePair" :class="setRowCls" role="group" aria-labelledby="tool-set-size-label">
+                  <span id="tool-set-size-label" class="text-12px leading-18px text-ink-2">
+                    输出尺寸（像素）<span class="text-danger" aria-hidden="true"> *</span>
+                  </span>
+                  <div class="flex items-center gap-6px">
+                    <input
+                      v-model.number="values.width"
+                      type="number"
+                      inputmode="numeric"
+                      :min="sizePair.w.min"
+                      :max="sizePair.w.max"
+                      :placeholder="sizePair.w.placeholder ?? '宽'"
+                      aria-label="输出宽度（像素）"
+                      :disabled="submitting"
+                      :class="[inputCls, 'min-w-0 tabular-nums', sizeValid(sizePair.w) ? '' : '!border-danger']"
+                    />
+                    <span class="flex-none text-12px text-muted" aria-hidden="true">×</span>
+                    <input
+                      v-model.number="values.height"
+                      type="number"
+                      inputmode="numeric"
+                      :min="sizePair.h.min"
+                      :max="sizePair.h.max"
+                      :placeholder="sizePair.h.placeholder ?? '高'"
+                      aria-label="输出高度（像素）"
+                      :disabled="submitting"
+                      :class="[inputCls, 'min-w-0 tabular-nums', sizeValid(sizePair.h) ? '' : '!border-danger']"
+                    />
+                  </div>
+                  <p
+                    class="m-0 text-12px leading-18px"
+                    :class="sizeValid(sizePair.w) && sizeValid(sizePair.h) ? 'text-muted' : 'text-danger'"
+                    :role="sizeValid(sizePair.w) && sizeValid(sizePair.h) ? undefined : 'alert'"
+                  >
+                    {{ sizeValid(sizePair.w) && sizeValid(sizePair.h) ? '宽、高各 64～8192' : SIZE_INVALID }}
+                  </p>
+                </div>
+              </div>
             </template>
           </CreationSettingsRow>
           <p v-if="disabledReason" :id="reasonId" class="sr-only" aria-live="polite">{{ disabledReason }}</p>
           <button
             type="submit"
             form="tool-form"
-            class="relative flex flex-col items-center justify-center gap-3px w-full h-56px box-border py-0 px-12px rounded-10px border border-solid text-white font-600 select-none [transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s,box-shadow_0.11s,color_0.11s] motion-reduce:transition-none"
-            :class="[
-              focusRing,
+            class="sx-submit relative box-border select-none [transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s,box-shadow_0.11s,color_0.11s] motion-reduce:transition-none"
+            :class="
               submitting
-                ? 'border-#5f3f6f bg-[linear-gradient(#7a548c,#6b487c)] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_1px_rgba(90,60,110,0.18),0_2px_4px_rgba(90,60,110,0.18)] cursor-progress'
-                : disabledReason
-                  ? 'border-violet-line bg-#cbb9d5 shadow-none cursor-not-allowed'
-                  : 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_1px_rgba(90,60,110,0.18),0_2px_4px_rgba(90,60,110,0.18)] cursor-pointer hover:(border-#5f3f6f bg-[linear-gradient(#9a6fae,#875c9a)]) active:(border-#5c3d6b bg-none bg-violet-press shadow-[inset_0_1px_3px_rgba(40,24,48,0.35)])',
-            ]"
+                ? '!bg-none !bg-[linear-gradient(#7a548c,#6b487c)] !border-#5f3f6f !text-white !cursor-progress'
+                : ''
+            "
             :disabled="!!disabledReason || submitting"
-            :title="disabledReason || undefined"
+            :title="disabledReason || schema.hint || undefined"
             :aria-busy="submitting || undefined"
-            :aria-describedby="disabledReason ? reasonId : undefined"
+            :aria-describedby="[disabledReason ? reasonId : '', schema.hint ? hintId : ''].filter(Boolean).join(' ') || undefined"
           >
             <!-- 加载环（原型 .sx-btn__spinner）：12 / 1.5px，绝对定位在左 14，不参与排版 -->
             <span
               v-if="submitting"
-              class="absolute left-14px top-1/2 -mt-6px block w-12px h-12px box-border rounded-full border-1.5px border-solid border-white/35 border-t-white animate-spin [animation-duration:0.7s] motion-reduce:animate-none"
+              class="absolute left-14px top-1/2 -mt-6px block w-12px h-12px box-border rounded-full border-1.5px border-solid border-white/35 border-t-white animate-spin [animation-duration:0.7s]"
               aria-hidden="true"
             />
-            <span
-              class="text-16px leading-22px tracking-[0.04em] whitespace-nowrap"
-              :class="!submitting && disabledReason ? 'text-white/80' : 'text-white'"
-            >
-              {{ submitting ? '提交中…' : submitLabel }}
+            <span class="text-16px font-600 leading-22px tracking-[0.04em] whitespace-nowrap">
+              {{ submitting ? (schema.sync ? '正在抠图，请稍候…' : '提交中…') : submitLabel }}
             </span>
             <span class="text-11px leading-11px text-white/74 whitespace-nowrap" aria-live="polite">
               <template v-if="'num' in costLine"
-                >消耗 <b class="font-900 tabular-nums">{{ costLine.num }}</b
+                >消耗 <b class="font-600 tabular-nums">{{ costLine.num }}</b
                 >{{ costLine.suffix }}</template
               >
               <template v-else>{{ costLine.text }}</template>
             </span>
           </button>
+          <p v-if="schema.hint" :id="hintId" class="m-0 text-center text-12px leading-18px text-muted">{{ schema.hint }}</p>
         </div>
       </section>
 
@@ -1921,160 +2749,148 @@ const plateBtnCls =
               type="search"
               placeholder="搜索提示词"
               aria-label="搜索历史记录"
-              :class="[inputCls, '!h-30px !pl-27px !pr-8px !text-11px']"
+              :class="[inputCls, '!h-32px !pl-27px !pr-8px !text-13px']"
             />
           </div>
 
           <ul class="m-0 -mx-4px px-4px pt-2px pb-10px list-none gap-8px flex-1 min-h-0 overflow-y-auto flex flex-col">
             <li v-for="item in historyPaged" :key="item.aiToolHistoryId">
-              <!-- 历史卡：内边距 10、gap 10、1px line、r10、白底；hover 描边 #c9cfd6 + 短影；选中 violet-line + 白→#f8f3fc -->
+              <!-- 历史卡（2026-11-06 材质：软瓷 r18 squircle、两种状态统一高 74，含 1px 边框与 10px 内边距）；
+                   静止 白→#f8f9fa + 0 6px 16px α.08 + 顶 1px 白内线；hover 描边 #aeb4b9 + 0 8px 18px；选中 violet-line + 白→#faf4fd -->
               <div
-                class="group relative flex items-center gap-10px box-border p-10px rounded-10px border border-solid [transition:border-color_110ms,background_110ms,box-shadow_110ms] motion-reduce:transition-none"
+                class="sx-squircle group relative flex items-stretch gap-10px box-border h-74px p-10px rounded-18px border border-solid [transition:border-color_110ms,background_110ms,box-shadow_110ms] motion-reduce:transition-none"
                 :class="
                   current?.aiToolHistoryId === item.aiToolHistoryId && !showSync
-                    ? 'border-violet-line bg-[linear-gradient(180deg,#ffffff_0%,#f8f3fc_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
-                    : 'border-line bg-white hover:(border-#c9cfd6 shadow-[0_1px_2px_rgba(31,35,41,0.05)])'
+                    ? 'border-violet-line bg-[linear-gradient(180deg,#ffffff_0%,#faf4fd_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
+                    : 'border-line bg-[linear-gradient(180deg,#ffffff_0%,#f8f9fa_100%)] shadow-[0_6px_16px_rgba(31,35,41,0.08),inset_0_1px_0_#fff] hover:(border-#aeb4b9 shadow-[0_8px_18px_rgba(31,35,41,0.1),inset_0_1px_0_#fff])'
                 "
               >
                 <!-- 整卡选中：铺满的透明按钮（卡内还有操作按钮，按钮里不能再套按钮） -->
                 <button
                   type="button"
-                  class="absolute inset-0 w-full h-full p-0 rounded-10px border-none bg-transparent cursor-pointer"
+                  class="absolute inset-0 w-full h-full p-0 rounded-18px border-none bg-transparent cursor-pointer"
                   :class="focusRing"
                   :aria-pressed="current?.aiToolHistoryId === item.aiToolHistoryId && !showSync"
                   :aria-label="`${formatTime(item.createdAt)} ${statusOf(item.status).text}：${promptOf(item)}`"
                   @click="selectedId = item.aiToolHistoryId"
                 />
                 <!--
-                  进行中：骨架卡（原型 .v3-hist__skeleton-*）：缩略 44 / r6 + 三条 10 高 r4 线（82% / 64% / 38% 贴底），
-                  #f1f2f4→#f8f9fa 扫光 1.2s ease-in-out 循环；状态在整卡按钮的读屏名与结果列里
+                  进行中（原型 .v3-hist__card.is-progress）：骨架缩略 44 / r14 + 提示词行 +
+                  进度条（轨 4px r999 #eceef0 内凹，紫渐变填充最小 6px，160ms linear）+ 百分比 11/600
                 -->
                 <template v-if="!isTerminal(item.status)">
-                  <span :class="[shimmerCls, 'flex-none w-44px h-44px rounded-6px']" aria-hidden="true" />
+                  <span :class="[shimmerCls, 'flex-none w-44px h-44px self-center rounded-14px']" aria-hidden="true" />
                   <span
-                    class="min-w-0 flex-1 self-stretch flex flex-col gap-6px pointer-events-none"
+                    class="min-w-0 flex-1 self-stretch flex flex-col justify-between gap-4px pointer-events-none"
                     aria-hidden="true"
                   >
-                    <span :class="[shimmerCls, 'block w-[82%] h-10px rounded-4px']" />
-                    <span :class="[shimmerCls, 'block w-[64%] h-10px rounded-4px']" />
-                    <span :class="[shimmerCls, 'block w-[38%] h-10px mt-auto rounded-4px']" />
+                    <span class="flex flex-col gap-5px">
+                      <span :class="[shimmerCls, 'block w-[82%] h-9px rounded-4px']" />
+                      <span :class="[shimmerCls, 'block w-[64%] h-9px rounded-4px']" />
+                    </span>
+                    <span class="flex items-center gap-6px">
+                      <span
+                        class="relative flex-1 min-w-6px h-4px rounded-full bg-#eceef0 shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden"
+                      >
+                        <span
+                          class="absolute inset-y-0 left-0 rounded-full sx-grad-progress [transition:width_160ms_linear] motion-reduce:transition-none"
+                          :style="{ width: `${Math.min(100, Math.max(4, item.progress ?? 6))}%` }"
+                        />
+                      </span>
+                      <span class="flex-none text-11px font-600 leading-16px text-violet-ink tabular-nums"
+                        >{{ Math.min(100, Math.max(0, item.progress ?? 6)) }}%</span
+                      >
+                    </span>
                   </span>
                 </template>
                 <template v-else>
-                  <!-- 缩略 44 / r6；多张用 3/6px 偏移叠影表示，张数角标高 16、10px -->
-                  <span
-                    class="relative flex-none grid place-items-center w-44px h-44px box-border rounded-6px border border-solid border-line bg-surface3 text-placeholder pointer-events-none"
-                    :class="
+                  <!-- 缩略 44 / r14（内图同心 r13）：有图时是按钮（压在整卡按钮之上），点开灯箱看大图，悬停放大镜光标；
+                       多张用 3/6px 偏移叠影表示，张数角标高 16、11px -->
+                  <component
+                    :is="stackOf(item)[0] ? 'button' : 'span'"
+                    v-bind="
+                      stackOf(item)[0]
+                        ? { type: 'button', 'aria-label': `放大查看${stackOf(item).length > 1 ? `（共 ${stackOf(item).length} 张）` : ''}` }
+                        : { 'aria-hidden': 'true' }
+                    "
+                    class="sx-squircle relative z-1 flex-none grid place-items-center w-44px h-44px self-center box-border p-0 rounded-14px border border-solid border-line bg-surface3 text-placeholder"
+                    :class="[
+                      stackOf(item)[0] ? ['cursor-zoom-in', focusRing] : 'pointer-events-none',
                       stackOf(item).length >= 3
                         ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb,6px_-6px_0_-1px_#fff,6px_-6px_0_0_#e5e7eb]'
                         : stackOf(item).length === 2
                           ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb]'
-                          : ''
-                    "
-                    aria-hidden="true"
+                          : '',
+                    ]"
+                    @click="stackOf(item)[0] && openThumbs(stackOf(item), 0, promptOf(item))"
                   >
                     <img
                       v-if="stackOf(item)[0]"
                       :src="stackOf(item)[0]"
                       alt=""
-                      class="absolute inset-0 block h-full w-full rounded-5px object-cover object-center"
+                      class="absolute inset-0 block h-full w-full rounded-13px object-cover object-center"
+                      draggable="false"
                     />
                     <span v-else class="text-11px">{{ schema.media === 'video' ? '视频' : '—' }}</span>
                     <span
                       v-if="stackOf(item).length > 1"
-                      class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px rounded-full border border-solid border-white bg-ink text-10px font-600 leading-none text-white"
+                      class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px rounded-full border border-solid border-white bg-ink text-11px font-600 leading-none text-white"
+                      aria-hidden="true"
                       >{{ stackOf(item).length }}</span
                     >
-                  </span>
-                  <span class="min-w-0 flex-1 flex flex-col justify-between gap-6px pointer-events-none">
+                  </component>
+                  <span class="min-w-0 flex-1 flex flex-col justify-between gap-2px">
+                    <!-- 第一行：提示词（单行省略）；状态只在下方胶囊出现一次，时间放进悬停提示 -->
                     <span
-                      class="m-0 line-clamp-2 text-12px leading-18px"
-                      :class="item.status === 'SUCCEED' ? 'text-ink' : 'text-danger'"
-                      :title="promptOf(item)"
+                      class="m-0 truncate text-12px leading-18px text-ink pointer-events-none"
+                      :title="`${formatTime(item.createdAt)} · ${promptOf(item)}`"
+                      >{{ promptOf(item) }}</span
                     >
-                      <template v-if="item.status !== 'SUCCEED'">{{ statusOf(item.status).text }} · </template
-                      >{{ promptOf(item) }}
-                    </span>
-                    <span class="flex items-center gap-4px min-w-0">
-                      <span class="flex-none text-11px leading-16px text-muted tabular-nums whitespace-nowrap">{{
-                        shortTime(item.createdAt)
-                      }}</span>
-                      <!-- 操作钮 20×20 / r4，跟在时间后面；压在整卡按钮之上 -->
-                      <span class="relative z-1 ml-auto flex items-center pointer-events-auto">
-                        <!-- 原型 v3-hist__acts 顺序：下载 · 删除 · 重新编辑；20×20 / r4，悬停 #f3f4f5 + ink，删除悬停 #fdf1f0 + #b4433e -->
-                        <a
+                    <!-- 第二行：成功只显示时间，其它状态显示胶囊（失败 / 超时 / 取消需要醒目）；操作钮靠右，压在整卡按钮之上 -->
+                    <span class="flex items-center gap-6px min-w-0 h-24px">
+                      <span
+                        v-if="item.status === 'SUCCEED'"
+                        class="min-w-0 truncate text-11px leading-16px text-muted tabular-nums whitespace-nowrap pointer-events-none"
+                        >{{ shortTime(item.createdAt) }}</span
+                      >
+                      <span
+                        v-else
+                        class="flex-none inline-flex items-center h-18px px-7px rounded-full text-11px leading-none whitespace-nowrap pointer-events-none"
+                        :class="statusChipCls(item.status)"
+                      >
+                        <i class="w-5px h-5px rounded-full mr-4px" :class="statusDotCls(item.status)" aria-hidden="true"></i>
+                        {{ statusOf(item.status).text }}
+                      </span>
+                      <span class="relative z-1 ml-auto flex flex-none items-center gap-8px">
+                        <!-- 顺序：下载 · 删除 · 重新编辑；sm = 视觉 24，命中区外扩到 ≥32（触屏 ≥44） -->
+                        <IconButton
                           v-if="firstOutput(item)"
+                          label="下载"
+                          size="sm"
                           :href="firstOutput(item)"
                           target="_blank"
-                          rel="noopener"
                           download
-                          class="grid place-items-center w-20px h-20px rounded-4px text-muted no-underline hover:(bg-surface3 text-ink)"
-                          :class="focusRing"
-                          :aria-label="`下载 ${formatTime(item.createdAt)} 的结果`"
-                          title="下载"
                         >
-                          <svg
-                            class="w-13px h-13px"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.8"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
                           </svg>
-                        </a>
-                        <button
-                          type="button"
-                          class="grid place-items-center w-20px h-20px p-0 rounded-4px border-none bg-transparent text-muted cursor-pointer hover:(bg-#fdf1f0 text-#b4433e)"
-                          :class="focusRing"
-                          :aria-label="`删除 ${formatTime(item.createdAt)} 的记录`"
-                          title="删除"
-                          @click="confirmDelete(item)"
-                        >
-                          <svg
-                            class="w-13px h-13px"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.8"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
+                        </IconButton>
+                        <IconButton label="删除" size="sm" variant="danger" @click="confirmDelete(item)">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
                           </svg>
-                        </button>
-                        <!-- 重新编辑：老记录（无 requestParams）用 aria-disabled 而非 disabled，仍可聚焦、悬停能看到原因 -->
-                        <button
-                          type="button"
-                          class="grid place-items-center w-20px h-20px p-0 rounded-4px border-none bg-transparent text-muted"
-                          :class="[
-                            focusRing,
-                            item.requestParams && !submitting
-                              ? 'cursor-pointer hover:(bg-surface3 text-ink)'
-                              : 'opacity-40 cursor-not-allowed',
-                          ]"
-                          :aria-disabled="item.requestParams && !submitting ? undefined : 'true'"
-                          :aria-label="item.requestParams ? '重新编辑' : `重新编辑（${RESTORE_DISABLED_TIP}）`"
-                          :title="item.requestParams ? '重新编辑' : RESTORE_DISABLED_TIP"
+                        </IconButton>
+                        <!-- 重新编辑：老记录（无 requestParams）不可用，用 disabled 且 title 说明原因 -->
+                        <IconButton
+                          :label="item.requestParams ? '重新编辑' : `重新编辑（${RESTORE_DISABLED_TIP}）`"
+                          size="sm"
+                          :disabled="!item.requestParams || submitting"
                           @click="restoreFrom(item)"
                         >
-                          <svg
-                            class="w-13px h-13px"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.8"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
                           </svg>
-                        </button>
+                        </IconButton>
                       </span>
                     </span>
                   </span>
@@ -2107,7 +2923,7 @@ const plateBtnCls =
                       :class="[
                         plateBtnCls,
                         focusRing,
-                        'self-start h-28px px-8px rounded-4px text-11px leading-26px no-underline',
+                        'self-start h-32px px-12px rounded-4px text-13px leading-30px no-underline',
                       ]"
                       >下载视频</a
                     >
@@ -2122,7 +2938,7 @@ const plateBtnCls =
                       :class="[
                         plateBtnCls,
                         focusRing,
-                        'self-start h-28px px-8px rounded-4px text-11px leading-26px no-underline',
+                        'self-start h-32px px-12px rounded-4px text-13px leading-30px no-underline',
                       ]"
                       >下载结果</a
                     >
@@ -2146,16 +2962,8 @@ const plateBtnCls =
           </ul>
 
           <div class="flex-none flex items-center justify-center gap-10px pt-8px pb-2px">
-            <button
-              type="button"
-              class="grid place-items-center w-26px h-26px box-border p-0 rounded-4px border border-solid border-line bg-white text-ink-2 cursor-pointer enabled:hover:(border-#c9cfd6 text-ink) disabled:(opacity-40 cursor-default)"
-              :class="focusRing"
-              :disabled="historyPage <= 1"
-              aria-label="上一页"
-              @click="historyPage -= 1"
-            >
+            <IconButton label="上一页" :disabled="historyPage <= 1" @click="historyPage -= 1">
               <svg
-                class="w-14px h-14px"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -2166,20 +2974,12 @@ const plateBtnCls =
               >
                 <path d="m15 6-6 6 6 6" />
               </svg>
-            </button>
-            <span class="text-11px leading-16px text-muted tabular-nums" aria-live="polite"
+            </IconButton>
+            <span class="text-12px leading-16px text-muted tabular-nums" aria-live="polite"
               >{{ historyPage }} / {{ historyPages }}</span
             >
-            <button
-              type="button"
-              class="grid place-items-center w-26px h-26px box-border p-0 rounded-4px border border-solid border-line bg-white text-ink-2 cursor-pointer enabled:hover:(border-#c9cfd6 text-ink) disabled:(opacity-40 cursor-default)"
-              :class="focusRing"
-              :disabled="historyPage >= historyPages"
-              aria-label="下一页"
-              @click="historyPage += 1"
-            >
+            <IconButton label="下一页" :disabled="historyPage >= historyPages" @click="historyPage += 1">
               <svg
-                class="w-14px h-14px"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -2190,7 +2990,7 @@ const plateBtnCls =
               >
                 <path d="m9 6 6 6-6 6" />
               </svg>
-            </button>
+            </IconButton>
           </div>
         </template>
       </section>
@@ -2217,23 +3017,24 @@ const plateBtnCls =
                 >{{ statusOf(current.status).text }} · {{ shortTime(current.createdAt) }}</template
               >
             </span>
-            <span class="min-w-0 max-w-240px truncate text-11px leading-16px text-placeholder" :title="schema.title">{{
-              schema.title
+            <span class="min-w-0 max-w-240px truncate text-11px leading-16px text-placeholder" :title="recordTitle">{{
+              recordTitle
             }}</span>
             <div
-              v-if="canCompare"
+              v-if="canCompare || canColorCompare"
               class="flex-none ml-auto flex p-2px box-border rounded-6px border border-solid border-line bg-surface3 shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
               role="group"
               aria-label="查看方式"
             >
               <button
                 v-for="m in [
-                  { key: 'result', label: '结果' },
-                  { key: 'compare', label: '前后对比' },
-                ] as const"
+                  { key: 'result', label: '结果', show: true },
+                  { key: 'compare', label: '前后对比', show: canCompare },
+                  { key: 'colorfix', label: '校色对比', show: canColorCompare },
+                ].filter((x) => x.show) as { key: 'result' | 'compare' | 'colorfix'; label: string }[]"
                 :key="m.key"
                 type="button"
-                class="h-26px box-border px-10px rounded-4px border border-solid text-11px leading-24px cursor-pointer [transition:background_300ms_cubic-bezier(0.4,0,0.2,1),border-color_300ms_cubic-bezier(0.4,0,0.2,1),color_300ms_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+                class="h-28px box-border px-12px rounded-4px border border-solid text-13px leading-26px cursor-pointer [transition:background_300ms_cubic-bezier(0.4,0,0.2,1),border-color_300ms_cubic-bezier(0.4,0,0.2,1),color_300ms_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
                 :class="[
                   focusRing,
                   resultMode === m.key
@@ -2246,46 +3047,80 @@ const plateBtnCls =
                 {{ m.label }}
               </button>
             </div>
-            <a
-              v-if="selectedProduct"
-              :href="selectedProduct.src"
-              target="_blank"
-              rel="noopener"
-              download
-              class="flex-none grid place-items-center w-32px h-32px p-0 box-border rounded-4px no-underline border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] text-ink-2 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] [transition:background_110ms,box-shadow_110ms,border-color_110ms] motion-reduce:transition-none hover:(border-#aeb6bf bg-none bg-surface3 text-ink) active:(bg-none bg-#e9ecef shadow-[inset_0_1px_2px_rgba(31,35,41,0.12),inset_0_0_0_1px_rgba(31,35,41,0.03)])"
-              :class="[focusRing, canCompare ? '' : 'ml-auto']"
-              :aria-label="selectedProduct.type === 'video' ? '下载视频' : '下载结果'"
-              title="下载"
+            <!-- 头部操作（原型 v3-preview__actions）：存为资产 · 下载，md 32、间距 8；校色对比档的两个下载放在图上 -->
+            <span
+              v-if="selectedProduct && resultMode !== 'colorfix'"
+              class="flex-none flex items-center gap-8px"
+              :class="canCompare || canColorCompare ? '' : 'ml-auto'"
             >
-              <svg
-                class="w-16px h-16px"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
+              <IconButton
+                v-if="selectedProduct.type === 'image' && !showSync"
+                :label="colorFixEnabled && colorFixTouched ? '存为资产（原图 + 校色后两版）' : '存为资产'"
+                :disabled="colorFixSaving"
+                @click="saveAsAsset"
               >
-                <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
-              </svg>
-            </a>
+                <svg v-if="colorFixSaving" class="animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.5" />
+                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="7" width="16" height="13" rx="2.5" />
+                  <path d="M7 4h10M12 10.5v6M9 13.5h6" />
+                </svg>
+              </IconButton>
+              <IconButton
+                :label="selectedProduct.type === 'video' ? '下载视频' : colorFixEnabled && colorFixTouched && selectedProduct.type === 'image' ? '下载（含校色效果）' : '下载结果'"
+                @click="downloadSelected"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+                </svg>
+              </IconButton>
+            </span>
+          </div>
+
+          <!-- 校色对比：同一张结果，左原图、右挂校色滤镜；图上「下载校色前 / 下载校色后」 -->
+          <div
+            v-if="canColorCompare && resultMode === 'colorfix' && selectedProduct"
+            class="relative flex-none h-[min(62vh,640px)] min-h-320px overflow-hidden rounded-8px bg-surface3"
+          >
+            <ToolImageCompare
+              :before="selectedProduct.src"
+              :after="selectedProduct.src"
+              :after-filter="colorFixFilter(colorFix)"
+              :labels="['校色前', '校色后']"
+              aria-label="校色前后对比"
+            />
+            <span class="absolute left-10px bottom-10px z-6 flex items-center gap-8px">
+              <button type="button" :class="[cfPillCls, 'text-ink-2']" @click="downloadBeforeColorFix">下载校色前</button>
+              <button type="button" :class="[cfPillCls, 'text-violet-ink']" @click="downloadSelected">下载校色后</button>
+            </span>
+            <button
+              type="button"
+              :class="[cfPillCls, 'absolute top-10px right-10px z-6 text-violet-ink']"
+              :aria-pressed="colorFixPanelOpen"
+              @click="colorFixPanelOpen ? closeColorFixPanel() : (colorFixPanelOpen = true)"
+            >
+              校色调整
+            </button>
           </div>
 
           <!-- 前后对比：高 min(62vh,640)、最小 320、r8 -->
           <div
-            v-if="canCompare && resultMode === 'compare'"
+            v-else-if="canCompare && resultMode === 'compare'"
             class="relative flex-none h-[min(62vh,640px)] min-h-320px overflow-hidden rounded-8px bg-surface3"
           >
             <ToolImageCompare
               :before="compareBefore"
               :after="compareAfter"
-              :labels="['输入图', '生成结果']"
-              aria-label="输入图与生成结果前后对比"
+              :labels="compareLabels"
+              :aria-label="`${compareLabels[0]}与生成结果前后对比`"
             />
           </div>
 
-          <!-- 结果舞台：产物绝对定位 contain 居中；图片点开灯箱，视频用原生控件 -->
+          <!-- 结果舞台：产物绝对定位 contain 居中；图片点开灯箱，视频用原生控件。
+               校色闭环：右上「校色」入口胶囊（原型 .v3-cf-edit），右下「存为资产」；
+               校色参数即时挂 CSS filter 预览，存资产 / 下载时才烘真图 -->
           <div
             v-else-if="selectedProduct"
             :class="[stageCls, 'flex-1 min-h-320px max-[1439px]:(flex-none h-[min(52vh,480px)])']"
@@ -2296,6 +3131,7 @@ const plateBtnCls =
               :alt="selectedProduct.name"
               class="absolute inset-0 block m-auto max-w-full max-h-full object-contain cursor-zoom-in"
               :class="focusRing"
+              :style="stageFilter ? { filter: stageFilter } : undefined"
               role="button"
               tabindex="0"
               title="点击放大"
@@ -2312,6 +3148,21 @@ const plateBtnCls =
               playsinline
               class="absolute inset-0 block m-auto max-w-full max-h-full object-contain"
             />
+            <!-- 校色入口（仅 schema.colorFix 的工具、仅图片）：毛玻璃胶囊「校色调整」 -->
+            <button
+              v-if="colorFixEnabled && selectedProduct.type === 'image'"
+              type="button"
+              :class="[cfPillCls, 'absolute top-10px right-10px z-2 text-violet-ink']"
+              :aria-pressed="colorFixPanelOpen"
+              @click="colorFixPanelOpen ? closeColorFixPanel() : (colorFixPanelOpen = true)"
+            >
+              <svg class="w-12px h-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+                <circle cx="16" cy="7" r="2" />
+                <circle cx="8" cy="17" r="2" />
+              </svg>
+              校色调整
+            </button>
           </div>
 
           <!-- 生成中：34 圆转圈（2px 环、800ms 一圈）+ 文案 11px -->
@@ -2322,11 +3173,11 @@ const plateBtnCls =
             aria-live="polite"
           >
             <span
-              class="block w-34px h-34px mb-2px box-border rounded-full border-2 border-solid border-violet-soft border-t-violet animate-spin [animation-duration:800ms] motion-reduce:animate-none"
+              class="block w-34px h-34px mb-2px box-border rounded-full border-2 border-solid border-violet-soft border-t-violet animate-spin [animation-duration:800ms]"
               aria-hidden="true"
             />
             <b class="text-13px font-600 leading-[1.4] text-ink-2">正在生成</b>
-            <span class="max-w-240px">任务进行中，结果出来后会自动显示</span>
+            <span class="max-w-240px">任务已提交，完成后结果会出现在这里</span>
             <span v-if="history.running.value > 1" class="text-violet-ink"
               >共 {{ history.running.value }} 个任务处理中</span
             >
@@ -2414,6 +3265,9 @@ const plateBtnCls =
           </p>
         </section>
 
+        <!-- 校色面板（364 宽、Teleport 到 body、可拖）：参数即时挂舞台预览，完成 / 切记录存 localStorage -->
+        <ColorFixPanel v-if="colorFixEnabled && colorFixPanelOpen" v-model="colorFix" @done="closeColorFixPanel" />
+
         <!--
           功能介绍（原型 ToolIntroPanel fill）：内边距 18、gap 14；标题 14/600，正文 13/1.65 ink-2；
           适用场景块内边距 10、1px line-soft、r6、surface2。
@@ -2424,27 +3278,42 @@ const plateBtnCls =
           aria-labelledby="tool-intro-title"
         >
           <h2 id="tool-intro-title" class="m-0 text-14px font-600 leading-[1.55] text-ink">功能介绍</h2>
-          <p class="m-0 text-13px leading-[1.65] text-ink-2">{{ schema.description }}</p>
+          <p class="m-0 text-13px leading-[1.65] text-ink-2">{{ schema.intro || schema.description }}</p>
           <div
-            v-if="schema.scenarios?.length"
-            class="flex flex-col gap-[5.5px] p-10px rounded-6px border border-solid border-line-soft bg-surface2"
+            class="sx-squircle flex flex-col gap-[5.5px] p-10px rounded-12px border border-solid border-line-soft bg-surface2"
           >
-            <h3 id="tool-intro-scenes" class="m-0 text-13px font-500 leading-[1.55] text-ink">适用场景</h3>
+            <h3 id="tool-intro-scenes" class="m-0 text-13px font-500 leading-[1.55] text-ink">
+              {{ schema.scenarios?.length ? '适用场景' : '使用步骤' }}
+            </h3>
             <ul
+              v-if="schema.scenarios?.length"
               class="m-0 p-0 list-none flex flex-col gap-[5.5px] text-13px leading-[1.55] text-ink-2"
               aria-labelledby="tool-intro-scenes"
             >
-              <li v-for="s in schema.scenarios" :key="s">{{ s }}</li>
+              <li v-for="sc in schema.scenarios" :key="sc">{{ sc }}</li>
             </ul>
+            <ol
+              v-else
+              class="m-0 pl-18px flex flex-col gap-[5.5px] text-13px leading-[1.55] text-ink-2"
+              aria-labelledby="tool-intro-scenes"
+            >
+              <li v-for="step in schema.steps" :key="step">{{ step }}</li>
+            </ol>
           </div>
-          <ol v-else class="m-0 pl-18px text-12px leading-20px text-muted">
-            <li v-for="step in schema.steps" :key="step">{{ step }}</li>
-          </ol>
+          <p v-if="history.running.value" class="m-0 text-11px leading-16px text-violet-ink" role="status">
+            {{ history.running.value }} 个任务处理中，完成后会更新到下方历史记录
+          </p>
         </section>
       </div>
     </div>
 
     <ToolMediaPreview v-model:open="lightboxOpen" v-model:index="lightboxIndex" :items="products" />
+    <!-- 历史缩略图 / 抠图结果卡的放大：共用 MediaLightbox -->
+    <MediaLightbox
+      v-model:show="thumbLightbox.show"
+      v-model:index="thumbLightbox.index"
+      :items="thumbLightbox.items"
+    />
   </div>
 </template>
 

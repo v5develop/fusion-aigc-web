@@ -17,7 +17,7 @@ defineProps<{
 
 const emit = defineEmits<{ hover: [key: string]; insert: [region: IActionRegion] }>()
 
-const ICON_BTN = `grid shrink-0 w-28px h-28px p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink ${ACTION_RING}`
+const ICON_BTN = `relative grid shrink-0 w-28px h-28px after:content-empty after:absolute after:-inset-3px p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink ${ACTION_RING}`
 </script>
 
 <template>

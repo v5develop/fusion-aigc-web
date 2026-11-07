@@ -8,7 +8,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { publicDisplayCategories, publicDisplayFeed } from '@/api/plaza.ts'
 import type { IDisplayCategory, IFeedItem } from '@/api/types'
 import { usePagedList } from '../usePagedList.ts'
-import { chipClass } from '../styles.ts'
+import { CATS_ROW, chipClass, subChipClass } from '../styles.ts'
 import PlazaCard from './PlazaCard.vue'
 import PlazaGrid from './PlazaGrid.vue'
 
@@ -64,69 +64,76 @@ const previewOf = (a: IFeedItem) => (a.mediaType === 'image' ? a.urls?.[0] || a.
 </script>
 
 <template>
-  <div class="h-full overflow-auto px-24px pb-24px" @scroll="onScroll">
-    <div class="flex flex-col gap-10px pt-8px pb-16px">
-      <div class="flex flex-wrap items-center gap-8px" role="group" aria-label="素材分类">
-        <button
-          type="button"
-          :aria-pressed="activeL1 == null"
-          :class="chipClass(activeL1 == null)"
-          @click="pickL1(null)"
+  <div class="h-full overflow-auto px-20px pb-20px" @scroll="onScroll">
+    <div class="mx-auto max-w-1180px">
+      <div class="flex flex-col gap-12px pt-4px pb-16px">
+        <div :class="CATS_ROW" role="group" aria-label="素材分类">
+          <button
+            type="button"
+            :aria-pressed="activeL1 == null"
+            :class="chipClass(activeL1 == null)"
+            @click="pickL1(null)"
+          >
+            全部
+          </button>
+          <button
+            v-for="c in categories"
+            :key="c.id"
+            type="button"
+            :aria-pressed="activeL1 === c.id"
+            :class="chipClass(activeL1 === c.id)"
+            @click="pickL1(c.id)"
+          >
+            {{ c.categoryName }}
+          </button>
+        </div>
+        <div
+          v-if="subCategories.length"
+          class="-mt-4px flex flex-wrap items-center gap-6px"
+          role="group"
+          aria-label="子分类"
         >
-          全部
-        </button>
-        <button
-          v-for="c in categories"
-          :key="c.id"
-          type="button"
-          :aria-pressed="activeL1 === c.id"
-          :class="chipClass(activeL1 === c.id)"
-          @click="pickL1(c.id)"
-        >
-          {{ c.categoryName }}
-        </button>
+          <button
+            type="button"
+            :aria-pressed="activeL2 == null"
+            :class="subChipClass(activeL2 == null)"
+            @click="activeL2 = null"
+          >
+            全部
+          </button>
+          <button
+            v-for="c in subCategories"
+            :key="c.id"
+            type="button"
+            :aria-pressed="activeL2 === c.id"
+            :class="subChipClass(activeL2 === c.id)"
+            @click="activeL2 = c.id"
+          >
+            {{ c.categoryName }}
+          </button>
+        </div>
       </div>
-      <div v-if="subCategories.length" class="flex flex-wrap items-center gap-8px" role="group" aria-label="子分类">
-        <button
-          type="button"
-          :aria-pressed="activeL2 == null"
-          :class="chipClass(activeL2 == null, true)"
-          @click="activeL2 = null"
-        >
-          全部
-        </button>
-        <button
-          v-for="c in subCategories"
-          :key="c.id"
-          type="button"
-          :aria-pressed="activeL2 === c.id"
-          :class="chipClass(activeL2 === c.id, true)"
-          @click="activeL2 = c.id"
-        >
-          {{ c.categoryName }}
-        </button>
-      </div>
-    </div>
 
-    <PlazaGrid
-      :loading="loading"
-      :loading-more="loadingMore"
-      :failed="failed"
-      :empty="empty"
-      :has-more="hasMore"
-      empty-text="暂无数据"
-      @retry="reload"
-      @load-more="loadMore"
-    >
-      <PlazaCard
-        v-for="a in items"
-        :key="a.id"
-        :cover="a.coverUrl"
-        :preview-src="previewOf(a)"
-        :title="a.title"
-        :badge="categoryName(a.categoryL1Id)"
-        :is-video="a.mediaType === 'video'"
-      />
-    </PlazaGrid>
+      <PlazaGrid
+        :loading="loading"
+        :loading-more="loadingMore"
+        :failed="failed"
+        :empty="empty"
+        :has-more="hasMore"
+        :empty-text="activeL1 == null ? '暂无素材' : '这个分类下还没有素材，换个分类试试'"
+        @retry="reload"
+        @load-more="loadMore"
+      >
+        <PlazaCard
+          v-for="a in items"
+          :key="a.id"
+          :cover="a.coverUrl"
+          :preview-src="previewOf(a)"
+          :title="a.title"
+          :badge="categoryName(a.categoryL1Id)"
+          :is-video="a.mediaType === 'video'"
+        />
+      </PlazaGrid>
+    </div>
   </div>
 </template>

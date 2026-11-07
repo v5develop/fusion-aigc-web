@@ -10,6 +10,7 @@
  * 保留同一个 requestId，用户手动重发同一条内容才沿用它。
  */
 import { ApiError, authorizedFetch, del, get, patch, post } from './index.ts'
+import type { IBatchSubmitReq } from './batchHosting.ts'
 
 const PREFIX = '/api/v1/agent'
 
@@ -70,6 +71,8 @@ export interface IAgentConversation {
   lastMessage: string | null
   createdAt: string | null
   updatedAt: string | null
+  /** 列表缩略图：最近一次生图结果里第一张已出图的地址（v1 之外的附加字段），没有图时为 null / 缺省 */
+  coverImageUrl?: string | null
 }
 
 /** 一帧 SSE（实时流与助手历史 sseEvents 同形） */
@@ -118,6 +121,8 @@ export interface IAgentStreamReq {
   imageUrls?: string[]
   /** 回答语言（≤64 字符），服务端拼进系统提示 "Response language: …"；不限语言就不带 */
   language?: string
+  /** 广场模板「做同款」：服务端按 id 取模板提示词与 guidance（不存在 / 下架 / 无提示词回 ERROR 帧），只作用于本轮 */
+  plazaTemplateId?: number
 }
 
 /** 回答语言选项：value 为空 = 不限语言（不带 language） */
@@ -184,6 +189,75 @@ export function agentCancel(id: string) {
     `${PREFIX}/conversations/${encodeURIComponent(id)}/cancel`,
     {},
   )
+}
+
+// ---------------- 生图失败重试 / 出图报价 ----------------
+
+export interface IAgentRetryView {
+  conversationId: string
+  tasks: { retryOf: string; taskId: string; status: string; pricePoints: number | null; replayed: boolean }[]
+  failed: { taskId?: string | null; reason: string }[]
+  totalPoints: number
+  balance: number
+}
+
+/**
+ * 结果卡「重试这 n 张」：taskIds = 当前失败格子的 taskId（retryable=true，1~50）。
+ * 服务端按 agent-retry:{taskId} 幂等，重复点只回放不重扣；点数不足走全局引导购买（BILLING_GUARD_PATTERNS 已登记）。
+ */
+export function agentGenerationRetry(conversationId: string, taskIds: string[]) {
+  return post<IAgentRetryView>(`${PREFIX}/conversations/${encodeURIComponent(conversationId)}/generation-retry`, {
+    taskIds,
+  })
+}
+
+export interface IAgentImageQuoteReq {
+  resolution: '1k' | '2k' | '4k'
+  aspectRatio?: string
+  num: number
+  referenceCount: number
+  includeTurn: boolean
+}
+
+export interface IAgentImageQuote {
+  resolution: string
+  aspectRatio?: string
+  size?: string
+  num: number
+  unitPoints: number
+  imagePoints: number
+  turnPoints: number
+  freeQuotaApplied: boolean
+  totalPoints: number
+  balance: number
+  sufficient: boolean
+  /** 只在 1k 更便宜时给 */
+  cheaperOption?: { resolution: string; unitPoints: number; totalPoints: number } | null
+}
+
+/** 参数表单「本次约 X 点数 · 余额 Y 点数」：只读报价，不冻结、不占免费额度；SILENT_ERROR_URLS 已登记，失败不弹 toast */
+export function agentImageQuote(data: IAgentImageQuoteReq) {
+  return post<IAgentImageQuote>(`${PREFIX}/image-quote`, data)
+}
+
+/** 批量托管（一键铺货）提交前估价：POST /api/v1/batch-hosting/ecom-image/quote，响应 BatchQuote */
+export interface IBatchEcomQuote {
+  taskCount: number
+  imageCount: number
+  totalPoints: number
+  /** false = 有规格没报出价，totalPoints 偏少 */
+  complete: boolean
+  balance: number
+  sufficient: boolean
+  lines: { entryCode: string; modelCode: string; resolution: string; count: number; unitPoints: number }[]
+}
+
+/**
+ * 请求体与提交接口相同（title 可省），只读：不建行、不扣点、不看幂等键。
+ * 放在这里而不是 batchHosting.ts：只有智能体页的一键铺货弹窗用它。SILENT_ERROR_URLS 已登记。
+ */
+export function batchQuoteEcomImage(data: Omit<IBatchSubmitReq, 'title'> & { title?: string }) {
+  return post<IBatchEcomQuote>('/api/v1/batch-hosting/ecom-image/quote', data)
 }
 
 // ---------------- 分享（ShareRequest / ShareView） ----------------
@@ -384,6 +458,20 @@ export interface IAgentGenTask {
   taskId: string
   status: 'queued' | 'processing' | 'success' | 'failed'
   imageUrls: string[]
+  /** 这张的标价（实时 tool_result 帧只带这一项计费字段） */
+  pricePoints?: number
+  /** 以下只在消息历史里有：实扣 / 已退点数与结算状态 */
+  chargedPoints?: number
+  refundedPoints?: number
+  /** CONFIRMED / REFUNDED / PARTIALLY_REFUNDED / HELD / SETTLEMENT_FAILED …（HELD、SETTLEMENT_FAILED = 退点处理中） */
+  billingStatus?: string
+  failCode?: string
+  /** 给用户看的失败原因（服务端已脱敏） */
+  failReason?: string
+  /** 失败后可走「重试这 n 张」 */
+  retryable?: boolean
+  /** 本格是重试出来的：原任务号（taskId 为重试任务号） */
+  retryOf?: string
 }
 
 export interface IAgentToolResult {
@@ -405,15 +493,32 @@ function genTasks(result: unknown): IAgentGenTask[] {
     return r.results
       .map((x) => (x ?? {}) as Record<string, unknown>)
       .filter((x) => typeof x.taskId === 'string' && x.taskId)
-      .map((x) => ({
-        taskId: String(x.taskId),
-        status: GEN_STATUSES.includes(x.status as IAgentGenTask['status'])
-          ? (x.status as IAgentGenTask['status'])
-          : 'queued',
-        imageUrls: Array.isArray(x.imageUrls)
-          ? x.imageUrls.filter((u): u is string => typeof u === 'string' && !!u)
-          : [],
-      }))
+      .map((x): IAgentGenTask => {
+        const t: IAgentGenTask = {
+          taskId: String(x.taskId),
+          status: GEN_STATUSES.includes(x.status as IAgentGenTask['status'])
+            ? (x.status as IAgentGenTask['status'])
+            : 'queued',
+          imageUrls: Array.isArray(x.imageUrls)
+            ? x.imageUrls.filter((u): u is string => typeof u === 'string' && !!u)
+            : [],
+        }
+        // 计费 / 失败 / 重试字段都是可选：缺省就不带，页面按「没有该信息」降级
+        const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+        const s = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
+        const opt = {
+          pricePoints: n(x.pricePoints),
+          chargedPoints: n(x.chargedPoints),
+          refundedPoints: n(x.refundedPoints),
+          billingStatus: s(x.billingStatus),
+          failCode: s(x.failCode),
+          failReason: s(x.failReason),
+          retryable: typeof x.retryable === 'boolean' ? x.retryable : undefined,
+          retryOf: s(x.retryOf),
+        }
+        for (const [k, v] of Object.entries(opt)) if (v !== undefined) (t as unknown as Record<string, unknown>)[k] = v
+        return t
+      })
   }
   return (Array.isArray(r.taskIds) ? r.taskIds : [])
     .filter((id): id is string => typeof id === 'string' && !!id)

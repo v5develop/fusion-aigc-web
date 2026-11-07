@@ -14,6 +14,7 @@ import PromptBox from '../components/PromptBox/index.vue'
 import PromptActions from '../components/PromptActions/index.vue'
 import SettingsBar from '../components/SettingsBar/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
+import IconButton from '@/components/IconButton/index.vue'
 import {
   llCopywritingAiWrite,
   llCreationList,
@@ -24,8 +25,12 @@ import {
   llIdempotencyHeaders,
 } from '@/api/localLife.ts'
 import type { ILCreation, ILCreationOptions } from '@/api/localLifeTypes.ts'
+import HistoryList from '../components/HistoryList/index.vue'
+import HistoryCard from '../components/HistoryList/HistoryCard.vue'
+import { useHistorySelection } from '../components/HistoryList/selection.ts'
+import ResultPreview from '../components/ResultPreview/index.vue'
 import { useAgreement, useLLList } from '../hooks.ts'
-import { CREATION_STATUS_MAP, formatTime, isCreationRunning } from '../constants.ts'
+import { CREATION_STATUS_MAP, isCreationRunning } from '../constants.ts'
 
 defineOptions({ name: 'local-life-voiceover' })
 
@@ -115,7 +120,7 @@ async function submit() {
 
   submitting.value = true
   try {
-    await llCreationSubmit(
+    const res = await llCreationSubmit(
       {
         kind: 'voiceover',
         content: form.content.trim(),
@@ -134,7 +139,10 @@ async function submit() {
     message.success('已提交，口播视频生成中')
     form.content = ''
     form.copywriting_id = undefined
+    // 明确选中接口返回的新记录（不依赖「新记录排第一」）；先刷列表，免得新 id 还不在列表里时预览闪到旧记录
     await listCtl.refresh()
+    if (res.data?.id) selectId(res.data.id)
+    else followLatest()
   } finally {
     submitting.value = false
   }
@@ -153,18 +161,16 @@ onMounted(async () => {
   void listCtl.reload()
 })
 
-const previewShow = ref(false)
-const previewUrl = ref('')
-
-function openPreview(item: ILCreation) {
-  if (item.status !== 1 || !item.video_url) return
-  previewUrl.value = item.video_url
-  previewShow.value = true
-}
+// 三栏：中栏历史选中哪条，右栏就预览哪条（null = 跟随最新；原来的预览弹窗由预览区取代）
+const { current, select, selectId, followLatest } = useHistorySelection(listCtl.items)
+const runningCount = computed(() => listCtl.items.value.filter(isCreationRunning).length)
 
 async function removeItem(item: ILCreation) {
   await llCreationRemove(item.id)
   message.success('已删除')
+  // 先在本地摘掉这条：删的若是右栏正在预览的，立即回落到最新一条（不等列表刷新）；随后静默刷新对齐服务端
+  listCtl.items.value = listCtl.items.value.filter((i) => i.id !== item.id)
+  listCtl.total.value = Math.max(0, listCtl.total.value - 1)
   void listCtl.refresh()
 }
 
@@ -174,7 +180,7 @@ watch(bgSource, () => {
 </script>
 
 <template>
-  <Workbench title="数字人口播" :submit="submit" :loading="submitting" submit-text="生成口播视频">
+  <Workbench title="数字人口播" :submit="submit" :loading="submitting" submit-text="生成口播视频" submit-hint="人物形象建议用清晰的正面照，也可选一位公共数字人" :history-count="listCtl.total.value">
     <template #default>
       <FormCard title="口播文案" required>
         <PromptBox v-model="form.content" label="口播文案" size="lg" placeholder="数字人要播报的内容，字数不限">
@@ -215,7 +221,7 @@ watch(bgSource, () => {
             @click="bgId = b.id"
           >
             <img :src="b.url" alt="" class="block w-full aspect-[9/16] object-cover" />
-            <span class="block truncate px-6px py-4px text-11px leading-16px text-ink-2">{{ b.title }}</span>
+            <span class="block truncate px-6px py-4px text-12px leading-16px text-ink-2">{{ b.title }}</span>
           </button>
           <div
             v-if="!bgLoading && !bgList.length"
@@ -246,73 +252,76 @@ watch(bgSource, () => {
       />
     </template>
 
-    <template #right>
-      <div class="h-full min-h-0 flex flex-col">
-        <h2 class="m-0 mb-14px flex-none text-16px font-600 leading-22px text-ink">生成记录</h2>
-        <div
-          v-loading="listCtl.loading.value"
-          class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-14px content-start"
+    <!-- 三栏（Workbench #history / #preview）：记录从右栏网格移到中栏历史卡，点卡在右栏播放 -->
+    <template #history>
+      <HistoryList
+        :count="listCtl.total.value"
+        :running="runningCount"
+        :loading="listCtl.loading.value"
+        :has-more="listCtl.hasMore.value"
+        :loading-more="listCtl.loadingMore.value"
+        @load-more="listCtl.loadMore()"
+      >
+        <HistoryCard
+          v-for="item in listCtl.items.value"
+          :key="item.id"
+          :title="item.content || '数字人口播'"
+          :status="CREATION_STATUS_MAP[item.status]?.type ?? 'running'"
+          :status-label="CREATION_STATUS_MAP[item.status]?.label ?? ''"
+          :time="item.create_time"
+          :thumb="item.input_image_url"
+          placeholder="视频"
+          :fail-reason="item.status === 2 ? item.fail_reason || '生成失败' : ''"
+          :eta-sec="240"
+          :selected="current?.id === item.id"
+          @select="select(item)"
         >
-          <div
-            v-for="item in listCtl.items.value"
-            :key="item.id"
-            class="bg-white rounded-lg border border-solid border-line shadow-card-v3 overflow-hidden"
-          >
-            <div class="relative cursor-pointer" @click="openPreview(item)">
-              <img
-                v-if="item.input_image_url"
-                :src="item.input_image_url"
-                alt=""
-                class="block w-full aspect-[9/16] object-cover"
-              />
-              <div v-else class="w-full aspect-[9/16] flex items-center justify-center text-32px sx-grad-icon">🎙️</div>
-              <div
-                class="sx-chip flex-shrink-0 absolute top-6px left-6px"
-                :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`"
-              >
-                {{ CREATION_STATUS_MAP[item.status]?.label }}
-              </div>
-              <div
-                v-if="item.status === 2"
-                class="absolute inset-x-0 bottom-0 truncate px-8px py-4px bg-danger/85 text-11px text-white"
-              >
-                {{ item.fail_reason || '生成失败' }}
-              </div>
-            </div>
-            <div class="px-10px py-8px flex flex-col gap-2px">
-              <span class="line-clamp-2 text-12px leading-17px text-ink">{{ item.content }}</span>
-              <span class="text-11px leading-16px text-muted"
-                >{{ item.duration ? item.duration + 's' : '' }} {{ item.size }} {{ formatTime(item.create_time) }}</span
-              >
-              <n-popconfirm @positive-click="removeItem(item)">
-                <template #trigger
-                  ><span class="ll-danger-link transition-colors duration-fast w-fit text-11px">删除</span></template
-                >
-                确定删除这条记录？
-              </n-popconfirm>
-            </div>
-          </div>
-          <div
-            v-if="!listCtl.loading.value && !listCtl.items.value.length"
-            class="col-span-full sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
-          >
-            还没有记录，左侧开始生成吧
-          </div>
-          <div
-            v-if="listCtl.hasMore.value"
-            class="col-span-full ll-link transition-colors duration-fast block text-center py-8px"
-            @click="listCtl.loadMore()"
-          >
-            加载更多
-          </div>
-        </div>
-      </div>
+          <template #actions>
+            <IconButton
+              v-if="item.status === 1 && item.video_url"
+              label="下载视频"
+              size="sm"
+              :href="item.video_url"
+              target="_blank"
+              download
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+              </svg>
+            </IconButton>
+            <n-popconfirm @positive-click="removeItem(item)">
+              <template #trigger>
+                <IconButton label="删除记录" size="sm" variant="danger">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+                  </svg>
+                </IconButton>
+              </template>
+              确定删除这条记录？
+            </n-popconfirm>
+          </template>
+        </HistoryCard>
+      </HistoryList>
+    </template>
+
+    <template #preview>
+      <ResultPreview
+        :active="!!current"
+        :title="current ? current.content || '数字人口播' : ''"
+        :status="current ? (CREATION_STATUS_MAP[current.status]?.type ?? 'running') : 'running'"
+        :status-label="current ? (CREATION_STATUS_MAP[current.status]?.label ?? '') : ''"
+        :time="current?.create_time"
+        :video="current?.video_url"
+        :poster="current?.input_image_url"
+        :fail-reason="current?.fail_reason"
+        ratio="9 / 16"
+      >
+        <template v-if="current" #meta>
+          <span class="truncate text-ink-2">{{ [current.model, current.duration ? current.duration + 's' : '', current.size].filter(Boolean).join(' · ') }}</span>
+        </template>
+      </ResultPreview>
     </template>
   </Workbench>
 
   <CopywritingPicker v-model:show="showCopyPicker" @select="pickCopy" />
-
-  <n-modal v-model:show="previewShow" preset="card" title="口播视频" class="!w-420px">
-    <video v-if="previewUrl" :src="previewUrl" controls autoplay class="block w-full rounded-8px" />
-  </n-modal>
 </template>

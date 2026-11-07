@@ -1,0 +1,28 @@
+// /image、/video 现在是导航首页；通用生图 / 生视频页挪到 /image/generate、/video/generate。
+// 入口参数（容器深链 entryCode、做同款 sameStyleId/sameStyleSource、从首页带入表单）仍可写在 /image?…、/video?… 上，
+// 由这个全局守卫原样（query + hash）转过去，书签与站外链接照常可开。
+//
+// 用全局 beforeEach 而不是路由的 beforeEnter：已经停在 /image 时只改 query / hash（容器宿主改 hash、
+// 用户在地址栏补参数），beforeEnter 不会再执行，页面会停在导航首页。
+// 返回值不带 replace：守卫重定向会沿用原导航的 push / replace，带上 replace 会把来源页从历史里挤掉，
+// 返回键回不到「做同款」所在的页面。
+import type { RouteLocationNormalized } from 'vue-router'
+import { useHomeStore } from '@/stores/home'
+
+const GENERATOR_QUERY_KEYS = ['entryCode', 'sameStyleId', 'sameStyleSource'] as const
+const TARGET: Record<string, string> = { image: '/image/generate', video: '/video/generate' }
+
+function isGeneratorEntry(query: RouteLocationNormalized['query']): boolean {
+  return GENERATOR_QUERY_KEYS.some((k) => query[k] != null && query[k] !== '')
+}
+
+/** 全局守卫：去 /image、/video 且带生成页入口参数（或首页带入了表单）时，转到对应生成页 */
+export function generatorRedirect(to: RouteLocationNormalized) {
+  const target = typeof to.name === 'string' ? TARGET[to.name] : undefined
+  if (!target) return true
+  // 首页带入的表单只在进场那一刻有效（生成页 setup 会 reset），所以在这里判
+  if (isGeneratorEntry(to.query) || useHomeStore().global_formData.home) {
+    return { path: target, query: to.query, hash: to.hash }
+  }
+  return true
+}

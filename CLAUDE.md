@@ -66,6 +66,18 @@ useDebounce(reactiveObj, callback, 300)
 - ⚠️ 不要新建与 UnoCSS 内置 utility 撞名的全局类（如 `container`、`grid`）
 - ⚠️ 全局 App.vue themeOverrides 的 `common.baseColor: 'red'` 会把彩色按钮文字推导成红色——藤紫按钮必须显式覆盖 naive Button 的 textColor*（见 theme.ts）
 
+### 尺寸与可点区域（2026-11-07 整改，用户反馈下载等图标太小、不好点）
+- **主导航不动**：产品决定不按 5185 原型收成六项，`src/views/layout/**` 的入口结构与顺序保持现状；只改页面内部与共用组件
+- **图标按钮一律用 `src/components/IconButton`**：`label` 必填（读屏标签 + 悬停提示）；`size` sm 24（列表行内）/ md 32 / lg 40；`variant` plate / quiet / overlay（压在图上）/ danger；`href` + `download` 渲染成下载链接；不要再手写 `w-16px h-16px p-0` 这类按钮
+- 可点区域 ≥ 32×32、触屏 ≥ 40：小控件用 `sx-hit` 外扩；外扩不超过相邻间距的一半，**同一排图标按钮之间至少 `gap-8px`**
+- 只在悬停时出现的操作用 `reveal` / `sx-reveal`（父级要有 `.group`），触屏与键盘聚焦时始终可见；下载类操作不能只靠悬停
+- 禁用态不用 `pointer-events-none`（要能悬停看到原因，点击也不能穿透到外层卡片）
+- 可点文字 ≥ 12–13px、高 ≥ 28–32px；纯说明文字保留 11px；货币一律叫「点数」
+- 设计规范与 5185 对齐记录见 `docs/design/ui-design-spec.md` §10
+
+### 路由要点
+- `/image`、`/video` 是 AI 图片 / AI 视频总览页（对齐原型 /ai/image；不保留 `/picture` 旧地址）。「图片生成」「视频生成」卡片指向原型同名工具页 `/tools/image-generate`、`/tools/ai-video-generator`（与左侧导航目录同一页面）。原通用生图 / 生视频在 `/image/generate`、`/video/generate`，原型没有、不放卡片，只承接老链接 `?entryCode=…`、`?sameStyleId=…`（`src/router/generator.ts` 全局守卫原样转过去，不加 replace，返回键正常）
+
 ## 本地生活模块（src/views/local-life）
 
 对接 Go 网关 `/api/v1/local-life`（fusion_aigc_go），API 封装在 src/api/localLife.ts（snake_case 字段原样收发）。
@@ -77,7 +89,8 @@ useDebounce(reactiveObj, callback, 300)
 - **商拍工作室 src/views/studio**（/api/v1/studio，api-studio.md）：商拍换装 / 姿态复刻 / 图片生成，批次-任务模型，历史游标分页 + 批次轮询（2s，终态 4–7）；批次 payload 可回填「重新编辑」。上传走 src/api/goUpload.ts：Java 直传 `/api/v1/storage/direct`（presign → PUT → confirm，visibility=public）；studio 与资产库只接受白名单内的公有桶地址（运维配置 STUDIO_INPUT_URL_PREFIXES）
 - **提示词库 src/views/prompt-library**（/api/v1/prompt-library）：官方电商/官方通用/我的 三页签，我的支持 CRUD
 - **资产库增强 src/views/asset-library**（/api/v1/asset-library）：分类条/来源/类型/收藏/标签筛选 + 批量打标签 + 详情（版本/相关资产/生成结果）
-- **画布管理 src/views/canvas**（/api/v1/canvas）：画布列表 / 从模板创建 / 重命名 / 另存为 / 删除 / 运行历史；节点编辑器未做
+- **画布 src/views/canvas**（/api/v1/canvas）：画布列表 / 从模板创建 / 重命名 / 另存为 / 删除 / 运行历史；节点编辑器（剪贴板、成组、对齐分布、锁定、小地图、快捷键、导出 JSON/PNG、执行前费用确认）
+- **姿态复刻多人配对**（/api/v1/studio/pose/preview）：提交前「识别人物与配对」，免费但慢（20 秒–2 分钟，前端超时 260 秒）；换图即失效；单人照片提交体与以前一致
 - 左侧导航（src/views/layout/Navigation）含 9 项 + 分组线；无 iconfont 的入口用内联 SVG path
 
 ### 文件命名

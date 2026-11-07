@@ -86,7 +86,7 @@ async function onSubmit() {
 
     <form class="flex flex-col gap-16px max-w-420px" novalidate @submit.prevent="onSubmit">
       <div class="flex flex-col gap-6px">
-        <label for="uc-nickname" class="sx-label">昵称</label>
+        <label for="uc-nickname" class="text-13px font-500 text-ink-2">昵称</label>
         <input
           id="uc-nickname"
           v-model="form.nickname"
@@ -100,13 +100,13 @@ async function onSubmit() {
           :class="inputClass(!!errors.nickname)"
           @blur="validateNickname"
         />
-        <p v-if="errors.nickname" id="uc-nickname-err" role="alert" class="m-0 text-11px text-danger">
+        <p v-if="errors.nickname" id="uc-nickname-err" role="alert" class="m-0 text-12px text-danger">
           {{ errors.nickname }}
         </p>
       </div>
 
       <div class="flex flex-col gap-6px">
-        <label for="uc-email" class="sx-label">邮箱</label>
+        <label for="uc-email" class="text-13px font-500 text-ink-2">邮箱</label>
         <input
           id="uc-email"
           v-model="form.email"
@@ -118,13 +118,13 @@ async function onSubmit() {
           :class="inputClass(!!errors.email)"
           @blur="validateEmail"
         />
-        <p v-if="errors.email" id="uc-email-err" role="alert" class="m-0 text-11px text-danger">
+        <p v-if="errors.email" id="uc-email-err" role="alert" class="m-0 text-12px text-danger">
           {{ errors.email }}
         </p>
       </div>
 
       <div class="flex flex-col gap-6px">
-        <label for="uc-phone" class="sx-label">手机号</label>
+        <label for="uc-phone" class="text-13px font-500 text-ink-2">手机号</label>
         <input
           id="uc-phone"
           :value="maskedPhone"

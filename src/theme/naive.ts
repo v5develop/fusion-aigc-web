@@ -171,15 +171,37 @@ export const themeOverrides: GlobalThemeOverrides = {
     placeholderColor: C.placeholder,
   },
   InternalSelectMenu: {
-    optionHeightMedium: '34px',
+    // 原型 v3-theme.css:252-292：选项 36 高、容器 r10 + 内边距 6；选项圆角 6 在 base.css（Naive 与容器共用同一变量）
+    optionHeightMedium: '36px',
     optionFontSizeMedium: '13px',
-    optionTextColor: C.ink2,
+    optionTextColor: C.ink,
     optionTextColorActive: C.violetDeep,
     optionTextColorPressed: C.violetDeep,
-    optionColorPending: C.violetSoft,
+    optionColorPending: C.surface3,
     optionColorActive: C.violetSoft,
     optionColorActivePending: C.violetSoft2,
-    borderRadius: '8px',
+    paddingMedium: '6px 0',
+    borderRadius: '10px',
+  },
+  Tooltip: {
+    // 原型 .sx-tooltip__bubble：白底、墨字、1px 线描边、短投影
+    color: C.white,
+    textColor: C.ink2,
+    borderRadius: '6px',
+    padding: '4px 8px',
+    boxShadow: `0 0 0 1px ${C.line}, 0 4px 10px rgba(31,35,41,.10)`,
+  },
+  Pagination: {
+    itemSizeMedium: '32px',
+    itemMarginMedium: '0 0 0 8px',
+    itemBorderRadius: '8px',
+    itemFontSizeMedium: '13px',
+    itemTextColorHover: C.violet,
+    itemColorHover: C.surface3,
+    itemColorActive: C.violetSoft,
+    itemColorActiveHover: C.violetSoft2,
+    itemBorderActive: `1px solid ${C.violetLine}`,
+    itemTextColorActive: C.violetDeep,
   },
   Tag: {
     borderRadius: '3px',
@@ -196,7 +218,13 @@ export const themeOverrides: GlobalThemeOverrides = {
     textColorInfo: C.violetDeep,
   },
   Card: {
-    borderRadius: '8px',
+    // 项目内没有非弹窗的 n-card（登录页的 login-card 只是类名），所以直接取弹窗档位 r18
+    borderRadius: '18px',
+    closeSize: '28px',
+    closeIconSize: '16px',
+    closeBorderRadius: '4px',
+    closeColorHover: C.surface3,
+    closeColorPressed: C.sunken,
     borderColor: C.line,
     paddingMedium: '14px',
     titleFontSizeMedium: '14px',
@@ -252,7 +280,8 @@ export const themeOverrides: GlobalThemeOverrides = {
     textColor: C.ink2,
   },
   Dialog: {
-    borderRadius: '8px',
+    // 材质对齐：弹窗档位 r18（原型 .wf-modal / op-set 同档）
+    borderRadius: '18px',
     color: C.white,
     titleFontSize: '16px',
     titleTextColor: C.ink,
@@ -262,8 +291,16 @@ export const themeOverrides: GlobalThemeOverrides = {
     color: C.white,
     boxShadow: popShadow,
   },
+  Image: {
+    // n-image 自带预览的工具条：对齐原型 MediaPreviewToolbar（深色半透明底、r8、白色图标）
+    toolbarColor: 'rgba(0, 0, 0, .45)',
+    toolbarIconColor: 'rgba(255, 255, 255, .92)',
+    toolbarBorderRadius: '8px',
+    toolbarBoxShadow: '0 4px 12px rgba(0, 0, 0, .18)',
+  },
   Message: {
-    borderRadius: '8px',
+    // 材质对齐：按钮档位 r14；Toast 2.5s / 最多 3 条 / 顶部居中在 App.vue 的 message-provider 配置
+    borderRadius: '14px',
     color: C.white,
     boxShadow: popShadow,
     textColor: C.ink2,

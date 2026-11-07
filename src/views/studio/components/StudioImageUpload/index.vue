@@ -3,11 +3,15 @@
  * 商拍工作室图片入口 · s1.1 白边浮片叠片。
  *
  * <p>对齐 s1.1 交付包 AiDigitalModel / AiPostureFission / MlReferenceSlots 的入口：
- * - 入口本身就是一叠 60×100 白边浮片（r5、1px #fff、0 1px 3px .16），每张只露 6px，新的在最右、压在最上；
- * - 悬停 / 键盘聚焦摊开：步长 63，放不下按同排可用宽度压缩（最密 8），width / margin 走
- *   220ms cubic-bezier(.25,.8,.25,1)，不动透明度；
- * - 空态是同一张白边浮片：图标 18 + 文案 9/13；
- * - 右上角删除钮（清空这一组）跟着叠片走；右下角外沿 -12/-12 是云钮（在调用方传 cloud / onCloud 时出现）；
+ * - 入口本身就是一叠 78×130 白边浮片（2026-11-07 对齐 5185 MlReferenceSlots：r12 + squircle、图内圆角 11 同心、1px #fff、
+ *   0 1px 3px .16），每张只露 8px，新的在最右、压在最上；最后一张右上角 16 高深色张数徽标（1 张也显示），悬停 / 摊开时隐去；
+ * - 悬停 500ms 摊开、离开 2s 收回（键盘聚焦立即摊开）：步长 81，放不下按同排可用宽度压缩（最密 8），width / margin 走
+ *   220ms cubic-bezier(.25,.8,.25,1)（减少动态效果时瞬时），不动透明度；
+ * - 摊开时行尾多一格 78×130 虚线「+ 点击添加」（有云钮时格内右下角放「资产添加」小圆钮）；每张悬停出 22 圆「替换」钮（命中 ≥32，
+ *   只换这一张；picker 模式由页面管增删，不出替换）；
+ * - 空态是同一张白边浮片：图标 18 + 文案 12/16；
+ * - 右上角删除钮只删最上面（最后）一张，与徽标同位、悬停才出现；清空整组改为面板头部 / 行尾的「清空」文字钮并二次确认；
+ *   右下角外沿 -12/-12 是云钮（在调用方传 cloud / onCloud 时出现）；
  * - 下方悬停面板（12 高透明桥 + 180ms 接力）：大图预览（contain，不撑卡）+ 3 列逐张删除。
  *   panelMin：张数到这个数才出面板（商拍模特 4 位起），不到时只摊开，逐张删除钮落在每张片子右下角；
  *   panelFill：面板从本块左缘拉到同排右缘（s1.1 姿势 / 模特面板「左缘压切口、右缘到卡右缘」）。
@@ -18,7 +22,7 @@
  * 增删由页面处理（商拍服装图走角度弹窗）；remove / clear 事件任何模式都会发。
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useDialog, useMessage } from 'naive-ui'
 import { ACCEPT_IMAGE } from '@/utils/utils.ts'
 import AssetPickerModal from '../AssetPickerModal/index.vue'
 import StudioMedBtn from './StudioMedBtn.vue'
@@ -80,13 +84,21 @@ const emit = defineEmits<{
 const urls = defineModel<string[]>({ required: true })
 
 const message = useMessage()
-const { uploading, uploadFiles } = useStudioUploader()
+const dialog = useDialog()
+const { uploading, uploadFiles, invalidate: invalidateUploads, invalidateOnReplace } = useStudioUploader()
+// 页面整组换掉 / 清空图片（回填、重置）：还在路上的上传作废
+invalidateOnReplace(() => urls.value)
 const fileInput = ref<HTMLInputElement | null>(null)
 const rootEl = ref<HTMLElement | null>(null)
 const entryEl = ref<HTMLElement | null>(null)
 
-const PLATE_W = 60
-const STACK = 6
+const PLATE_W = 78
+/** 行尾「点击添加」格占的宽：78 + 3 缝 */
+const ADD_W = 81
+/** 悬停多久摊开 / 离开多久收回（5185 MlReferenceSlots inline：0.5s / 2s） */
+const OPEN_DELAY = 500
+const CLOSE_DELAY = 2000
+const STACK = 8
 const MAX_PLATES = 9
 const PANEL_W = 252
 
@@ -94,6 +106,8 @@ const count = computed(() => urls.value.length)
 const full = computed(() => !disabled && count.value >= max)
 const plates = computed(() => urls.value.slice(-MAX_PLATES))
 const n = computed(() => Math.max(1, plates.value.length))
+/** 还能加：摊开时行尾出「点击添加」格 */
+const canAddMore = computed(() => !disabled && count.value > 0 && count.value < max)
 
 // ---------------- 悬停摊开 + 面板接力 ----------------
 
@@ -105,11 +119,16 @@ const panelWidth = ref(PANEL_W)
 /** 面板大图：悬停 / 聚焦到哪张就看哪张 */
 const active = ref('')
 let leaveTimer: ReturnType<typeof setTimeout> | null = null
+let openTimer: ReturnType<typeof setTimeout> | null = null
 
 function clearLeave() {
   if (leaveTimer) {
     clearTimeout(leaveTimer)
     leaveTimer = null
+  }
+  if (openTimer) {
+    clearTimeout(openTimer)
+    openTimer = null
   }
 }
 
@@ -125,7 +144,8 @@ function measure() {
   const others = [...parent.querySelectorAll('.stu-slot')].filter((el) => el !== root)
   const room = parentRect.width - others.reduce((w, el) => w + el.getBoundingClientRect().width, 0) - 16 * others.length
   const gaps = n.value - 1
-  step.value = gaps ? Math.min(63, Math.max(8, (room - PLATE_W) / gaps)) : 63
+  const addW = canAddMore.value ? ADD_W : 0
+  step.value = gaps ? Math.min(81, Math.max(8, (room - PLATE_W - addW) / gaps)) : 81
   // 面板默认左对齐入口，放不下就往左挪，右缘不越过同排容器
   const rootRect = root.getBoundingClientRect()
   if (panelFill) {
@@ -137,19 +157,30 @@ function measure() {
   panelLeft.value = Math.min(0, parentRect.right - rootRect.left - panelWidth.value)
 }
 
-function onEnter() {
+function openNow() {
   clearLeave()
   if (!expanded.value) measure()
   expanded.value = true
 }
 
-/** 离开先等 180ms：从片子走进下方面板（顶上 12 高透明桥）或删除钮，中间不收 */
+/** 鼠标悬停 500ms 才摊开（路过不抖）；已摊开时回来只取消收回 */
+function onEnter() {
+  clearLeave()
+  if (expanded.value) return
+  openTimer = setTimeout(() => {
+    openTimer = null
+    openNow()
+  }, OPEN_DELAY)
+}
+
+/** 离开等 2s 再收：走进下方面板（顶上 12 高透明桥）/ 删除钮 / 行尾添加格，中间不收 */
 function onLeave() {
   clearLeave()
+  if (!expanded.value) return
   leaveTimer = setTimeout(() => {
     leaveTimer = null
     collapse()
-  }, 180)
+  }, CLOSE_DELAY)
 }
 
 function onFocusOut(event: FocusEvent) {
@@ -172,7 +203,18 @@ onBeforeUnmount(clearLeave)
 
 const entryWidth = computed(() => `${PLATE_W + (n.value - 1) * (expanded.value ? step.value : STACK)}px`)
 const plateGap = computed(() => `${(expanded.value ? step.value : STACK) - PLATE_W}px`)
-const delLeft = computed(() => `${PLATE_W + (n.value - 1) * (expanded.value ? step.value : STACK) - 8}px`)
+/** 最上面一张的删除钮：最后一张片内右上角 4/4（与张数徽标同位） */
+const delLeft = computed(() => `${PLATE_W + (n.value - 1) * (expanded.value ? step.value : STACK) - 24}px`)
+/** 摊开时每张片子左上角的「替换」钮（picker 模式不出：增删由页面管） */
+const plateReplaces = computed(() =>
+  expanded.value && count.value && !picker && !disabled
+    ? plates.value.map((url, i) => ({
+        url,
+        index: count.value - plates.value.length + i,
+        left: `${i * step.value + 4}px`,
+      }))
+    : [],
+)
 const panelOpen = computed(() => expanded.value && count.value > 0 && count.value >= panelMin)
 /** 不出面板时（张数 < panelMin）片子上的逐张删除钮：片内右下角 3/3，跟着摊开走 */
 const plateDels = computed(() =>
@@ -189,6 +231,7 @@ const plateDels = computed(() =>
 
 function onEntryClick() {
   if (disabled || uploading.value) return
+  replaceIndex = -1
   if (picker) {
     emit('pick')
     return
@@ -209,9 +252,28 @@ function removeAt(index: number) {
   if (active.value === url) active.value = ''
 }
 
+/** 右上角删除：只删最上面（最后）一张 */
+function removeLast() {
+  removeAt(count.value - 1)
+}
+
+/** 清空整组：显式操作 + 二次确认（原来右上角一点就清空，容易误删） */
+function confirmClear() {
+  if (disabled || !count.value) return
+  const title = label || name || '图片'
+  dialog.warning({
+    title: `清空${title}`,
+    content: `这 ${count.value} 张${title}会全部移除，确定清空？`,
+    positiveText: '清空',
+    negativeText: '取消',
+    onPositiveClick: () => clearAll(),
+  })
+}
+
 function clearAll() {
   if (disabled) return
   const total = count.value
+  invalidateUploads()
   emit('clear')
   if (!picker) {
     urls.value.splice(0)
@@ -258,11 +320,47 @@ async function addFiles(files: File[]) {
   if (expanded.value) measure()
 }
 
+/** 替换：选中的那一张位置不变，只换图 */
+let replaceIndex = -1
+function startReplace(index: number) {
+  if (disabled || uploading.value || picker) return
+  replaceIndex = index
+  fileInput.value?.click()
+}
+
+async function replaceWith(index: number, files: File[]) {
+  const old = urls.value[index]
+  if (old === undefined) return
+  await uploadFiles(files.slice(0, 1), 1, 1, (url) => {
+    const at = urls.value.indexOf(old)
+    if (at >= 0) urls.value.splice(at, 1, url)
+    if (active.value === old) active.value = url
+  })
+}
+
 function onFiles(event: Event) {
   const input = event.target as HTMLInputElement
   const files = [...(input.files ?? [])]
   input.value = ''
-  void addFiles(files)
+  const at = replaceIndex
+  replaceIndex = -1
+  if (at >= 0) void replaceWith(at, files)
+  else void addFiles(files)
+}
+
+/** 行尾「点击添加」格：与点叠片同一条路径（picker 模式交给页面） */
+function onAddClick() {
+  if (disabled || uploading.value) return
+  replaceIndex = -1
+  if (picker) {
+    emit('pick')
+    return
+  }
+  if (full.value) {
+    message.warning(`满了，最多 ${max} 张；要换先删一张`)
+    return
+  }
+  fileInput.value?.click()
 }
 
 /** 拖入 / 粘贴进来的文件（数量、余量、非图片的提示都在 addFiles → useStudioUploader 里，与选文件同口径） */
@@ -307,7 +405,7 @@ const seamCls = [
   '[.stu-slot+&]:before:top-0',
   '[.stu-slot+&]:before:left-[-12px]',
   '[.stu-slot+&]:before:w-9px',
-  '[.stu-slot+&]:before:h-100px',
+  '[.stu-slot+&]:before:h-130px',
   '[.stu-slot+&]:before:pointer-events-none',
   '[.stu-slot+&]:before:bg-[linear-gradient(90deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.026)_35%,rgba(31,35,41,0.026)_65%,rgba(31,35,41,0)_100%)]',
   '[.stu-slot+&]:before:[mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
@@ -317,7 +415,7 @@ const seamCls = [
   '[.stu-slot+&]:after:top-0',
   '[.stu-slot+&]:after:left-[-8px]',
   '[.stu-slot+&]:after:w-1px',
-  '[.stu-slot+&]:after:h-100px',
+  '[.stu-slot+&]:after:h-130px',
   '[.stu-slot+&]:after:pointer-events-none',
   '[.stu-slot+&]:after:bg-[linear-gradient(180deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.09)_14%,rgba(31,35,41,0.09)_86%,rgba(31,35,41,0)_100%)]',
 ]
@@ -326,11 +424,11 @@ const seamCls = [
 <template>
   <div
     ref="rootEl"
-    class="stu-slot relative flex flex-col items-center flex-[0_0_auto] min-w-0"
+    class="stu-slot group/slot relative flex flex-col items-center flex-[0_0_auto] min-w-0"
     :class="seamCls"
     @mouseenter="onEnter"
     @mouseleave="onLeave"
-    @focusin="onEnter"
+    @focusin="openNow"
     @focusout="onFocusOut"
     @keydown.esc="collapse"
   >
@@ -345,12 +443,12 @@ const seamCls = [
       @change="onFiles"
     />
 
-    <div class="relative">
+    <div class="relative flex items-start">
       <!-- 入口就是一叠片：后一张盖住前一张只露 6px，悬停摊开 -->
       <button
         ref="entryEl"
         type="button"
-        class="relative flex flex-col items-center justify-center gap-4px box-border h-100px p-0 overflow-visible rounded-5px cursor-pointer transition-[width] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2 disabled:cursor-not-allowed"
+        class="relative flex flex-[0_0_auto] flex-col items-center justify-center gap-4px box-border h-130px p-0 overflow-visible rounded-12px sx-squircle cursor-pointer transition-[width] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2 disabled:cursor-not-allowed"
         :class="[
           count
             ? 'border-0 bg-transparent'
@@ -369,11 +467,18 @@ const seamCls = [
           <span
             v-for="(url, index) in plates"
             :key="url"
-            class="relative block flex-[0_0_60px] w-60px h-100px box-border overflow-hidden border border-solid border-white rounded-5px bg-surface3 shadow-[0_1px_3px_rgba(31,35,41,0.16)] transition-[margin-left] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none"
+            class="relative block flex-[0_0_78px] w-78px h-130px box-border overflow-hidden border border-solid border-white rounded-12px sx-squircle bg-surface3 shadow-[0_1px_3px_rgba(31,35,41,0.16)] transition-[margin-left] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none"
             :style="{ zIndex: index, marginLeft: index ? plateGap : '0px' }"
             @mouseenter="active = url"
           >
-            <img class="block w-full h-full object-cover" :src="url" alt="" />
+            <img class="block w-full h-full rounded-11px sx-squircle object-cover" :src="url" alt="" />
+            <!-- 张数徽标：最后一张右上角，1 张也显示；悬停 / 摊开时让位给删除钮 -->
+            <span
+              v-if="index === plates.length - 1"
+              class="absolute top-4px right-4px z-2 grid place-items-center min-w-16px h-16px box-border px-4px border border-solid border-white rounded-full bg-ink text-white text-10px font-600 leading-none tabular-nums shadow-[0_1px_2px_rgba(31,35,41,0.2)] transition-[opacity,transform] duration-160 group-hover/slot:(opacity-0 scale-80) [@media(hover:none)]:opacity-0 motion-reduce:transition-none"
+              :class="expanded ? 'opacity-0 scale-70' : ''"
+              >{{ count }}</span
+            >
           </span>
         </span>
         <template v-else>
@@ -393,13 +498,13 @@ const seamCls = [
               <circle cx="9" cy="10" r="1.6" />
               <path d="M20.5 16l-5-5L6 19.5" />
             </svg>
-            <span class="px-4px text-9px leading-13px text-center">{{ emptyText }}</span>
+            <span class="px-4px text-12px leading-16px text-center">{{ emptyText }}</span>
           </template>
         </template>
         <!-- 有图时继续上传：叠片上盖一层转圈 -->
         <span
           v-if="count && uploading"
-          class="absolute inset-0 z-20 grid place-items-center rounded-5px bg-[rgba(255,255,255,0.6)]"
+          class="absolute inset-0 z-20 grid place-items-center rounded-12px bg-[rgba(255,255,255,0.6)]"
         >
           <n-spin :size="16" />
         </span>
@@ -428,7 +533,7 @@ const seamCls = [
         v-for="d in plateDels"
         :key="d.url"
         :label="`删除第 ${d.index + 1} 张${label}`"
-        class="top-77px z-13 transition-[left,opacity] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none"
+        class="top-107px z-13 transition-[left,opacity] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none"
         :class="expanded ? '' : 'opacity-0 pointer-events-none'"
         :style="{ left: d.left }"
         @click.stop="removeAt(d.index)"
@@ -446,13 +551,43 @@ const seamCls = [
         </svg>
       </StudioMedBtn>
 
-      <!-- 删除钮：右上角 -8，跟着叠片收起 / 摊开走（清空这一组；逐张删在下方面板） -->
+      <!-- 摊开时每张左上角「替换」：视觉 22、::after 外扩到 ≥32；悬停到这张 / 键盘聚焦才出现 -->
+      <StudioMedBtn
+        v-for="r in plateReplaces"
+        :key="`rp-${r.url}`"
+        :label="`替换第 ${r.index + 1} 张${label}`"
+        class="top-4px z-13 !w-22px !h-22px !min-w-22px transition-[left,opacity] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none [@media(hover:none)]:opacity-100"
+        :class="
+          active === r.url
+            ? ''
+            : 'opacity-0 pointer-events-none focus-visible:(opacity-100 pointer-events-auto) [@media(hover:none)]:pointer-events-auto'
+        "
+        :style="{ left: r.left }"
+        @mouseenter="active = r.url"
+        @focus="active = r.url"
+        @click.stop="startReplace(r.index)"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5" />
+        </svg>
+      </StudioMedBtn>
+
+      <!-- 删除钮：最后一张片内右上角（与张数徽标同位），悬停 / 摊开 / 聚焦才出现；只删最上面这一张 -->
       <StudioMedBtn
         v-if="count && !disabled"
-        :label="label ? `清空${label}` : '清空图片'"
-        class="-top-8px z-14 transition-[left] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none"
+        :label="`删除最上面一张${label}`"
+        class="top-4px z-14 transition-[left,opacity] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none group-hover/slot:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+        :class="expanded ? '' : 'opacity-0'"
         :style="{ left: delLeft }"
-        @click.stop="clearAll"
+        @click.stop="removeLast"
       >
         <svg
           viewBox="0 0 24 24"
@@ -466,15 +601,50 @@ const seamCls = [
           <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
         </svg>
       </StudioMedBtn>
+
+      <!-- 摊开时行尾「+ 点击添加」虚线格（有云钮时格内右下角放「资产添加」）；不出面板时「清空」也放在行尾 -->
+      <div v-if="expanded && canAddMore" class="relative flex-[0_0_78px] w-78px h-130px ml-3px">
+        <button
+          type="button"
+          class="flex flex-col items-center justify-center gap-4px w-full h-full box-border p-0 rounded-12px sx-squircle border border-dashed border-line bg-white/70 text-placeholder text-12px leading-16px cursor-pointer hover:(border-violet text-violet-ink) sx-focus"
+          :aria-label="label ? `添加${label}` : '添加图片'"
+          @click.stop="onAddClick"
+        >
+          <span class="text-16px leading-none" aria-hidden="true">＋</span>
+          <span>点击添加</span>
+        </button>
+        <StudioMedBtn
+          v-if="cloudVisible"
+          :label="label ? `从资产库添加${label}` : '资产添加'"
+          class="right-4px bottom-4px"
+          @click.stop="onCloudClick"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path
+              d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 0 0 7 18.5z"
+              stroke-linejoin="round"
+              transform="translate(0 -0.5)"
+            />
+          </svg>
+        </StudioMedBtn>
+      </div>
+      <button
+        v-if="expanded && count && !disabled && !panelOpen"
+        type="button"
+        class="sx-btn-ghost self-center ml-8px !h-28px !px-8px !text-12px"
+        @click.stop="confirmClear"
+      >
+        清空
+      </button>
     </div>
 
     <AssetPickerModal v-if="cloud && !onCloud" v-model:show="assetShow" :limit="room" @select="addAssetUrls" />
 
     <p
       v-if="label"
-      class="flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-10px leading-15px text-center text-placeholder"
+      class="flex flex-col items-center gap-2px w-78px mt-8px mb-0 text-11px leading-15px text-center text-placeholder"
     >
-      <b class="text-11px font-500 text-ink-2">{{ label }}</b>
+      <b class="text-12px leading-16px font-500 text-ink-2">{{ label }}</b>
       <span>{{ capText }}</span>
     </p>
 
@@ -486,10 +656,18 @@ const seamCls = [
       role="group"
       :aria-label="`${label || '图片'}，共 ${count} 张`"
     >
-      <div class="flex items-baseline gap-6px mb-6px text-10px text-muted">
+      <div class="flex items-baseline gap-6px mb-6px text-11px text-muted">
         <b class="text-11px font-600 text-ink-2">{{ label || '图片' }}</b>
         <span>{{ count }} 张</span>
         <em class="ml-auto not-italic text-9px text-placeholder">{{ picker ? '点叠片编辑' : '悬停看大图' }}</em>
+        <button
+          v-if="!disabled"
+          type="button"
+          class="sx-btn-ghost !h-28px !px-8px !text-12px !text-danger"
+          @click.stop="confirmClear"
+        >
+          清空
+        </button>
       </div>
       <div
         v-if="active"

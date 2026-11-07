@@ -30,6 +30,11 @@ import {
   llVideoReplan,
 } from '@/api/localLife.ts'
 import type { ILVideoCreation, ILVideoKind, ILVideoOptions } from '@/api/localLifeTypes.ts'
+import HistoryList from '../components/HistoryList/index.vue'
+import HistoryCard from '../components/HistoryList/HistoryCard.vue'
+import { useHistorySelection } from '../components/HistoryList/selection.ts'
+import ResultPreview from '../components/ResultPreview/index.vue'
+import IconButton from '@/components/IconButton/index.vue'
 import { useAgreement, useLLList, usePollingWhile } from '../hooks.ts'
 import { VIDEO_STATUS_MAP, formatTime, isVideoRunning, parseScript } from '../constants.ts'
 
@@ -95,10 +100,13 @@ function pickCopy(c: { id: number; body: string }) {
   showCopyPicker.value = false
 }
 
-// ---------------- 右侧列表 ----------------
+// ---------------- 中栏历史列表 ----------------
 
-const view = ref<'list' | 'detail'>('list')
 const listCtl = useLLList<ILVideoCreation>((params) => llVideoList(props.kind, params), isVideoRunning, 5000)
+
+// 三栏：中栏历史选中哪条，右栏就展示哪条的详情（null = 跟随最新）
+const { current, select, selectId, followLatest } = useHistorySelection(listCtl.items)
+const runningCount = computed(() => listCtl.items.value.filter(isVideoRunning).length)
 
 onMounted(async () => {
   const res = await llVideoOptions(props.kind)
@@ -112,10 +120,15 @@ onMounted(async () => {
 async function removeItem(item: ILVideoCreation) {
   await llVideoRemove(item.id)
   message.success('已删除')
-  if (activeVideo.value?.id === item.id) {
-    view.value = 'list'
+  if (detailId === item.id) {
+    openSeq++
+    detailId = null
+    stopVideoPoll()
     activeVideo.value = null
   }
+  // 先在本地摘掉这条，选中项立即回落到最新一条（不等列表刷新）；随后静默刷新对齐服务端
+  listCtl.items.value = listCtl.items.value.filter((v) => v.id !== item.id)
+  listCtl.total.value = Math.max(0, listCtl.total.value - 1)
   void listCtl.refresh()
 }
 
@@ -127,10 +140,12 @@ const scriptScenes = computed(() => parseScript(activeVideo.value?.script))
 const scriptRaw = computed(() => (scriptScenes.value ? '' : (activeVideo.value?.script ?? '')))
 
 // 复刻专用的确认参数，这里只对 model/size 生效（复刻页有自己的组件；此处防御性保留）
-const { start: startVideoPoll } = usePollingWhile(
-  () => llVideoDetail(activeVideo.value!.id),
+const { start: startVideoPoll, stop: stopVideoPoll } = usePollingWhile(
+  () => llVideoDetail(detailId!),
   (data) => {
     if (!data) return true
+    // 兜底：回来的不是当前展示的这条（已切走）就收掉这条链
+    if (data.id !== detailId) return false
     activeVideo.value = data
     if (data.status === 0 || data.status === 2) return true
     void listCtl.refresh()
@@ -141,21 +156,72 @@ const { start: startVideoPoll } = usePollingWhile(
   5000,
 )
 
+/** 右栏正在展示 / 正在载入的记录 id（比 activeVideo 早一步更新，用来判断「是不是同一条」与丢弃过期响应） */
+let detailId: number | null = null
+let openSeq = 0
+/** 详情载入失败的 id：右栏显示「重新加载」而不是一直转圈 */
+const detailErrorId = ref<number | null>(null)
+/** 成片自动播放只在用户亲手点了历史卡之后（进页自动跟随最新一条时不自动出声，与改版前「点开详情才播」一致） */
+const userPicked = ref(false)
+
 async function openDetail(id: number, opts: { silent?: boolean } = {}) {
-  view.value = 'detail'
+  const seq = ++openSeq
+  // 切到别的记录：先停掉上一条的轮询（在途结果也作废），免得它把详情写回当前
+  if (detailId !== id) {
+    stopVideoPoll()
+    activeVideo.value = null
+  }
+  detailId = id
+  detailErrorId.value = null
   detailLoading.value = !opts.silent
   try {
     const res = await llVideoDetail(id)
+    if (seq !== openSeq) return // 期间又切了别的，丢弃过期结果
     activeVideo.value = res.data
     if (res.data && isVideoRunning(res.data)) startVideoPoll()
+  } catch {
+    // 失败提示由请求层弹出；这里只把右栏切到可重试的状态
+    if (seq === openSeq && !activeVideo.value) detailErrorId.value = id
   } finally {
-    detailLoading.value = false
+    if (seq === openSeq) detailLoading.value = false
   }
 }
 
-watch(view, (v) => {
-  if (v === 'list') activeVideo.value = null
-})
+// 历史列选中项变了（点卡 / 跟随最新 / 删除后回落）→ 载入它的详情；没有记录则清空右栏。
+// 只盯 id 这个原始值：列表每轮轮询都会换一批新对象，盯对象会每 5 秒多打一次详情
+watch(
+  () => current.value?.id,
+  (id) => {
+    if (id == null) {
+      openSeq++
+      detailId = null
+      stopVideoPoll()
+      activeVideo.value = null
+      detailErrorId.value = null
+    } else if (detailId !== id) {
+      void openDetail(id)
+    }
+  },
+  { immediate: true },
+)
+
+// 选中项状态在列表里变了、而右栏这条没有在轮询（例如在别的窗口点了重新构思 / 出片）→ 静默重载一次；
+// 在轮询的由详情轮询自己跟进，不重复请求
+watch(
+  () => current.value?.status,
+  (status) => {
+    const video = activeVideo.value
+    if (status == null || !video || current.value?.id !== video.id) return
+    if (status !== video.status && !isVideoRunning(video)) void openDetail(video.id, { silent: true })
+  },
+)
+
+/** 点历史卡：选中；已经在右栏展示的这条不重载（改了一半的确认参数不能被冲掉），只有上次载入失败才重试 */
+function onSelectItem(item: ILVideoCreation) {
+  userPicked.value = true
+  select(item)
+  if (detailId !== item.id || detailErrorId.value === item.id) void openDetail(item.id)
+}
 
 // ---------------- 动作 ----------------
 
@@ -170,7 +236,7 @@ async function submit() {
 
   submitting.value = true
   try {
-    await llVideoCreate(
+    const res = await llVideoCreate(
       {
         kind: props.kind,
         user_text: form.user_text.trim(),
@@ -197,7 +263,15 @@ async function submit() {
     message.success('已提交，剧本构思中')
     form.user_text = ''
     form.copywriting_id = undefined
+    // 明确选中接口返回的新记录（不依赖「新记录排第一」）；选中项变化由上面的 watch 载入详情，
+    // 新记录万一还没进列表（刷新失败），直接载入它的详情，等下一轮列表对上
     await listCtl.refresh()
+    if (res.data?.id) {
+      selectId(res.data.id)
+      if (detailId !== res.data.id) void openDetail(res.data.id, { silent: true })
+    } else {
+      followLatest()
+    }
   } finally {
     submitting.value = false
   }
@@ -206,11 +280,13 @@ async function submit() {
 const replanning = ref(false)
 async function replan() {
   if (!activeVideo.value || replanning.value) return
+  const id = activeVideo.value.id
   replanning.value = true
   try {
-    await llVideoReplan(activeVideo.value.id, llIdempotencyHeaders())
+    await llVideoReplan(id, llIdempotencyHeaders())
     message.success('重新构思中')
-    await openDetail(activeVideo.value.id, { silent: true })
+    // 等待期间切到了别的记录就不把右栏拉回来，列表刷新会反映这条的新状态
+    if (detailId === id) await openDetail(id, { silent: true })
     void listCtl.refresh()
   } finally {
     replanning.value = false
@@ -223,11 +299,13 @@ async function confirmGenerate() {
 
   if (!(await ensureAgreed())) return
 
+  const id = activeVideo.value.id
   generating.value = true
   try {
-    await llVideoGenerate(activeVideo.value.id, {}, llIdempotencyHeaders())
+    await llVideoGenerate(id, {}, llIdempotencyHeaders())
     message.success('开始出片，预计几分钟')
-    await openDetail(activeVideo.value.id, { silent: true })
+    // 等待期间切到了别的记录就不把右栏拉回来，列表刷新会反映这条的新状态
+    if (detailId === id) await openDetail(id, { silent: true })
     void listCtl.refresh()
   } finally {
     generating.value = false
@@ -241,7 +319,7 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
 </script>
 
 <template>
-  <Workbench :title="pageTitle" :submit="submit" :loading="submitting" submit-text="生成分镜剧本">
+  <Workbench :title="pageTitle" :submit="submit" :loading="submitting" submit-text="生成分镜剧本" :history-count="listCtl.total.value">
     <template #default>
       <FormCard :title="isExplore ? '视频文案' : '短剧主题'" required>
         <PromptBox
@@ -334,168 +412,165 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
       />
     </template>
 
-    <template #right>
-      <div class="h-full min-h-0 flex flex-col">
-        <!-- 列表 -->
-        <template v-if="view === 'list'">
-          <h2 class="m-0 flex-none mb-14px text-16px font-600 leading-22px text-ink">我的{{ pageTitle }}</h2>
-          <div v-loading="listCtl.loading.value" class="flex-1 min-h-0 overflow-auto">
-            <div
-              v-for="item in listCtl.items.value"
-              :key="item.id"
-              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex gap-12px p-12px mb-10px cursor-pointer transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)"
-              @click="openDetail(item.id)"
+    <template #history>
+      <HistoryList
+        :count="listCtl.total.value"
+        :running="runningCount"
+        :loading="listCtl.loading.value"
+        :has-more="listCtl.hasMore.value"
+        :loading-more="listCtl.loadingMore.value"
+        @load-more="listCtl.loadMore()"
+      >
+        <HistoryCard
+          v-for="item in listCtl.items.value"
+          :key="item.id"
+          :title="item.user_text || '未命名'"
+          :status="VIDEO_STATUS_MAP[item.status]?.type ?? 'running'"
+          :status-label="VIDEO_STATUS_MAP[item.status]?.label ?? ''"
+          :time="item.create_time"
+          :thumb="item.char_url || item.env1_url"
+          placeholder="视频"
+          :fail-reason="item.status === 4 ? item.fail_reason || '生成失败' : ''"
+          :eta-sec="240"
+          :selected="current?.id === item.id"
+          @select="onSelectItem(item)"
+        >
+          <template #actions>
+            <IconButton
+              v-if="item.status === 3 && item.video_url"
+              label="下载视频"
+              size="sm"
+              :href="item.video_url"
+              target="_blank"
+              download
             >
-              <img
-                v-if="item.char_url || item.env1_url"
-                class="w-64px h-64px flex-none rounded-8px object-cover"
-                :src="item.char_url || item.env1_url"
-                alt=""
-              />
-              <div
-                v-else
-                class="w-64px h-64px flex-none rounded-8px flex items-center justify-center text-24px sx-grad-icon border border-solid border-violet-soft-2 shadow-[inset_0_1px_0_#fff]"
-              >
-                🎬
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-8px">
-                  <span class="flex-1 truncate text-14px font-600 text-ink">{{ item.user_text || '未命名' }}</span>
-                  <span class="sx-chip flex-shrink-0" :class="`ll-chip-${VIDEO_STATUS_MAP[item.status]?.type}`">{{
-                    VIDEO_STATUS_MAP[item.status]?.label
-                  }}</span>
-                </div>
-                <div class="mt-4px text-11px leading-16px text-muted tabular-nums">
-                  {{ item.duration }}s · {{ item.size }} · {{ formatTime(item.create_time) }}
-                </div>
-              </div>
-            </div>
-            <div
-              v-if="!listCtl.loading.value && !listCtl.items.value.length"
-              class="sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
-            >
-              还没有记录，左侧开始创作吧
-            </div>
-            <div
-              v-if="listCtl.hasMore.value"
-              class="ll-link transition-colors duration-fast block text-center py-8px"
-              @click="listCtl.loadMore()"
-            >
-              加载更多
-            </div>
-          </div>
-        </template>
-
-        <!-- 详情：剧本确认 / 成片 -->
-        <template v-else>
-          <button
-            type="button"
-            class="flex-none w-fit mb-12px -ml-8px sx-btn-ghost !h-28px !px-8px hover:!text-violet-ink transition-colors duration-fast"
-            @click="view = 'list'"
-          >
-            ← 返回列表
-          </button>
-          <div v-if="activeVideo" v-loading="detailLoading" class="flex-1 min-h-0 overflow-auto">
-            <div class="flex items-center gap-10px">
-              <span class="sx-chip flex-shrink-0" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{
-                VIDEO_STATUS_MAP[activeVideo.status]?.label
-              }}</span>
-              <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
-                {{ activeVideo.user_text || '未命名' }}
-              </h2>
-              <n-popconfirm @positive-click="removeItem(activeVideo!)">
-                <template #trigger
-                  ><span class="flex-none text-12px ll-danger-link transition-colors duration-fast"
-                    >删除</span
-                  ></template
-                >
-                确定删除这条记录？
-              </n-popconfirm>
-            </div>
-            <div class="mt-8px mb-14px text-11px leading-16px text-muted tabular-nums">
-              {{ activeVideo.duration }}s · {{ activeVideo.size }} · {{ formatTime(activeVideo.create_time) }}
-            </div>
-
-            <!-- 构思中 / 生成中 -->
-            <div
-              v-if="activeVideo.status === 0 || activeVideo.status === 2"
-              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
-            >
-              <n-spin size="small" />
-              <span>{{ activeVideo.status === 0 ? 'AI 正在构思分镜剧本…' : '视频生成中，预计 2~10 分钟…' }}</span>
-            </div>
-
-            <!-- 失败 -->
-            <div
-              v-else-if="activeVideo.status === 4"
-              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex flex-col items-center justify-center gap-10px p-40px text-13px text-ink-2"
-            >
-              <p class="m-0 text-danger">{{ activeVideo.fail_reason || '生成失败' }}</p>
-              <div class="flex gap-10px">
-                <n-button size="small" @click="replan" :loading="replanning">重新构思</n-button>
-                <n-button size="small" type="primary" @click="confirmGenerate" :loading="generating">重新出片</n-button>
-              </div>
-            </div>
-
-            <!-- 待确认：分镜剧本 -->
-            <template v-else-if="activeVideo.status === 1">
-              <div
-                class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px text-alert-warning"
-              >
-                分镜剧本已出（剧本只读）。不满意就重新构思；满意就确认生成。
-              </div>
-
-              <template v-if="scriptScenes">
-                <div
-                  v-for="(scene, i) in scriptScenes"
-                  :key="i"
-                  class="bg-white rounded-lg border border-solid border-line shadow-card-v3 px-16px py-14px mb-10px"
-                >
-                  <div class="flex items-baseline justify-between gap-8px mb-8px">
-                    <span class="text-14px font-600 text-ink">{{ scene.scene_name || `分镜 ${i + 1}` }}</span>
-                    <span v-if="sceneTime(scene)" class="text-12px text-violet-ink">{{ sceneTime(scene) }}</span>
-                  </div>
-                  <div v-if="scene.camera" class="mb-4px text-13px leading-20px text-ink-2">
-                    <b class="mr-8px font-400 text-muted">镜头</b>{{ scene.camera }}
-                  </div>
-                  <div v-if="scene.dialogue" class="mb-4px text-13px leading-20px text-ink">
-                    <b class="mr-8px font-400 text-muted">台词</b>{{ scene.dialogue }}
-                  </div>
-                  <div v-if="scene.image_ref" class="mb-4px text-13px leading-20px text-ink-2">
-                    <b class="mr-8px font-400 text-muted">画面</b>{{ scene.image_ref }}
-                  </div>
-                </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+              </svg>
+            </IconButton>
+            <n-popconfirm @positive-click="removeItem(item)">
+              <template #trigger>
+                <IconButton label="删除记录" size="sm" variant="danger">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+                  </svg>
+                </IconButton>
               </template>
-              <div
-                v-else-if="scriptRaw"
-                class="bg-white rounded-lg border border-solid border-line shadow-card-v3 p-14px text-13px leading-22px text-ink whitespace-pre-wrap"
-                v-text="scriptRaw"
-              />
+              确定删除这条记录？
+            </n-popconfirm>
+          </template>
+        </HistoryCard>
+      </HistoryList>
+    </template>
 
-              <div class="flex gap-10px mt-14px">
-                <n-button size="small" :loading="replanning" @click="replan">重新构思</n-button>
-                <n-button size="small" type="primary" :loading="generating" @click="confirmGenerate"
-                  >确认生成视频</n-button
-                >
-              </div>
-            </template>
-
-            <!-- 已完成 -->
-            <template v-else-if="activeVideo.status === 3">
-              <video
-                v-if="activeVideo.video_url"
-                :src="activeVideo.video_url"
-                controls
-                autoplay
-                class="block w-full max-h-70vh rounded-lg bg-black"
-              />
-              <div class="flex gap-10px mt-14px">
-                <n-button size="small" @click="replan" :loading="replanning">换个剧本重新拍</n-button>
-              </div>
-            </template>
+    <!-- 预览区：选中记录的剧本确认 / 成片 -->
+    <template #preview>
+      <div v-if="activeVideo" v-loading="detailLoading" class="flex-1 min-h-0 overflow-auto p-16px">
+          <div class="flex items-center gap-10px">
+            <span class="sx-chip flex-shrink-0" :class="`ll-chip-${VIDEO_STATUS_MAP[activeVideo.status]?.type}`">{{
+              VIDEO_STATUS_MAP[activeVideo.status]?.label
+            }}</span>
+            <h2 class="m-0 flex-1 truncate text-16px font-600 leading-22px text-ink">
+              {{ activeVideo.user_text || '未命名' }}
+            </h2>
+            <!-- 改版前详情头的「删除」（历史卡上也有一个）：同一个接口、同样的二次确认 -->
+            <n-popconfirm @positive-click="removeItem(activeVideo!)">
+              <template #trigger>
+                <button type="button" class="flex-none sx-btn-ghost !px-10px !text-danger">删除</button>
+              </template>
+              确定删除这条记录？
+            </n-popconfirm>
           </div>
-        </template>
+          <div class="mt-8px mb-14px text-11px leading-16px text-muted tabular-nums">
+            {{ activeVideo.duration }}s · {{ activeVideo.size }} · {{ formatTime(activeVideo.create_time) }}
+          </div>
+
+          <!-- 构思中 / 生成中 -->
+          <div
+            v-if="activeVideo.status === 0 || activeVideo.status === 2"
+            class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex items-center justify-center gap-10px p-40px text-13px text-ink-2"
+          >
+            <n-spin size="small" />
+            <span>{{ activeVideo.status === 0 ? 'AI 正在构思分镜剧本…' : '视频生成中，预计 2~10 分钟…' }}</span>
+          </div>
+
+          <!-- 失败 -->
+          <div
+            v-else-if="activeVideo.status === 4"
+            class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex flex-col items-center justify-center gap-10px p-40px text-13px text-ink-2"
+          >
+            <p class="m-0 text-danger">{{ activeVideo.fail_reason || '生成失败' }}</p>
+            <div class="flex gap-10px">
+              <n-button size="small" @click="replan" :loading="replanning">重新构思</n-button>
+              <n-button size="small" type="primary" @click="confirmGenerate" :loading="generating">重新出片</n-button>
+            </div>
+          </div>
+
+          <!-- 待确认：分镜剧本 -->
+          <template v-else-if="activeVideo.status === 1">
+            <div
+              class="mb-14px rounded-8px border border-solid border-warning-line bg-warning-soft px-12px py-8px text-12px text-alert-warning"
+            >
+              分镜剧本已出（剧本只读）。不满意就重新构思；满意就确认生成。
+            </div>
+
+            <template v-if="scriptScenes">
+              <div
+                v-for="(scene, i) in scriptScenes"
+                :key="i"
+                class="bg-white rounded-lg border border-solid border-line shadow-card-v3 px-16px py-14px mb-10px"
+              >
+                <div class="flex items-baseline justify-between gap-8px mb-8px">
+                  <span class="text-14px font-600 text-ink">{{ scene.scene_name || `分镜 ${i + 1}` }}</span>
+                  <span v-if="sceneTime(scene)" class="text-12px text-violet-ink">{{ sceneTime(scene) }}</span>
+                </div>
+                <div v-if="scene.camera" class="mb-4px text-13px leading-20px text-ink-2">
+                  <b class="mr-8px font-400 text-muted">镜头</b>{{ scene.camera }}
+                </div>
+                <div v-if="scene.dialogue" class="mb-4px text-13px leading-20px text-ink">
+                  <b class="mr-8px font-400 text-muted">台词</b>{{ scene.dialogue }}
+                </div>
+                <div v-if="scene.image_ref" class="mb-4px text-13px leading-20px text-ink-2">
+                  <b class="mr-8px font-400 text-muted">画面</b>{{ scene.image_ref }}
+                </div>
+              </div>
+            </template>
+            <div
+              v-else-if="scriptRaw"
+              class="bg-white rounded-lg border border-solid border-line shadow-card-v3 p-14px text-13px leading-22px text-ink whitespace-pre-wrap"
+              v-text="scriptRaw"
+            />
+
+            <div class="flex gap-10px mt-14px">
+              <n-button size="small" :loading="replanning" @click="replan">重新构思</n-button>
+              <n-button size="small" type="primary" :loading="generating" @click="confirmGenerate"
+                >确认生成视频</n-button
+              >
+            </div>
+          </template>
+
+          <!-- 已完成 -->
+          <template v-else-if="activeVideo.status === 3">
+            <video
+              v-if="activeVideo.video_url"
+              :src="activeVideo.video_url"
+              controls
+              :autoplay="userPicked"
+              class="block w-full max-h-70vh rounded-lg bg-black"
+            />
+            <div class="flex gap-10px mt-14px">
+              <n-button size="small" @click="replan" :loading="replanning">换个剧本重新拍</n-button>
+            </div>
+          </template>
       </div>
+      <div v-else-if="current && detailErrorId === current.id" class="flex-1 grid place-items-center p-16px">
+        <div class="flex flex-col items-center gap-10px text-13px leading-20px text-ink-2" role="status">
+          详情没有加载出来
+          <n-button size="small" @click="openDetail(current.id)">重新加载</n-button>
+        </div>
+      </div>
+      <div v-else-if="current" class="flex-1 grid place-items-center"><n-spin size="small" /></div>
+      <ResultPreview v-else :active="false" />
     </template>
   </Workbench>
 

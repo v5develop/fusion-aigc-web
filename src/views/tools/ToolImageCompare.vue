@@ -5,7 +5,7 @@
  *
  * <p>组件铺满父容器（父级 relative 且有高度），并按结果图真实比例算出居中的最大框，避免窄高舞台上下大片留白。
  * 数值：标签高 22、r999、底 rgba(15,20,25,.5)、11/20 白字；分割线 2px 白 + drop-shadow(0 0 6px rgba(135,95,154,.55))；
- * 拖柄 38 圆，主按钮材质（violet 渐变 + 深紫描边）。只做直线分割，不做原型的弹簧弯曲。
+ * 拖柄 30 圆、白→#f4f5f6 渐变 + line-strong 描边 + 短影，箭头 violet-ink（原型 v3 对比柄）。只做直线分割，不做原型的弹簧弯曲。
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -14,11 +14,14 @@ const {
   after,
   labels = ['输入图', '生成结果'],
   ariaLabel = '图片前后对比',
+  afterFilter,
 } = defineProps<{
   before: string
   after: string
   labels?: [string, string]
   ariaLabel?: string
+  /** 挂在结果图上的 CSS filter（校色对比：同一张图，右侧挂校色滤镜预览） */
+  afterFilter?: string
 }>()
 
 const root = ref<HTMLElement | null>(null)
@@ -119,6 +122,7 @@ const tagCls =
       :src="after"
       :alt="labels[1]"
       class="absolute inset-0 block w-full h-full object-contain pointer-events-none"
+      :style="afterFilter ? { filter: afterFilter } : undefined"
       draggable="false"
       @load="measure"
     />
@@ -142,14 +146,14 @@ const tagCls =
       aria-hidden="true"
     />
     <span
-      class="absolute top-1/2 z-5 grid w-38px h-38px box-border place-items-center rounded-full border border-solid border-violet-border bg-[linear-gradient(#8a639f,#7a548c)] text-white pointer-events-none shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_0_0_2px_rgba(255,255,255,0.55),0_2px_12px_rgba(23,24,26,0.28)] [transition:transform_220ms_ease] motion-reduce:transition-none"
+      class="absolute top-1/2 z-5 grid w-30px h-30px box-border place-items-center rounded-full border border-solid border-line-strong bg-[linear-gradient(#ffffff,#f4f5f6)] text-violet-ink pointer-events-none shadow-[inset_0_1px_0_#fff,0_1px_2px_rgba(31,35,41,0.1),0_4px_10px_rgba(31,35,41,0.16)] [transition:transform_220ms_ease] motion-reduce:transition-none"
       :class="held ? '-translate-x-1/2 -translate-y-1/2 scale-92' : '-translate-x-1/2 -translate-y-1/2'"
       :style="{ left: `${pos}%` }"
       aria-hidden="true"
     >
       <svg
-        width="16"
-        height="10"
+        width="14"
+        height="9"
         viewBox="0 0 16 10"
         fill="none"
         stroke="currentColor"

@@ -63,7 +63,7 @@ onBeforeUnmount(() => abort?.())
 <template>
   <!-- 原型提示词框（规范 §5.4）：r6、line 描边、常驻内影；聚焦时只加深内影，不改描边、不加外环 -->
   <div
-    class="flex flex-col p-12px rounded-md border border-solid border-line bg-white shadow-well transition-shadow duration-mid ease-sx motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.18),inset_0_1px_0_rgba(31,35,41,0.08)]"
+    class="flex flex-col p-12px rounded-md border border-solid border-line bg-white shadow-well transition-shadow duration-mid ease-sx motion-reduce:transition-none focus-within:border-violet focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.18),inset_0_1px_0_rgba(31,35,41,0.08)]"
   >
     <n-spin :show="loading">
       <textarea
@@ -76,10 +76,10 @@ onBeforeUnmount(() => abort?.())
       ></textarea>
     </n-spin>
 
-    <div class="flex items-center justify-between gap-8px min-h-28px mt-6px">
+    <div class="flex items-center justify-between gap-8px min-h-32px mt-6px">
       <button
         type="button"
-        class="sx-btn-tint !h-28px !px-10px !text-11px"
+        class="sx-btn-tint !h-32px !px-12px !text-12px"
         :aria-busy="loading || undefined"
         @click="getPrompt"
       >
@@ -96,7 +96,7 @@ onBeforeUnmount(() => abort?.())
         <span class="sr-only" aria-live="polite">{{ atLimit ? '已达字数上限' : '' }}</span>
         <button
           type="button"
-          class="sx-btn-ghost !w-24px !h-24px !p-0 !text-14px"
+          class="sx-btn-ghost !w-32px !h-32px !p-0 !text-14px"
           aria-label="清空内容"
           @click="value = ''"
         >

@@ -30,6 +30,15 @@ export function studioSubmitPose(data: types.StudioPoseSubmitReq, headers: IdemH
   return post<types.StudioSubmitResp>(`${PREFIX}/pose/submit`, data, headers, SUBMIT_TIMEOUT)
 }
 
+/**
+ * 姿态复刻多人配对预览（免费只读、不要 Idempotency-Key）。
+ * 读图很慢（20–140 秒，整请求最长约 4 分钟），超时放宽到 260 秒；同一用户同时只能跑一个（4002）。
+ */
+export const POSE_PREVIEW_TIMEOUT = 260000
+export function studioPosePreview(data: types.StudioPosePreviewReq) {
+  return post<types.StudioPosePreviewResp>(`${PREFIX}/pose/preview`, data, undefined, POSE_PREVIEW_TIMEOUT)
+}
+
 /** 图片生成（count 张拆任务） */
 export function studioSubmitImageGen(
   data: types.StudioImageGenSubmitReq,
@@ -63,6 +72,16 @@ export function studioBatchDetail(id: number) {
 /** 取消批次：只取消还在排队的任务（点数立即退回），生成中的会继续跑完 */
 export function studioCancelBatch(id: number) {
   return post<types.StudioCancelResp>(`${PREFIX}/batches/${id}/cancel`, {})
+}
+
+/**
+ * 重试批次里一个失败的子任务（POST /tasks/{task_id}/retry，Go studio RPC RetryTask）：
+ * 只重跑这一张的生图（沿用已存提示词 / 图序，不再切图、反推），按原入口重新冻结 1 张的点数；
+ * 回批次详情（同 GET /batches/{id}），之后照常轮询批次。重复点击幂等（已在重做中直接回当前详情）。
+ * 只收失败态任务，且批次须已结束为「全部失败 / 部分成功」；同一任务最多重做 3 轮，超过只能重新提交。
+ */
+export function studioRetryTask(taskId: string) {
+  return post<types.StudioBatchDetail>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}/retry`, {})
 }
 
 /** 删除批次（逻辑删除；生成中不能删，code=4002） */

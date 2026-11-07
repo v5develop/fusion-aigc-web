@@ -113,6 +113,8 @@ export interface ToolField {
   minLength?: number
   /** 输入框占位（原型给了才写；不写 = 「请输入{label}」） */
   placeholder?: string
+  /** 字段下方的一行辅助说明（原型 typo-assist，如输入润色） */
+  description?: string
   /**
    * 选项由服务端下发（GET /api/v1/features/video-model-configs），不写死在 schema：
    * 模型 → 该模型的清晰度 → 该清晰度的比例；时长取该模型的 duration:[min,max] 逐秒。
@@ -153,8 +155,22 @@ export interface ToolSchema {
   description: string
   /** 功能介绍面板里的使用步骤（没有 scenarios 时显示） */
   steps: string[]
+  /** 功能介绍面板的一句话介绍（原型 intro 原文；不写 = 用 description） */
+  intro?: string
   /** 功能介绍面板的「适用场景」（原型给了才写，写了就替代 steps） */
   scenarios?: string[]
+  /** 提交按钮上方的一行提示（原型 ToolSubmitBar hint 原文） */
+  hint?: string
+  /** 提交按钮文案覆盖（不写 = submit.label；图片生成「立即生成」） */
+  submitLabel?: string
+  /** 结果对比：false = 不出对比；{ index, label } = 与第 index 个上传槽的原图对比，label 为原图一侧的名称 */
+  compare?: false | { index: number; label: string }
+  /** 显示「默认校色」开关与校色面板（商拍换装 / 姿态复刻） */
+  colorFix?: boolean
+  /** AI 帮写的 bizType（后端 CompatPromptWriteService.BIZ_TYPES）；不写 = 不出帮写入口 */
+  helpBizType?: string
+  /** 多张上传时逐张各提交一次（即使 javaKey 是数组键，每次只带一张） */
+  perItemSubmit?: boolean
   /** 结果卡标题（原型给了才写；不写 = 「生成结果」） */
   resultTitle?: string
   media: UploadKind
@@ -177,6 +193,8 @@ export interface ToolSchema {
   price?: 'image-model-configs' | 'video-model-configs'
   /** 每次提交都带上的固定键（界面不出现），如姿态复刻固定 mode=reference */
   constants?: Record<string, unknown>
+  /** 提示词框显示「我的提示词」入口与提示词库浮层（生成类工具：图片生成 / 视频生成 / 场景生成 / 首屏主图） */
+  promptLibrary?: boolean
   actions: string[]
 }
 
@@ -204,6 +222,8 @@ const imageSlot = (
 })
 
 const RES_1K_4K = ['1K', '2K', '4K']
+/** 比例转换预设：Java CompatBatchCatalog.ASPECT_RATIOS 全部 13 档（含竖向 9:21 / 1:3），已去掉「自适应」 */
+const CONVERT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '1:3', '3:1', '9:16', '16:9', '21:9', '9:21']
 const IMAGE_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']
 
 /** 分辨率：Java normalizeResolution 白名单 1k/2k/4k（CompatBatchCatalog.RESOLUTIONS），界面大写需转小写 */
@@ -256,6 +276,9 @@ export const toolSchemas: ToolSchema[] = [
     title: '商品精修',
     description: '一键提升商品质感、清晰度与光影层次，让商品图更精致、更适合店铺展示。',
     steps: ['上传 1–20 张商品图', '点击「开始精修」，每张图单独生成一条记录', '在历史记录里点一条，右侧查看与下载结果'],
+    intro: '一键提升商品质感、清晰度与光影层次，适合商品主图、详情页素材与活动图优化。',
+    scenarios: ['商品细节不够清晰的素材优化', '电商主图与详情页图片质感提升', '活动物料与投放素材的精修处理'],
+    hint: '按上传张数逐张提交，一张图一个任务',
     media: 'image',
     uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     fields: [],
@@ -271,10 +294,13 @@ export const toolSchemas: ToolSchema[] = [
     title: '高清放大',
     description: '上传原图后选择目标分辨率，AI 提升画面清晰度与细节表现，支持 1K / 2K / 4K 放大。',
     steps: ['上传 1–20 张图片', '选择目标清晰度', '点击「开始放大」，每张图单独生成一条记录'],
+    intro: 'AI 智能提升图片的分辨率与细节表现，上传原图后选择清晰度即可获得放大后的高清版本。',
+    scenarios: ['电商主图清晰度升级', '印刷物料高清输出', '老照片放大修复', '社交媒体高清分享'],
+    hint: '按上传张数逐张提交，整批使用同一档清晰度',
     media: 'image',
     uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     // v1 AIImageUpscalerRequest.resolution 必填，故给默认值
-    fields: [{ ...resolutionField('清晰度', '2K'), required: true }],
+    fields: [{ ...resolutionField('清晰度', '1K'), required: true }],
     submit: { label: '开始放大', costUnit: '张', costSource: '工具单价（upscale）× 张数' },
     actions: [],
   },
@@ -287,8 +313,18 @@ export const toolSchemas: ToolSchema[] = [
     title: '智能消除',
     description: '涂抹选中区域后去除水印、杂物与多余元素，自动补全背景，让画面更干净自然。',
     steps: ['上传 1 张原图', '用画笔涂抹要去掉的区域', '点击「开始消除」'],
+    intro: '涂抹选中区域后去除水印、杂物与多余元素，自动补全背景，让画面更干净自然。',
+    scenarios: ['商品图上的水印 / logo 去除', '画面里多余杂物的清理', '路人 / 反光等瑕疵的修补'],
+    hint: '涂红的区域会被抹掉，结果回到下方历史记录',
     media: 'image',
-    uploads: [{ ...imageSlot('原图', 1, 'originalImageUrl'), layout: 'single' }],
+    uploads: [
+      {
+        ...imageSlot('原图', 1, 'originalImageUrl'),
+        layout: 'single',
+        title: '上传要消除内容的图片',
+        subtitle: '上传后在图上涂抹要抹掉的区域',
+      },
+    ],
     fields: [
       {
         key: 'mask',
@@ -315,7 +351,9 @@ export const toolSchemas: ToolSchema[] = [
     title: '局部重绘',
     description: '在图上框出要改的区域并描述想要的内容，只重画框内部分，框外画面保持不变。',
     steps: ['上传 1–2 张原图', '在每张图上拖出要重绘的区域', '描述框内要出现的内容', '选择张数，点击「开始重绘」'],
+    intro: '在图上框出要改的区域并描述想要的内容，只重画框内部分，框外画面保持不变。',
     scenarios: ['替换画面里的局部物件', '给空白处补上新元素', '修掉瑕疵并换成想要的内容'],
+    hint: '结果按所选张数回到下方历史记录',
     media: 'image',
     uploads: [
       {
@@ -365,8 +403,10 @@ export const toolSchemas: ToolSchema[] = [
     title: '智能抠图',
     description: '识别图片主体并去除背景，快速生成透明背景的商品图，适合电商展示与素材制作。',
     steps: ['上传 1 张原图', '点击「开始抠图」，通常数十秒内出结果', '下载透明背景图或放大查看'],
-    scenarios: ['电商商品图去背景', '透明底素材制作', '海报 / 拼图的主体提取'],
     resultTitle: '抠图结果',
+    intro: '识别图片主体并去除背景，快速生成透明背景的商品图，适合电商展示与素材制作。',
+    scenarios: ['电商商品图去背景', '透明底素材制作', '海报 / 拼图的主体提取'],
+    hint: '通常当场出图，处理较久时转入下方历史记录',
     media: 'image',
     uploads: [
       {
@@ -389,6 +429,9 @@ export const toolSchemas: ToolSchema[] = [
     title: '图片翻译',
     description: '识别图片中的文字并翻译回填，更轻松地完成多语言素材本地化。',
     steps: ['上传 1–20 张图片', '选择目标语言（整批同一语言）', '点击「开始翻译」，每张图单独生成一条记录'],
+    intro: '自动识别图片中的文字并翻译回填，按原版式替换为目标语言，一键产出本地化素材。',
+    scenarios: ['跨境电商商品图本地化', '活动海报多语言版本', '海外社媒素材翻译', '多语言市场投放'],
+    hint: '按上传张数逐张提交，整批译成同一种语言',
     media: 'image',
     uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     fields: [
@@ -437,8 +480,18 @@ export const toolSchemas: ToolSchema[] = [
     title: '文字替换',
     description: '识别图片中的文字内容，把原文替换为目标文字，版式保持不变。',
     steps: ['上传 1 张原图', '点击「识别文字」（识别单独计费）', '在识别结果里改写要替换的文字', '点击「开始替换」'],
+    intro: '识别图片中的文字内容，把原文替换为目标文字，版式与整体设计保持不变。',
+    scenarios: ['商品图上的价格 / 卖点改字', '海报文案的多版本快速产出', '素材本地化的定点改写'],
+    hint: '识别后改写至少一处文案才能提交',
     media: 'image',
-    uploads: [{ ...imageSlot('原图', 1, 'imageUrl'), layout: 'single' }],
+    uploads: [
+      {
+        ...imageSlot('原图', 1, 'imageUrl'),
+        layout: 'single',
+        title: '上传要改字的图片',
+        subtitle: '识别出文字区域后逐条改写',
+      },
+    ],
     fields: [
       {
         key: 'regions',
@@ -464,7 +517,11 @@ export const toolSchemas: ToolSchema[] = [
     historyTitle: 'ai-ratio-convert',
     title: '比例转换',
     description: '批量上传后选择目标比例，结合画面内容智能调整构图与排版，避免生硬拉伸。',
-    steps: ['上传 1–20 张图片（整批一次提交）', '选择预设比例，或填写自定义输出尺寸', '点击「开始转换」'],
+    steps: ['上传 1–20 张图片', '选择预设比例，或填写自定义输出尺寸', '点击「开始转换」，每张图单独生成一条记录'],
+    intro: '批量上传后选择目标比例，AI 结合画面内容智能调整构图与排版，尽量避免生硬拉伸。',
+    scenarios: ['电商主图多平台适配', '社媒封面统一尺寸', '信息流广告素材', '多平台内容分发'],
+    hint: '按上传张数逐张提交，一张图一个任务',
+    perItemSubmit: true,
     media: 'image',
     uploads: [{ ...imageSlot('图片', 20, 'imageUrls'), layout: 'batch' }],
     fields: [
@@ -487,17 +544,16 @@ export const toolSchemas: ToolSchema[] = [
         type: 'chips',
         required: false,
         default: '1:1',
-        options: ['1:1', '3:4', '4:3', '9:16', '16:9', '自适应'],
+        options: CONVERT_RATIOS,
         showWhen: { key: 'mode', equals: '预设比例' },
         javaKey: 'aspectRatio',
-        transform: 'omit-auto',
         verified: true,
-        optionsVerified: false,
-        note: '「自适应」不在 Java 比例白名单里，当前按不传 aspectRatio 处理，后端是否接受待联调确认',
+        optionsVerified: true,
       },
       {
         key: 'width',
         label: '输出宽度（像素）',
+        placeholder: '宽',
         type: 'number',
         required: true,
         default: 1024,
@@ -510,6 +566,7 @@ export const toolSchemas: ToolSchema[] = [
       {
         key: 'height',
         label: '输出高度（像素）',
+        placeholder: '高',
         type: 'number',
         required: true,
         default: 1024,
@@ -536,6 +593,9 @@ export const toolSchemas: ToolSchema[] = [
     title: '产品替换',
     description: '保留原有场景氛围与展示效果，快速替换商品内容，适合多款商品批量出图。',
     steps: ['上传 1–20 张底图', '上传 1 张替换素材（新商品图）', '点击「开始替换」，每张底图单独生成一条记录'],
+    intro: '保留原有场景氛围与展示效果，把底图里的商品换成你上传的替换素材，适合同场景多款商品批量出图。',
+    scenarios: ['同场景下多款商品的批量展示', '模特图和场景图的快速换品制作', '活动期间不同 SKU 的素材延展'],
+    hint: '每张底图各出一个任务，整批共用同一张替换素材',
     media: 'image',
     uploads: [
       { ...imageSlot('底图', 20, 'originalImageUrl'), layout: 'pipe' },
@@ -554,6 +614,9 @@ export const toolSchemas: ToolSchema[] = [
     title: '首屏主图',
     description: '基于卖点与参考图智能生成专业首屏主图，支持多语言输出。',
     steps: ['上传 1–9 张参考图', '填写卖点描述', '选择分辨率、比例、张数与输出语言', '点击「开始生成」'],
+    intro: '基于卖点与参考图智能生成专业首屏主图，支持多语言输出。',
+    scenarios: ['电商首屏主图的批量产出', '大促 / 上新的多语言主图', '同一卖点的多版本快速比稿'],
+    hint: '一次提交出一个任务，结果按所选张数回到历史记录',
     media: 'image',
     uploads: [{ ...imageSlot('参考图（至少一张）', 9, 'imageUrls'), layout: 'ml' }],
     fields: [
@@ -563,6 +626,7 @@ export const toolSchemas: ToolSchema[] = [
         type: 'textarea',
         required: true,
         maxLength: 3000,
+        placeholder: '写清主推卖点与想强调的信息，例如：柔软亲肤、A 类母婴标准、买一送一',
         javaKey: 'content',
         verified: true,
       },
@@ -607,12 +671,14 @@ export const toolSchemas: ToolSchema[] = [
         label: '输入润色',
         type: 'switch',
         required: false,
-        default: true,
+        default: false,
+        description: '让模型先把卖点改写成更适合出图的描述',
         javaKey: 'rewritePrompt',
         verified: true,
       },
     ],
     submit: { label: '开始生成', costUnit: '次', costSource: 'image-model-configs.points[目标分辨率] × 张数' },
+    promptLibrary: true,
     actions: [],
   },
   {
@@ -624,8 +690,19 @@ export const toolSchemas: ToolSchema[] = [
     title: '场景生成',
     description: '保持画面主体与构图关系，快速发散不同的颜色氛围与周围布景细节。',
     steps: ['（选填）上传 1 张参考图', '填写场景描述', '选择分辨率、比例与张数', '点击「开始生成」'],
+    intro: '保持画面主体与构图关系，快速发散不同的颜色氛围与周围布景细节。',
+    scenarios: ['商品主图的背景氛围替换', '同一主体的多套场景延展', '季节 / 大促主题的快速换景'],
+    hint: '一次提交出一个任务，结果按所选张数回到历史记录',
+    helpBizType: 'image-prompt',
     media: 'image',
-    uploads: [{ ...imageSlot('参考图（选填）', 1, 'imageUrl', false), layout: 'ml' }],
+    uploads: [
+      {
+        ...imageSlot('参考图（选填）', 1, 'imageUrl', false),
+        layout: 'ml',
+        title: '上传参考图',
+        subtitle: '留空即完全按下方描述生成',
+      },
+    ],
     fields: [
       {
         key: 'prompt',
@@ -633,6 +710,7 @@ export const toolSchemas: ToolSchema[] = [
         type: 'textarea',
         required: true,
         maxLength: 3000,
+        placeholder: '描述想要的场景氛围、布景与光影，例如：明亮的北欧风木质桌面，晨光斜射，浅景深',
         javaKey: 'content',
         verified: true,
       },
@@ -641,6 +719,7 @@ export const toolSchemas: ToolSchema[] = [
       countField(),
     ],
     submit: { label: '开始生成', costUnit: '次', costSource: 'image-model-configs.points[目标分辨率] × 张数' },
+    promptLibrary: true,
     actions: [],
   },
   {
@@ -652,7 +731,9 @@ export const toolSchemas: ToolSchema[] = [
     title: '视频高清',
     description: '上传视频后选择目标分辨率，提升视频清晰度与细节表现，支持 720P 到 4K。',
     steps: ['上传 1 段视频（2–300 秒，≤500M）', '选择目标分辨率', '点击「开始提升画质」'],
+    intro: '上传视频后选择目标分辨率，提升视频清晰度与细节表现，支持 720P 到 4K。',
     scenarios: ['老素材 / 低码率视频的画质提升', '投放前的成片规格升级', '拉伸放大前的清晰度补齐'],
+    hint: '视频任务耗时较长，完成后回到下方历史记录',
     media: 'video',
     uploads: [
       {
@@ -700,11 +781,18 @@ export const toolSchemas: ToolSchema[] = [
     title: '视频翻译',
     description: '上传视频后选择目标语言与音色，自动识别语音并翻译，生成配音视频。',
     steps: ['上传 1 段视频（2–300 秒，≤500M）', '选择目标语言与配音音色', '按需开启字幕选项', '点击「开始翻译」'],
+    intro: '上传视频后选择目标语言与音色，自动识别语音并翻译，生成配音视频。',
+    scenarios: ['跨境电商视频广告本地化', '多语言课程视频制作', '社交媒体内容跨语言传播'],
+    hint: '视频任务耗时较长，完成后回到下方历史记录',
     media: 'video',
     uploads: [
       {
         slot: 0,
         label: '视频',
+        layout: 'video',
+        title: '上传需要翻译的视频',
+        subtitle: '识别语音并翻译为目标语言，用所选音色配音',
+        hint: '支持 MP4 / MOV / WEBM，单个不超过 500MB，时长 2～300 秒',
         kind: 'video',
         max: 1,
         required: true,
@@ -745,7 +833,7 @@ export const toolSchemas: ToolSchema[] = [
         label: '添加字幕',
         type: 'switch',
         required: false,
-        default: false,
+        default: true,
         javaKey: 'addSubtitle',
         verified: true,
       },
@@ -776,11 +864,13 @@ export const toolSchemas: ToolSchema[] = [
     title: '服装去皱',
     description: '智能识别并抚平衣物上的褶皱和折痕，同时优化面料纹理质感，让服装展示效果更平整精致。',
     steps: ['上传 1–20 张服装图', '点击「开始去皱」，按上传张数逐张提交，一张图一个任务'],
+    intro: '智能识别并抚平衣物上的褶皱和折痕，同时优化面料纹理质感，让服装展示效果更平整精致。',
     scenarios: [
       '平铺拍摄的衣服褶皱去除与优化',
       '模特上身图中衣物褶皱的自然抚平',
       '商品主图 / 详情页服装质感的快速优化',
     ],
+    hint: '按上传张数逐张提交，一张图一个任务',
     media: 'image',
     uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     fields: [],
@@ -798,7 +888,11 @@ export const toolSchemas: ToolSchema[] = [
     // 线上原型功能介绍原文（含「选出要替换的单品」：单品在服装图弹窗里选）
     description: '上传服装与模特，选出要替换的单品，AI 把衣服穿到模特身上；细节裁切与提示词由系统自动完成。',
     steps: ['上传 1 张服装图', '上传 1–9 张模特图', '点击「开始换装」，每位模特单独生成一条记录'],
+    intro: '上传服装与模特，选出要替换的单品，AI 把衣服穿到模特身上；细节裁切与提示词由系统自动完成。',
     scenarios: ['同一套搭配换给多位模特', '一件衣服出多张上身图', '网店主图 / 详情页的试穿素材'],
+    hint: '按模特逐个提交，每个任务单独出图',
+    compare: { index: 1, label: '模特图' },
+    colorFix: true,
     media: 'image',
     uploads: [
       { ...imageSlot('服装图', 1, 'clothImageUrl'), layout: 'material' },
@@ -827,7 +921,11 @@ export const toolSchemas: ToolSchema[] = [
       '（选填）写补充说明',
       '点击「开始复刻」，每个姿势一个任务，单独出图',
     ],
+    intro: '上传一张人物图，再放最多 9 张姿势参考图；身份、服装、场景、光线都锁在人物图上，只换动作与神态表情。',
     scenarios: ['同一模特的一组姿态延展', '服装 / 配饰的多角度展示', '缺素材时的快速补拍替代'],
+    hint: '每个姿势一个任务，单独出图',
+    compare: { index: 1, label: '参考姿势图' },
+    colorFix: true,
     media: 'image',
     constants: { mode: 'reference' },
     uploads: [
@@ -863,7 +961,12 @@ export const toolSchemas: ToolSchema[] = [
     title: '图片生成',
     description: '输入提示词并按需上传参考图，自定义清晰度、比例与出图数量，快速生成目标画面。',
     steps: ['（选填）上传 1–9 张参考图', '填写画面描述', '选择清晰度、比例与张数', '点击「开始生成」'],
+    intro: '输入提示词并按需上传参考图，自定义清晰度、比例与出图数量，快速生成目标画面。',
     scenarios: ['无素材时的概念图快速产出', '同一描述的多版本比稿', '参考图风格延展'],
+    hint: '不传参考图即纯文字生成；结果按所选张数回到历史记录',
+    submitLabel: '立即生成',
+    compare: false,
+    helpBizType: 'image-prompt',
     media: 'image',
     uploads: [{ ...imageSlot('参考图（选填）', 9, 'imageUrls', false), layout: 'ml' }],
     fields: [
@@ -886,12 +989,14 @@ export const toolSchemas: ToolSchema[] = [
         type: 'switch',
         required: false,
         default: true,
+        description: '让模型先把描述改写得更适合出图',
         javaKey: 'rewritePrompt',
         verified: true,
       },
     ],
     price: 'image-model-configs',
     submit: { label: '开始生成', costUnit: '次', costSource: 'image-model-configs.points[目标分辨率] × 张数' },
+    promptLibrary: true,
     actions: [],
   },
   {
@@ -905,7 +1010,9 @@ export const toolSchemas: ToolSchema[] = [
     title: '视频生成',
     description: '输入提示词后按需上传参考视频与多张参考图，快速生成短视频内容。',
     steps: ['（选填）上传参考视频与参考图', '填写画面描述', '选择模型、清晰度、比例与时长', '点击「开始生成」'],
+    intro: '输入提示词后按需上传参考视频与多张参考图，快速生成短视频内容。',
     scenarios: ['商品短视频的快速成片', '静态素材转动态展示', '创意脚本的画面试拍'],
+    hint: '参考视频与参考图都选填；视频任务耗时较长，完成后回到下方历史记录',
     media: 'video',
     uploads: [
       {
@@ -996,12 +1103,14 @@ export const toolSchemas: ToolSchema[] = [
         type: 'switch',
         required: false,
         default: true,
+        description: '让模型先把描述改写得更适合出片',
         javaKey: 'rewritePrompt',
         verified: true,
       },
     ],
     price: 'video-model-configs',
     submit: { label: '开始生成', costUnit: '秒', costSource: 'video-model-configs.points[模型][清晰度] × 秒' },
+    promptLibrary: true,
     actions: [],
   },
   {
@@ -1024,7 +1133,9 @@ export const toolSchemas: ToolSchema[] = [
       '选择模型、清晰度、比例与时长',
       '点击「开始生成」',
     ],
+    intro: '上传一条现成的短视频，配上参考图，写清改成什么样，选好模型与清晰度，直接生成新视频。',
     scenarios: ['换装片逐套换衣服', '同一条片子换人换场景', '保留原动作与运镜的二次创作'],
+    hint: '视频任务耗时较长，完成后回到下方历史记录',
     media: 'video',
     uploads: [
       {

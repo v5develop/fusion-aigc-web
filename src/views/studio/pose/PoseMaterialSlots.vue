@@ -16,6 +16,7 @@ import { useFileDropPaste } from '@/composables/useFileDropPaste'
 import AssetPickerModal from '../components/AssetPickerModal/index.vue'
 import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
 import { useStudioUploader } from '../components/StudioImageUpload/useStudioUploader.ts'
+import { MIN_SHORT_SIDE } from '../imageSize.ts'
 
 const { max = 9, disabled = false } = defineProps<{
   /** 姿势图上限 */
@@ -34,8 +35,11 @@ const source = defineModel<string[]>('source', { required: true })
 const poses = defineModel<string[]>('poses', { required: true })
 
 const message = useMessage()
-const sourceUp = useStudioUploader()
-const poseUp = useStudioUploader()
+const sourceUp = useStudioUploader({ minShortSide: MIN_SHORT_SIDE })
+const poseUp = useStudioUploader({ minShortSide: MIN_SHORT_SIDE })
+// 清空 / 回填 / 重置整组换掉时，还在路上的上传作废（不追加进新内容）
+sourceUp.invalidateOnReplace(() => source.value)
+poseUp.invalidateOnReplace(() => poses.value)
 
 const sourceUrl = computed(() => source.value[0] ?? '')
 const poseFull = computed(() => poses.value.length >= max)
@@ -171,6 +175,7 @@ const { dragging: poseDragging } = useFileDropPaste(poseEntry, {
 
 function clearSource() {
   if (disabled) return
+  sourceUp.invalidate()
   source.value = []
   sourcePeeking.value = false
   message.info('已清空人物图')
@@ -179,6 +184,7 @@ function clearSource() {
 function clearPoses() {
   if (disabled || !poses.value.length) return
   const count = poses.value.length
+  poseUp.invalidate()
   emit('clearPoses')
   posePeeking.value = false
   message.info(`已清空 ${count} 张姿势图`)
@@ -222,7 +228,7 @@ const entryCls =
 const emptyCls =
   'border border-solid border-white bg-white text-placeholder shadow-[0_1px_3px_rgba(31,35,41,0.16)] hover:shadow-[0_2px_6px_rgba(31,35,41,0.2)]'
 const capCls =
-  'flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-10px leading-15px text-center text-placeholder'
+  'flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-11px leading-15px text-center text-placeholder'
 const popCls =
   'absolute top-108px box-border border border-solid border-line rounded-8px bg-white shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)] animate-[stu-preview-in_120ms_ease_both] motion-reduce:animate-none'
 </script>
@@ -432,7 +438,7 @@ const popCls =
       @mouseenter="enterPose"
       @mouseleave="leavePose"
     >
-      <div class="flex items-baseline gap-6px mb-6px text-10px text-muted">
+      <div class="flex items-baseline gap-6px mb-6px text-11px text-muted">
         <b class="text-11px font-600 text-ink-2">姿势图</b><span>{{ poses.length }} 张</span>
       </div>
       <div class="grid grid-cols-3 gap-8px">

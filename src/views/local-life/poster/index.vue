@@ -14,6 +14,11 @@ import PromptBox from '../components/PromptBox/index.vue'
 import PromptActions from '../components/PromptActions/index.vue'
 import SettingsBar from '../components/SettingsBar/index.vue'
 import ImageUpload from '@/components/ImageUpload/index.vue'
+import IconButton from '@/components/IconButton/index.vue'
+import HistoryList from '../components/HistoryList/index.vue'
+import HistoryCard from '../components/HistoryList/HistoryCard.vue'
+import { useHistorySelection } from '../components/HistoryList/selection.ts'
+import ResultPreview from '../components/ResultPreview/index.vue'
 import {
   llCopywritingAiWrite,
   llCreationList,
@@ -25,7 +30,7 @@ import {
 } from '@/api/localLife.ts'
 import type { ILCreation, ILCreationKind, ILCreationOptions } from '@/api/localLifeTypes.ts'
 import { useAgreement, useLLList } from '../hooks.ts'
-import { CREATION_STATUS_MAP, formatTime, isCreationRunning } from '../constants.ts'
+import { CREATION_STATUS_MAP, isCreationRunning } from '../constants.ts'
 
 const props = defineProps<{ kind: ILCreationKind }>()
 
@@ -127,7 +132,7 @@ async function submit() {
 
   submitting.value = true
   try {
-    await llCreationSubmit(
+    const res = await llCreationSubmit(
       {
         kind: props.kind,
         content: form.content.trim(),
@@ -144,7 +149,10 @@ async function submit() {
     message.success('已提交生成')
     form.content = ''
     form.copywriting_id = undefined
+    // 明确选中接口返回的新记录（不依赖「新记录排第一」）；先刷列表，免得新 id 还不在列表里时预览闪到旧记录
     await listCtl.refresh()
+    if (res.data?.id) selectId(res.data.id)
+    else followLatest()
   } finally {
     submitting.value = false
   }
@@ -164,24 +172,22 @@ onMounted(async () => {
   void listCtl.reload()
 })
 
-const previewShow = ref(false)
-const previewItem = ref<ILCreation | null>(null)
-
-function openPreview(item: ILCreation) {
-  if (item.status !== 1) return
-  previewItem.value = item
-  previewShow.value = true
-}
+// 三栏：中栏历史选中哪条，右栏就预览哪条（null = 跟随最新）
+const { current, select, selectId, followLatest } = useHistorySelection(listCtl.items)
+const runningCount = computed(() => listCtl.items.value.filter(isCreationRunning).length)
 
 async function removeItem(item: ILCreation) {
   await llCreationRemove(item.id)
   message.success('已删除')
+  // 先在本地摘掉这条：删的若是右栏正在预览的，立即回落到最新一条（不等列表刷新）；随后静默刷新对齐服务端
+  listCtl.items.value = listCtl.items.value.filter((i) => i.id !== item.id)
+  listCtl.total.value = Math.max(0, listCtl.total.value - 1)
   void listCtl.refresh()
 }
 </script>
 
 <template>
-  <Workbench :title="pageTitle" :submit="submit" :loading="submitting">
+  <Workbench :title="pageTitle" :submit="submit" :loading="submitting" :history-count="listCtl.total.value">
     <template #default>
       <FormCard :title="isPoster ? '海报信息' : '长图内容'" required>
         <PromptBox
@@ -269,80 +275,63 @@ async function removeItem(item: ILCreation) {
       />
     </template>
 
-    <template #right>
-      <div class="h-full min-h-0 flex flex-col">
-        <div class="flex-none mb-14px text-16px font-600 leading-22px text-ink">生成记录</div>
-        <div
-          class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] content-start gap-14px"
-          v-loading="listCtl.loading.value"
+    <!-- 三栏（Workbench #history / #preview）：记录从右栏网格移到中栏历史卡，点卡在右栏预览（原来的预览弹窗由预览区取代） -->
+    <template #history>
+      <HistoryList
+        :count="listCtl.total.value"
+        :running="runningCount"
+        :loading="listCtl.loading.value"
+        :has-more="listCtl.hasMore.value"
+        :loading-more="listCtl.loadingMore.value"
+        @load-more="listCtl.loadMore()"
+      >
+        <HistoryCard
+          v-for="item in listCtl.items.value"
+          :key="item.id"
+          :title="item.content || pageTitle"
+          :status="CREATION_STATUS_MAP[item.status]?.type ?? 'running'"
+          :status-label="CREATION_STATUS_MAP[item.status]?.label ?? ''"
+          :time="item.create_time"
+          :thumb="item.image_urls?.[0] || item.input_image_url"
+          :count="item.image_urls?.length ?? 0"
+          :fail-reason="item.status === 2 ? item.fail_reason || '生成失败' : ''"
+          :eta-sec="90"
+          :selected="current?.id === item.id"
+          @select="select(item)"
         >
-          <div
-            v-for="item in listCtl.items.value"
-            :key="item.id"
-            class="bg-white rounded-lg border border-solid border-line shadow-card-v3 overflow-hidden"
-          >
-            <div class="relative cursor-pointer" @click="openPreview(item)">
-              <!-- 多张取第一张做封面；视频类封面用输入图兜底 -->
-              <img
-                v-if="item.image_urls?.length || item.input_image_url"
-                :src="item.image_urls[0] || item.input_image_url"
-                alt=""
-                class="block w-full aspect-[3/4] object-cover"
-              />
-              <div v-else class="w-full aspect-[3/4] flex items-center justify-center sx-grad-icon text-32px">🎨</div>
-              <div
-                class="sx-chip flex-shrink-0 absolute top-6px left-6px"
-                :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`"
-              >
-                {{ CREATION_STATUS_MAP[item.status]?.label }}
-              </div>
-              <div
-                v-if="item.image_urls?.length > 1"
-                class="absolute top-6px right-6px rounded-full bg-black/45 px-8px py-2px text-11px text-white"
-              >
-                共{{ item.image_urls.length }}张
-              </div>
-              <div
-                v-if="item.status === 2"
-                class="absolute inset-x-0 bottom-0 truncate bg-danger/85 px-8px py-4px text-11px text-white"
-              >
-                {{ item.fail_reason || '生成失败' }}
-              </div>
-            </div>
-            <div
-              class="flex items-center gap-8px px-10px py-8px border-t border-t-solid border-t-line-soft text-11px leading-16px text-muted tabular-nums"
-            >
-              <span class="text-ink-2">{{ item.size || '-' }}</span>
-              <span class="flex-1">{{ formatTime(item.create_time) }}</span>
-              <n-popconfirm @positive-click="removeItem(item)">
-                <template #trigger><span class="ll-danger-link transition-colors duration-fast">删除</span></template>
-                确定删除这条记录？
-              </n-popconfirm>
-            </div>
-          </div>
-          <div
-            v-if="!listCtl.loading.value && !listCtl.items.value.length"
-            class="col-span-full sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
-          >
-            还没有记录，左侧开始生成吧
-          </div>
-          <div
-            v-if="listCtl.hasMore.value"
-            class="col-span-full ll-link transition-colors duration-fast block text-center py-8px"
-            @click="listCtl.loadMore()"
-          >
-            加载更多
-          </div>
-        </div>
-      </div>
+          <template #actions>
+            <n-popconfirm @positive-click="removeItem(item)">
+              <template #trigger>
+                <IconButton label="删除记录" size="sm" variant="danger">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+                  </svg>
+                </IconButton>
+              </template>
+              确定删除这条记录？
+            </n-popconfirm>
+          </template>
+        </HistoryCard>
+      </HistoryList>
+    </template>
+
+    <template #preview>
+      <ResultPreview
+        :active="!!current"
+        :title="current?.content || pageTitle"
+        :status="current ? (CREATION_STATUS_MAP[current.status]?.type ?? 'running') : 'running'"
+        :status-label="current ? (CREATION_STATUS_MAP[current.status]?.label ?? '') : ''"
+        :time="current?.create_time"
+        :images="current?.image_urls ?? []"
+        :fail-reason="current?.fail_reason"
+        ratio="3 / 4"
+      >
+        <template v-if="current?.size" #meta>
+          <span class="truncate text-ink-2">{{ current.size }}</span>
+        </template>
+      </ResultPreview>
     </template>
   </Workbench>
 
   <CopywritingPicker v-model:show="showCopyPicker" @select="pickCopy" />
-
-  <n-modal v-model:show="previewShow" preset="card" :title="pageTitle" class="!w-640px">
-    <div v-if="previewItem" class="grid grid-cols-2 gap-10px">
-      <img v-for="url in previewItem.image_urls" :key="url" :src="url" alt="" class="block w-full rounded-8px" />
-    </div>
-  </n-modal>
 </template>

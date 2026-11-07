@@ -11,12 +11,14 @@
  */
 import { ref } from 'vue'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
-import { ANGLES, MAX_PHOTOS, OUTFIT, outfitLabel, type TryonGarment } from './useTryonGarment'
+import { ANGLES, MAX_PHOTOS, OUTFIT, OUTFIT_CONFLICT_TEXT, outfitLabel, type TryonGarment } from './useTryonGarment'
 
-const { g, accept } = defineProps<{
+const { g, accept, note } = defineProps<{
   g: TryonGarment
   /** 文件框的 accept（同服装图槽位） */
   accept: string
+  /** 额外的一行说明（商拍工作室写服务端的参考图上限）；不传不显示 */
+  note?: string
 }>()
 
 const show = defineModel<boolean>('show', { required: true })
@@ -72,7 +74,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
           v-for="item in OUTFIT"
           :key="item.key"
           type="button"
-          class="h-30px box-border rounded-6px border border-solid text-11px cursor-pointer"
+          class="h-32px box-border rounded-6px border border-solid text-13px cursor-pointer"
           :class="[focusRing, g.selected.includes(item.key) ? onCls : 'border-line bg-white text-muted']"
           :aria-pressed="g.selected.includes(item.key)"
           @click="g.toggleItem(item.key)"
@@ -80,8 +82,8 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
           {{ item.label }}
         </button>
       </div>
-      <p class="m-0 text-10px leading-15px text-placeholder">
-        只替换选中的单品，最多 3 件。连衣裙与上衣 / 下装互斥，文胸与上衣互斥；可直接把图片拖进每一件。
+      <p class="m-0 text-11px leading-15px text-placeholder">
+        只替换选中的单品，最多 3 件。{{ OUTFIT_CONFLICT_TEXT }}；可直接把图片拖进每一件。
       </p>
 
       <div
@@ -95,7 +97,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
           ] as const"
           :key="opt.key"
           type="button"
-          class="flex-1 h-26px box-border rounded-4px border border-solid text-11px cursor-pointer"
+          class="flex-1 h-28px box-border rounded-4px border border-solid text-13px cursor-pointer"
           :class="[focusRing, g.mode === opt.key ? onCls : 'border-transparent bg-transparent text-muted']"
           :aria-pressed="g.mode === opt.key"
           @click="g.switchMode(opt.key)"
@@ -146,7 +148,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
             </svg>
           </StudioMedBtn>
         </div>
-        <p class="m-0 text-10px leading-15px text-placeholder">
+        <p class="m-0 text-11px leading-15px text-placeholder">
           一张图里同时有 {{ g.selected.map(outfitLabel).join('、') }}；系统自己找每件的细节。
         </p>
       </template>
@@ -179,7 +181,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
                 >
                 <StudioMedBtn
                   label="删除这张"
-                  class="top-3px right-3px z-2 opacity-0 transition-opacity duration-120 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+                  class="top-3px right-3px z-2 sx-reveal motion-reduce:transition-none"
                   @click="g.removePhoto(g.photoAt(key, angle)!.id)"
                 >
                   <svg
@@ -209,22 +211,23 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
               </button>
             </template>
           </div>
-          <span class="ml-auto text-10px text-placeholder">{{ g.photosOf(key).length }} / {{ MAX_PHOTOS }}</span>
+          <span class="ml-auto text-11px text-placeholder">{{ g.photosOf(key).length }} / {{ MAX_PHOTOS }}</span>
         </div>
-        <p class="m-0 text-10px leading-15px text-placeholder">
+        <p class="m-0 text-11px leading-15px text-placeholder">
           每件最多 6 张、服装图合计最多 9 张；背面、侧面一起传更准，缺的角度不影响出图。
         </p>
+        <p v-if="note" class="m-0 text-11px leading-15px text-placeholder">{{ note }}</p>
       </template>
     </div>
 
     <template #footer>
       <div class="flex items-center gap-10px">
-        <span class="mr-auto text-10px text-placeholder">{{
+        <span class="mr-auto text-11px text-placeholder">{{
           g.uploading ? '上传中…' : '改动即时保存，关掉即生效'
         }}</span>
         <button
           type="button"
-          class="h-34px box-border px-18px rounded-6px border border-solid border-#6a487b bg-[linear-gradient(180deg,#8a639f,#7a548c)] text-white text-12px font-600 cursor-pointer shadow-[0_1px_2px_rgba(31,35,41,0.16),inset_0_1px_0_rgba(255,255,255,0.18)]"
+          class="h-34px box-border px-18px rounded-6px border border-solid border-#6a487b bg-[linear-gradient(180deg,#8a639f,#7a548c)] text-white text-13px font-600 cursor-pointer shadow-[0_1px_2px_rgba(31,35,41,0.16),inset_0_1px_0_rgba(255,255,255,0.18)]"
           :class="focusRing"
           @click="show = false"
         >

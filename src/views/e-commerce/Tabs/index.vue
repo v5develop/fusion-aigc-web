@@ -229,7 +229,7 @@ function onMenuSelect(key: string | number) {
       <button
         v-if="!tab.pinned"
         type="button"
-        class="flex-none grid place-items-center w-18px h-18px p-0 border-none rounded-sm bg-transparent text-muted cursor-pointer hover:(bg-violet-soft-2 text-ink) sx-focus"
+        class="flex-none grid place-items-center w-20px h-20px p-0 border-none rounded-sm bg-transparent text-muted cursor-pointer hover:(bg-violet-soft-2 text-ink) sx-focus sx-hit"
         :aria-label="`关闭${tabLabel(tab)}`"
         @click.stop="close(tab)"
       >

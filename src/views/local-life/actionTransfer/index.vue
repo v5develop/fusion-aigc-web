@@ -22,8 +22,13 @@ import {
   llIdempotencyHeaders,
 } from '@/api/localLife.ts'
 import type { ILActionVideo, ILCreation, ILCreationOptions } from '@/api/localLifeTypes.ts'
+import IconButton from '@/components/IconButton/index.vue'
+import HistoryList from '../components/HistoryList/index.vue'
+import HistoryCard from '../components/HistoryList/HistoryCard.vue'
+import { useHistorySelection } from '../components/HistoryList/selection.ts'
+import ResultPreview from '../components/ResultPreview/index.vue'
 import { useAgreement, useLLList } from '../hooks.ts'
-import { CREATION_STATUS_MAP, formatTime, isCreationRunning } from '../constants.ts'
+import { CREATION_STATUS_MAP, isCreationRunning } from '../constants.ts'
 
 defineOptions({ name: 'local-life-action-transfer' })
 
@@ -118,7 +123,7 @@ async function submit() {
 
   submitting.value = true
   try {
-    await llCreationSubmit(
+    const res = await llCreationSubmit(
       {
         kind: 'actionTransfer',
         portrait_source: portraitSource.value,
@@ -129,7 +134,10 @@ async function submit() {
       llIdempotencyHeaders(),
     )
     message.success('已提交，动作迁移生成中')
+    // 明确选中接口返回的新记录（不依赖「新记录排第一」）；先刷列表，免得新 id 还不在列表里时预览闪到旧记录
     await listCtl.refresh()
+    if (res.data?.id) selectId(res.data.id)
+    else followLatest()
   } finally {
     submitting.value = false
   }
@@ -148,24 +156,22 @@ onMounted(async () => {
   void listCtl.reload()
 })
 
-const previewShow = ref(false)
-const previewUrl = ref('')
-
-function openPreview(item: ILCreation) {
-  if (item.status !== 1 || !item.video_url) return
-  previewUrl.value = item.video_url
-  previewShow.value = true
-}
+// 三栏：中栏历史选中哪条，右栏就预览哪条（null = 跟随最新；原来的预览弹窗由预览区取代）
+const { current, select, selectId, followLatest } = useHistorySelection(listCtl.items)
+const runningCount = computed(() => listCtl.items.value.filter(isCreationRunning).length)
 
 async function removeItem(item: ILCreation) {
   await llCreationRemove(item.id)
   message.success('已删除')
+  // 先在本地摘掉这条：删的若是右栏正在预览的，立即回落到最新一条（不等列表刷新）；随后静默刷新对齐服务端
+  listCtl.items.value = listCtl.items.value.filter((i) => i.id !== item.id)
+  listCtl.total.value = Math.max(0, listCtl.total.value - 1)
   void listCtl.refresh()
 }
 </script>
 
 <template>
-  <Workbench title="动作迁移" :submit="submit" :loading="submitting" submit-text="开始迁移">
+  <Workbench title="动作迁移" :submit="submit" :loading="submitting" submit-text="开始迁移" :history-count="listCtl.total.value">
     <template #default>
       <PersonSource
         v-model:source="portraitSource"
@@ -238,7 +244,7 @@ async function removeItem(item: ILCreation) {
                   <template #trigger>
                     <button
                       type="button"
-                      class="absolute top-4px right-4px w-20px h-20px flex items-center justify-center p-0 rounded-full border-none bg-black/50 text-11px text-white cursor-pointer opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100 sx-focus"
+                      class="absolute top-4px right-4px w-24px h-24px flex items-center justify-center p-0 rounded-full border-none bg-black/60 text-14px text-white cursor-pointer sx-hit sx-reveal sx-focus"
                       :aria-label="`删除动作视频：${v.name}`"
                     >
                       ×
@@ -261,69 +267,74 @@ async function removeItem(item: ILCreation) {
       <SettingsBar v-model:data="modelSetting" :model-options="modelOptions" />
     </template>
 
-    <template #right>
-      <div class="h-full min-h-0 flex flex-col">
-        <h2 class="m-0 flex-none mb-14px text-16px font-600 leading-22px text-ink">生成记录</h2>
-        <div
-          v-loading="listCtl.loading.value"
-          class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-14px content-start"
+    <!-- 三栏（Workbench #history / #preview）：记录从右栏网格移到中栏历史卡，点卡在右栏播放 -->
+    <template #history>
+      <HistoryList
+        :count="listCtl.total.value"
+        :running="runningCount"
+        :loading="listCtl.loading.value"
+        :has-more="listCtl.hasMore.value"
+        :loading-more="listCtl.loadingMore.value"
+        @load-more="listCtl.loadMore()"
+      >
+        <HistoryCard
+          v-for="item in listCtl.items.value"
+          :key="item.id"
+          :title="item.model ? '动作迁移 · ' + item.model : '动作迁移'"
+          :status="CREATION_STATUS_MAP[item.status]?.type ?? 'running'"
+          :status-label="CREATION_STATUS_MAP[item.status]?.label ?? ''"
+          :time="item.create_time"
+          :thumb="item.input_image_url"
+          placeholder="视频"
+          :fail-reason="item.status === 2 ? item.fail_reason || '生成失败' : ''"
+          :eta-sec="240"
+          :selected="current?.id === item.id"
+          @select="select(item)"
         >
-          <div
-            v-for="item in listCtl.items.value"
-            :key="item.id"
-            class="bg-white rounded-lg border border-solid border-line shadow-card-v3 overflow-hidden"
-          >
-            <div class="relative cursor-pointer" @click="openPreview(item)">
-              <img
-                v-if="item.input_image_url"
-                :src="item.input_image_url"
-                alt=""
-                class="block w-full aspect-[9/16] object-cover"
-              />
-              <div v-else class="w-full aspect-[9/16] flex items-center justify-center text-32px sx-grad-icon">🕺</div>
-              <div
-                class="sx-chip flex-shrink-0 absolute top-6px left-6px"
-                :class="`ll-chip-${CREATION_STATUS_MAP[item.status]?.type}`"
-              >
-                {{ CREATION_STATUS_MAP[item.status]?.label }}
-              </div>
-              <div
-                v-if="item.status === 2"
-                class="absolute inset-x-0 bottom-0 truncate px-8px py-4px text-11px text-white bg-[rgba(180,67,62,0.85)]"
-              >
-                {{ item.fail_reason || '生成失败' }}
-              </div>
-            </div>
-            <div
-              class="flex items-center gap-8px px-10px py-8px border-t border-t-solid border-t-line-soft text-11px leading-16px text-muted tabular-nums"
+          <template #actions>
+            <IconButton
+              v-if="item.status === 1 && item.video_url"
+              label="下载视频"
+              size="sm"
+              :href="item.video_url"
+              target="_blank"
+              download
             >
-              <span class="text-ink-2">{{ item.model || '-' }}</span>
-              <span class="flex-1">{{ formatTime(item.create_time) }}</span>
-              <n-popconfirm @positive-click="removeItem(item)">
-                <template #trigger><span class="ll-danger-link transition-colors duration-fast">删除</span></template>
-                确定删除这条记录？
-              </n-popconfirm>
-            </div>
-          </div>
-          <div
-            v-if="!listCtl.loading.value && !listCtl.items.value.length"
-            class="col-span-full sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
-          >
-            还没有记录，左侧开始生成吧
-          </div>
-          <div
-            v-if="listCtl.hasMore.value"
-            class="col-span-full ll-link transition-colors duration-fast block text-center py-8px"
-            @click="listCtl.loadMore()"
-          >
-            加载更多
-          </div>
-        </div>
-      </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+              </svg>
+            </IconButton>
+            <n-popconfirm @positive-click="removeItem(item)">
+              <template #trigger>
+                <IconButton label="删除记录" size="sm" variant="danger">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+                  </svg>
+                </IconButton>
+              </template>
+              确定删除这条记录？
+            </n-popconfirm>
+          </template>
+        </HistoryCard>
+      </HistoryList>
+    </template>
+
+    <template #preview>
+      <ResultPreview
+        :active="!!current"
+        :title="'动作迁移'"
+        :status="current ? (CREATION_STATUS_MAP[current.status]?.type ?? 'running') : 'running'"
+        :status-label="current ? (CREATION_STATUS_MAP[current.status]?.label ?? '') : ''"
+        :time="current?.create_time"
+        :video="current?.video_url"
+        :poster="current?.input_image_url"
+        :fail-reason="current?.fail_reason"
+        ratio="9 / 16"
+      >
+        <template v-if="current" #meta>
+          <span class="truncate text-ink-2">{{ [current.model, current.duration ? current.duration + 's' : '', current.size].filter(Boolean).join(' · ') }}</span>
+        </template>
+      </ResultPreview>
     </template>
   </Workbench>
-
-  <n-modal v-model:show="previewShow" preset="card" title="迁移结果" style="width: 420px">
-    <video v-if="previewUrl" :src="previewUrl" controls autoplay class="block w-full rounded-8px" />
-  </n-modal>
 </template>

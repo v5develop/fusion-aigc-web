@@ -13,6 +13,7 @@ import { computed, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { studioSubmitTryon } from '@/api/studio.ts'
 import { goUploadImage } from '@/api/goUpload.ts'
+import { checkMinShortSide } from '../imageSize.ts'
 import type { StudioGarmentImage, StudioTryonPayload, StudioTryonSubmitReq } from '@/api/studioTypes.ts'
 import ToolTryonMaterials from '@/views/tools/ToolTryonMaterials.vue'
 import { useTryonGarment } from '@/views/tools/useTryonGarment.ts'
@@ -59,10 +60,15 @@ const MODEL_SPEC: UploadSpec = {
   accept: IMAGE_ACCEPT,
 }
 
-/** 逐张串行直传；失败的跳过并提示，不抛（ToolTryonMaterials 的上传通道约定） */
+/** 逐张串行直传；短边 <240px 的先拦下，失败的跳过并提示，不抛（ToolTryonMaterials 的上传通道约定） */
 async function studioUpload(files: File[]): Promise<string[]> {
   const urls: string[] = []
   for (const file of files) {
+    const small = await checkMinShortSide(file)
+    if (small) {
+      message.error(small)
+      continue
+    }
     try {
       urls.push(await goUploadImage(file))
     } catch (err) {
@@ -90,6 +96,16 @@ const modelImages = ref<string[]>([])
 
 const lengths = reactive<Record<string, string>>({})
 const sleeves = reactive<Record<string, string>>({})
+/**
+ * 每件面料上限：Go 的 fabric 整段 ≤3000 字（validate.go MaxPromptLen），最多 3 件、拼接时还要加「单品：」与分号，
+ * 每件 200 字远在整段上限内，也足够写成分 / 克重 / 织法。
+ */
+const FABRIC_MAX = 200
+/**
+ * 服装图弹窗的参考图说明：Go 组图（pipeline/select.go SelectImages）每张生图最多带 9 张输入
+ * （主图 + 细节裁切 + 模特 1 张，所有模型同一口径，低于 Seedream 的 10 张上限），服装图多时细节裁切名额会变少。
+ */
+const GARMENT_NOTE = '每张生图连同模特最多参考 9 张（含细节裁切），服装图越多，细节裁切越少。'
 /** 逐件面料（按单品 key）；提交时拼成「上衣：真丝；鞋子：皮革」 */
 const fabrics = reactive<Record<string, string>>({})
 
@@ -138,6 +154,9 @@ idem.bindForm(
   fabrics,
 )
 
+// TODO(默认校色)：原型的「默认校色」需要出图后的色彩后处理（服务端暂无此步骤），产品决定先不做，后端支持后在这里加开关并随提交下发。
+// 产品决定：「精细读图」「提示词可见」不加。
+
 /** 逐件面料拼成契约格式：「上衣：真丝；鞋子：皮革」，空的不写 */
 const fabricText = computed(() =>
   g.selected
@@ -159,8 +178,12 @@ const missing = computed(() =>
 const taskCount = computed(() => modelImages.value.length * form.count_per_model)
 const submitText = computed(() => (taskCount.value ? `开始换装（${taskCount.value} 张）` : '开始换装'))
 
+/** 素材板上传中（服装图 / 模特图）：还没回来的图不会进提交体，先拦下 */
+const materialsUploading = ref(false)
+
 async function submit() {
   if (submitting.value) return
+  if (materialsUploading.value) return message.warning('图片上传中，稍等再提交')
   // 校验顺序对齐原型 / 服务端：单品 → 服装图 → 模特图；按钮常亮，点了给原型同一句提示
   if (!g.selected.length) return message.warning('先选单品：点服装图打开弹窗')
   if (missing.value.length) return message.warning(`还没传图：${missing.value.join('、')}`)
@@ -305,10 +328,12 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
       <ToolTryonMaterials
         v-model:cloth="clothSlot"
         v-model:models="modelImages"
+        v-model:uploading="materialsUploading"
         :cloth-spec="CLOTH_SPEC"
         :model-spec="MODEL_SPEC"
         :garment="g"
         :upload-fn="studioUpload"
+        :garment-note="GARMENT_NOTE"
         :disabled="submitting"
       >
         <!-- 补充说明（原型 .dm-notes：卡面上无框 textarea 13/20，左下计数 10px、上外边距 2） -->
@@ -320,11 +345,11 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
             class="block w-full min-h-96px flex-[1_1_auto] box-border m-0 p-0 resize-none overflow-y-auto overscroll-contain border-none bg-transparent text-13px leading-20px text-ink-2 outline-none placeholder:text-placeholder"
             :maxlength="3000"
             aria-describedby="tryon-prompt-count"
-            placeholder="门襟暗扣、裤脚前开衩这类设计点写这里；包和背景不要动也可以写（选填）"
+            placeholder="门襟暗扣、裤脚前开衩这类设计点写这里；包和背景不要动也可以写；不对称、镂空、绑带、五金、拼接、异形下摆也可以写（选填）"
           />
           <span
             id="tryon-prompt-count"
-            class="self-start mt-2px text-10px leading-15px tabular-nums select-none"
+            class="self-start mt-2px text-11px leading-15px tabular-nums select-none"
             :class="form.prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
             >{{ form.prompt.length }} / 3000</span
           >
@@ -354,7 +379,7 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
             <StudioMedBtn
               v-if="firstPhoto(item.key) && !submitting"
               :label="`删除${item.label}的这张图`"
-              class="top-[-9px] left-21px !z-3 opacity-0 pointer-events-none transition-opacity duration-120 group-hover/row:(opacity-100 pointer-events-auto) group-focus-within/row:(opacity-100 pointer-events-auto) motion-reduce:transition-none"
+              class="top-[-9px] left-21px !z-3 opacity-0 pointer-events-none transition-opacity duration-120 group-hover/row:(opacity-100 pointer-events-auto) group-focus-within/row:(opacity-100 pointer-events-auto) [@media(hover:none)]:(opacity-100 pointer-events-auto) motion-reduce:transition-none"
               @click.stop="g.removePhoto(firstPhoto(item.key)!.id)"
             >
               <svg
@@ -379,8 +404,9 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
             <input
               v-model="fabrics[item.key]"
               :class="[FIELD, 'flex-[1_1_0] min-w-0 px-9px placeholder:text-placeholder focus:border-violet']"
-              :maxlength="3000"
+              :maxlength="FABRIC_MAX"
               placeholder="面料（选填）"
+              :title="`每件面料最多 ${FABRIC_MAX} 字`"
               :aria-label="`${item.label}面料`"
             />
             <n-popselect
@@ -402,7 +428,7 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
                 :aria-label="`${item.label}长度`"
                 aria-haspopup="listbox"
               >
-                <span class="shrink-0 text-10px text-placeholder">长度</span>
+                <span class="shrink-0 text-11px text-placeholder">长度</span>
                 <b
                   class="flex-1 min-w-0 overflow-hidden text-left text-11px font-400 whitespace-nowrap text-ellipsis"
                   >{{ lengths[item.key] || '按图' }}</b
@@ -438,7 +464,7 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
                 :aria-label="`${item.label}袖长`"
                 aria-haspopup="listbox"
               >
-                <span class="shrink-0 text-10px text-placeholder">袖长</span>
+                <span class="shrink-0 text-11px text-placeholder">袖长</span>
                 <b
                   class="flex-1 min-w-0 overflow-hidden text-left text-11px font-400 whitespace-nowrap text-ellipsis"
                   >{{ sleeves[item.key] || '按图' }}</b

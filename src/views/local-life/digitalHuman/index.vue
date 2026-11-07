@@ -30,8 +30,13 @@ import type {
   ILPortraitSource,
   ILVoice,
 } from '@/api/localLifeTypes.ts'
+import IconButton from '@/components/IconButton/index.vue'
+import HistoryList from '../components/HistoryList/index.vue'
+import HistoryCard from '../components/HistoryList/HistoryCard.vue'
+import { useHistorySelection } from '../components/HistoryList/selection.ts'
+import ResultPreview from '../components/ResultPreview/index.vue'
 import { useAgreement, useLLList } from '../hooks.ts'
-import { DH_STATUS_MAP, formatTime, isDhRunning } from '../constants.ts'
+import { DH_STATUS_MAP, isDhRunning } from '../constants.ts'
 
 defineOptions({ name: 'local-life-digital-human' })
 
@@ -165,9 +170,12 @@ async function submit() {
       body.portrait_id = personPortraitId.value
       body.image_index = personImageIndex.value
     }
-    await llCreateDigitalHuman(body, llIdempotencyHeaders())
+    const res = await llCreateDigitalHuman(body, llIdempotencyHeaders())
     message.success('已提交，数字人生成中')
+    // 明确选中接口返回的新记录（不依赖「新记录排第一」）；先刷列表，免得新 id 还不在列表里时预览闪到旧记录
     await listCtl.refresh()
+    if (res.data?.id) selectId(res.data.id)
+    else followLatest()
   } finally {
     submitting.value = false
   }
@@ -188,25 +196,22 @@ onMounted(async () => {
   if (data?.models?.length) scriptModel.value = data.models[0]?.code
 })
 
-// 预览播放
-const previewShow = ref(false)
-const previewItem = ref<ILDigitalHuman | null>(null)
-
-function openPreview(item: ILDigitalHuman) {
-  if (item.status !== 2 || !item.video_url) return
-  previewItem.value = item
-  previewShow.value = true
-}
+// 三栏：中栏历史选中哪条，右栏就预览哪条（null = 跟随最新；原来的预览弹窗由预览区取代）
+const { current, select, selectId, followLatest } = useHistorySelection(listCtl.items)
+const runningCount = computed(() => listCtl.items.value.filter(isDhRunning).length)
 
 async function removeItem(item: ILDigitalHuman) {
   await llDigitalHumanRemove(item.id)
   message.success('已删除')
+  // 先在本地摘掉这条：删的若是右栏正在预览的，立即回落到最新一条（不等列表刷新）；随后静默刷新对齐服务端
+  listCtl.items.value = listCtl.items.value.filter((i) => i.id !== item.id)
+  listCtl.total.value = Math.max(0, listCtl.total.value - 1)
   void listCtl.refresh()
 }
 </script>
 
 <template>
-  <Workbench title="AI数字人" :submit="submit" :loading="submitting" submit-text="生成数字人">
+  <Workbench title="AI数字人" :submit="submit" :loading="submitting" submit-text="生成数字人" :history-count="listCtl.total.value">
     <template #default>
       <PersonSource
         v-model:source="portraitSource"
@@ -257,7 +262,7 @@ async function removeItem(item: ILDigitalHuman) {
             </div>
             <button
               type="button"
-              class="sx-btn !h-24px !px-8px !text-11px flex-none transition-[border-color,color] duration-fast"
+              class="sx-btn !h-28px !px-10px !text-12px flex-none transition-[border-color,color] duration-fast"
               :class="{ '!text-violet-ink !border-violet-line': playingId === voice.id }"
               :aria-label="`${playingId === voice.id ? '停止' : '试听'}：${voice.name}`"
               @click.stop="preview(voice)"
@@ -292,84 +297,77 @@ async function removeItem(item: ILDigitalHuman) {
       <SettingsBar v-model:data="modelSetting" :model-options="modelOptions" />
     </template>
 
-    <template #right>
-      <div class="h-full min-h-0 flex flex-col">
-        <h2 class="m-0 mb-14px flex-none text-16px font-600 leading-22px text-ink">我的数字人</h2>
-        <div
-          v-loading="listCtl.loading.value"
-          class="flex-1 min-h-0 overflow-auto grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-14px content-start"
+    <template #history>
+      <HistoryList
+        :count="listCtl.total.value"
+        :running="runningCount"
+        :loading="listCtl.loading.value"
+        :has-more="listCtl.hasMore.value"
+        :loading-more="listCtl.loadingMore.value"
+        @load-more="listCtl.loadMore()"
+      >
+        <HistoryCard
+          v-for="item in listCtl.items.value"
+          :key="item.id"
+          :title="item.name || '数字人'"
+          :status="DH_STATUS_MAP[item.status]?.type ?? 'running'"
+          :status-label="DH_STATUS_MAP[item.status]?.label ?? ''"
+          :time="item.create_time"
+          :thumb="item.cover_url || item.image_url"
+          placeholder="视频"
+          :fail-reason="item.status === 3 ? item.fail_reason || '生成失败' : ''"
+          :eta-sec="240"
+          :selected="current?.id === item.id"
+          @select="select(item)"
         >
-          <div
-            v-for="item in listCtl.items.value"
-            :key="item.id"
-            class="group bg-white rounded-lg border border-solid border-line shadow-card-v3 relative overflow-hidden"
-          >
-            <div class="relative cursor-pointer" @click="openPreview(item)">
-              <img
-                v-if="item.cover_url || item.image_url"
-                :src="item.cover_url || item.image_url"
-                alt=""
-                class="block w-full aspect-[9/16] object-cover"
-              />
-              <div
-                class="sx-chip flex-shrink-0 absolute top-6px left-6px"
-                :class="`ll-chip-${DH_STATUS_MAP[item.status]?.type}`"
-              >
-                {{ DH_STATUS_MAP[item.status]?.label }}
-              </div>
-              <div
-                v-if="item.status === 2 && item.video_url"
-                class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-36px h-36px rounded-full bg-black/50 text-white flex items-center justify-center text-14px"
-              >
-                ▶
-              </div>
-            </div>
-            <div class="px-10px py-8px">
-              <div class="truncate text-13px font-600 leading-18px text-ink">{{ item.name || '数字人' }}</div>
-              <div class="mt-2px text-11px leading-16px text-muted">
-                {{ item.voice_name }}<template v-if="item.duration"> · {{ item.duration }}s</template>
-              </div>
-              <div class="mt-2px text-11px leading-16px text-muted">{{ formatTime(item.create_time) }}</div>
-            </div>
+          <template #actions>
+            <IconButton
+              v-if="item.status === 2 && item.video_url"
+              label="下载视频"
+              size="sm"
+              :href="item.video_url"
+              target="_blank"
+              download
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+              </svg>
+            </IconButton>
             <n-popconfirm @positive-click="removeItem(item)">
-              <template #trigger
-                ><span
-                  class="absolute top-6px right-6px hidden group-hover:block px-8px py-2px rounded-full bg-black/35 text-11px text-white cursor-pointer"
-                  >删除</span
-                ></template
-              >
+              <template #trigger>
+                <IconButton label="删除记录" size="sm" variant="danger">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+                  </svg>
+                </IconButton>
+              </template>
               确定删除这个数字人？
             </n-popconfirm>
-          </div>
-          <div
-            v-if="!listCtl.loading.value && !listCtl.items.value.length"
-            class="col-span-full sx-empty !min-h-240px text-12px leading-[1.65] text-muted"
-          >
-            还没有数字人，左侧开始生成吧
-          </div>
-          <div
-            v-if="listCtl.hasMore.value"
-            class="col-span-full ll-link transition-colors duration-fast block text-center py-8px"
-            @click="listCtl.loadMore()"
-          >
-            加载更多
-          </div>
-        </div>
-      </div>
+          </template>
+        </HistoryCard>
+      </HistoryList>
+    </template>
+
+    <template #preview>
+      <ResultPreview
+        :active="!!current"
+        :title="current?.name || '数字人'"
+        :status="current ? (DH_STATUS_MAP[current.status]?.type ?? 'running') : 'running'"
+        :status-label="current ? (DH_STATUS_MAP[current.status]?.label ?? '') : ''"
+        :time="current?.create_time"
+        :video="current?.status === 2 ? current.video_url : undefined"
+        :poster="current?.cover_url || current?.image_url"
+        :fail-reason="current?.status === 3 ? current.fail_reason : ''"
+        ratio="9 / 16"
+      >
+        <template v-if="current" #meta>
+          <span class="truncate text-ink-2">{{ [current.voice_name, current.duration ? current.duration + 's' : '', current.model].filter(Boolean).join(' · ') }}</span>
+        </template>
+      </ResultPreview>
     </template>
   </Workbench>
 
   <audio ref="audioEl" @ended="onAudioEnd" @pause="onAudioPause" />
 
   <CopywritingPicker v-model:show="showCopyPicker" @select="pickCopy" />
-
-  <n-modal v-model:show="previewShow" preset="card" :title="previewItem?.name || '数字人视频'" class="!w-420px">
-    <video
-      v-if="previewItem?.video_url"
-      :src="previewItem.video_url"
-      controls
-      autoplay
-      class="block w-full rounded-8px"
-    />
-  </n-modal>
 </template>

@@ -13,7 +13,8 @@
  * <p>复用 api/index.ts 的实例（token、401 刷新、业务错误 toast）；这里不吞错。
  * 请求体没有兜底 map：字段名不对会被 Jackson 静默丢弃，照样扣费，所以逐字对齐 Java。
  */
-import { get, post } from './index.ts'
+import { get, post, put } from './index.ts'
+import { deleteWorkflowHistories } from './workflows.ts'
 import { llShopProfileList } from './localLife.ts'
 
 // ---------------- 品牌档案数据源开关 ----------------
@@ -37,6 +38,12 @@ export interface LLProfileItem {
   title: string
   logoUrl?: string
   source: LLProfileSource
+  /** 以下为 Java 列表摘要（2026-11-07 新增）；Go 源没有 */
+  category?: string
+  address?: string
+  coverUrl?: string
+  imageCount?: number
+  templateCount?: number
 }
 
 // ---------------- 图种 ----------------
@@ -62,6 +69,12 @@ export interface BrandProfileListItem {
   title?: string | null
   createdAt?: string | null
   logoUrl?: string | null
+  /** 摘要（Java 2026-11-07 只加不改）：行业 / 所在城市·区域 / 封面 / 可作参考图的图片数 / 该行业官方模板数 */
+  category?: string | null
+  address?: string | null
+  coverUrl?: string | null
+  imageCount?: number | null
+  templateCount?: number | null
 }
 
 /** GET /brand-profiles/{id}：多一个 data = 表单 json_schema，每个字段附上已填的 value */
@@ -86,6 +99,15 @@ export interface BrandProfileView {
   /** 行业分类：官方模板必须与它一致（Java：所选模板与品牌档案分类不一致） */
   category: string
   images: BrandProfileImage[]
+  /** 以下只用于手机预览，档案没填就是空（预览显示中性占位，不编造） */
+  address?: string
+  avgPrice?: string
+  /** 特色项标签（去重） */
+  tags?: string[]
+  /** 特色项名（推荐菜位） */
+  featureNames?: string[]
+  /** 套餐图组（名称 / 价格） */
+  meals?: { name: string; price: string }[]
 }
 
 export function brandProfileList() {
@@ -94,6 +116,32 @@ export function brandProfileList() {
 
 export function brandProfileDetail(id: number) {
   return get<BrandProfileDetail>(`/api/v1/brand-profiles/${id}`)
+}
+
+/** GET /brand-profiles/forms 一项：jsonSchema 决定 data 的结构（x-order / x-required / x-hide / x-input-type / x-group …） */
+export interface BrandFormItem {
+  brandFormId: number
+  category: string
+  title: string
+  jsonSchema: Record<string, unknown>
+}
+
+/** 品牌档案表单（不传 category 返回数组） */
+export function brandFormList() {
+  return get<BrandFormItem[]>('/api/v1/brand-profiles/forms')
+}
+
+/**
+ * POST /brand-profiles：data 键按表单 jsonSchema（lowerCamel）。
+ * 成功回 {brandProfileId}（Java 2026-11-07 只加不改；v1 / 老后端回 data:null，调用方要兜底）
+ */
+export function brandProfileCreate(brandFormId: number, data: Record<string, unknown>) {
+  return post<{ brandProfileId?: number | null } | null>('/api/v1/brand-profiles', { brandFormId, data })
+}
+
+/** PUT /brand-profiles/{id}：data 整份替换（没传的键会丢）；brandFormId 不可改 */
+export function brandProfileUpdate(id: number, data: Record<string, unknown>) {
+  return put<null>(`/api/v1/brand-profiles/${id}`, { data })
 }
 
 /** 品牌档案列表（按 LL_PROFILE_SOURCE 取数并归一） */
@@ -108,6 +156,11 @@ export async function loadProfileList(source: LLProfileSource = LL_PROFILE_SOURC
     title: p.title || `#${p.brandProfileId}`,
     logoUrl: p.logoUrl || undefined,
     source,
+    category: p.category || undefined,
+    address: p.address || undefined,
+    coverUrl: p.coverUrl || p.logoUrl || undefined,
+    imageCount: typeof p.imageCount === 'number' ? p.imageCount : undefined,
+    templateCount: typeof p.templateCount === 'number' ? p.templateCount : undefined,
   }))
 }
 
@@ -149,10 +202,26 @@ export function toBrandProfileView(d: BrandProfileDetail): BrandProfileView {
     seen.add(img.url)
     images.push(img)
   }
-  for (const raw of (profileValue(data, 'features') as unknown[] | undefined) ?? []) {
+  const tags: string[] = []
+  const featureNames: string[] = []
+  const features = profileValue(data, 'features')
+  for (const raw of Array.isArray(features) ? features : []) {
     const f = asRecord(raw)
     if (!f) continue
-    for (const url of asStrings(f.imageUrls ?? f.image_urls)) push({ url, role: 'feature', name: text(f.name) })
+    const name = text(f.name)
+    if (name) featureNames.push(name)
+    for (const tag of Array.isArray(f.tags) ? f.tags : []) {
+      const t = text(tag)
+      if (t && !tags.includes(t)) tags.push(t)
+    }
+    for (const url of asStrings(f.imageUrls ?? f.image_urls)) push({ url, role: 'feature', name })
+  }
+  const meals: { name: string; price: string }[] = []
+  const setMeal = profileValue(data, 'setMeal', 'set_meal')
+  for (const raw of Array.isArray(setMeal) ? setMeal : []) {
+    const m = asRecord(raw)
+    const name = m ? text(m.name) : ''
+    if (m && name) meals.push({ name, price: text(m.price) })
   }
   for (const url of asStrings(profileValue(data, 'storeImageUrls', 'store_image_urls'))) push({ url, role: 'store' })
   if (logoUrl) push({ url: logoUrl, role: 'logo' })
@@ -162,6 +231,11 @@ export function toBrandProfileView(d: BrandProfileDetail): BrandProfileView {
     logoUrl,
     category: text(profileValue(data, 'category')),
     images,
+    address: text(profileValue(data, 'address')),
+    avgPrice: text(profileValue(data, 'avgPrice', 'avg_price')),
+    tags,
+    featureNames,
+    meals,
   }
 }
 
@@ -180,6 +254,8 @@ export interface LocalLifeTemplate {
   category: string
   title: string
   payload?: { overviewImage?: unknown } | null
+  /** 有模板图的图种短名（five_panel …；Java 2026-11-07 新增）。选了未覆盖的图种，提交会被拒 */
+  coverage?: string[] | null
 }
 
 /** GET /user-local-life-templates/list 列表项（自建模板；data 是自由 JSON） */
@@ -264,6 +340,10 @@ export interface LLCloseupConfig {
 /** CoreToolSubmissionRequest 中 /workflows/local-life 与 /continue 读取的子集 */
 export interface LocalLifeSubmitBody {
   title?: string
+  /** 整体设计要求 · 总需求（≤2000）；进每张图的提示词。续跑沿用上一轮，不读 */
+  content?: string
+  /** 整体设计要求 · 风格需求（≤2000）；出图后按它做一道风格转换。续跑沿用上一轮，不读 */
+  style?: string
   brandProfileId?: number
   /** official（默认，templateIds）/ custom（各图种 templateUrls） */
   mode?: 'official' | 'custom'
@@ -327,12 +407,21 @@ export interface BrandProfileAssetRow {
   workflowHistoryId: number
   status: string
   createdAt?: string | null
+  /** 提交时冻结的点数（失败整单退回、部分失败按张退回；Java 2026-11-07 新增） */
+  points?: number | null
+  /** 失败原因的用户文案（非失败为 null；Java 2026-11-07 新增） */
+  error?: string | null
   businesses?: {
     bizType: string
     imageUrls?: string[] | null
     tasks?: string[] | null
     results?: { slot?: string; versionIndex?: number; groupIndex?: number; url?: string | null }[] | null
   }[]
+}
+
+/** 删除全案历史（Java 整批校验归属；任一仍在生成中整批拒绝） */
+export function deleteLocalLifeHistories(historyIds: number[]) {
+  return deleteWorkflowHistories(LOCAL_LIFE_WORKFLOW_TITLE, historyIds)
 }
 
 export function brandProfileAssets(id: number, page = 1, size = 10) {

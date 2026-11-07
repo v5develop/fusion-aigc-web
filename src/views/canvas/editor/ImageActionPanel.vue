@@ -83,7 +83,7 @@ const TAB = 'sx-seg-item sx-focus flex-1 !h-32px !text-12px gap-4px'
       }}</span>
       <button
         type="button"
-        class="grid shrink-0 w-28px h-28px p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
+        class="relative grid shrink-0 w-28px h-28px p-0 after:content-empty after:absolute after:-inset-3px place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
         :class="ACTION_RING"
         :aria-label="busy ? '关闭面板（会停止等待，已提交的任务不会撤回）' : '关闭面板'"
         title="关闭"

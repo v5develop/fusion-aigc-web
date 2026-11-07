@@ -79,7 +79,7 @@ function thumbOf(node: CanvasEditorNode) {
       </template>
       <button
         type="button"
-        class="grid w-28px h-28px ml-auto p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
+        class="relative grid w-28px h-28px ml-auto p-0 after:content-empty after:absolute after:-inset-3px place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
         :class="FOCUS_RING"
         :title="collapsed ? '展开画布资产' : '折叠画布资产'"
         :aria-label="collapsed ? '展开画布资产' : '折叠画布资产'"

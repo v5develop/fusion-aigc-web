@@ -4,12 +4,22 @@
  * + 重命名 / 另存为 / 删除 + 详情抽屉（运行历史）。
  * 不做节点编辑器（规划中），仅画布级管理。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, h, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMessage } from 'naive-ui'
+import { useDialog, useMessage } from 'naive-ui'
+import type { DropdownOption } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
-import { canvasCreate, canvasList, canvasRemove, canvasRename, canvasSaveAs } from '@/api/canvasHome.ts'
-import type { ICanvasSummary } from '@/api/canvasHome.ts'
+import {
+  canvasCreate,
+  canvasFromTemplate,
+  canvasList,
+  canvasRemove,
+  canvasRename,
+  canvasSaveAs,
+  canvasTemplates,
+} from '@/api/canvasHome.ts'
+import type { ICanvasSummary, ICanvasTemplate } from '@/api/canvasHome.ts'
+import IconButton from '@/components/IconButton/index.vue'
 import { toApiError } from '@/api/index.ts'
 import TitleModal from './TitleModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
@@ -17,28 +27,38 @@ import CanvasDetail from './CanvasDetail.vue'
 
 defineOptions({ name: 'canvas-page' })
 
-/** 首页模板卡（原型文案）：仅展示，点击统一打开「从模板创建」弹层，实际模板仍取自接口；色块取自原型 canvasTemplates（v3 外壳） */
+/**
+ * 首页模板卡（2026-11-06 二轮：3 → 6 套，名称/说明/色块逐条抄原型 canvasTemplates.ts，封面用真实编辑态截图）。
+ * 点击按标题匹配接口模板（接口无稳定 code），命中则直接建画布并进编辑器，未命中退回「从模板创建」弹层并预选/过滤。
+ */
 const HOME_TEMPLATES = [
-  { title: '模特换装', desc: '人物图 + 单品图，保脸保姿势，只换衣服', tint: 'bg-[rgba(135,95,154,0.09)]' },
-  { title: '商品三视图', desc: '一张商品图，生成正/侧/背三视图，白底一致', tint: 'bg-[rgba(20,184,166,0.10)]' },
-  { title: '元素替换', desc: '参考视频 + 3 张元素图，只换局部元素', tint: 'bg-[rgba(249,115,22,0.10)]' },
+  { title: '模特换装', desc: '人物图 + 单品图，保脸保姿势，只换衣服', tint: 'bg-[rgba(135,95,154,0.09)]', dot: 'rgba(135,95,154,0.78)', cover: '/canvas-templates/outfit.webp' },
+  { title: '商品三视图', desc: '一张商品图，生成正/侧/背三视图，白底一致', tint: 'bg-[rgba(20,184,166,0.10)]', dot: 'rgba(20,184,166,0.78)', cover: '/canvas-templates/three-view.webp' },
+  { title: '元素替换', desc: '参考视频 + 3 张元素图，只换局部元素', tint: 'bg-[rgba(249,115,22,0.10)]', dot: 'rgba(249,115,22,0.78)', cover: '/canvas-templates/element-replace.webp' },
+  { title: '商品主图', desc: '一张商品图，出白底 / 场景两版 1:1 主图', tint: 'bg-[rgba(20,184,166,0.10)]', dot: 'rgba(20,184,166,0.78)', cover: '/canvas-templates/product-main.webp' },
+  { title: '带货短片', desc: '商品图 + 卖点，出 8 秒竖屏带货短片', tint: 'bg-[rgba(106,72,123,0.10)]', dot: 'rgba(106,72,123,0.78)', cover: '/canvas-templates/short-video.webp' },
+  { title: '高清放大', desc: '模糊素材放到 2K，保留原构图与比例', tint: 'bg-[rgba(59,130,246,0.10)]', dot: 'rgba(59,130,246,0.78)', cover: '/canvas-templates/hd-upscale.webp' },
 ]
+
+/** 加载失败的模板封面：回落同色调色块 + 迷你节点装饰 */
+const failedCovers = ref(new Set<string>())
+function markCoverFailed(cover: string) {
+  if (failedCovers.value.has(cover)) return
+  failedCovers.value = new Set([...failedCovers.value, cover])
+}
 
 /** 原型装饰小卡（CanvasHomeView .ch-mini-node + canvas-v31 覆盖）：宽 148、内边距 9/11、r8、11px；旋转角取自原型源码 */
 const DECO_CLS =
   'absolute flex flex-col gap-3px w-148px px-11px py-9px rounded-8px border border-solid border-line bg-white/90 text-ink-2 text-11px text-left shadow-[0_1px_2px_rgba(16,24,40,0.06)] [&_small]:(text-11px text-muted)'
 
-/** 原型 .ch-btn（v3）：高 30、r4、13px/500，白渐变 + 内高光 / 内底线 + 短投影，过渡 0.12s ease */
+/** 原型 .ch-btn（v3）：高 32（命中区 ≥32）、r14、13px/500，白渐变 + 内高光 / 内底线 + 短投影，过渡 0.12s ease */
 const BTN_SHADOW =
   'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]'
 const BTN_BASE =
-  'inline-flex items-center justify-center gap-6px rounded-4px border border-solid text-13px font-500 cursor-pointer transition-[background,border-color,box-shadow] duration-120 ease-[ease] focus-visible:(outline outline-2 outline-violet outline-offset-2)'
-const BTN_DEFAULT = `${BTN_BASE} ${BTN_SHADOW} h-30px px-10px border-#c9cfd6 bg-gradient-to-b from-white to-#fbfcfc text-ink-2 hover:(border-#aeb6bf from-surface2 to-surface2 text-ink)`
+  'sx-squircle inline-flex items-center justify-center gap-6px rounded-14px border border-solid text-13px font-500 cursor-pointer transition-[background,border-color,box-shadow] duration-120 ease-[ease] focus-visible:(outline outline-2 outline-violet outline-offset-2)'
+const BTN_DEFAULT = `${BTN_BASE} ${BTN_SHADOW} h-32px px-12px border-#c9cfd6 bg-gradient-to-b from-white to-#fbfcfc text-ink-2 hover:(border-#aeb6bf from-surface2 to-surface2 text-ink)`
 /** 原型 .ch-btn.is-lg：高 34、内边距 16 */
-const BTN_LG = `${BTN_BASE} ${BTN_SHADOW} h-34px px-16px`
-
-const ACTION_CLS =
-  'p-0 border-none bg-transparent text-12px text-violet cursor-pointer hover:text-violet-press focus-visible:(outline outline-2 outline-violet outline-offset-2)'
+const BTN_LG = `${BTN_BASE} ${BTN_SHADOW} h-36px px-16px`
 
 const message = useMessage()
 const router = useRouter()
@@ -49,13 +69,18 @@ const items = ref<ICanvasSummary[]>([])
 const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
+const loadError = ref('')
 const loadingMore = ref(false)
 const hasMore = computed(() => items.value.length < total.value)
 
 function formatTime(ms?: number) {
-  if (!ms) return ''
+  if (!ms) return '尚未保存'
   const d = new Date(ms)
   const p = (n: number) => String(n).padStart(2, '0')
+  const now = new Date()
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) {
+    return `今天 ${p(d.getHours())}:${p(d.getMinutes())}`
+  }
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
@@ -81,8 +106,12 @@ async function reload() {
     if (cur !== seq) return
     items.value = list
     page.value = 1
+    loadError.value = ''
   } catch (err) {
-    if (cur === seq) notifyNetworkError(err, '画布列表加载失败，请稍后重试')
+    if (cur === seq) {
+      notifyNetworkError(err, '画布列表加载失败，请稍后重试')
+      loadError.value = toApiError(err)?.message || '网络开小差了，请检查网络后重试。'
+    }
   } finally {
     if (cur === seq) loading.value = false
   }
@@ -112,7 +141,10 @@ async function removeItem(item: ICanvasSummary) {
   try {
     await canvasRemove(item.id)
     message.success('已删除')
-    void reload()
+    items.value = items.value.filter((i) => i.id !== item.id)
+    total.value = Math.max(0, total.value - 1)
+    // 删空了当前已加载的列表但服务端还有：重新拉第一页（本地删除后页码偏移，接着翻下一页会漏一条）
+    if (!items.value.length && total.value > 0) void reload()
   } catch (err) {
     notifyNetworkError(err, '删除失败，请稍后重试')
   }
@@ -135,17 +167,18 @@ function openDetail(item: ICanvasSummary) {
 
 // ---------------- 新建 / 模板 / 重命名 / 另存为 ----------------
 
-const showCreate = ref(false)
 const creating = ref(false)
 
-async function doCreate(title: string) {
-  if (creating.value) return
+/** 新建空白画布：一步到位，标题在编辑器里改 */
+async function createBlank() {
+  // 模板创建在途时也不再新建：两边都会 router.push，连点会先后跳两次
+  if (creating.value || startingTemplate.value) return
   creating.value = true
   try {
-    await canvasCreate(title ? { title } : {})
-    message.success('画布已创建')
-    showCreate.value = false
-    void reload()
+    const res = await canvasCreate({ title: '未命名画布' })
+    const id = res.data?.id
+    if (id) void router.push({ name: 'canvas-editor', params: { id } })
+    else void reload()
   } catch (err) {
     notifyNetworkError(err, '创建失败，请稍后重试')
   } finally {
@@ -154,6 +187,52 @@ async function doCreate(title: string) {
 }
 
 const showTemplates = ref(false)
+const pickerHint = ref('')
+
+// 首页静态模板 -> 接口模板：整页只取一次，按标题匹配
+let apiTemplates: ICanvasTemplate[] | null = null
+let apiTemplatesLoading: Promise<ICanvasTemplate[]> | null = null
+function loadApiTemplates() {
+  if (apiTemplates) return Promise.resolve(apiTemplates)
+  apiTemplatesLoading ??= canvasTemplates('official')
+    .then((res) => (apiTemplates = res.data?.items ?? []))
+    .finally(() => (apiTemplatesLoading = null))
+  return apiTemplatesLoading
+}
+const normTitle = (t: string) => t.replace(/\s+/g, '')
+
+const startingTemplate = ref('')
+
+async function startFromHomeTemplate(t: { title: string }) {
+  if (startingTemplate.value || creating.value) return
+  startingTemplate.value = t.title
+  try {
+    const list = await loadApiTemplates()
+    const hit = list.find((x) => normTitle(x.title) === normTitle(t.title))
+    if (!hit) {
+      openPicker(t.title)
+      return
+    }
+    const res = await canvasFromTemplate({ template_id: hit.id })
+    const id = res.data?.id
+    if (id) void router.push({ name: 'canvas-editor', params: { id } })
+    else void reload()
+  } catch (err) {
+    notifyNetworkError(err, '创建失败，请稍后重试')
+  } finally {
+    startingTemplate.value = ''
+  }
+}
+
+function openPicker(hint = '') {
+  pickerHint.value = hint
+  showTemplates.value = true
+}
+
+function scrollToTemplates() {
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  document.getElementById('canvas-home-templates')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+}
 
 /** 从模板建好后直接打开（契约 4.3 回包带 id + snapshot）；没拿到 id 时退回刷新列表 */
 function onCreatedFromTemplate(id: string) {
@@ -201,16 +280,55 @@ const saveAsInitial = computed(() => {
   return t ? `${t.title || '未命名画布'} - 副本` : ''
 })
 
+// ---------------- 卡片「更多」菜单 ----------------
+
+const dialog = useDialog()
+
+const MORE_OPTIONS: DropdownOption[] = [
+  { key: 'detail', label: '详情' },
+  { key: 'rename', label: '重命名' },
+  { key: 'copy', label: '创建副本' },
+  { type: 'divider', key: 'd1' },
+  { key: 'remove', label: () => h('span', { style: 'color:#c0392b' }, '删除') },
+]
+
+function onMore(key: string | number, item: ICanvasSummary) {
+  if (key === 'detail') openDetail(item)
+  else if (key === 'rename') openRename(item)
+  else if (key === 'copy') openSaveAs(item)
+  else if (key === 'remove') {
+    dialog.warning({
+      title: '删除画布',
+      content: '删除后画布及其运行历史不可恢复，确定删除？',
+      positiveText: '删除',
+      negativeText: '取消',
+      onPositiveClick: () => removeItem(item),
+    })
+  }
+}
+
 async function doSaveAs(title: string) {
   if (savingAs.value || !saveAsTarget.value) return
   savingAs.value = true
   try {
-    await canvasSaveAs(saveAsTarget.value.id, title || undefined)
-    message.success('已另存为副本')
+    const res = await canvasSaveAs(saveAsTarget.value.id, title || undefined)
+    message.success('已创建副本')
     showSaveAs.value = false
-    void reload()
+    const d = res.data
+    if (d?.id) {
+      items.value.unshift({
+        id: d.id,
+        title: d.title,
+        revision: d.revision,
+        node_count: d.node_count,
+        cover_url: d.cover_url,
+        created_at: d.created_at,
+        updated_at: d.updated_at,
+      })
+      total.value++
+    } else void reload()
   } catch (err) {
-    notifyNetworkError(err, '另存为失败，请稍后重试')
+    notifyNetworkError(err, '创建副本失败，请稍后重试')
   } finally {
     savingAs.value = false
   }
@@ -243,7 +361,7 @@ async function doSaveAs(title: string) {
           <h1 class="m-0 text-14px font-600 text-ink">画布</h1>
         </div>
         <div class="flex items-center gap-8px ml-auto">
-          <button type="button" :class="BTN_DEFAULT" @click="showTemplates = true">
+          <button type="button" :class="BTN_DEFAULT" @click="openPicker()">
             <svg
               class="w-15px h-15px"
               viewBox="0 0 24 24"
@@ -257,15 +375,16 @@ async function doSaveAs(title: string) {
               <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2" />
               <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2" />
             </svg>
-            模板与历史
+            浏览模板
           </button>
           <button
             type="button"
             :class="[
               BTN_BASE,
-              'h-30px px-10px border-violet-border bg-gradient-to-b from-violet-top to-violet-bottom text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_1px_rgba(90,60,110,0.18),0_2px_4px_rgba(90,60,110,0.18)] hover:(from-#926ba6 to-#835a96) active:(border-violet-press from-violet-deep to-violet-press shadow-[inset_0_1px_3px_rgba(31,35,41,0.24)])',
+              'h-32px px-12px border-violet-border bg-gradient-to-b from-violet-top to-violet-bottom text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_1px_rgba(90,60,110,0.18),0_2px_4px_rgba(90,60,110,0.18)] hover:(from-#926ba6 to-#835a96) active:(border-violet-press from-violet-deep to-violet-press shadow-[inset_0_1px_3px_rgba(31,35,41,0.24)])',
             ]"
-            @click="showCreate = true"
+            :disabled="creating || !!startingTemplate"
+            @click="createBlank()"
           >
             <span aria-hidden="true" class="text-16px leading-none">+</span>
             新建画布
@@ -309,7 +428,8 @@ async function doSaveAs(title: string) {
                   BTN_LG,
                   'border-violet-line bg-gradient-to-b from-white to-#fbfcfc text-violet-ink hover:(border-#c9b2d8 from-violet-soft to-violet-soft)',
                 ]"
-                @click="showCreate = true"
+                :disabled="creating || !!startingTemplate"
+                @click="createBlank()"
               >
                 <span aria-hidden="true" class="text-17px leading-none">+</span>
                 构建画布
@@ -317,7 +437,7 @@ async function doSaveAs(title: string) {
               <button
                 type="button"
                 :class="[BTN_LG, 'border-transparent bg-transparent text-violet-ink hover:bg-violet-soft']"
-                @click="showTemplates = true"
+                @click="scrollToTemplates()"
               >
                 从模板开始
               </button>
@@ -329,23 +449,24 @@ async function doSaveAs(title: string) {
                 :key="t.title"
                 type="button"
                 class="inline-flex items-center gap-7px h-32px px-12px rounded-999px border border-solid border-line bg-white text-ink-2 text-12px cursor-pointer transition-[background,border-color,color] duration-120 ease-[ease] hover:(border-violet-line bg-violet-soft text-violet-ink) focus-visible:(outline outline-2 outline-violet outline-offset-2)"
-                @click="showTemplates = true"
+                :disabled="creating || !!startingTemplate"
+                @click="startFromHomeTemplate(t)"
               >
-                <i class="w-7px h-7px rounded-full" :class="t.tint" />
+                <i class="w-7px h-7px rounded-full" :style="{ background: t.dot }" />
                 {{ t.title }}
               </button>
             </div>
             <div class="absolute inset-0 overflow-hidden pointer-events-none max-[980px]:hidden" aria-hidden="true">
               <span :class="[DECO_CLS, 'top-24px left-0 -rotate-4']"
-                >TEXT INPUT<small>A close-up of the woman.</small></span
+                >提示词<small>A close-up of the woman.</small></span
               >
-              <span :class="[DECO_CLS, 'bottom-28px left-62px rotate-3']">图片<small>点击上传</small></span>
+              <span :class="[DECO_CLS, 'bottom-28px left-62px rotate-3']">图片<small>输入素材</small></span>
               <span :class="[DECO_CLS, 'top-38px right-0 rotate-4']">Nano Banana<small>参考图 · 2/5</small></span>
               <span :class="[DECO_CLS, 'right-72px bottom-18px -rotate-3']">图片<small>输出</small></span>
             </div>
           </section>
 
-          <section class="mt-24px">
+          <section id="canvas-home-templates" class="mt-24px scroll-mt-16px">
             <header class="flex items-end gap-14px mb-10px">
               <div>
                 <h2 class="m-0 text-16px font-600 text-ink">从模板开始</h2>
@@ -358,24 +479,49 @@ async function doSaveAs(title: string) {
                 v-for="t in HOME_TEMPLATES"
                 :key="t.title"
                 type="button"
-                class="flex items-center gap-12px min-w-0 p-10px rounded-8px border border-solid border-line bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.06)] cursor-pointer transition-[border-color,box-shadow] duration-120 ease-[ease] hover:(border-violet-line shadow-[0_2px_6px_rgba(135,95,154,0.12)]) focus-visible:(outline outline-2 outline-violet outline-offset-2)"
-                @click="showTemplates = true"
+                class="canvas-tpl sx-squircle group relative flex flex-col min-w-0 p-10px rounded-18px border border-solid border-line bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.06)] cursor-pointer transition-[border-color,box-shadow,transform] duration-120 ease-[ease] hover:(-translate-y-1px border-violet-line shadow-[0_2px_6px_rgba(135,95,154,0.12)]) motion-reduce:(transition-none hover:translate-y-0) disabled:cursor-wait focus-visible:(outline outline-2 outline-violet outline-offset-2)"
+                :disabled="creating || !!startingTemplate"
+                @click="startFromHomeTemplate(t)"
               >
+                <!-- 预览 170h r12：真实编辑态截图，加载失败回落同色调色块 + 迷你节点 -->
                 <span
-                  class="relative shrink-0 w-108px h-72px rounded-6px overflow-hidden [&>i]:(absolute block rounded-3px border-[0.8px] border-solid border-[rgba(51,51,51,0.08)] bg-white/92)"
+                  class="relative block h-170px rounded-12px overflow-hidden [&>i]:(absolute block rounded-3px border-[0.8px] border-solid border-[rgba(51,51,51,0.08)] bg-white/92) border-[0.8px] border-solid border-[rgba(51,51,51,0.06)]"
                   :class="t.tint"
                   aria-hidden="true"
                 >
-                  <i class="top-10px left-9px w-1/2 h-8px" />
-                  <i class="bottom-9px left-9px w-24% h-32px" />
-                  <i class="bottom-9px left-36% w-24% h-32px" />
-                  <i class="right-8px bottom-9px w-28% h-40px" />
+                  <img
+                    v-if="!failedCovers.has(t.cover)"
+                    :src="t.cover"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    class="block h-full w-full object-cover"
+                    @error="markCoverFailed(t.cover)"
+                  />
+                  <!-- 装饰迷你节点只在封面加载失败时出现，正常情况下不盖住截图 -->
+                  <template v-else>
+                    <i class="top-14px left-12px w-1/2 h-10px" />
+                    <i class="bottom-12px left-12px w-24% h-44px" />
+                    <i class="bottom-12px left-40% w-24% h-44px" />
+                    <i class="right-10px bottom-12px w-28% h-56px" />
+                  </template>
                 </span>
-                <span class="flex flex-col gap-3px min-w-0">
+                <span class="flex flex-col gap-3px min-w-0 pt-9px pl-2px pr-22px">
                   <strong class="text-14px font-600 text-ink">{{ t.title }}</strong>
                   <small class="text-13px leading-[1.45] text-muted">{{ t.desc }}</small>
                 </span>
-                <span class="ml-auto shrink-0 text-14px leading-none text-placeholder" aria-hidden="true">→</span>
+                <svg
+                  class="absolute right-12px bottom-14px w-14px h-14px text-placeholder"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
               </button>
             </div>
           </section>
@@ -400,91 +546,86 @@ async function doSaveAs(title: string) {
               正在加载画布…
             </div>
             <div
+              v-else-if="loadError && !items.length"
+              class="flex flex-col items-center gap-8px px-20px py-32px rounded-14px border border-solid border-#e4b7b4 bg-#fdf5f4 text-13px text-#a1423d text-center"
+              role="alert"
+            >
+              <strong class="text-14px text-#a1423d">画布列表没有加载出来</strong>
+              <p class="m-0">{{ loadError }}</p>
+              <button type="button" :class="BTN_DEFAULT" @click="reload()">重试</button>
+            </div>
+            <div
               v-else
               class="grid gap-10px max-[980px]:grid-cols-1"
               :class="[items.length <= 2 ? 'grid-cols-1' : 'grid-cols-2', { 'opacity-60': loading }]"
               :aria-busy="loading || undefined"
             >
-              <div
-                v-for="item in items"
-                :key="item.id"
-                role="button"
-                tabindex="0"
-                class="flex items-center gap-12px min-w-0 p-10px rounded-8px border border-solid border-line bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.06)] cursor-pointer transition-[background,border-color] duration-120 ease-[ease] hover:(border-violet-line bg-surface2) focus-visible:(outline outline-2 outline-violet outline-offset-2)"
-                @click="openCanvas(item)"
-                @keydown.enter.self.prevent="openCanvas(item)"
-                @keydown.space.self.prevent="openCanvas(item)"
-              >
-                <span class="grid place-items-center shrink-0 w-88px h-58px rounded-6px overflow-hidden bg-surface3">
-                  <img v-if="item.cover_url" :src="item.cover_url" alt="" class="block w-full h-full object-cover" />
-                  <span
-                    v-else
-                    class="relative w-54px h-34px [&>i]:(absolute block w-14px h-9px rounded-2px border-[0.8px] border-solid border-#d9dde5 bg-white)"
-                    aria-hidden="true"
-                  >
-                    <i class="top-2px left-2px" />
-                    <i class="top-2px left-22px" />
-                    <i class="bottom-2px left-12px" />
-                    <i class="bottom-2px right-0" />
-                  </span>
-                </span>
-                <span class="flex flex-col gap-4px min-w-0 flex-1">
-                  <strong class="text-14px font-600 text-ink overflow-hidden text-ellipsis whitespace-nowrap">
-                    {{ item.title || '未命名画布' }}
-                  </strong>
-                  <span class="flex items-center gap-4px text-11px text-muted">
-                    <svg
-                      class="w-12px h-12px shrink-0"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                      stroke-linecap="round"
+              <div v-for="item in items" :key="item.id" class="group relative min-w-0">
+                <button
+                  type="button"
+                  class="sx-squircle flex items-center gap-12px w-full min-w-0 p-10px pr-52px rounded-18px border border-solid border-line bg-white text-left shadow-[0_1px_2px_rgba(16,24,40,0.06)] cursor-pointer transition-[background,border-color] duration-120 ease-[ease] hover:(border-violet-line bg-surface2) focus-visible:(outline outline-2 outline-violet outline-offset-2)"
+                  @click="openCanvas(item)"
+                >
+                  <span class="grid place-items-center shrink-0 w-88px h-58px rounded-6px overflow-hidden bg-surface3">
+                    <img
+                      v-if="item.cover_url && !failedCovers.has(item.cover_url)"
+                      :src="item.cover_url"
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      class="block w-full h-full object-cover"
+                      @error="markCoverFailed(item.cover_url)"
+                    />
+                    <span
+                      v-else
+                      class="relative w-54px h-34px [&>i]:(absolute block w-14px h-9px rounded-2px border-[0.8px] border-solid border-#d9dde5 bg-white)"
                       aria-hidden="true"
                     >
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M12 7v5l3 2" />
+                      <i class="top-2px left-2px" />
+                      <i class="top-2px left-22px" />
+                      <i class="bottom-2px left-12px" />
+                      <i class="bottom-2px right-0" />
+                    </span>
+                  </span>
+                  <span class="flex flex-col gap-4px min-w-0 flex-1">
+                    <strong class="text-14px font-600 text-ink overflow-hidden text-ellipsis whitespace-nowrap">
+                      {{ item.title || '未命名画布' }}
+                    </strong>
+                    <span class="flex items-center gap-4px text-11px text-muted">
+                      <svg
+                        class="w-12px h-12px shrink-0"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        aria-hidden="true"
+                      >
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v5l3 2" />
+                      </svg>
+                      更新于 {{ formatTime(item.updated_at) }} · {{ item.node_count }} 个节点
+                    </span>
+                  </span>
+                </button>
+                <n-dropdown trigger="click" placement="bottom-end" :options="MORE_OPTIONS" @select="(k: string | number) => onMore(k, item)">
+                  <IconButton label="更多" size="md" variant="quiet" reveal class="absolute right-10px top-1/2 -translate-y-1/2">
+                    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                      <circle cx="5" cy="12" r="1.8" />
+                      <circle cx="12" cy="12" r="1.8" />
+                      <circle cx="19" cy="12" r="1.8" />
                     </svg>
-                    更新于 {{ formatTime(item.updated_at) }} · {{ item.node_count }} 个节点
-                  </span>
-                  <span class="flex gap-12px text-12px" @click.stop>
-                    <button type="button" :class="ACTION_CLS" @click="openDetail(item)">详情</button>
-                    <button type="button" :class="ACTION_CLS" @click="openRename(item)">重命名</button>
-                    <button type="button" :class="ACTION_CLS" @click="openSaveAs(item)">另存为</button>
-                    <n-popconfirm @positive-click="removeItem(item)">
-                      <template #trigger>
-                        <button
-                          type="button"
-                          class="ll-danger-link p-0 border-none bg-transparent text-12px focus-visible:(outline outline-2 outline-violet outline-offset-2)"
-                        >
-                          删除
-                        </button>
-                      </template>
-                      删除后画布及其运行历史不可恢复，确定删除？
-                    </n-popconfirm>
-                  </span>
-                </span>
-                <svg
-                  class="ml-auto w-15px h-15px shrink-0 text-placeholder"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="m9 6 6 6-6 6" />
-                </svg>
+                  </IconButton>
+                </n-dropdown>
               </div>
 
               <div
-                v-if="!loading && !items.length"
+                v-if="!loading && !loadError && !items.length"
                 class="col-span-full flex flex-col items-center gap-8px px-20px py-32px rounded-8px border border-dashed border-line-strong bg-white text-13px text-muted text-center"
               >
                 <strong class="text-14px text-ink">还没有保存的画布</strong>
                 <p class="m-0">从模板开始，或者新建一张空白画布。</p>
-                <button type="button" :class="BTN_DEFAULT" @click="showCreate = true">新建画布</button>
+                <button type="button" :class="BTN_DEFAULT" :disabled="creating || !!startingTemplate" @click="createBlank()">新建画布</button>
               </div>
             </div>
 
@@ -501,18 +642,8 @@ async function doSaveAs(title: string) {
         </div>
       </main>
 
-      <!-- 新建空白画布 -->
-      <TitleModal
-        v-model:show="showCreate"
-        title="新建空白画布"
-        label="画布标题"
-        placeholder="选填，留空为「未命名画布」"
-        :loading="creating"
-        @confirm="doCreate"
-      />
-
       <!-- 从模板创建 -->
-      <TemplatePicker v-model:show="showTemplates" @created="onCreatedFromTemplate" />
+      <TemplatePicker v-model:show="showTemplates" :hint="pickerHint" @created="onCreatedFromTemplate" />
 
       <!-- 重命名 -->
       <TitleModal
@@ -525,10 +656,10 @@ async function doSaveAs(title: string) {
         @confirm="doRename"
       />
 
-      <!-- 另存为 -->
+      <!-- 创建副本（另存为） -->
       <TitleModal
         v-model:show="showSaveAs"
-        title="另存为副本"
+        title="创建副本"
         label="副本标题"
         :initial="saveAsInitial"
         placeholder="留空则自动命名为「原标题 - 副本」"

@@ -8,7 +8,7 @@ import type { ISameStyleRawRequest } from '@/api/types'
  * 跳到一个空白页或跳不动——出了问题也怪不到运营头上，前端得自己站得住。
  *
  * <p>这张表能作为权威，是因为回显代码就写在这两个页面里：<code>useSameStyleRecipe</code>
- * 挂在 /picture 和 /video 上，各自的 entryCodeOps 白名单也只认自己那几个码。
+ * 挂在 /image/generate 和 /video/generate 上，各自的 entryCodeOps 白名单也只认自己那几个码。
  * route 指到别的地方，回显必然出不来——这不是「可能不一致」，是确定错。
  *
  * <p>本期只有这四个通用创作码。电商那 15 个入口的提交体是另一套协议（素材键是
@@ -16,10 +16,10 @@ import type { ISameStyleRawRequest } from '@/api/types'
  * 将来要扩，路径对照见 docs/container-entry-links.md 的附录表。
  */
 export const ENTRY_ROUTE: Record<string, string> = {
-  textToImage: '/picture',
-  imageToImage: '/picture',
-  textToVideo: '/video',
-  imageToVideo: '/video',
+  textToImage: '/image/generate',
+  imageToImage: '/image/generate',
+  textToVideo: '/video/generate',
+  imageToVideo: '/video/generate',
 }
 
 /** 本期只支持统一提交入口。模板/电商/本地生活的配方形状不同，回显进来必然错 */

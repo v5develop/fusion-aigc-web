@@ -12,7 +12,7 @@ import RecordList from '@/views/e-commerce/childPages/components/RecordList/inde
 import { useInitCheckTaskStatus } from '@/views/e-commerce/childPages/hooks.ts'
 import { platformOps, regionOps, languageOps, aspectRatioOps } from '../../constants.ts'
 // 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
-import { modelOps } from '@/views/picture/constants.ts'
+import { modelOps } from '@/views/image/constants.ts'
 import { useMessage } from 'naive-ui'
 
 // keep-alive 按组件 name 命中缓存。子页文件名全是 index.vue，Vue 推断出的 name 会全部撞车，必须显式声明；

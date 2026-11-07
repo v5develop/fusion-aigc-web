@@ -9,7 +9,7 @@ import GridImage from '@/views/e-commerce/childPages/components/GridImage/index.
 import SelectGroup from '@/components/SelectGroup/index.vue'
 import { platformOps, regionOps, languageOps, aspectRatioOps, genderOps, ageOps, skinOps } from '../../constants.ts'
 // 与图片模块同一套模型（本地模型 / GPT-Image-2），复用其常量避免两处定义漂移
-import { modelOps } from '@/views/picture/constants.ts'
+import { modelOps } from '@/views/image/constants.ts'
 import Tab from '@/components/Tab/index.vue'
 import Sample from '@/views/e-commerce/childPages/components/Sample/index.vue'
 import RecordList from '@/views/e-commerce/childPages/components/RecordList/index.vue'

@@ -19,6 +19,9 @@ import { workflowRouteOf, workflowSchemas } from '@/views/workflow/schemas'
 import { stashRefill, type RefillMode } from '@/utils/refillHandoff'
 import { llTheme } from '@/views/local-life/theme.ts'
 import MediaFallback from '@/components/MediaFallback/index.vue'
+import IconButton from '@/components/IconButton/index.vue'
+import PageEmpty from '@/components/PageEmpty/index.vue'
+import PageLoadError from '@/components/PageLoadError/index.vue'
 import {
   taskCenterCollect,
   taskCenterDelete,
@@ -45,20 +48,17 @@ const DELETABLE = new Set(['success', 'failed', 'cancelled'])
 const IN_FLIGHT = new Set(['queued', 'processing'])
 
 const FOCUS = 'focus-visible:(outline outline-2 outline-solid outline-violet outline-offset-2)'
-const TAB_CLS =
-  'inline-flex items-center gap-6px h-34px px-10px rounded-8px border border-solid text-13px font-500 cursor-pointer whitespace-nowrap ' +
-  FOCUS
-const TOOL_CLS =
-  'inline-flex items-center gap-6px h-34px px-10px rounded-8px border border-solid border-line bg-white text-13px font-500 text-ink-2 cursor-pointer whitespace-nowrap hover:border-line-strong disabled:(opacity-60 cursor-not-allowed) ' +
+const COLLECT_CLS =
+  'sx-squircle inline-flex items-center gap-6px h-32px px-12px rounded-14px border border-solid text-13px font-500 cursor-pointer whitespace-nowrap ' +
   FOCUS
 
 /** 状态徽标配色（只按后端给的 statusBucket 选样式，文案用 statusLabel） */
 const CHIP_CLS: Record<string, string> = {
-  queued: 'll-chip-warning',
-  processing: 'll-chip-running',
-  success: 'll-chip-success',
-  failed: 'll-chip-error',
-  cancelled: 'text-muted bg-surface3 border border-line',
+  queued: 'bg-warning-soft text-warning',
+  processing: 'bg-info-soft text-violet-ink',
+  success: 'bg-success-soft text-success',
+  failed: 'bg-danger-soft text-danger',
+  cancelled: 'text-muted bg-surface3',
 }
 
 // ---------------- 筛选 ----------------
@@ -108,14 +108,16 @@ const loading = ref(false)
 const loadError = ref(false)
 const deleting = ref('')
 
-const tabs = computed(() => [
-  { value: '', label: '全部', count: overview.value?.total ?? 0 },
-  ...options.value.statuses.map((s) => ({
-    value: s.value,
-    label: s.label,
-    count: (overview.value as unknown as Record<string, number> | null)?.[s.value] ?? 0,
-  })),
-])
+/** 四段状态：全部 / 进行中（排队 + 生成中，后端 active）/ 已完成 / 失败；已取消只在「全部」里 */
+const tabs = computed(() => {
+  const ov = overview.value
+  return [
+    { value: '', label: '全部', count: ov?.total ?? 0 },
+    { value: 'active', label: '进行中', count: (ov?.queued ?? 0) + (ov?.processing ?? 0) },
+    { value: 'success', label: '已完成', count: ov?.success ?? 0 },
+    { value: 'failed', label: '失败', count: ov?.failed ?? 0 },
+  ]
+})
 
 let seq = 0
 /** silent：轮询 / 删除后的静默刷新，不出加载态，失败也不替换现有列表 */
@@ -319,12 +321,24 @@ const isVideo = (item: ITaskCenterItem) => item.resultType === 'video'
 const showProgress = (item: ITaskCenterItem) => IN_FLIGHT.has(item.statusBucket) && item.progress != null
 
 const emptyCopy = computed(() => {
-  if (filters.collected && !filters.statusBucket && !filters.entryCode && !filters.timeRange)
-    return { title: '还没有收藏的任务', desc: '点任务右侧的星标收藏，之后在这里快速找到' }
-  return filters.statusBucket || filters.entryCode || filters.timeRange || filters.collected
-    ? { title: '没有符合条件的任务', desc: '换个筛选条件试试' }
-    : { title: '还没有创作任务', desc: '去 AI 图片、AI 视频或工具里提交一次，任务会出现在这里' }
+  const narrowed = !!(filters.entryCode || filters.timeRange)
+  if (filters.collected && !filters.statusBucket && !narrowed)
+    return { title: '还没有收藏的任务', desc: '点任务右侧的星标收藏，之后在这里快速找到', goGenerate: false }
+  if (narrowed || filters.collected) return { title: '没有符合条件的任务', desc: '换个筛选条件试试', goGenerate: false }
+  switch (filters.statusBucket) {
+    case 'active':
+      return { title: '没有进行中的任务', desc: '正在排队或生成的任务会出现在这里', goGenerate: false }
+    case 'success':
+      return { title: '还没有已完成的任务', desc: '生成完成的任务会出现在这里', goGenerate: false }
+    case 'failed':
+      return { title: '没有失败的任务', desc: '', goGenerate: false }
+    default:
+      return { title: '还没有任务', desc: '提交一次生成，任务会出现在这里', goGenerate: true }
+  }
 })
+
+/** 行主区域可预览：有可用封面且未屏蔽；沿用原来的「新标签打开封面/大图」预览行为 */
+const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked && !brokenCovers.value.has(item.taskId)
 </script>
 
 <template>
@@ -359,38 +373,32 @@ const emptyCopy = computed(() => {
             clearable
             class="w-240px"
           />
-          <button type="button" :class="TOOL_CLS" :disabled="loading" @click="load()">刷新</button>
+          <button type="button" class="sx-btn" :disabled="loading" @click="load()">刷新</button>
         </div>
       </header>
 
       <div class="flex-1 px-20px pb-32px">
-        <div class="flex flex-wrap items-center gap-8px pt-20px pb-16px" role="group" aria-label="任务状态">
-          <button
-            v-for="t in tabs"
-            :key="t.value || '__all'"
-            type="button"
-            :aria-pressed="filters.statusBucket === t.value"
-            :class="[
-              TAB_CLS,
-              filters.statusBucket === t.value
-                ? 'bg-violet-soft border-violet-line text-violet-ink'
-                : 'bg-white border-line text-ink-2 hover:border-line-strong',
-            ]"
-            @click="filters.statusBucket = t.value"
-          >
-            {{ t.label }}
-            <span
-              class="px-5px py-1px rounded-4px text-10px tabular-nums"
-              :class="filters.statusBucket === t.value ? 'bg-white/70 text-violet-ink' : 'bg-surface3 text-muted'"
-              >{{ t.count }}</span
+        <div class="flex flex-wrap items-center gap-8px pt-20px pb-16px">
+          <div class="sx-seg" role="group" aria-label="任务状态">
+            <button
+              v-for="t in tabs"
+              :key="t.value || '__all'"
+              type="button"
+              :aria-pressed="filters.statusBucket === t.value"
+              class="sx-seg-item !h-30px !px-12px !text-13px"
+              :class="[FOCUS, filters.statusBucket === t.value ? 'sx-seg-on' : 'hover:text-ink']"
+              @click="filters.statusBucket = t.value"
             >
-          </button>
+              {{ t.label }}
+              <span class="ml-4px text-12px tabular-nums text-muted">{{ t.count }}</span>
+            </button>
+          </div>
           <span class="w-1px h-20px mx-2px bg-line" aria-hidden="true" />
           <button
             type="button"
             :aria-pressed="filters.collected"
             :class="[
-              TAB_CLS,
+              COLLECT_CLS,
               filters.collected
                 ? 'bg-[#fffbeb] border-[#fcd34d] text-[#b45309]'
                 : 'bg-white border-line text-ink-2 hover:border-line-strong',
@@ -418,9 +426,9 @@ const emptyCopy = computed(() => {
           <li
             v-for="n in 4"
             :key="n"
-            class="flex items-center gap-12px p-12px rounded-8px border border-solid border-line bg-white"
+            class="sx-squircle flex items-center gap-12px p-12px rounded-18px border border-solid border-line bg-white"
           >
-            <span class="flex-none w-64px h-64px rounded-6px bg-sunken animate-pulse" />
+            <span class="flex-none w-44px h-44px rounded-6px bg-sunken animate-pulse" />
             <span class="flex-1 flex flex-col gap-8px">
               <span class="block w-[40%] h-12px rounded-4px bg-sunken animate-pulse" />
               <span class="block w-[24%] h-10px rounded-4px bg-sunken animate-pulse" />
@@ -432,43 +440,21 @@ const emptyCopy = computed(() => {
         <!-- 加载失败 -->
         <div
           v-else-if="loadError && !items.length"
-          class="flex flex-col items-center justify-center gap-4px min-h-240px rounded-8px border border-dashed border-line-strong bg-white"
-          role="alert"
+          class="sx-squircle min-h-240px rounded-18px border border-dashed border-line-strong bg-white"
         >
-          <span
-            class="grid place-items-center w-48px h-48px box-border rounded-full border-2 border-solid border-warning text-20px font-600 text-warning"
-            aria-hidden="true"
-            >!</span
-          >
-          <strong class="mt-12px text-14px font-500 text-ink">任务列表加载失败</strong>
-          <span class="text-12px text-muted">请检查网络后重试</span>
-          <button type="button" :class="[TOOL_CLS, 'mt-12px !h-28px']" @click="load()">重试</button>
+          <PageLoadError title="任务列表加载失败" subtitle="请检查网络后重试" retryable @retry="load()" />
         </div>
 
         <!-- 空态 -->
         <div
           v-else-if="!items.length"
-          class="flex flex-col items-center justify-center gap-5px min-h-240px px-18px rounded-8px border border-dashed border-line-strong bg-white"
+          class="sx-squircle min-h-240px rounded-18px border border-dashed border-line-strong bg-white"
         >
-          <span
-            class="grid place-items-center w-40px h-40px box-border rounded-full border border-solid border-line bg-white text-violet-ink"
-            aria-hidden="true"
-          >
-            <svg
-              class="w-20px h-20px"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="8.5" />
-              <path d="M12 7.5V12l3 2" />
-            </svg>
-          </span>
-          <strong class="text-13px font-600 text-ink-2">{{ emptyCopy.title }}</strong>
-          <span class="max-w-320px text-center text-11px leading-[1.65] text-muted">{{ emptyCopy.desc }}</span>
+          <PageEmpty :text="emptyCopy.title" :description="emptyCopy.desc">
+            <button v-if="emptyCopy.goGenerate" type="button" class="sx-btn-primary" @click="router.push('/image')">
+              去生成
+            </button>
+          </PageEmpty>
         </div>
 
         <!-- 列表 -->
@@ -477,96 +463,134 @@ const emptyCopy = computed(() => {
             <li
               v-for="item in items"
               :key="item.taskId"
-              class="flex items-center gap-12px p-12px rounded-8px border border-solid border-line bg-white [transition:border-color_110ms,box-shadow_110ms] hover:(border-#c9cfd6 shadow-[0_1px_2px_rgba(31,35,41,0.05)])"
+              class="sx-squircle flex items-center gap-12px p-12px rounded-18px border border-solid border-line bg-white [transition:border-color_110ms,box-shadow_110ms] hover:(border-#c9cfd6 shadow-[0_1px_2px_rgba(31,35,41,0.05)])"
             >
-              <!-- 缩略 64 / r6：被屏蔽或加载失败走占位；文本产物显示正文首段 -->
-              <span
-                class="relative flex-none grid place-items-center w-64px h-64px box-border overflow-hidden rounded-6px border border-solid border-line bg-surface3 text-placeholder"
-              >
-                <MediaFallback
-                  v-if="item.blocked"
-                  :type="isVideo(item) ? 'video' : 'image'"
-                  reason="blocked"
-                  aria-label="内容已屏蔽"
-                />
-                <a
-                  v-else-if="item.coverUrl && !brokenCovers.has(item.taskId)"
-                  :href="item.coverUrl"
-                  target="_blank"
-                  rel="noopener"
-                  class="block w-full h-full rounded-5px"
-                  :class="FOCUS"
-                  :aria-label="`查看${item.title}的${isVideo(item) ? '视频封面' : '作品'}`"
+              <div class="min-w-0 flex-1 flex items-center gap-12px rounded-12px">
+                <!-- 缩略 44 / r6：被屏蔽或加载失败走占位；文本产物显示正文首段 -->
+                <component
+                  :is="previewable(item) ? 'a' : 'span'"
+                  v-bind="previewable(item) ? { href: item.coverUrl, target: '_blank', rel: 'noopener noreferrer', tabindex: -1, 'aria-hidden': true } : {}"
+                  class="relative flex-none grid place-items-center w-44px h-44px box-border overflow-hidden rounded-6px border border-solid border-line bg-surface3 text-placeholder"
                 >
-                  <img
-                    :src="item.coverUrl"
-                    alt=""
-                    loading="lazy"
-                    class="block w-full h-full object-cover"
-                    @error="brokenCovers.add(item.taskId)"
+                  <MediaFallback
+                    v-if="item.blocked"
+                    :type="isVideo(item) ? 'video' : 'image'"
+                    reason="blocked"
+                    aria-label="内容已屏蔽"
                   />
                   <span
-                    v-if="isVideo(item)"
-                    class="absolute left-4px bottom-4px px-4px rounded-3px bg-black/55 text-10px leading-14px text-white"
-                    aria-hidden="true"
-                    >视频</span
+                    v-else-if="item.coverUrl && !brokenCovers.has(item.taskId)"
+                    class="block w-full h-full rounded-5px"
                   >
-                </a>
-                <MediaFallback
-                  v-else-if="item.coverUrl"
-                  :type="isVideo(item) ? 'video' : 'image'"
-                  reason="loadFailed"
-                />
-                <span
-                  v-else-if="item.resultText"
-                  class="p-6px text-10px leading-14px text-ink-2 line-clamp-4 break-all"
-                  :title="item.resultText"
-                  >{{ item.resultText }}</span
-                >
-                <span v-else class="text-11px" aria-hidden="true">—</span>
-              </span>
-
-              <span class="min-w-0 flex-1 flex flex-col gap-6px">
-                <span class="flex items-center gap-8px min-w-0">
-                  <b class="truncate text-14px font-600 leading-20px text-ink" :title="item.title">{{ item.title }}</b>
-                  <span class="ll-chip" :class="CHIP_CLS[item.statusBucket] ?? CHIP_CLS.cancelled">{{
-                    item.statusLabel
-                  }}</span>
-                </span>
-                <span class="flex flex-wrap items-center gap-x-12px gap-y-2px text-11px leading-16px text-muted">
-                  <span>{{ item.typeName }}</span>
-                  <span class="tabular-nums">{{ item.createTime }}</span>
-                  <span class="tabular-nums select-all" :title="item.taskId">{{ item.taskId }}</span>
-                </span>
-                <span v-if="showProgress(item)" class="flex items-center gap-8px max-w-320px">
-                  <span
-                    class="relative flex-1 h-4px overflow-hidden rounded-full bg-sunken"
-                    role="progressbar"
-                    :aria-valuenow="item.progress ?? 0"
-                    aria-valuemin="0"
-                    aria-valuemax="100"
-                    :aria-label="`${item.title}进度`"
-                  >
-                    <span
-                      class="absolute inset-y-0 left-0 rounded-full sx-grad-progress transition-[width] duration-300"
-                      :style="{ width: `${item.progress}%` }"
+                    <img
+                      :src="item.coverUrl"
+                      alt=""
+                      loading="lazy"
+                      class="block w-full h-full object-cover"
+                      @error="brokenCovers.add(item.taskId)"
                     />
+                    <span
+                      v-if="isVideo(item)"
+                      class="absolute left-4px bottom-4px px-4px rounded-3px bg-black/55 text-10px leading-14px text-white"
+                      aria-hidden="true"
+                      >视频</span
+                    >
                   </span>
-                  <span class="flex-none text-11px tabular-nums text-violet-ink">{{ item.progress }}%</span>
-                </span>
-                <span
-                  v-if="item.failReason"
-                  class="text-12px leading-18px text-alert-danger line-clamp-2"
-                  :title="item.failReason"
-                  >{{ item.failReason }}</span
-                >
-              </span>
+                  <MediaFallback
+                    v-else-if="item.coverUrl"
+                    :type="isVideo(item) ? 'video' : 'image'"
+                    reason="loadFailed"
+                  />
+                  <span
+                    v-else-if="item.resultText"
+                    class="p-6px text-10px leading-14px text-ink-2 line-clamp-4 break-all"
+                    :title="item.resultText"
+                    >{{ item.resultText }}</span
+                  >
+                  <span v-else class="text-11px" aria-hidden="true">—</span>
+                </component>
 
-              <span class="flex-none flex items-center gap-4px">
+                <span class="min-w-0 flex-1 flex flex-col gap-6px">
+                  <span class="flex items-center gap-8px min-w-0">
+                    <b class="truncate text-14px font-600 leading-20px text-ink" :title="item.title">
+                      <a
+                        v-if="previewable(item)"
+                        :href="item.coverUrl ?? undefined"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="text-inherit no-underline rounded-4px hover:underline"
+                        :class="FOCUS"
+                        :aria-label="`预览：${item.title}`"
+                        >{{ item.title }}</a
+                      >
+                      <template v-else>{{ item.title }}</template>
+                    </b>
+                    <!-- 状态胶囊（原型 .task-row status capsule）：999px + 5px 状态点，语义 soft 底深字 -->
+                    <span
+                      class="inline-flex flex-none items-center h-18px px-7px rounded-full text-11px leading-16px whitespace-nowrap"
+                      :class="CHIP_CLS[item.statusBucket] ?? CHIP_CLS.cancelled"
+                    >
+                      <i
+                        class="w-5px h-5px rounded-full mr-4px"
+                        :class="
+                          {
+                            queued: 'bg-warning',
+                            processing: 'bg-violet',
+                            success: 'bg-success',
+                            failed: 'bg-danger',
+                            cancelled: 'bg-placeholder',
+                          }[item.statusBucket] ?? 'bg-placeholder'
+                        "
+                        aria-hidden="true"
+                      ></i>
+                      {{ item.statusLabel }}
+                    </span>
+                  </span>
+                  <span class="flex flex-wrap items-center gap-x-12px gap-y-2px text-11px leading-16px text-muted">
+                    <span>{{ item.typeName }}</span>
+                    <span class="tabular-nums">{{ item.createTime }}</span>
+                    <span class="tabular-nums select-all" :title="item.taskId">{{ item.taskId }}</span>
+                  </span>
+                  <span v-if="showProgress(item)" class="flex items-center gap-8px max-w-320px">
+                    <span
+                      class="relative flex-1 h-4px overflow-hidden rounded-full bg-sunken"
+                      role="progressbar"
+                      :aria-valuenow="item.progress ?? 0"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      :aria-label="`${item.title}进度`"
+                    >
+                      <span
+                        class="absolute inset-y-0 left-0 rounded-full sx-grad-progress transition-[width] duration-300"
+                        :style="{ width: `${item.progress}%` }"
+                      />
+                    </span>
+                    <span class="flex-none text-11px tabular-nums text-violet-ink">{{ item.progress }}%</span>
+                  </span>
+                  <span
+                    v-if="item.failReason"
+                    class="text-12px leading-18px text-alert-danger line-clamp-2"
+                    :title="item.failReason"
+                    >{{ item.failReason }}</span
+                  >
+                </span>
+              </div>
+
+              <span class="flex-none flex items-center gap-8px">
+                <!-- 列表接口只给封面：视频任务的封面不是作品本身，不放「查看大图」（点缩略图有预览） -->
+                <a
+                  v-if="!isVideo(item) && item.coverUrl && !item.blocked && !brokenCovers.has(item.taskId)"
+                  :href="item.coverUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="sx-btn-tint !px-12px !text-13px no-underline"
+                  :aria-label="`查看大图：${item.title}`"
+                  >查看大图</a
+                >
                 <template v-if="item.canRefill">
                   <button
                     type="button"
-                    class="sx-btn-ghost !h-28px !px-8px !text-12px"
+                    class="sx-btn-ghost !px-12px !text-13px"
                     :disabled="!!refillBusy"
                     :aria-label="`做同款：用 ${item.title} 的设置换素材再做一次`"
                     title="套用这次的设置，换上自己的素材"
@@ -576,7 +600,7 @@ const emptyCopy = computed(() => {
                   </button>
                   <button
                     type="button"
-                    class="sx-btn-ghost !h-28px !px-8px !text-12px"
+                    class="sx-btn-ghost !px-12px !text-13px"
                     :disabled="!!refillBusy"
                     :aria-label="`参数回填：把 ${item.title} 的原参数填回去再编辑`"
                     title="把原参数原样填回，改完再提交"
@@ -585,38 +609,28 @@ const emptyCopy = computed(() => {
                     {{ refillBusy === `${item.taskId}:refill` ? '打开中…' : '参数回填' }}
                   </button>
                 </template>
-                <button
-                  type="button"
-                  class="grid place-items-center w-28px h-28px box-border rounded-6px border border-solid cursor-pointer disabled:cursor-wait"
-                  :class="[
-                    FOCUS,
-                    item.collected
-                      ? 'bg-[#fffbeb] border-[#fcd34d] text-[#d97706]'
-                      : 'bg-white border-transparent text-muted hover:(border-line text-ink-2)',
-                  ]"
-                  :aria-pressed="!!item.collected"
-                  :aria-label="item.collected ? `取消收藏 ${item.title}` : `收藏 ${item.title}`"
-                  :title="item.collected ? '取消收藏' : '收藏'"
+                <IconButton
+                  variant="quiet"
+                  :label="item.collected ? `取消收藏 ${item.title}` : `收藏 ${item.title}`"
+                  :pressed="!!item.collected"
                   :disabled="collectBusy.has(item.taskId)"
                   @click="toggleCollect(item)"
                 >
                   <svg
-                    class="w-16px h-16px"
                     viewBox="0 0 24 24"
                     :fill="item.collected ? 'currentColor' : 'none'"
                     stroke="currentColor"
                     stroke-width="1.8"
                     stroke-linejoin="round"
-                    aria-hidden="true"
                   >
                     <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />
                   </svg>
-                </button>
+                </IconButton>
               </span>
               <button
                 v-if="DELETABLE.has(item.statusBucket)"
                 type="button"
-                class="flex-none sx-btn-ghost !h-28px !px-8px !text-12px hover:!text-danger"
+                class="flex-none sx-btn-ghost !px-12px !text-13px hover:!text-danger"
                 :disabled="deleting === item.taskId"
                 :aria-label="`删除任务 ${item.title}`"
                 @click="confirmDelete(item)"

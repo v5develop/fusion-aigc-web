@@ -3,6 +3,9 @@
  * 添加节点面板（原型 CanvasAddPanel + canvas-v31 §3）：300 宽浮层，头 44px + 搜索 + 分组卡片
  * （输入节点 / 生成节点 / 工具）。从左工具条「+」、双击空白画布、端口「+」打开；
  * 选中一项由画布页在打开位置新建节点（端口「+」打开时只列可接到下游的种类，并自动连线）。
+ * 输入节点里的「音频」暂未开放：灰显（.35）、悬停提示「即将开放」、点了没反应（原型 enabled:false）。
+ * 端口「+」打开时额外给「添加文字」（原型 quick-add 第 4 项）：文字节点没有输入口，不连线，
+ * 发 add-text 交给画布页新建（点「+」落在来源节点右侧、拖线到空白落在松手点），不走自动连线（否则会提示「文字节点没有输入口」）。
  */
 import { computed, nextTick, onMounted, ref } from 'vue'
 import EditorIcon from './EditorIcon.vue'
@@ -19,7 +22,7 @@ const props = defineProps<{
   kinds?: QuickAddKind[]
 }>()
 
-const emit = defineEmits<{ close: []; add: [kind: AddPanelKind, tool?: CanvasToolKind] }>()
+const emit = defineEmits<{ close: []; add: [kind: AddPanelKind, tool?: CanvasToolKind]; addText: [] }>()
 
 const store = useCanvasEditor()
 const q = ref('')
@@ -29,6 +32,8 @@ interface IAddItem {
   key: string
   kind: AddPanelKind
   tool?: CanvasToolKind
+  /** 即将开放：灰显不可点 */
+  soon?: boolean
   label: string
   desc?: string
   icon: string
@@ -39,7 +44,11 @@ const INPUTS: IAddItem[] = [
   { key: 'text', kind: 'text', label: '文字', icon: 'text' },
   { key: 'image', kind: 'image', label: '图片', icon: 'image' },
   { key: 'video', kind: 'video', label: '视频', icon: 'video' },
+  { key: 'audio', kind: 'text', label: '音频', icon: 'doc', soon: true },
 ]
+
+/** 端口「+」专用：在来源节点旁加一个文字节点（不连线） */
+const QUICK_TEXT: IAddItem = { key: 'quick-text', kind: 'text', label: '添加文字', desc: '提示词节点', icon: 'text' }
 
 const GENERATORS: IAddItem[] = [
   { key: 'image-model', kind: 'image-model', label: '图片生成', desc: '文生图 / 参考图生图', icon: 'image' },
@@ -80,7 +89,18 @@ function toolClosed(item: IAddItem): boolean {
 
 function allowed(item: IAddItem): boolean {
   if (!props.kinds) return true
+  if (item.key === 'quick-text') return true
   return (props.kinds as string[]).includes(item.kind)
+}
+
+function disabledOf(item: IAddItem): boolean {
+  return Boolean(item.soon) || toolClosed(item)
+}
+
+function titleOf(item: IAddItem): string {
+  if (item.soon) return '即将开放'
+  if (toolClosed(item)) return '该功能暂未开放'
+  return item.desc ? `${item.label}：${item.desc}` : item.label
 }
 
 function matches(item: IAddItem): boolean {
@@ -93,13 +113,18 @@ const sections = computed(() =>
     { title: '输入节点', compact: true, items: INPUTS },
     { title: '生成节点', compact: false, items: GENERATORS },
     { title: '工具', compact: false, items: TOOLS },
+    ...(props.kinds ? [{ title: '其他', compact: true, items: [QUICK_TEXT] }] : []),
   ]
     .map((section) => ({ ...section, items: section.items.filter((item) => allowed(item) && matches(item)) }))
     .filter((section) => section.items.length),
 )
 
 function pick(item: IAddItem) {
-  if (toolClosed(item)) return
+  if (disabledOf(item)) return
+  if (item.key === 'quick-text') {
+    emit('addText')
+    return
+  }
   emit('add', item.kind, item.tool)
 }
 
@@ -126,7 +151,7 @@ onMounted(() => {
       <strong class="text-ink text-14px font-600">{{ kinds ? '添加下游节点' : '添加节点' }}</strong>
       <button
         type="button"
-        class="grid w-28px h-28px ml-auto p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
+        class="relative grid w-28px h-28px ml-auto p-0 after:content-empty after:absolute after:-inset-3px place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
         :class="FOCUS_RING"
         aria-label="关闭添加面板"
         title="关闭"
@@ -151,10 +176,14 @@ onMounted(() => {
             v-for="item in section.items"
             :key="item.key"
             type="button"
-            class="flex flex-col items-center p-10px border border-solid border-line rounded-8px bg-white text-ink-2 text-13px text-center cursor-pointer transition-colors duration-120 hover:border-violet-line hover:bg-violet-soft hover:text-violet-ink aria-disabled:opacity-42 aria-disabled:cursor-not-allowed aria-disabled:hover:border-line aria-disabled:hover:bg-white aria-disabled:hover:text-ink-2"
-            :class="[FOCUS_RING, section.compact ? 'justify-center gap-6px min-h-64px' : 'gap-4px min-h-88px']"
-            :aria-disabled="toolClosed(item) || undefined"
-            :title="toolClosed(item) ? '该功能暂未开放' : item.desc ? `${item.label}：${item.desc}` : item.label"
+            class="flex flex-col items-center p-10px border border-solid border-line rounded-8px bg-white text-ink-2 text-13px text-center cursor-pointer transition-colors duration-120 hover:border-violet-line hover:bg-violet-soft hover:text-violet-ink aria-disabled:cursor-not-allowed aria-disabled:hover:border-line aria-disabled:hover:bg-white aria-disabled:hover:text-ink-2"
+            :class="[
+              FOCUS_RING,
+              section.compact ? 'justify-center gap-6px min-h-64px' : 'gap-4px min-h-88px',
+              item.soon ? 'opacity-35' : toolClosed(item) ? 'opacity-42' : '',
+            ]"
+            :aria-disabled="disabledOf(item) || undefined"
+            :title="titleOf(item)"
             @click="pick(item)"
           >
             <span

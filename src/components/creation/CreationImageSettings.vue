@@ -6,12 +6,13 @@
  * 标签默认取多数写法，页面特有叫法（如「每位模特生成张数」）通过配置的 label 传入。
  * 只改展示：v-model 是页面那几个字段的对象，回写时整体替换，页面自行映射回自己的字段名。
  *
- * <p>张数按原型（tool/NumberStepper）改成「− 输入框 +」：选项是连续整数（1–9 / min–max）时出步进器，
+ * <p>张数按原型（tool/NumberStepper）改成「值 | − | +」（共用 NumberStepper）：选项是连续整数（1–9 / min–max）时出步进器，
  * 上下限取选项首尾，可直接输入，失焦 / 回车时夹到范围内；选项不连续（如 1、2、4）仍用胶囊。
  * 回写的仍是选项里的那个数字，请求体不变。
  */
-import { computed, inject, ref, useId, watch } from 'vue'
+import { computed, inject, useId, watch } from 'vue'
 import CreationOptionPills from './CreationOptionPills.vue'
+import NumberStepper from './NumberStepper.vue'
 import {
   CREATION_SETTING_LABELS,
   type CreationOption,
@@ -66,12 +67,17 @@ const countRange = computed(() => (fields.count ? stepperRange(fields.count.opti
 const countValue = computed(() => (typeof modelValue.count === 'number' ? modelValue.count : undefined))
 const countLabelId = `creation-count-${useId()}`
 
-/** 输入框草稿：打字时只改草稿，失焦 / 回车才夹到范围内回写 */
-const draft = ref('')
+/**
+ * 页面没给张数（undefined）或给了范围外的值：把默认（范围内最近的值，缺省取下限）写进模型，
+ * 步进器只显示模型里真有的数，提交体与界面一致
+ */
 watch(
-  countValue,
-  (v) => {
-    draft.value = v === undefined ? '' : String(v)
+  [countRange, () => modelValue.count],
+  ([range, raw]) => {
+    if (!range) return
+    const n = typeof raw === 'number' && Number.isFinite(raw) ? raw : range.min
+    const next = Math.min(range.max, Math.max(range.min, Math.round(n)))
+    if (next !== raw) update('count', next)
   },
   { immediate: true },
 )
@@ -80,45 +86,15 @@ function commitCount(next: number) {
   const range = countRange.value
   if (!range) return
   const clamped = Math.min(range.max, Math.max(range.min, Math.round(next)))
-  draft.value = String(clamped)
   if (clamped !== countValue.value) update('count', clamped)
 }
 
-function stepCount(delta: number) {
-  if (disabled || !countRange.value) return
-  commitCount((countValue.value ?? countRange.value.min) + delta)
-}
-
-function onDraftInput(e: Event) {
-  draft.value = (e.target as HTMLInputElement).value.replace(/\D/g, '')
-}
-
-function endEdit() {
-  const parsed = Number.parseInt(draft.value, 10)
-  if (Number.isFinite(parsed)) commitCount(parsed)
-  else draft.value = countValue.value === undefined ? '' : String(countValue.value)
-}
-
-function cancelEdit(e: KeyboardEvent) {
-  draft.value = countValue.value === undefined ? '' : String(countValue.value)
-  ;(e.target as HTMLInputElement).blur()
-}
-
-const atMin = computed(
-  () => disabled || !countRange.value || (countValue.value !== undefined && countValue.value <= countRange.value.min),
-)
-const atMax = computed(
-  () => disabled || !countRange.value || (countValue.value !== undefined && countValue.value >= countRange.value.max),
-)
-
-const stepBtnClass =
-  'grid place-items-center w-30px p-0 border-0 bg-transparent text-ink-2 cursor-pointer outline-none [transition:background_110ms,color_110ms] motion-reduce:transition-none hover:enabled:(bg-surface3 text-ink) active:enabled:(bg-[#edeff1] shadow-[inset_0_1px_2px_rgba(31,35,41,0.12)]) focus-visible:(outline-2 outline-solid outline-violet outline-offset-[-2px]) disabled:(text-placeholder cursor-not-allowed)'
 </script>
 
 <template>
   <div class="flex flex-col" :class="inSettings ? 'gap-0' : 'gap-12px'">
     <template v-for="row in rows" :key="row.key">
-      <!-- 张数步进器（原型 NumberStepper）：− 输入框 +，到上下限时对应按钮禁用 -->
+      <!-- 张数步进器（共用 NumberStepper：值 | − | +，到上下限时对应按钮禁用） -->
       <div
         v-if="row.key === 'count' && countRange"
         :class="
@@ -133,49 +109,14 @@ const stepBtnClass =
         >
           <span>{{ row.label }}<span v-if="row.required" class="text-danger" aria-hidden="true"> *</span></span>
         </div>
-        <div
-          role="group"
-          :aria-labelledby="countLabelId"
-          class="inline-flex self-start items-stretch h-34px box-border rounded-4px border border-solid border-line shadow-[inset_0_1px_2px_rgba(31,35,41,0.06)]"
-          :class="disabled ? 'bg-surface3 opacity-60' : 'bg-white'"
-        >
-          <button
-            type="button"
-            :class="[stepBtnClass, 'rounded-l-4px']"
-            :disabled="atMin"
-            :aria-label="`减少${row.label}`"
-            @click="stepCount(-1)"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M2 5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-            </svg>
-          </button>
-          <span class="w-1px my-7px bg-line" aria-hidden="true" />
-          <input
-            :value="draft"
-            type="text"
-            inputmode="numeric"
-            :aria-label="`${row.label}（${countRange.min}–${countRange.max}）`"
-            :disabled="disabled"
-            class="w-64px min-w-0 box-border px-10px border-0 bg-transparent text-ink text-12px text-center leading-32px tabular-nums outline-none focus:shadow-[inset_0_0_0_1px_#d9c7e3] disabled:cursor-not-allowed"
-            @input="onDraftInput"
-            @blur="endEdit"
-            @keydown.enter.prevent="endEdit"
-            @keydown.esc.prevent="cancelEdit"
-          />
-          <span class="w-1px my-7px bg-line" aria-hidden="true" />
-          <button
-            type="button"
-            :class="[stepBtnClass, 'rounded-r-4px']"
-            :disabled="atMax"
-            :aria-label="`增加${row.label}`"
-            @click="stepCount(1)"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M2 5h6M5 2v6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-            </svg>
-          </button>
-        </div>
+        <NumberStepper
+          :model-value="countValue ?? countRange.min"
+          :min="countRange.min"
+          :max="countRange.max"
+          :aria-label="row.label"
+          :disabled="disabled"
+          @update:model-value="commitCount"
+        />
       </div>
       <CreationOptionPills
         v-else

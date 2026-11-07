@@ -5,10 +5,11 @@
  * 注册表里没有的条目（或没有 route 的）显示为「即将开放」，不自造路由；
  * 例外是单图复刻 / SKU替换：注册表没收，但工作流页（/workflow，wf:13 / wf:14）已可用，按工作流页同一 query 直达；
  * 局部重绘同理：注册表没收，但工具页 schema 已有，直达 /tools/ai-inpaint。
- * 原型「本地生活」组的条目在原型截图里看不全、注册表里也没有对应工具，这里不列。
+ * 「本地生活」组（原型 image-local-life）：图文笔记 / 门店全案走外部路由 /local-life/*，图标取本地生活导航页同路由条目，名称与说明对齐 views/image/landing.ts。
  */
 import { tools, type ToolItem } from '@/views/home/tools'
 import { workflowRouteOf } from '@/views/workflow/schemas'
+import { localLifeBannerTools, localLifeLanding } from '@/views/local-life/landingData'
 
 export interface CatalogEntry {
   /** 注册表 id（同首页卡片 id / 工具页 toolId） */
@@ -38,9 +39,16 @@ const byId = new Map<string, ToolItem>(tools.map((t) => [t.id, t]))
 /** 即将开放条目没有注册表图标，借用「图片生成」的通用图标占位，保持图标框一致 */
 const PLACEHOLDER_ICON = byId.get('image-generate')?.icon
 
+/** 本地生活导航页条目的图标（按路由）；含顶部横幅工具（门店全案在横幅里，不在分区） */
+const LOCAL_LIFE_ICONS = new Map<string, string>(
+  [...localLifeBannerTools, ...localLifeLanding.sections.flatMap((x) => x.tools)].flatMap((t) =>
+    t.route && t.icon ? [[t.route, t.icon] as const] : [],
+  ),
+)
+
 function entry([id, name, tagline, route, iconFrom]: Spec): CatalogEntry {
   const t = byId.get(id)
-  const icon = t?.icon ?? (iconFrom ? byId.get(iconFrom)?.icon : undefined) ?? PLACEHOLDER_ICON
+  const icon = t?.icon ?? (route ? LOCAL_LIFE_ICONS.get(route) : undefined) ?? (iconFrom ? byId.get(iconFrom)?.icon : undefined) ?? PLACEHOLDER_ICON
   return { id, name: t?.name ?? name, tagline, route: t?.route ?? route, icon }
 }
 
@@ -74,6 +82,11 @@ const imageCatalog: Catalog = {
       ['ai-digital-model', '商拍换装', '整套换装'],
       ['ai-posture-fission', '姿态复刻', '同人换姿势'],
     ]),
+    // 外部路由（不在工具页内）：原型 ai-note → 图文笔记、门店全案 → 全案页
+    group('本地生活', [
+      ['ai-note', '图文笔记', '先文案后配图', '/local-life/note'],
+      ['local-life-full-set', '门店全案', '品牌档案 + 模板一键成套', '/local-life/full-set'],
+    ]),
   ],
 }
 
@@ -90,6 +103,7 @@ const videoCatalog: Catalog = {
       ['ai-video-translate', '视频翻译', '配音翻译'],
       ['ai-video-generator', '视频生成', '文生视频'],
       ['ai-video-clone', '视频复刻', '参照原片生成'],
+      ['ai-voiceover', '数字人口播', '文案出口播'],
     ]),
     group('电商', [
       ['model-sell', '模特带货', '模特卖货', workflowRouteOf('video-product-sell')],

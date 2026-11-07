@@ -11,7 +11,7 @@
  *
  * <p>校验（格式 / 体积）与上传通道同 ToolUploadSlot（api/ossUpload.ts）。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
@@ -32,6 +32,8 @@ const props = defineProps<{
   garment?: TryonGarment
   /** 上传通道（服装图自建状态与模特图共用）；不传走 api/ossUpload.ts（工具页默认） */
   uploadFn?: (files: File[]) => Promise<string[]>
+  /** 服装图弹窗里分别上传区额外的一行说明（商拍工作室写参考图上限）；不传不显示 */
+  garmentNote?: string
 }>()
 
 defineSlots<{
@@ -49,6 +51,27 @@ const uploadOptions = props.uploadFn ? { upload: props.uploadFn } : {}
 const g = props.garment ?? useTryonGarment(() => props.clothSpec, uploadOptions)
 const modelUploader = useToolImageUpload(() => props.modelSpec, uploadOptions)
 const MAX_MODELS = computed(() => props.modelSpec.max)
+
+/** 正在上传（服装图或模特图，只往外报）：页面据此在上传未完成时禁止提交；卸载时报回 false */
+const busy = defineModel<boolean>('uploading', { default: false })
+const anyUploading = computed(() => !!g.uploading || modelUploader.uploading.value)
+watch(anyUploading, (v) => (busy.value = v), { immediate: true })
+onBeforeUnmount(() => {
+  if (anyUploading.value) busy.value = false
+})
+
+/**
+ * 模特图槽位被外部换掉（重置 / 回填 / 做同款清空）：还在路上的模特图上传作废，不追加到新内容后面。
+ * 自己写回的那份记下原始引用，回流时不算外部改动。
+ */
+let ownModels: unknown = null
+function setModels(next: string[]) {
+  ownModels = next
+  models.value = next
+}
+watch(models, (next) => {
+  if (toRaw(next) !== ownModels) modelUploader.invalidate()
+})
 
 // ---------------- 服装图 ⇄ 槽位 ----------------
 
@@ -186,7 +209,7 @@ async function addModels(files: File[]) {
   }
   if (files.length > room) message.info(`只放了前 ${room} 位，最多 ${MAX_MODELS.value} 位`)
   const urls = await modelUploader.uploadFiles(files.slice(0, room))
-  if (urls.length) models.value = [...models.value, ...urls].slice(0, MAX_MODELS.value)
+  if (urls.length) setModels([...models.value, ...urls].slice(0, MAX_MODELS.value))
 }
 
 function onModelFiles(event: Event) {
@@ -219,13 +242,14 @@ function openModelAssets() {
 function clearModels() {
   if (props.disabled) return
   const count = models.value.length
-  models.value = []
+  modelUploader.invalidate()
+  setModels([])
   message.info(count ? `已清空 ${count} 位模特` : '已清空模特图')
 }
 
 function removeModel(index: number) {
   if (props.disabled) return
-  models.value = models.value.filter((_, i) => i !== index)
+  setModels(models.value.filter((_, i) => i !== index))
 }
 
 function onAssets(picked: string[]) {
@@ -242,7 +266,7 @@ function addModelUrls(picked: string[]) {
   if (fresh.length < picked.length) message.warning('已跳过重复或不可用的图片')
   const room = MAX_MODELS.value - models.value.length
   const valid = fresh.slice(0, Math.max(0, room)).filter(modelUploader.acceptUrl)
-  if (valid.length) models.value = [...models.value, ...valid]
+  if (valid.length) setModels([...models.value, ...valid])
 }
 
 // ---------------- 样式 ----------------
@@ -378,7 +402,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
           </StudioMedBtn>
         </div>
         <p
-          class="flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-10px leading-15px text-center text-placeholder"
+          class="flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-11px leading-15px text-center text-placeholder"
         >
           <b class="text-11px font-500 text-ink-2">服装图</b>
           <span>{{
@@ -393,14 +417,14 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
           role="group"
           aria-label="服装图预览"
         >
-          <div class="flex items-baseline gap-6px mb-2px text-10px text-muted">
+          <div class="flex items-baseline gap-6px mb-2px text-11px text-muted">
             <b class="text-11px font-600 text-ink-2">服装图</b>
             <span>{{ g.selected.length }} 件 · {{ g.allPhotos.length }} 张</span>
             <em class="ml-auto not-italic text-9px text-placeholder">点开编辑</em>
           </div>
           <div v-for="group in peekGroups" :key="group.key" class="mt-9px">
             <div class="flex gap-5px mb-4px text-[9.5px] text-placeholder">
-              <b class="text-10px font-600 text-ink-2">{{ group.label }}</b>
+              <b class="text-11px font-600 text-ink-2">{{ group.label }}</b>
               <span>{{ group.photos.length ? `${group.photos.length} 张` : '还没有图' }}</span>
             </div>
             <div class="flex gap-4px">
@@ -504,7 +528,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
           </StudioMedBtn>
         </div>
         <p
-          class="flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-10px leading-15px text-center text-placeholder"
+          class="flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-11px leading-15px text-center text-placeholder"
         >
           <b class="text-11px font-500 text-ink-2">模特图</b>
           <span>{{ models.length ? `${models.length}/${MAX_MODELS}` : `最多${MAX_MODELS}张` }}</span>
@@ -521,7 +545,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
         @mouseenter="enterModels"
         @mouseleave="leaveModels"
       >
-        <div class="flex items-baseline gap-6px mb-6px text-10px text-muted">
+        <div class="flex items-baseline gap-6px mb-6px text-11px text-muted">
           <b class="text-11px font-600 text-ink-2">模特</b>
           <span>{{ models.length }} 位</span>
         </div>
@@ -557,7 +581,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
 
     <slot />
 
-    <ToolGarmentDialog v-model:show="dialogOpen" :g="g" :accept="clothSpec.accept" />
+    <ToolGarmentDialog v-model:show="dialogOpen" :g="g" :accept="clothSpec.accept" :note="garmentNote" />
     <AssetPickerModal v-model:show="assetShow" :limit="Math.max(1, assetLimit)" media="image" @select="onAssets" />
     <ModelPicker
       v-model:show="modelPickerShow"

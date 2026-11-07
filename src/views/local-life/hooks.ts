@@ -77,6 +77,9 @@ export function useAgreement() {
  * 详情轮询：每 interval 执行一次 fetcher，把 data 交给 onTick；
  * onTick 返回 true 继续下一轮，返回 false 收掉。单轮失败不中断（网络抖动）。
  * 组件卸载自动停。
+ *
+ * <p>同一时刻只有一条轮询链：链还活着（等下一轮或请求在途）时再 start() 不另起一条；
+ * stop() 之后在途请求回来的结果直接丢弃，不会再进 onTick（三栏页切换记录时靠它防止上一条的详情写回当前）。
  */
 export function usePollingWhile<T>(
   fetcher: () => Promise<{ data?: T }>,
@@ -84,7 +87,12 @@ export function usePollingWhile<T>(
   interval = 3000,
 ) {
   let timer: ReturnType<typeof setTimeout> | null = null
+  /** 每次 stop() 自增；链只认自己起步时的代号，代号变了即作废 */
+  let generation = 0
+  let alive = false
   const stop = () => {
+    generation++
+    alive = false
     if (timer) {
       clearTimeout(timer)
       timer = null
@@ -92,20 +100,25 @@ export function usePollingWhile<T>(
   }
   onUnmounted(stop)
 
-  async function run() {
+  async function run(gen: number) {
     timer = null
     let keep = true
     try {
       const res = await fetcher()
+      if (gen !== generation) return
       keep = onTick(res?.data)
     } catch {
       keep = true
     }
-    if (keep) timer = setTimeout(run, interval)
+    if (gen !== generation) return
+    if (keep) timer = setTimeout(() => void run(gen), interval)
+    else alive = false
   }
 
   const start = () => {
-    if (!timer) void run()
+    if (alive) return
+    alive = true
+    void run(generation)
   }
   return { start, stop }
 }

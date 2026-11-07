@@ -8,7 +8,7 @@ import { themeOverrides } from '@/theme/naive'
 
 <template>
   <n-config-provider :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
-    <n-message-provider>
+    <n-message-provider :max="3" :duration="2500" placement="top">
       <!-- 必须在 message-provider 内部：它靠 useMessage() 拿注入 -->
       <DeviceNoticeHost />
       <n-dialog-provider>

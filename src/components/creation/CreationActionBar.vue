@@ -62,7 +62,7 @@ function onClick() {
       <!-- 加载环绝对定位在左 14、垂直居中，文字位置不动（原型 ToolSubmitBar） -->
       <span
         v-if="loading"
-        class="absolute left-14px top-1/2 -mt-6px block w-12px h-12px box-border rounded-full border-1.5px border-solid border-white/35 border-t-white animate-spin [animation-duration:0.7s] motion-reduce:animate-none"
+        class="absolute left-14px top-1/2 -mt-6px block w-12px h-12px box-border rounded-full border-1.5px border-solid border-white/35 border-t-white animate-spin [animation-duration:0.7s]"
         aria-hidden="true"
       />
       <span class="text-16px font-600 leading-22px tracking-[0.04em] whitespace-nowrap group-disabled:text-white/80">

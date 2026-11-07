@@ -32,6 +32,7 @@ import {
   makeImageNode,
   makeModelNode,
   makeTextNode,
+  makeModuleNode,
   makeToolNode,
   makeVideoNode,
   nextEdgeId,
@@ -41,6 +42,7 @@ import {
   spawnPosition,
   validateConnection,
 } from './graph.ts'
+import { remapClipboard, type ICanvasClipboard } from './clipboard.ts'
 import type {
   CanvasEditorEdge,
   CanvasEditorNode,
@@ -88,6 +90,10 @@ const pendingUnknownRuns = new Map<string, ICanvasRunReq>()
 const submittingNodes = new Set<string>()
 /** 提交在途时用户点了停止：拿到 request_id 后立即取消 */
 const cancelRequested = new Set<string>()
+/** 本会话里提交时真的冻结了点数的 run（request_id → 预扣点数）：失败 / 取消时只对这些提示「将退回」 */
+const chargedRuns = new Map<string, number>()
+/** 批量执行中的节点：单节点的预扣 / 退回提示收进批量进度条，不逐条弹 */
+const quietNodes = new Set<string>()
 
 // ---------------- 快照序列化与脏检测 ----------------
 
@@ -351,7 +357,7 @@ function migrateNodes(raw: unknown): CanvasEditorNode[] {
       type: node.type as CanvasEditorNode['type'],
       position: { x: Number(node.position.x) || 0, y: Number(node.position.y) || 0 },
       data: (node.data ?? { title: '节点' }) as CanvasEditorNodeData,
-      ...(node.draggable === false ? { draggable: false } : {}),
+      ...((node.draggable === false || (node.data as CanvasEditorNodeData | undefined)?.locked) ? { draggable: false } : {}),
       ...(node.selectable === false ? { selectable: false } : {}),
       ...(typeof node.zIndex === 'number' ? { zIndex: node.zIndex } : {}),
     }
@@ -400,6 +406,8 @@ async function init(id: string): Promise<boolean> {
   pendingUnknownRuns.clear()
   submittingNodes.clear()
   cancelRequested.clear()
+  chargedRuns.clear()
+  quietNodes.clear()
   selectedNodeId.value = ''
   resetHistory()
   try {
@@ -750,6 +758,239 @@ function removeModule(moduleId: string): number {
   return removeNodes([moduleId, ...moduleChildren(moduleId).map((node) => node.id)])
 }
 
+/**
+ * 锁定 / 解锁（2026-11-06 二轮）：锁后拖不动（draggable=false），仍可选中 / 解锁 / 删除；
+ * 锁定标记存 data.locked（随快照持久化），拖动分组底板时锁定成员照样跟着走（成员是被程序挪的）。
+ */
+function toggleLock(id: string): boolean {
+  const node = findNode(id)
+  if (!node) return false
+  const locked = !node.data.locked
+  updateNodeData(id, { locked })
+  node.draggable = !locked
+  return locked
+}
+
+/** 批量设锁（多选：有未锁的就全锁，全锁了才全解） */
+function setLocked(ids: string[], locked: boolean): number {
+  let count = 0
+  for (const id of ids) {
+    const node = findNode(id)
+    if (!node) continue
+    updateNodeData(id, { locked })
+    node.draggable = !locked
+    count += 1
+  }
+  return count
+}
+
+/** 节点是否锁定（锁定成员不可单独拖动；分组拖动不受影响） */
+function isLocked(id: string): boolean {
+  return !!findNode(id)?.data.locked
+}
+
+/**
+ * 成组（2026-11-06 二轮）：把选中的节点框进一块虚线底板（原型 group plate）。
+ * 底板是几何分组——左上角落在板内的节点算成员（moduleChildren 同一口径），拖底板带成员走。
+ */
+function createModule(ids: string[]): string | null {
+  const members = ids
+    .map((id) => findNode(id))
+    .filter((node): node is CanvasEditorNode => Boolean(node && node.type !== 'module'))
+  if (!members.length) return null
+  const minX = Math.min(...members.map((node) => node.position.x)) - 24
+  const minY = Math.min(...members.map((node) => node.position.y)) - 24
+  // 节点尺寸：Vue Flow 运行时挂在 dimensions 上（类型里没有，读不到时按 data 或常见尺寸兜底）
+  const sizeOf = (node: CanvasEditorNode) => {
+    const dims = (node as unknown as { dimensions?: { width?: number; height?: number } }).dimensions
+    return { w: dims?.width ?? node.data.width ?? 260, h: dims?.height ?? node.data.height ?? 160 }
+  }
+  const maxX = Math.max(...members.map((node) => node.position.x + sizeOf(node).w)) + 24
+  const maxY = Math.max(...members.map((node) => node.position.y + sizeOf(node).h)) + 24
+  const created = makeModuleNode(
+    { x: Math.round(minX), y: Math.round(minY) },
+    { width: Math.round(Math.max(240, maxX - minX)), height: Math.round(Math.max(160, maxY - minY)) },
+  )
+  // 底板排在成员前面（DOM 顺序在下），配合 zIndex -1 不盖住成员
+  nodes.value = [created, ...nodes.value]
+  return created.id
+}
+
+/** 解组：只拆底板，成员原位保留（与 removeModule 的「连成员一起删」相对） */
+function ungroup(moduleId: string): boolean {
+  if (findNode(moduleId)?.type !== 'module') return false
+  return removeNodes([moduleId]) > 0
+}
+
+/** 删除分组（含成员）：右键菜单「删除分组（含成员）」用；底板角钮只解组 / 只删底板，不再连成员一起删 */
+function deleteGroupWithMembers(moduleId: string): number {
+  return removeModule(moduleId)
+}
+
+/** 节点在画布上的宽度（Vue Flow 运行时 dimensions 优先，读不到按 data.width / 常见宽度兜底） */
+function nodeWidthOf(node: CanvasEditorNode): number {
+  const dims = (node as unknown as { dimensions?: { width?: number } }).dimensions
+  return dims?.width ?? node.data.width ?? 320
+}
+
+/** 来源节点右侧找一块空位：从同一节点连续加时向下错开，避免新节点完全盖住上一个（原型 nearbyFreeSpot） */
+function spotRightOf(source: CanvasEditorNode, gap = 80): { x: number; y: number } {
+  const x = Math.round(source.position.x + nodeWidthOf(source) + gap)
+  let y = Math.round(source.position.y)
+  for (let i = 0; i < 12; i += 1) {
+    const occupied = nodes.value.some(
+      (node) => node.type !== 'module' && Math.abs(node.position.x - x) < 300 && Math.abs(node.position.y - y) < 220,
+    )
+    if (!occupied) break
+    y += 240
+  }
+  return { x, y }
+}
+
+/** 节点的输出口 id（与各节点组件里 source Handle 的 id 一致） */
+function outputHandleOf(node: CanvasEditorNode): string {
+  if (node.type === 'text') return 'text'
+  if (node.type === 'video') return 'video'
+  if (node.type === 'image') return 'image'
+  if (node.type === 'tool') return node.data.tool === 'i2p' ? 'text' : 'image-out'
+  return node.data.inputOnly ? 'video' : 'image-out'
+}
+
+/**
+ * 从图片类节点新建一个下游工具节点并自动连线（图片节点悬浮条「裁剪 / 高清放大」用；右键菜单也可复用）。
+ * 试穿工具接 garment 口，其余接 image 口；连线校验不过（来源不是图片类）时节点照建、只是不连。
+ */
+function addConnectedToolNode(sourceId: string, tool: CanvasToolKind): CanvasEditorNode | undefined {
+  const source = findNode(sourceId)
+  if (!source || !ready.value) return undefined
+  const created = addNode('tool', tool, spotRightOf(source))
+  if (!created) return undefined
+  connect({
+    source: source.id,
+    target: created.id,
+    sourceHandle: outputHandleOf(source),
+    targetHandle: tool === 'tryon' ? 'garment' : 'image',
+  })
+  return created
+}
+
+/**
+ * 在来源节点右侧新建一个文字节点（反推结果「插入画布」、端口「+」→「添加文字」用）。
+ * 文字节点没有输入口，所以不连线；新节点选中，用户可再把它连到生成节点的提示词口。
+ */
+function addTextNodeNear(sourceId: string, text = ''): CanvasEditorNode | undefined {
+  const source = findNode(sourceId)
+  if (!source || !ready.value) return undefined
+  const created = addNode('text', undefined, spotRightOf(source))
+  if (created && text) created.data.text = text.slice(0, 3000)
+  return created
+}
+
+/**
+ * 「更换」图片 / 视频：节点组件持有上传状态（上传中 / 取消），store 只发请求信号；
+ * 右键菜单等外部入口调 replaceNodeImage(nodeId)，对应节点打开文件框（视频节点同样适用）。
+ */
+const replaceMediaRequest = ref<{ nodeId: string; seq: number } | null>(null)
+let replaceSeq = 0
+function replaceNodeImage(nodeId: string): void {
+  if (!findNode(nodeId)) return
+  replaceSeq += 1
+  replaceMediaRequest.value = { nodeId, seq: replaceSeq }
+}
+
+/**
+ * 候选列表指纹（隐藏候选的作废键）：只认 URL 去掉查询串后的部分，签名参数变化不算换了一批。
+ * 不按 runId 记——节点上的 runId 是「最近一次」run（失败的重跑、刷新回填的最新 run 都会改它），
+ * 候选却来自最近一次**成功**的 run，按 runId 比对会让移除过的候选在失败重跑 / 刷新后又冒出来。
+ */
+function candidatesFingerprint(urls: string[] | undefined): string {
+  if (!urls?.length) return ''
+  const text = urls.map((url) => url.split('?')[0]).join('\n')
+  let hash = 5381
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0
+  return `${urls.length}:${(hash >>> 0).toString(36)}`
+}
+
+/** 当前这批候选里被用户移除的下标（候选换了一批自动作废；旧数据没有 fp 时按 runId 比对） */
+function hiddenCandidatesOf(data: CanvasEditorNodeData): Set<number> {
+  const hidden = data.hiddenCandidates
+  if (!hidden) return new Set()
+  const valid = hidden.fp
+    ? hidden.fp === candidatesFingerprint(data.candidates)
+    : (hidden.runId ?? '') === (data.runId ?? '')
+  return valid ? new Set(hidden.indices) : new Set()
+}
+
+/**
+ * 移除一张候选（模型节点缩略图「×」）：候选下标保持不变（candidate-N 连线与服务端候选列表按下标对应），
+ * 只记为隐藏；从这张候选单独连出的线一并断开；移除的是当前输出时改选剩下的第一张。至少保留一张。
+ */
+async function removeCandidate(nodeId: string, index: number): Promise<void> {
+  const node = findNode(nodeId)
+  const list = node?.data.candidates ?? []
+  if (!node || !list[index]) return
+  const hidden = hiddenCandidatesOf(node.data)
+  hidden.add(index)
+  const visible = list.map((_, i) => i).filter((i) => !hidden.has(i))
+  if (!visible.length) {
+    message.info('至少保留一张候选')
+    return
+  }
+  // 注：撤销会把 hiddenCandidates 退回去（它是快照内容），但下面改选候选写回服务端的 select-candidate 不会撤销
+  node.data.hiddenCandidates = {
+    fp: candidatesFingerprint(list),
+    indices: [...hidden].sort((a, b) => a - b),
+  }
+  const handle = `candidate-${index + 1}`
+  edges.value = edges.value.filter((edge) => !(edge.source === nodeId && edge.sourceHandle === handle))
+  if ((node.data.selectedCandidate ?? 0) === index && visible[0] !== undefined) {
+    await selectCandidate(nodeId, visible[0])
+  }
+}
+
+/**
+ * 参考图拖拽排序（控制台缩略图）：把 edgeId 挪到同口同组的 toIndex 位置，按新顺序重写 data.order = 1..n
+ * （buildReferences 按 order 编「图1 / 图2」）。首尾帧口各只有一条，不参与排序——它们固定排在最前、
+ * 各占一个序号（见 graph.compareRefOrder），普通参考接在后面，所以这里只给普通参考重编 1..n。
+ */
+function reorderReference(targetId: string, edgeId: string, toIndex: number): void {
+  const moving = edges.value.find((edge) => edge.id === edgeId && edge.target === targetId)
+  if (!moving) return
+  const group = normalizeHandle(moving.targetHandle)
+  if (!group || group === 'prompt') return
+  const siblings = edges.value
+    .filter(
+      (edge) =>
+        edge.target === targetId &&
+        normalizeHandle(edge.targetHandle) === group &&
+        edge.targetHandle !== 'image1' &&
+        edge.targetHandle !== 'image2',
+    )
+    .sort((a, b) => (a.data?.order ?? 0) - (b.data?.order ?? 0))
+  const from = siblings.indexOf(moving)
+  if (from < 0) return
+  siblings.splice(from, 1)
+  siblings.splice(Math.max(0, Math.min(toIndex, siblings.length)), 0, moving)
+  siblings.forEach((edge, i) => {
+    edge.data = { ...(edge.data ?? {}), order: i + 1 }
+  })
+}
+
+/** 把画布上一个节点连到目标节点的参考图口（控制台虚线「+」从画布选节点）；校验不过时 connect 会给出原因 */
+function addReferenceFrom(targetId: string, sourceId: string): boolean {
+  const source = findNode(sourceId)
+  const target = findNode(targetId)
+  if (!source || !target) return false
+  let targetHandle = 'image'
+  if (target.data.kind === 'video') {
+    if (source.type === 'model' && source.data.kind === 'video') targetHandle = 'video'
+    else if (!edges.value.some((edge) => edge.target === targetId && edge.targetHandle === 'image1')) {
+      targetHandle = 'image1'
+    }
+  }
+  return connect({ source: source.id, target: target.id, sourceHandle: outputHandleOf(source), targetHandle })
+}
+
 const ID_PREFIX: Record<CanvasEditorNode['type'], string> = {
   text: 't',
   image: 'n',
@@ -760,48 +1001,69 @@ const ID_PREFIX: Record<CanvasEditorNode['type'], string> = {
 }
 
 /**
- * 复制节点（多选操作条）：只复制用户内容（剔除运行态，生成 / 工具节点的成品也不带），
- * 位置错开 40；被复制节点之间的连线一并复制。返回新节点 id。
+ * 剪贴板快照（Ctrl+C / X 时取）：选中节点 + 分组底板范围内的成员，只拷用户内容（剔除运行态，
+ * 生成 / 工具节点的成品也不带）+ 两端都在集合里的连线。深拷贝，之后原节点被删 / 被改都不影响粘贴。
  */
-function duplicateNodes(ids: string[]): string[] {
-  const sources = ids.map((id) => findNode(id)).filter((node): node is CanvasEditorNode => Boolean(node))
-  if (!sources.length) return []
-  const idMap = new Map<string, string>()
-  const created: CanvasEditorNode[] = sources.map((node) => {
-    const id = nextNodeId(ID_PREFIX[node.type])
-    idMap.set(node.id, id)
-    const data = JSON.parse(JSON.stringify(slimData(node))) as CanvasEditorNodeData
-    if (node.type === 'model' || node.type === 'tool') data.status = 'idle'
-    return {
-      id,
-      type: node.type,
-      position: { x: node.position.x + 40, y: node.position.y + 40 },
-      data,
-      ...(node.draggable === false ? { draggable: false } : {}),
-      ...(node.selectable === false ? { selectable: false } : {}),
-      ...(typeof node.zIndex === 'number' ? { zIndex: node.zIndex } : {}),
-    }
-  })
-  const copiedEdges: CanvasEditorEdge[] = edges.value
-    .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
-    .map((edge) => ({
-      id: nextEdgeId(),
-      source: idMap.get(edge.source) ?? edge.source,
-      target: idMap.get(edge.target) ?? edge.target,
-      sourceHandle: edge.sourceHandle ?? undefined,
-      targetHandle: edge.targetHandle ?? undefined,
-      type: 'canvas-bezier' as const,
-      data: edge.data ? { ...edge.data } : undefined,
-    }))
-  nodes.value = [...nodes.value, ...created]
+function snapshotForClipboard(ids: string[]): ICanvasClipboard | null {
+  const picked = new Set<string>()
+  for (const id of ids) {
+    const node = findNode(id)
+    if (!node) continue
+    picked.add(id)
+    if (node.type === 'module') for (const child of moduleChildren(id)) picked.add(child.id)
+  }
+  if (!picked.size) return null
+  // 按画布里的原顺序取：底板仍在成员前面
+  const list = nodes.value.filter((node) => picked.has(node.id))
+  return {
+    nodes: list.map((node) => {
+      const data = JSON.parse(JSON.stringify(slimData(node))) as CanvasEditorNodeData
+      if (node.type === 'model' || node.type === 'tool') data.status = 'idle'
+      return {
+        id: node.id,
+        type: node.type,
+        position: { x: node.position.x, y: node.position.y },
+        data,
+        ...(node.draggable === false || node.data.locked ? { draggable: false } : {}),
+        ...(node.selectable === false ? { selectable: false } : {}),
+        ...(typeof node.zIndex === 'number' ? { zIndex: node.zIndex } : {}),
+      }
+    }),
+    edges: edges.value
+      .filter((edge) => picked.has(edge.source) && picked.has(edge.target))
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle ?? undefined,
+        targetHandle: edge.targetHandle ?? undefined,
+        type: 'canvas-bezier' as const,
+        data: edge.data ? { ...edge.data } : undefined,
+      })),
+  }
+}
+
+/** 按剪贴板快照粘贴：新 id、整体偏移 offset、组内连线重映射；返回新节点 id（底板在前） */
+function pasteClipboard(clip: ICanvasClipboard, offset = 48): string[] {
+  if (!ready.value || !clip.nodes.length) return []
+  const out = remapClipboard(clip, offset, (node) => nextNodeId(ID_PREFIX[node.type]), nextEdgeId)
+  const plates = out.nodes.filter((node) => node.type === 'module')
+  const others = out.nodes.filter((node) => node.type !== 'module')
+  nodes.value = [...plates, ...nodes.value, ...others]
   renumberDefaultTitles(nodes.value)
   // 节点先挂载（Handle 就绪）再补连线，同加载时的顺序
-  if (copiedEdges.length) {
+  if (out.edges.length) {
     void nextTick(() => {
-      edges.value = [...edges.value, ...copiedEdges.filter((edge) => findNode(edge.source) && findNode(edge.target))]
+      edges.value = [...edges.value, ...out.edges.filter((edge) => findNode(edge.source) && findNode(edge.target))]
     })
   }
-  return created.map((node) => node.id)
+  return [...plates, ...others].map((node) => node.id)
+}
+
+/** 再制 / 复制（多选操作条、右键、Ctrl+D）：取快照立即粘贴 */
+function duplicateNodes(ids: string[], offset = 48): string[] {
+  const clip = snapshotForClipboard(ids)
+  return clip ? pasteClipboard(clip, offset) : []
 }
 
 // ---------------- 执行节点（幂等提交 + 轮询 + 取消） ----------------
@@ -970,22 +1232,22 @@ const TERMINAL_RUN_STATUS = new Set(['succeeded', 'failed', 'cancelled'])
  * 提交前先落地待保存改动：服务端按已保存快照核对 references（先保存、再执行）。
  * @param reuse 重试「结果未知」的那次提交时原样重发（同 run_id + 同 body，服务端幂等重放，不重复扣点）
  */
-async function runNode(nodeId: string, reuse?: ICanvasRunReq): Promise<void> {
+async function runNode(nodeId: string, reuse?: ICanvasRunReq, opts?: { quiet?: boolean }): Promise<boolean> {
   const node = findNode(nodeId)
-  if (!node || !ready.value) return
+  if (!node || !ready.value) return false
   // 状态在 await flushSave 之后才置 queued：连点 / 双击要靠在途集合挡住第二次提交
-  if (submittingNodes.has(nodeId)) return
-  if (node.data.status === 'running' || node.data.status === 'queued') return
+  if (submittingNodes.has(nodeId)) return false
+  if (node.data.status === 'running' || node.data.status === 'queued') return false
   if (node.data.kind === 'tool' && catalog.value?.tools?.find((t) => t.tool === node.data.tool)?.ready === false) {
-    message.warning('该功能暂未开放')
-    return
+    message.warning(`「${node.data.title}」暂未开放`)
+    return false
   }
   let req = reuse
   if (!req) {
     const built = buildRunRequest(node)
     if (!built.req) {
-      message.warning(built.error ?? '参数不完整')
-      return
+      message.warning(`「${node.data.title}」${built.error ?? '参数不完整'}`)
+      return false
     }
     req = built.req
     // 新的一次点击 = 新 run_id；之前结果未知的那次不再重发
@@ -993,11 +1255,13 @@ async function runNode(nodeId: string, reuse?: ICanvasRunReq): Promise<void> {
   }
   const targetId = canvasId
   submittingNodes.add(nodeId)
+  if (opts?.quiet) quietNodes.add(nodeId)
+  else quietNodes.delete(nodeId)
   try {
     const saved = await flushSave()
-    if (!saved || targetId !== canvasId) return
+    if (!saved || targetId !== canvasId) return false
     const live = findNode(nodeId)
-    if (!live) return
+    if (!live) return false
     live.data.runId = req.run_id
     // 清掉上一次 run 的 request_id：提交在途时点停止不能去取消上一次（已结束）的 run
     live.data.requestId = undefined
@@ -1010,22 +1274,30 @@ async function runNode(nodeId: string, reuse?: ICanvasRunReq): Promise<void> {
     let requestId = ''
     try {
       const res = await canvasNodeRun(targetId, nodeId, req, req.run_id)
-      if (targetId !== canvasId) return
+      if (targetId !== canvasId) return false
       requestId = res.data?.request_id ?? ''
       if (!requestId) throw new Error('提交结果未知')
       pendingUnknownRuns.delete(nodeId)
       const current = findNode(nodeId)
-      if (!current) return
+      if (!current) return false
       current.data.requestId = requestId
       if (res.data.warnings?.length) message.warning(res.data.warnings.join('；'))
+      // 计费（2026-11-06 二轮）：网关执行的 run 会在提交时冻结点数，记下预扣额（Java / studio 计价的回包 credits=0，
+      // 没有预扣，失败时也就不提示「退回」）
+      const credits = Number(res.data.credits) || 0
+      if (credits > 0) {
+        chargedRuns.set(requestId, credits)
+        if (!quietNodes.has(nodeId)) message.info(`已预扣 ${credits} 点`)
+      }
       startPolling(current)
     } catch (err) {
-      if (targetId !== canvasId) return
+      if (targetId !== canvasId) return false
       handleSubmitError(nodeId, req, err)
-      return
+      return false
     }
     submittingNodes.delete(nodeId)
     if (cancelRequested.delete(nodeId)) await cancelRun(nodeId)
+    return true
   } finally {
     submittingNodes.delete(nodeId)
     cancelRequested.delete(nodeId)
@@ -1171,6 +1443,8 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
       data.image = urls[selected] ?? urls[0]
     }
     if (run.text && data.kind === 'tool') data.resultText = run.text
+    // 换了一批候选（新的一次成功运行）：之前移除的候选作废；同一批（轮询重复写回）保留
+    if (data.hiddenCandidates && hiddenCandidatesOf(data).size === 0) data.hiddenCandidates = undefined
     data.status = 'done'
     data.progress = 100
     data.requestedCount = run.requested_count ?? data.requestedCount
@@ -1187,12 +1461,70 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
     data.errorCode = run.error_code || undefined
     data.retryable = run.status === 'failed' && run.retryable === true
     stopPolling(run.request_id)
+    // 计费（2026-11-06 二轮）：失败 / 取消由服务端退回预扣点数。只有本会话提交时确实预扣过（credits>0）才提示退回；
+    // Java 工具（credits=0）、刷新后恢复轮询的旧 run 不知道有没有扣，不说「退回」
+    const charged = chargedRuns.get(run.request_id || data.requestId || '') ?? 0
+    if (!quietNodes.has(nodeId)) {
+      if (charged > 0) {
+        message.info(`${run.status === 'cancelled' ? '已取消' : '执行失败'}：预扣的 ${charged} 点将退回`)
+      } else if (run.status === 'cancelled') {
+        message.info('已取消执行')
+      }
+    }
     return true
   }
   // submitting / queued / running / 未知状态都按未结束处理
   data.status = run.status === 'running' ? 'running' : 'queued'
   data.progress = run.progress ?? data.progress
   return false
+}
+
+/**
+ * 等节点这次执行落定（批量执行按依赖提交下游用）：done / error；画布切走、节点被删、
+ * 轮询超时停掉（状态停在 running 但没人再查）都按 unknown 返回，不会永远挂起。
+ */
+function waitForSettled(nodeId: string): Promise<'done' | 'error' | 'unknown'> {
+  const targetId = canvasId
+  return new Promise((resolve) => {
+    const check = (): 'done' | 'error' | 'unknown' | null => {
+      if (targetId !== canvasId || !ready.value) return 'unknown'
+      const node = findNode(nodeId)
+      if (!node) return 'unknown'
+      if (submittingNodes.has(nodeId)) return null
+      const status = node.data.status
+      if (status === 'done') return 'done'
+      if (status === 'error') return 'error'
+      if (status === 'running' || status === 'queued') {
+        const requestId = node.data.requestId
+        return requestId && pollers.has(requestId) ? null : 'unknown'
+      }
+      return 'unknown'
+    }
+    const tick = (): void => {
+      const result = check()
+      if (result) resolve(result)
+      else setTimeout(tick, 600)
+    }
+    tick()
+  })
+}
+
+/** 节点是否正在提交 / 排队 / 运行（批量执行据此跳过，不重复提交，也不算失败） */
+function isNodeBusy(nodeId: string): boolean {
+  if (submittingNodes.has(nodeId)) return true
+  const status = findNode(nodeId)?.data.status
+  return status === 'running' || status === 'queued'
+}
+
+/** 节点当前这次 run 在提交时预扣的点数（0 = 没预扣 / 不知道） */
+function runChargeOf(nodeId: string): number {
+  const requestId = findNode(nodeId)?.data.requestId
+  return requestId ? (chargedRuns.get(requestId) ?? 0) : 0
+}
+
+/** 批量执行结束：恢复逐条提示 */
+function endQuiet(ids: string[]): void {
+  for (const id of ids) quietNodes.delete(id)
 }
 
 async function cancelRun(nodeId: string): Promise<void> {
@@ -1238,7 +1570,7 @@ function retryNode(nodeId: string): Promise<void> {
     node.data.errorCode = undefined
     node.data.retryable = undefined
   }
-  return runNode(nodeId, pendingUnknownRuns.get(nodeId))
+  return runNode(nodeId, pendingUnknownRuns.get(nodeId)).then(() => undefined)
 }
 
 // ---------------- 候选选择 ----------------
@@ -1373,6 +1705,27 @@ export function useCanvasEditor() {
     moduleChildren,
     removeModule,
     duplicateNodes,
+    snapshotForClipboard,
+    pasteClipboard,
+    toggleLock,
+    setLocked,
+    isLocked,
+    createModule,
+    ungroup,
+    /** 删除分组底板连同组内成员（右键菜单「删除分组（含成员）」） */
+    deleteGroupWithMembers,
+    /** 从图片类节点新建下游工具节点并自动连线 */
+    addConnectedToolNode,
+    /** 在节点右侧新建文字节点（可带初始文本） */
+    addTextNodeNear,
+    /** 请求图片 / 视频节点打开文件框更换素材（节点组件响应 replaceMediaRequest） */
+    replaceNodeImage,
+    replaceMediaRequest,
+    outputHandleOf,
+    removeCandidate,
+    hiddenCandidatesOf,
+    reorderReference,
+    addReferenceFrom,
     // 撤销 / 重做
     undo,
     redo,
@@ -1382,7 +1735,11 @@ export function useCanvasEditor() {
     reloadLatest,
     flushSave,
     // 执行
-    runNode: (nodeId: string) => runNode(nodeId),
+    runNode: (nodeId: string, opts?: { quiet?: boolean }) => runNode(nodeId, undefined, opts),
+    waitForSettled,
+    isNodeBusy,
+    runChargeOf,
+    endQuiet,
     retryNode,
     cancelRun,
     selectCandidate,

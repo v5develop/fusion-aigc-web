@@ -71,7 +71,7 @@ onMounted(load)
         </button>
       </nav>
 
-      <div class="min-w-0 flex-1 p-24px bg-white rounded-lg border border-solid border-line shadow-card">
+      <div class="min-w-0 flex-1 p-24px sx-card">
         <ProfileSection v-if="active === 'profile'" :info="info" :loading="loading" @saved="onSaved" />
         <SecuritySection v-else-if="active === 'security'" />
         <AccountSection v-else :info="info" :points="userInfo?.availablePoints" />

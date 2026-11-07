@@ -332,7 +332,8 @@ interface IGoPresign {
 }
 
 /** 上传图片 / 视频到 OSS（网关预签名直传），返回可放进快照的 http(s) 地址 */
-export async function canvasUploadMedia(file: File): Promise<string> {
+/** @param opts.signal 取消上传（节点「取消」）：中止直传 PUT，调用方收到 AbortError */
+export async function canvasUploadMedia(file: File, opts?: { signal?: AbortSignal }): Promise<string> {
   const isVideo = file.type.startsWith('video/')
   const contentType = file.type || (isVideo ? 'video/mp4' : 'image/jpeg')
   const res = await post<IGoPresign>('/api/v1/local-life/upload/presign', {
@@ -343,7 +344,13 @@ export async function canvasUploadMedia(file: File): Promise<string> {
   if (!putUrl || !url) {
     throw new Error('获取上传凭证失败')
   }
-  const put = await fetch(putUrl, { method: 'PUT', body: file, headers: { 'Content-Type': signedType || contentType } })
+  opts?.signal?.throwIfAborted()
+  const put = await fetch(putUrl, {
+    method: 'PUT',
+    body: file,
+    headers: { 'Content-Type': signedType || contentType },
+    signal: opts?.signal,
+  })
   if (!put.ok) {
     throw new Error(isVideo ? '视频上传失败' : '图片上传失败')
   }

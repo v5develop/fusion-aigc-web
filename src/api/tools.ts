@@ -102,6 +102,8 @@ export interface ToolHistoryItem {
   resultVideoUrls?: string[] | null
   /** 原始提交体，「重新编辑」回填用；老记录为 null（见 SubmittedToolRequest） */
   requestParams?: SubmittedToolRequest | null
+  /** 进行中任务的估算进度 0–100（后端与任务中心同一口径）；终态行不下发 */
+  progress?: number | null
 }
 
 /** v1 分页信封 {current, pages, total, data} */
@@ -220,14 +222,21 @@ export interface ModelConfigSize {
  */
 export interface ModelConfig {
   model: string
+  /** 品牌显示名（如「Seedance 2.5」）；没有时界面写 model */
+  displayName?: string
   description?: string
   size?: ModelConfigSize[]
   weight?: number
   supportedModes?: string[]
   duration?: number[]
+  /** 仅视频：该模型参考素材上限；maxImages 缺省按 9，maxVideos = 0 表示不支持参考视频 */
+  refs?: { maxImages?: number; maxVideos?: number }
 }
 
-/** 图片生成（/tools/ai-image-generator）的价目：按分辨率逐档报价，没配定价的档不下发 */
+/**
+ * 图片生成（/tools/ai-image-generator）的模型与价目：第一项是默认模型，运营启用后才有后续项；
+ * 每项 size[] 是该模型的分辨率 / 比例与单价。提交可带 model（不带或带第一项 = 默认行为）。
+ */
 export function imageModelConfigs() {
   return get<ModelConfig[]>('/api/v1/features/image-model-configs')
 }

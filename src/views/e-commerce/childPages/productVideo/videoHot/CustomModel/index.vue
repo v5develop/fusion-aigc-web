@@ -192,12 +192,33 @@ const { start: startFaceValidate } = usePolling((taskId) => faceRecognitionStatu
     }
 
     faceLoading.value = false
+    flushQueuedVerify()
     return true
   },
 })
+/*
+ * ImageUpload 的 customResultHandle：一批上传结束调一次；失败格「重试」成功后会再调一次、只带重试成功的地址。
+ * 所以这里按「追加」处理，并记下已送验的地址——重试不会让已验证过的图再走一遍人脸认证，只验新地址。
+ * 认证进行中（扫码等待）又有重试成功的图时先排队，等这轮认证结束再送验，避免两个认证弹窗互相覆盖。
+ */
+const verifiedUrls = new Set<string>()
+let queuedVerify: string[] = []
+const flushQueuedVerify = () => {
+  if (!queuedVerify.length) return
+  const urls = queuedVerify
+  queuedVerify = []
+  customResultHandle(urls)
+}
 const customResultHandle = (urls: string[]) => {
-  uploadImage.value = urls
-  faceRecognition({ modelCode, imageUrls: urls }).then((res) => {
+  const fresh = urls.filter((u) => !verifiedUrls.has(u))
+  if (!fresh.length) return
+  if (faceLoading.value) {
+    queuedVerify.push(...fresh.filter((u) => !queuedVerify.includes(u)))
+    return
+  }
+  fresh.forEach((u) => verifiedUrls.add(u))
+  uploadImage.value = [...uploadImage.value.filter((u) => !fresh.includes(u)), ...fresh]
+  faceRecognition({ modelCode, imageUrls: fresh }).then((res) => {
     if (res.code === 0) {
       if (modelCode === localModelValue) {
         resetData()
@@ -207,8 +228,10 @@ const customResultHandle = (urls: string[]) => {
         faceAuthDialog.show = true
         faceAuthDialog.qrCode = res.data.h5Link
       }
+    } else {
+      fresh.forEach((u) => verifiedUrls.delete(u))
     }
-  })
+  }).catch(() => fresh.forEach((u) => verifiedUrls.delete(u)))
 }
 const windowOpen = () => window.open(faceAuthDialog.qrCode, '_blank')
 

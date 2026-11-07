@@ -8,13 +8,14 @@
  */
 import { computed, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
+import IconButton from '@/components/IconButton/index.vue'
 import { studioSubmitImageGen } from '@/api/studio.ts'
 import type { StudioImageGenPayload, StudioImageGenSubmitReq } from '@/api/studioTypes.ts'
 import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.vue'
 import StudioImageUpload from '../components/StudioImageUpload/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
-import PromptLibraryPicker from '../components/PromptLibraryPicker/index.vue'
+import PromptLibraryFlyout from '@/components/creation/PromptLibraryFlyout.vue'
 import { PromptWriteButton } from '@/components/prompt-write'
 import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import { MAX_REF_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
@@ -38,9 +39,11 @@ const refImages = ref<string[]>([])
 // ---------------- 提示词库 ----------------
 
 const pickerShow = ref(false)
+/** 提示词库浮层的锚（书本钮）；替换旧 720 宽弹窗，与工具页 / 画布同一浮层 */
+const bookBtnEl = ref<HTMLElement | null>(null)
 
-function onPickPrompt(prompt: string) {
-  form.prompt = prompt
+function onPickPrompt(item: { prompt: string }) {
+  form.prompt = item.prompt.slice(0, PROMPT_MAX)
 }
 
 // ---------------- 提交 ----------------
@@ -132,35 +135,40 @@ function onReedit(payload: Record<string, unknown>) {
         → 底行 字数计数 + 输入润色开关。外观沿用 CreationPromptInput 的输入框（line 描边、圆角 6、四边内影、聚焦藤紫光晕）。
       -->
       <section
-        class="flex min-h-320px flex-1 flex-col gap-12px box-border rounded-10px border border-solid border-line bg-white p-12px shadow-[inset_0_0_8px_1px_rgba(31,35,41,0.10),inset_0_1px_0_rgba(31,35,41,0.05)] [transition:box-shadow_110ms] motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05),0_0_0_3px_rgba(135,95,154,0.14)]"
+        class="sx-squircle flex min-h-320px flex-1 flex-col gap-12px box-border rounded-18px border border-solid border-line bg-white p-12px shadow-[inset_0_0_10px_rgba(31,35,41,0.085),inset_0_1px_0_rgba(31,35,41,0.04)] [transition:box-shadow_160ms] motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)]"
         aria-labelledby="imagegen-prompt-label"
       >
         <div class="flex items-center justify-between gap-8px">
           <span class="text-11px leading-16px tabular-nums text-placeholder" aria-label="参考图数量"
             >{{ refImages.length }}/{{ MAX_REF_IMAGES }}</span
           >
-          <PromptWriteButton v-model="form.prompt" biz-type="image-prompt" :image-urls="refImages" />
-          <button
-            type="button"
-            class="grid h-24px w-24px cursor-pointer place-items-center rounded-sm border-none bg-transparent p-0 text-ink-2 hover:text-violet sx-focus"
-            aria-label="我的提示词"
-            title="我的提示词"
-            @click="pickerShow = true"
+          <PromptWriteButton
+            v-model="form.prompt"
+            biz-type="image-prompt"
+            :image-urls="refImages"
+            size="sm"
+            :show-quota="false"
+          />
+          <IconButton
+            :ref="(c) => (bookBtnEl = (c as { $el?: HTMLElement } | null)?.$el ?? null)"
+            label="我的提示词"
+            variant="quiet"
+            :aria-expanded="pickerShow"
+            aria-haspopup="dialog"
+            @click="pickerShow = !pickerShow"
           >
             <svg
-              class="h-16px w-16px"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="1.6"
               stroke-linecap="round"
               stroke-linejoin="round"
-              aria-hidden="true"
             >
               <path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z" />
               <path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z" />
             </svg>
-          </button>
+          </IconButton>
         </div>
 
         <!-- 单角色参考图槽（s1.1 MlReferenceSlots 口径）：60×100 白边浮片 + 右下云钮（资产添加） -->
@@ -173,7 +181,7 @@ function onReedit(payload: Record<string, unknown>) {
           id="imagegen-prompt"
           v-model="form.prompt"
           :maxlength="PROMPT_MAX"
-          placeholder="描述想要的画面：主体、场景、风格、光影"
+          placeholder="描述想要的画面：主体、场景、风格、光影。例如：白瓷杯放在原木桌面，晨光斜射，极简北欧风"
           aria-describedby="imagegen-prompt-count"
           class="block min-h-120px w-full flex-1 box-border m-0 resize-none overflow-y-auto overscroll-contain border-none bg-transparent p-0 text-13px leading-20px text-ink outline-none placeholder:text-placeholder"
         />
@@ -184,17 +192,36 @@ function onReedit(payload: Record<string, unknown>) {
             class="select-none text-11px leading-16px tabular-nums"
             :class="form.prompt.length >= PROMPT_MAX ? 'text-warning' : 'text-placeholder'"
             :aria-live="form.prompt.length >= PROMPT_MAX ? 'polite' : undefined"
+            :title="`提示词上限 ${PROMPT_MAX} 字`"
             >{{ form.prompt.length }} / {{ PROMPT_MAX }}</span
           >
-          <span class="flex items-center gap-6px">
-            <span id="imagegen-rewrite-label" class="text-12px leading-16px text-ink-2">输入润色</span>
-            <n-switch v-model:value="form.rewrite_prompt" size="small" aria-labelledby="imagegen-rewrite-label" />
+          <span class="flex flex-none items-center gap-6px text-11px leading-16px text-muted">
+            <span id="imagegen-rewrite-label">输入润色</span>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="form.rewrite_prompt"
+              aria-labelledby="imagegen-rewrite-label"
+              class="relative after:(content-empty absolute -inset-x-4px -inset-y-6px rounded-[inherit]) [@media(pointer:coarse)]:after:-inset-y-10px flex-none w-34px h-20px box-border p-0 rounded-full border border-solid cursor-pointer [transition:background_180ms_cubic-bezier(0.2,0.7,0.2,1),border-color_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
+              :class="
+                form.rewrite_prompt
+                  ? 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)]'
+                  : 'border-#c9cfd6 bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]'
+              "
+              @click="form.rewrite_prompt = !form.rewrite_prompt"
+            >
+              <span
+                class="absolute top-2px w-14px h-14px rounded-full bg-white shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
+                :class="form.rewrite_prompt ? 'left-16px' : 'left-2px'"
+                aria-hidden="true"
+              />
+            </button>
           </span>
         </div>
       </section>
 
       <!-- 弹层放壳内：跟 naive 组件同处 llTheme 的 abstract provider 下（teleport 不丢主题） -->
-      <PromptLibraryPicker v-model:show="pickerShow" @select="onPickPrompt" />
+      <PromptLibraryFlyout v-model:show="pickerShow" :anchor="bookBtnEl" @select="onPickPrompt" />
     </template>
 
     <template #action>
@@ -206,6 +233,7 @@ function onReedit(payload: Record<string, unknown>) {
           v-model:aspect-ratio="form.aspect_ratio"
           v-model:count="form.count"
         />
+        <p class="m-0 text-11px leading-16px text-placeholder">不传参考图即纯文字生成；结果按所选张数回到历史记录</p>
         <StudioSubmitBar
           :label="submitText"
           :points="costPoints"

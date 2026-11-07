@@ -1,13 +1,13 @@
 /**
- * 「本地生活」导航首页（#/local-life）的内容表，交给 views/picture/LandingPage.vue 渲染，版式与 AI 图片 / AI 视频落地页一致。
+ * 「本地生活」导航首页（#/local-life）的内容表，交给 views/image/LandingPage.vue 渲染，版式与 AI 图片 / AI 视频落地页一致。
  *
  * <p>本地生活没有原型：三张 banner 是我们按已有功能自拟的（门店全案 / 店铺档案 / AI文案），不是原型内容；
  * banner 右侧占位渐变与 AI 图片落地页同值（见 LandingPage.vue photoTint）。
- * 分组：先是「门店全案」（原 AI 图片落地页里的本地生活分组，指向 /local-life/full-set），
- * 再是本地生活路由（router/local-life）里的单项工具，分组名、名称与说明照原入口页「单项工具」区的原文。
+ * 分组：与 banner 重复的三项（门店全案 / 店铺档案 / AI文案）不进分组，
+ * 分组是本地生活路由（router/local-life）里的单项工具，分组名、名称与说明照原入口页「单项工具」区的原文。
  * 图标是按功能意思画的近似件（24×24、单色 currentColor）。
  */
-import type { LandingPageData, LandingSection, LandingTool } from '@/views/picture/landing'
+import type { LandingPageData, LandingSection, LandingTool } from '@/views/image/landing'
 
 export const FULL_SET_ROUTE = '/local-life/full-set'
 
@@ -93,26 +93,29 @@ export const localLifeLanding: LandingPageData = {
       route: '/local-life/copywriting',
     },
   ],
+  /** 与上面三张 banner 重复的条目（门店全案 / 店铺档案 / AI文案）不再进分组，只在 banner 出现 */
   sections: [
-    section('门店全案', [['本地生活', '门店全案', FULL_SET_ROUTE, ICONS.store]]),
-    section('文案与档案', [
-      ['AI文案', 'AI帮写、爆款仿写，商品文案一键成稿', '/local-life/copywriting', ICONS.copywriting],
-      ['店铺档案', '店铺信息一次录入，各创作模块共用', '/local-life/shop-profile', ICONS.shopProfile],
-    ]),
     section('数字人', [
-      ['AI数字人', '形象 + 音色 + 文案，生成口播数字人视频', '/local-life/digital-human', ICONS.digitalHuman],
-      ['数字人口播', '一段文案一张脸，快速产出播报视频', '/local-life/voiceover', ICONS.voiceover],
+      ['AI数字人', '形象音色成片', '/local-life/digital-human', ICONS.digitalHuman],
+      ['数字人口播', '文案生成口播', '/local-life/voiceover', ICONS.voiceover],
     ]),
     section('图文与海报', [
-      ['图文笔记', '构思 → 规划 → 出图，小红书图文一条龙', '/local-life/note', ICONS.note],
-      ['AI海报', '模板 + 海报信息，批量生成节日营销海报', '/local-life/poster', ICONS.poster],
-      ['AI长图', '商品与卖点，生成分段引导长图', '/local-life/long-image', ICONS.longImage],
-      ['动作迁移', '把动作视频的肢体迁移给指定人物', '/local-life/action-transfer', ICONS.actionTransfer],
+      ['图文笔记', '小红书图文', '/local-life/note', ICONS.note],
+      ['AI海报', '节日营销海报', '/local-life/poster', ICONS.poster],
+      ['AI长图', '卖点引导长图', '/local-life/long-image', ICONS.longImage],
+      ['动作迁移', '动作迁移人物', '/local-life/action-transfer', ICONS.actionTransfer],
     ]),
     section('视频创作', [
-      ['探店视频', '文案 + 门店实拍，生成分镜探店大片', '/local-life/explore-shop', ICONS.exploreShop],
-      ['带货短剧', '主题 + 商品图，剧情带货短剧自动成片', '/local-life/short-drama', ICONS.shortDrama],
-      ['爆款视频复刻', '粘贴爆款链接，解析分镜同款复刻', '/local-life/video-remake', ICONS.videoRemake],
+      ['探店视频', '分镜探店大片', '/local-life/explore-shop', ICONS.exploreShop],
+      ['带货短剧', '剧情带货成片', '/local-life/short-drama', ICONS.shortDrama],
+      ['爆款视频复刻', '解析分镜同款', '/local-life/video-remake', ICONS.videoRemake],
     ]),
   ],
 }
+
+/** 被 banner 吸收的条目：不在本地生活首页分组里重复出现，但 AI 图片落地页的「本地生活」分组仍按路由取用 */
+export const localLifeBannerTools: LandingTool[] = section('', [
+    ['门店全案', '品牌档案成套', FULL_SET_ROUTE, ICONS.store],
+    ['AI文案', '商品文案成稿', '/local-life/copywriting', ICONS.copywriting],
+    ['店铺档案', '一次录入共用', '/local-life/shop-profile', ICONS.shopProfile],
+  ]).tools

@@ -81,37 +81,32 @@ const onDownload = () => downloadImage(data.resultUrl)
     <!-- 生成中（排队中 0 / 处理中 1）：AI 生成加载动画 -->
     <GenerateLoading v-else />
 
-    <button
+    <!-- 选择：视觉 24，命中区由 sx-hit 补足；悬停才出现，触屏 / 键盘聚焦始终可见 -->
+    <IconButton
       v-if="selectImgUrls && !data.blocked"
-      type="button"
-      class="absolute top-6px right-6px grid place-items-center p-0 border-none bg-transparent text-20px text-white cursor-pointer rounded-sm opacity-0 transition-opacity duration-mid [text-shadow:0_1px_2px_rgba(0,0,0,0.3)] group-hover:opacity-100 focus-visible:opacity-100 sx-focus"
-      :aria-pressed="isImgChecked()"
-      aria-label="选择这张图片"
+      class="!absolute top-6px right-6px"
+      size="sm"
+      variant="overlay"
+      reveal
+      :pressed="isImgChecked()"
+      label="选择这张图片"
       @click="toggleImage"
     >
-      <i :class="isImgChecked() ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'" aria-hidden="true" />
-    </button>
+      <i :class="isImgChecked() ? 'icon-ic_ds_check_sel' : 'icon-ic_ds_check_nor'" />
+    </IconButton>
 
-    <!-- 单个下载仅图片有、只在悬停 / 聚焦时出现（结果卡不放常驻浮层）；视频只保留结果头部的「下载」，避免遮挡播放控件 -->
-    <button
+    <!-- 单个下载仅图片有；视频只保留结果头部的「下载」，避免遮挡播放控件。触屏常显 -->
+    <IconButton
       v-if="mediaType === 'image' && data.resultUrl && data.status === 2 && !data.blocked"
-      type="button"
-      class="sx-btn absolute right-6px bottom-6px !w-24px !h-24px !p-0 opacity-0 transition-opacity duration-mid group-hover:opacity-100 focus-visible:opacity-100"
-      aria-label="下载这张图片"
+      class="!absolute right-6px bottom-6px"
+      variant="overlay"
+      reveal
+      label="下载这张图片"
       @click.stop="onDownload"
     >
-      <svg
-        class="w-12px h-12px"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.7"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" />
       </svg>
-    </button>
+    </IconButton>
   </div>
 </template>

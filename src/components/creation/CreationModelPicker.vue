@@ -53,7 +53,7 @@ function pick(opt: CreationOption<string>) {
         role="radio"
         :aria-checked="modelValue === opt.value"
         :disabled="disabled || opt.disabled"
-        class="flex items-center justify-between gap-10px h-44px box-border px-10px rounded-6px border border-solid text-left cursor-pointer outline-none [transition:background_110ms,border-color_110ms] motion-reduce:transition-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2) disabled:(opacity-45 cursor-not-allowed)"
+        class="flex items-center justify-between gap-10px h-44px box-border px-10px rounded-6px border border-solid text-left cursor-pointer [transition:background_110ms,border-color_110ms] motion-reduce:transition-none sx-focus disabled:(opacity-45 cursor-not-allowed)"
         :class="
           modelValue === opt.value
             ? 'border-violet-line bg-[linear-gradient(180deg,#ffffff_0%,#f8f3fc_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]'

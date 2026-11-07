@@ -6,15 +6,23 @@
  * + 添加节点面板（工具条「+」/ 双击空白画布 / 端口「+」）+ 多选操作条 + 节点缩放 + 模块删除。
  * 接口契约见 fusion_aigc_go/docs/api/api-canvas.md；快照 {nodes, edges} 整段存取 + 乐观锁保存。
  */
-import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type VNode } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ConnectionMode, VueFlow, useVueFlow, type EdgeMouseEvent, type NodeMouseEvent } from '@vue-flow/core'
+import { MiniMap } from '@vue-flow/minimap'
+import '@vue-flow/minimap/dist/style.css'
+import PointsBalanceChip from '@/components/points/PointsBalanceChip.vue'
+import IconButton from '@/components/IconButton/index.vue'
+import { useUserInfoStore } from '@/stores/userInfo'
+import PromptLibraryFlyout from '@/components/creation/PromptLibraryFlyout.vue'
+import { getPointsBalance } from '@/api/points.ts'
 import { Background } from '@vue-flow/background'
 // Vue Flow 必需的基础样式：节点绝对定位、变换原点、连线 SVG overflow:visible、Handle 贴边定位。
 // 缺了它连线会被 SVG 裁掉（看不到线），节点 / 端口也会落回文档流而错位。
 import '@vue-flow/core/dist/style.css'
 import { llTheme } from '@/views/local-life/theme.ts'
 import EditorIcon from './EditorIcon.vue'
+import CanvasTip from './CanvasTip.vue'
 import EditorBezierEdge from './EditorBezierEdge.vue'
 import EditorTextNode from './nodes/EditorTextNode.vue'
 import EditorImageNode from './nodes/EditorImageNode.vue'
@@ -25,23 +33,25 @@ import EditorModuleNode from './nodes/EditorModuleNode.vue'
 import NodeParamsPanel from './NodeParamsPanel.vue'
 import NodeAddPanel from './NodeAddPanel.vue'
 import ImageActionPanel from './ImageActionPanel.vue'
-import { activeImageAction } from './imageActions.ts'
+import { IMAGE_ACTIONS, activeImageAction, collectImageSources, openImageAction } from './imageActions.ts'
 import EditorAssetPanel from './EditorAssetPanel.vue'
 import TitleModal from '../TitleModal.vue'
 import TemplatePicker from '../TemplatePicker.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
-import { canvasSaveAs } from '@/api/canvasHome.ts'
+import { canvasSaveAs, canvasUploadMedia, type ICanvasCatalogModel } from '@/api/canvasHome.ts'
 import { downloadImage } from '@/utils/download.ts'
 import { takeCanvasImport } from '@/utils/canvasImportHandoff.ts'
-import { normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
+import { isGroupPlate, normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
+import { viewportKeepingCenter, type ICanvasClipboard } from './clipboard.ts'
 import { editorDialog, editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
+import { MAX_IMAGE_UPLOAD_MB, uploadSizeError } from './nodes/useNodeUpload.ts'
 import type { CanvasEditorNode, CanvasToolKind } from './types.ts'
 import {
   FOCUS_RING,
+  NODE_MENU_HOST,
   POP_FADE,
   SELECTION_BTN,
   TOOLBAR,
-  TOOLBAR_BTN,
   TOP_BTN,
   TOP_BTN_PRIMARY,
   type AddPanelKind,
@@ -60,11 +70,19 @@ const {
   zoomIn,
   zoomOut,
   setCenter,
+  setViewport,
   viewport,
   getSelectedNodes,
   removeSelectedElements,
   screenToFlowCoordinate,
 } = useVueFlow(FLOW_ID)
+
+/** 缩放读数点回 100%：保持舞台中心对着的画布点不动（点击时现量舞台尺寸，资产栏收起 / 窗口变化都准） */
+function resetZoom() {
+  const rect = stageRef.value?.getBoundingClientRect()
+  if (!rect) return
+  void setViewport(viewportKeepingCenter(viewport.value, rect.width, rect.height, 1), { duration: 200 })
+}
 
 /**
  * 点阵背景（原型 CanvasView dotGrid）：基准间距 24，按缩放翻倍 / 减半，使屏幕间距保持在 13–42px；
@@ -79,6 +97,10 @@ const dotGrid = computed(() => {
 })
 
 const canvasId = computed(() => String(route.params.id ?? ''))
+
+/** 快捷键修饰键的显示名：macOS 显示 ⌘，其余 Ctrl（快捷键表 / 菜单右侧提示用） */
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent)
+const MOD_KEY = IS_MAC ? '⌘' : 'Ctrl'
 
 const {
   nodes,
@@ -116,6 +138,14 @@ function importFromHandoff(id: string) {
     const created = store.addNode('image', undefined, { x: base.x + i * 300, y: base.y })
     if (!created) return
     store.updateNodeData(created.id, { image: url })
+    last = created
+  })
+  // 视频接在图片后面同一行（资产库「用于画布」可带视频）
+  const offset = handoff.urls.length
+  ;(handoff.videos ?? []).forEach((url, i) => {
+    const created = store.addNode('video', undefined, { x: base.x + (offset + i) * 300, y: base.y })
+    if (!created) return
+    store.updateNodeData(created.id, { video: url })
     last = created
   })
   if (last) {
@@ -196,30 +226,123 @@ function onConnect(connection: {
     targetHandle: connection.targetHandle,
   })
   if (ok) selectedEdgeId.value = ''
+  connectedThisDrag = true
 }
 
-/** 拖到节点主体（未命中端口）时按来源类型自动挑输入口 */
-let connectStart: { nodeId?: string | null; handleId?: string | null } | null = null
+/**
+ * 拖到节点主体（未命中端口）时按来源类型自动挑输入口；拖到空白处则从来源节点打开添加面板，新节点落在松手处并自动连线。
+ */
+let connectStart: {
+  nodeId?: string | null
+  handleId?: string | null
+  handleType?: string | null
+  x?: number
+  y?: number
+} | null = null
+/** 本次拖线已经由 Vue Flow 命中端口连上（connect 先于 connect-end 触发），connect-end 不再兜底 */
+let connectedThisDrag = false
 
-function onConnectStart(payload: { nodeId?: string | null; handleId?: string | null }) {
-  connectStart = payload
+function onConnectStart(payload: {
+  event?: MouseEvent | TouchEvent
+  nodeId?: string | null
+  handleId?: string | null
+  handleType?: string | null
+}) {
+  const ev = payload.event
+  const p = ev && 'touches' in ev ? ev.touches[0] : (ev as MouseEvent | undefined)
+  connectStart = { nodeId: payload.nodeId, handleId: payload.handleId, handleType: payload.handleType, x: p?.clientX, y: p?.clientY }
+  connectedThisDrag = false
 }
 
-function onConnectEnd(event?: MouseEvent) {
+/**
+ * 「空白画布」的判定（拖线松手、拖文件松手共用）：最上层命中必须落在 Vue Flow 画布底板里，
+ * 且不在节点 / 连线 / 小地图 / 浮动面板 / 工具条 / 弹层上——盖在画布上的浮层不算空白。
+ */
+const NOT_BLANK_SELECTOR = [
+  '.vue-flow__node',
+  '.vue-flow__edge',
+  '.vue-flow__minimap',
+  '.vue-flow__panel',
+  '.vue-flow__controls',
+  '[data-canvas-console]',
+  '[data-canvas-popover]',
+  '[role="toolbar"]',
+  '[role="menu"]',
+  '[role="dialog"]',
+].join(', ')
+
+function isBlankCanvasEl(el: Element | null | undefined): boolean {
+  if (!el?.closest('.vue-flow__pane')) return false
+  return !el.closest(NOT_BLANK_SELECTOR)
+}
+
+/**
+ * 选出指针下最上层的元素与它所在的节点 / 端口：拖线时连接线那层 SVG 盖在光标下面，elementFromPoint 只会拿到它，
+ * 要先把它滤掉；之后只认最上层那个元素（被浮层盖住的节点不算命中）。
+ */
+function pickUnderPointer(
+  clientX: number,
+  clientY: number,
+): { top?: HTMLElement; nodeEl?: HTMLElement; handleEl?: HTMLElement } {
+  const top = document
+    .elementsFromPoint(clientX, clientY)
+    .find((el) => !el.closest('.vue-flow__connectionline, .vue-flow__connection')) as HTMLElement | undefined
+  return {
+    top,
+    handleEl: top?.closest<HTMLElement>('.vue-flow__handle') ?? undefined,
+    nodeEl: top?.closest<HTMLElement>('.vue-flow__node') ?? undefined,
+  }
+}
+
+function onConnectEnd(event?: MouseEvent | TouchEvent) {
   const start = connectStart
   connectStart = null
-  if (!start?.nodeId || !event) return
-  const under = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null
-  const nodeEl = under?.closest<HTMLElement>('.vue-flow__node')
-  const targetId = nodeEl?.dataset.id
-  if (!targetId || targetId === start.nodeId) return
-  const source = store.findNode(start.nodeId)
-  const target = store.findNode(targetId)
-  if (!source || !target) return
-  const sourceHandle =
-    start.handleId ?? (source.type === 'text' ? 'text' : source.type === 'video' ? 'video' : 'image-out')
-  const targetHandle = autoTargetHandle(source, target)
-  store.connect({ source: source.id, target: targetId, sourceHandle, targetHandle })
+  const justConnected = connectedThisDrag
+  connectedThisDrag = false
+  if (!start?.nodeId || !event || justConnected) return
+  const point = 'changedTouches' in event ? event.changedTouches[0] : (event as MouseEvent)
+  if (!point) return
+  const { top, nodeEl, handleEl } = pickUnderPointer(point.clientX, point.clientY)
+  // 落在空白画布：只有从输出口拖出来时才「接着建」（从输入口反向拖到空白不知道该建什么）
+  if (!nodeEl) {
+    // 松手处是小地图 / 浮动面板 / 工具条等盖在画布上的东西：不算空白
+    if (!isBlankCanvasEl(top)) return
+    if (start.handleType && start.handleType !== 'source') return
+    // 只是点了一下端口（没拖开）：不当成「拖到空白」
+    if (start.x != null && start.y != null && Math.hypot(point.clientX - start.x, point.clientY - start.y) < 12) return
+    const stage = stageRef.value?.getBoundingClientRect()
+    if (!stage || point.clientX < stage.left || point.clientX > stage.right || point.clientY < stage.top || point.clientY > stage.bottom) return
+    const source = store.findNode(start.nodeId)
+    if (!source || loading.value || !store.ready.value) return
+    openQuickAdd(
+      source.id,
+      { kinds: quickAddKindsOf(source), clientX: point.clientX, clientY: point.clientY },
+      { atPoint: true, sourceHandle: start.handleId ?? undefined },
+    )
+    return
+  }
+  // 落在端口上但没连成：Vue Flow 的校验已经拒了（isValidConnection），不再按主体兜底
+  if (handleEl) return
+  const hoveredId = nodeEl.dataset.id
+  if (!hoveredId || hoveredId === start.nodeId) return
+  const startNode = store.findNode(start.nodeId)
+  const hovered = store.findNode(hoveredId)
+  if (!startNode || !hovered) return
+  if (start.handleType && start.handleType !== 'source') {
+    // 从输入口反向拖到另一个节点主体：反过来连——被悬停的节点当来源（它的输出口），起点节点的这个输入口当目标；
+    // 能不能连由 store.connect 里的 validateConnection 判（不合规会提示原因）
+    if (!start.handleId) return
+    store.connect({
+      source: hovered.id,
+      target: startNode.id,
+      sourceHandle: outputHandleOf(hovered),
+      targetHandle: start.handleId,
+    })
+    return
+  }
+  const sourceHandle = start.handleId ?? outputHandleOf(startNode)
+  const targetHandle = autoTargetHandle(startNode, hovered)
+  store.connect({ source: startNode.id, target: hoveredId, sourceHandle, targetHandle })
 }
 
 /** 未命中端口时按来源 / 目标类型挑输入口（拖到节点主体、「+」快捷添加共用） */
@@ -239,6 +362,15 @@ function autoTargetHandle(source: CanvasEditorNode, target: CanvasEditorNode): s
   return targetHandle
 }
 
+/** 端口「+」可接的下游种类（与各节点组件里 NodeQuickAdd 的 kinds 一致；拖线到空白处打开添加面板用） */
+function quickAddKindsOf(node: CanvasEditorNode): QuickAddKind[] {
+  if (node.type === 'text') return ['image-model', 'video-model']
+  if (node.type === 'video') return ['video-model']
+  if (node.type === 'model' && node.data.inputOnly) return ['video-model']
+  if (node.type === 'tool' && node.data.tool === 'i2p') return ['image-model', 'video-model']
+  return ['image-model', 'video-model', 'tool']
+}
+
 /** 节点的输出口 id（与各节点组件里 source Handle 的 id 一致） */
 function outputHandleOf(node: CanvasEditorNode): string {
   if (node.type === 'text') return 'text'
@@ -248,15 +380,18 @@ function outputHandleOf(node: CanvasEditorNode): string {
   return node.data.inputOnly ? 'video' : 'image-out'
 }
 
-/** 新建节点后自动从来源节点连过去（端口「+」→ 添加面板；新建 / 连线 / 校验全走 store 既有方法） */
-function connectFrom(sourceId: string, targetId: string) {
+/**
+ * 新建节点后自动从来源节点连过去（端口「+」→ 添加面板；新建 / 连线 / 校验全走 store 既有方法）。
+ * sourceHandle：拖线起点的具体输出口（候选单独连出的 candidate-N 等），不传按节点默认输出口。
+ */
+function connectFrom(sourceId: string, targetId: string, sourceHandle?: string) {
   const source = store.findNode(sourceId)
   const target = store.findNode(targetId)
   if (!source || !target) return
   store.connect({
     source: source.id,
     target: target.id,
-    sourceHandle: outputHandleOf(source),
+    sourceHandle: sourceHandle || outputHandleOf(source),
     targetHandle: autoTargetHandle(source, target),
   })
 }
@@ -264,6 +399,7 @@ function connectFrom(sourceId: string, targetId: string) {
 // ---------------- 删除 / 快捷键 ----------------
 
 function deleteSelection() {
+  ctxMenu.value = null
   if (selectedFlowNodes.value.length > 1) {
     confirmDeleteNodes()
     return
@@ -287,6 +423,10 @@ function onKeydown(event: KeyboardEvent) {
   // 控制台 / 添加面板里的下拉、开关等控件聚焦时，按键归控件（避免 Backspace 误删节点）
   if (target?.closest('[data-canvas-console], [data-canvas-popover]')) return
   if (event.key === 'Escape') {
+    if (ctxMenu.value) {
+      closeCtxMenu()
+      return
+    }
     if (addPanel.value) {
       closeAddPanel()
       return
@@ -305,6 +445,38 @@ function onKeydown(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
     event.preventDefault()
     void redoCanvas()
+    return
+  }
+  // 剪贴板（2026-11-06 二轮）：C 复制 / V 粘贴 / X 剪切 / D 再制
+  // 焦点在可编辑区，或页面上有选中的文字（如节点里的提示词）：复制 / 剪切 / 粘贴交还浏览器原生行为
+  if ((event.ctrlKey || event.metaKey) && ['c', 'v', 'x'].includes(event.key.toLowerCase())) {
+    const active = document.activeElement as HTMLElement | null
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+    if (event.key.toLowerCase() !== 'v' && window.getSelection()?.toString()) return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+    event.preventDefault()
+    copySelection()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+    event.preventDefault()
+    pasteClipboard()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') {
+    event.preventDefault()
+    cutSelection()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+    event.preventDefault()
+    duplicateSelection()
+    return
+  }
+  if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault()
+    openHelp()
     return
   }
   if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -414,7 +586,8 @@ function backToList() {
 const saveText = computed(() => {
   if (saveState.value === 'saving') return '保存中…'
   if (saveState.value === 'conflict') return '版本冲突'
-  if (saveState.value === 'error') return saveError.value || '保存失败'
+  // 失败原因可能很长：小标只写「未保存」，原因放进悬停 title
+  if (saveState.value === 'error') return '未保存'
   if (saveState.value === 'dirty') return '未保存更改'
   if (lastSavedAt.value) {
     const d = new Date(lastSavedAt.value)
@@ -453,17 +626,258 @@ function commitTitle() {
 /** 可执行的选中节点：生成节点 / 工具节点 */
 const runTarget = computed(() => {
   const node = selectedNode.value
-  return node && (node.type === 'model' || node.type === 'tool') ? node : undefined
+  return node && ((node.type === 'model' && !node.data.inputOnly) || node.type === 'tool') ? node : undefined
 })
 
-const runHint = computed(() =>
-  runTarget.value
-    ? `执行选中的「${runTarget.value.data.title}」（暂不支持一键按依赖执行全部）`
-    : '先在画布上选中一个生成或工具节点（暂不支持一键执行全部）',
+/** 画布上全部可执行的节点（生成 / 工具，参考素材节点除外）：没有选中时「执行模型」跑这些 */
+const runnableAll = computed(() =>
+  nodes.value.filter((node) => (node.type === 'model' && !node.data.inputOnly) || node.type === 'tool'),
 )
 
+/** 当前「执行」的范围：多选 → 选区；单选了可执行节点 → 它；否则 → 全部可执行节点 */
+const runScope = computed<'selection' | 'single' | 'all'>(() => {
+  if (selectedFlowNodes.value.length > 1) return 'selection'
+  if (runTarget.value) return 'single'
+  return 'all'
+})
+
+const runDisabled = computed(
+  () => batchRunning.value || (runScope.value === 'all' && !runnableAll.value.length),
+)
+
+const runHint = computed(() => {
+  if (runScope.value === 'selection') return `按上下游顺序执行选中的 ${selectedFlowNodes.value.length} 个节点`
+  if (runScope.value === 'single') return `执行选中的「${runTarget.value?.data.title ?? ''}」`
+  return runnableAll.value.length
+    ? `执行画布上全部 ${runnableAll.value.length} 个模型 / 工具节点（按依赖顺序）；选中节点则只执行选中的`
+    : '画布上还没有可执行的生成或工具节点'
+})
+
+/** 顶栏 / 底栏「执行」：多选按选区、单选执行该节点、没有选中执行全部（同一个费用确认） */
 function runSelected() {
-  if (runTarget.value) void store.runNode(runTarget.value.id)
+  if (runDisabled.value) return
+  if (runScope.value === 'selection') {
+    void confirmAndRun(selectedFlowNodes.value.map((node) => node.id))
+    return
+  }
+  if (runScope.value === 'single' && runTarget.value) {
+    void confirmAndRun([runTarget.value.id])
+    return
+  }
+  void confirmAndRun(
+    runnableAll.value.map((node) => node.id),
+    'all',
+  )
+}
+
+// ---------------- 计费（2026-11-06 二轮）：执行前费用确认 + 余额不足拦截；预扣 / 退回由 store toast ----------------
+
+const balance = ref<number | null>(null)
+const userInfoStore = useUserInfoStore()
+
+/** 刷新余额：本页确认弹窗用 balance，顶栏余额胶囊读 userInfo store，两边一起回写 */
+async function refreshBalance() {
+  try {
+    const res = await getPointsBalance()
+    const value = res.data?.balance
+    balance.value = typeof value === 'number' ? value : null
+    if (typeof value === 'number' && userInfoStore.userInfo) userInfoStore.userInfo.availablePoints = value
+  } catch {
+    balance.value = null
+  }
+}
+onMounted(() => void refreshBalance())
+
+/** 单节点预估：按 catalog 价目表匹配尺寸 / 时长 × 张数（与控制台价格提示同一口径） */
+function estimateNodeCredits(nodeId: string): number {
+  const node = store.findNode(nodeId)
+  if (!node || node.type !== 'model') return 0
+  const list = node.data.kind === 'video' ? store.catalog.value?.video_models : store.catalog.value?.image_models
+  const model = list?.find((m) => m.model_id === (node.data.modelId || m.model_id))
+  const prices = model?.prices ?? []
+  if (!prices.length) return 0
+  const size = node.data.size
+  const duration = node.data.duration
+  const hit =
+    prices.find((p) => (size ? p.size === size : true) && (duration ? p.duration === duration : true)) ?? prices[0]
+  if (!hit) return 0
+  const count = node.data.kind === 'video' ? 1 : Math.max(1, node.data.count ?? 1)
+  return hit.points * count
+}
+
+/** 执行占用中（从点「执行」那一刻起，到费用确认取消 / 提交结束 / 批量收尾）：期间再点一律忽略 */
+const batchRunning = ref(false)
+/** 真的在跑批量（确认之后）：只用于按钮文案 / 转圈，占用判断看 batchRunning */
+const batchActive = ref(false)
+/** 每次执行一个令牌：收尾只释放自己那一次，不会把后一批的占用状态清掉 */
+let runToken = 0
+function releaseRun(token: number) {
+  if (token !== runToken) return
+  batchRunning.value = false
+  batchActive.value = false
+}
+
+/**
+ * 执行前确认（2026-11-06 二轮）：先刷新余额，点数不足直接拦下不弹窗；够就弹确认（节点数 / 预计消耗 / 余额）。
+ * 已在提交 / 排队 / 运行的节点不重复提交（汇总里记「已在运行」，不算失败），预计点数也不算它们。
+ * 一个节点直接执行；多个节点走 runBatch（按依赖提交 + 一条会自更新的进度提示 + 一条汇总）。
+ */
+async function confirmAndRun(ids: string[], scope: 'pick' | 'all' = 'pick'): Promise<void> {
+  // 入口就占住（在 await 刷新余额之前），双击 / 连点第二下直接忽略
+  if (batchRunning.value) {
+    editorMessage.warning('上一批还在执行，请等它结束')
+    return
+  }
+  const token = ++runToken
+  batchRunning.value = true
+  let handedOff = false
+  try {
+    const executable = executableInOrder(
+      ids.map((id) => store.findNode(id)).filter((node): node is CanvasEditorNode => Boolean(node)),
+    )
+    if (!executable.length) {
+      editorMessage.warning(scope === 'all' ? '画布上还没有可执行的生成或工具节点' : '选中的节点里没有可执行的生成或工具节点')
+      return
+    }
+    const running = executable.filter((id) => store.isNodeBusy(id))
+    const toRun = executable.filter((id) => !store.isNodeBusy(id))
+    if (!toRun.length) {
+      editorMessage.info(
+        running.length === 1 ? `「${store.findNode(running[0]!)?.data.title ?? '节点'}」已在运行` : `这 ${running.length} 个节点都已在运行`,
+      )
+      return
+    }
+    const estimate = toRun.reduce((sum, id) => sum + estimateNodeCredits(id), 0)
+    const hasVideo = toRun.some((id) => store.findNode(id)?.data.kind === 'video')
+    const hasTool = toRun.some((id) => store.findNode(id)?.type === 'tool')
+    await refreshBalance()
+    // 点数不足：直接拦下不弹确认（与提交时服务端口径一致，避免确认后才失败）
+    if (balance.value != null && balance.value < estimate) {
+      editorMessage.error(`点数不足：本次预计需要 ${estimate} 点，当前余额 ${balance.value} 点`)
+      return
+    }
+    const notes = [
+      running.length ? `另有 ${running.length} 个节点已在运行，不重复提交。` : '',
+      hasVideo ? '视频按所选时长计费，已计入上方预计点数。' : '',
+      hasTool ? '工具节点按功能单独计价，未计入上方预计。' : '',
+      '提交即预扣，失败 / 取消自动退回。',
+    ].filter(Boolean)
+    /** 三格数据（原型 .wf-runconfirm__facts：min-h 56 / r12 / 0.8px #ececef / #fbfbfc；数字 16/600 tabular） */
+    const fact = (value: string, label: string): VNode =>
+      h(
+        'span',
+        {
+          class:
+            'flex min-h-56px flex-col justify-center gap-2px px-10px py-8px border-[0.8px] border-solid border-[#ececef] rounded-12px bg-[#fbfbfc] text-[#7f7f7f] text-11px',
+        },
+        [h('b', { class: 'text-[#333] text-16px font-600 tabular-nums leading-22px' }, value), label],
+      )
+    const countLabel = hasTool ? '个待执行节点' : '个模型节点'
+    const title =
+      scope === 'all' ? '执行全部模型节点' : toRun.length > 1 ? `执行 ${toRun.length} 个节点` : '执行前确认'
+    const lead =
+      toRun.length > 1 ? '按依赖顺序执行，上游完成后才提交下游。' : `执行「${store.findNode(toRun[0]!)?.data.title ?? '节点'}」。`
+    await new Promise<void>((resolve) => {
+      editorDialog.info({
+        title,
+        style: { width: '380px', maxWidth: 'calc(100vw - 32px)' },
+        content: () =>
+          h('div', [
+            h('p', { class: 'm-0 text-[#7f7f7f] text-12px leading-18px' }, lead),
+            h('div', { class: 'grid grid-cols-3 gap-8px mt-14px mb-4px' }, [
+              fact(String(toRun.length), countLabel),
+              fact(estimate.toLocaleString(), '预计点数'),
+              fact(balance.value != null ? balance.value.toLocaleString() : '—', '当前余额'),
+            ]),
+            ...notes.map((note) => h('p', { class: 'm-0 mt-8px text-[#7f7f7f] text-11px leading-[1.5]' }, note)),
+          ]),
+        positiveText: '开始执行',
+        negativeText: '取消',
+        onPositiveClick: () => {
+          handedOff = true
+          resolve()
+          if (toRun.length === 1 && !running.length) {
+            void store
+              .runNode(toRun[0]!)
+              .then(() => refreshBalance())
+              .finally(() => releaseRun(token))
+          } else {
+            void runBatch(toRun, running, token)
+          }
+        },
+        onNegativeClick: () => resolve(),
+        onClose: () => resolve(),
+        onMaskClick: () => resolve(),
+        onAfterLeave: () => resolve(),
+      })
+    })
+  } finally {
+    if (!handedOff) releaseRun(token)
+  }
+}
+
+type BatchState = 'done' | 'error' | 'unknown' | 'skipped'
+
+/**
+ * 批量执行（原型 runAll）：每个节点是一个独立的异步任务，只等自己在本批（含已在运行）里的上游落定——
+ * 上游成功才提交，上游失败 / 跳过则跳过；互不依赖的链各走各的，不互相阻塞。
+ * running = 确认时已在运行的节点：不重复提交，但下游照样等它们的结果；汇总里记「已在运行」。
+ * 退回提示只算本批提交成功、之后失败的节点（提交就失败的没扣点，已在运行的不是本批扣的）。
+ */
+async function runBatch(order: string[], running: string[], token: number) {
+  batchActive.value = true
+  const inSet = new Set([...order, ...running])
+  const tasks = new Map<string, Promise<BatchState>>()
+  const submittedIds = new Set<string>()
+  let submitted = 0
+  let finished = 0
+  const progress = editorMessage.loading('准备执行…', { duration: 0 })
+  const updateProgress = (title?: string) => {
+    const head = title ? `正在提交「${title}」 · ` : ''
+    progress.content = `${head}已提交 ${submitted}/${order.length} · 已完成 ${finished}`
+  }
+  const runOne = async (id: string): Promise<BatchState> => {
+    // 先让出一拍：所有任务都登记进 tasks 之后再取上游，登记顺序不影响依赖
+    await Promise.resolve()
+    const deps = edges.value.filter((edge) => edge.target === id && inSet.has(edge.source)).map((edge) => edge.source)
+    const upstream = await Promise.all(deps.map((dep) => tasks.get(dep) ?? Promise.resolve<BatchState>('unknown')))
+    if (upstream.some((state) => state !== 'done')) return 'skipped'
+    updateProgress(store.findNode(id)?.data.title)
+    const ok = await store.runNode(id, { quiet: true })
+    if (!ok) return 'error'
+    submittedIds.add(id)
+    submitted += 1
+    updateProgress()
+    const state = await store.waitForSettled(id)
+    finished += 1
+    updateProgress()
+    return state
+  }
+  try {
+    for (const id of running) tasks.set(id, store.waitForSettled(id))
+    for (const id of order) tasks.set(id, runOne(id))
+    const states = await Promise.all(order.map((id) => tasks.get(id) ?? Promise.resolve<BatchState>('unknown')))
+    const done = states.filter((state) => state === 'done').length
+    const failedIds = order.filter((_, index) => states[index] === 'error')
+    const unknown = states.filter((state) => state === 'unknown').length
+    const skipped = states.filter((state) => state === 'skipped').length
+    const refunded = failedIds
+      .filter((id) => submittedIds.has(id))
+      .reduce((sum, id) => sum + store.runChargeOf(id), 0)
+    const parts = [`成功 ${done}`]
+    if (failedIds.length) parts.push(`失败 ${failedIds.length}`)
+    if (skipped) parts.push(`跳过 ${skipped}（上游未成功）`)
+    if (running.length) parts.push(`已在运行 ${running.length}（未重复提交）`)
+    if (unknown) parts.push(`${unknown} 个仍在运行，稍后刷新查看`)
+    const tail = refunded > 0 ? `；失败节点预扣的 ${refunded} 点将退回` : ''
+    if (failedIds.length || skipped) editorMessage.warning(`执行结束：${parts.join('，')}${tail}`, { duration: 6000 })
+    else editorMessage.success(`执行完成：${parts.join('，')}`)
+  } finally {
+    progress.destroy()
+    store.endQuiet(order)
+    releaseRun(token)
+    void refreshBalance()
+  }
 }
 
 // ---------------- 另存为 / 模板（只接既有接口与弹层） ----------------
@@ -551,12 +965,18 @@ function spawn(kind: AddPanelKind, tool?: CanvasToolKind, at?: { x: number; y: n
 // ---------------- 添加节点面板（原型 CanvasAddPanel：工具条「+」/ 双击空白画布 / 端口「+」） ----------------
 
 const stageRef = ref<HTMLElement | null>(null)
+/** 整页容器：CanvasTip 在这里面找 data-tip */
+const pageEl = ref<HTMLElement | null>(null)
 /** 面板位置（相对舞台）+ 新节点落点（画布坐标）+ 端口「+」的来源节点与可选种类 */
 const addPanel = ref<{
   x: number
   y: number
   spawnAt?: { x: number; y: number }
   anchorId?: string
+  /** 来源节点上的具体输出口（拖线松手时起点端口，如 candidate-2）；不传按节点默认输出口 */
+  anchorHandle?: string
+  /** 拖线到空白处打开：「添加文字」也落在松手点 */
+  dropped?: boolean
   kinds?: QuickAddKind[]
 } | null>(null)
 
@@ -576,7 +996,8 @@ function panelPoint(clientX: number, clientY: number): { x: number; y: number } 
 /** 左工具条「+」：面板贴着工具条，新节点按自动排布 */
 function openAddPanel() {
   selectedEdgeId.value = ''
-  addPanel.value = addPanel.value && !addPanel.value.spawnAt ? null : { x: 60, y: 28 }
+  // 横向贴着左竖工具条右缘 + 12（工具条 left 12 + 宽 46 ≈ 58）
+  addPanel.value = addPanel.value && !addPanel.value.spawnAt ? null : { x: 72, y: 28 }
 }
 
 /** 双击空白画布：面板与新节点都落在双击处 */
@@ -592,15 +1013,25 @@ function onStageDblClick(event: MouseEvent) {
   }
 }
 
-/** 端口「+」：面板开在「+」旁，只列可接到下游的种类；新节点落在「+」右侧并自动连线 */
-function openQuickAdd(sourceId: string, request: IQuickAddRequest) {
+/**
+ * 端口「+」：面板开在「+」旁，只列可接到下游的种类；新节点落在「+」右侧并自动连线。
+ * atPoint = 拖线松手在空白处：新节点就落在松手点（不再右移 60）。
+ */
+function openQuickAdd(
+  sourceId: string,
+  request: IQuickAddRequest,
+  opts: { atPoint?: boolean; sourceHandle?: string } = {},
+) {
   selectedEdgeId.value = ''
   store.selectNode(sourceId)
-  const flow = screenToFlowCoordinate({ x: request.clientX + 60, y: request.clientY })
+  const atPoint = Boolean(opts.atPoint)
+  const flow = screenToFlowCoordinate({ x: request.clientX + (atPoint ? 0 : 60), y: request.clientY })
   addPanel.value = {
     ...panelPoint(request.clientX + 8, request.clientY),
     spawnAt: { x: flow.x, y: flow.y - 40 },
     anchorId: sourceId,
+    anchorHandle: opts.sourceHandle,
+    dropped: atPoint,
     kinds: request.kinds,
   }
 }
@@ -613,19 +1044,42 @@ function addFromPanel(kind: AddPanelKind, tool?: CanvasToolKind) {
   const panel = addPanel.value
   closeAddPanel()
   const created = spawn(kind, tool, panel?.spawnAt)
-  if (created && panel?.anchorId) connectFrom(panel.anchorId, created.id)
+  if (created && panel?.anchorId) connectFrom(panel.anchorId, created.id, panel.anchorHandle)
+}
+
+/**
+ * 端口「+」/ 拖线到空白处的「添加文字」：文字节点没有输入口，不连线。
+ * 拖线松手打开的面板落在松手点；点「+」打开的沿用来源节点右侧的空位。
+ */
+function addQuickText() {
+  const panel = addPanel.value
+  closeAddPanel()
+  if (!panel?.anchorId) return
+  const created =
+    panel.dropped && panel.spawnAt ? store.addNode('text', undefined, panel.spawnAt) : store.addTextNodeNear(panel.anchorId)
+  if (created) store.selectNode(created.id)
 }
 
 // ---------------- 多选操作条（原型 .wf-selection-bar：执行 / 复制 / 删除 / 取消选择） ----------------
 
 /** Vue Flow 框选 / 多选出来的节点（只认仍在画布上的） */
+const showAlignPop = ref(false)
+
 const selectedFlowNodes = computed(() =>
   (getSelectedNodes.value ?? [])
     .map((node) => store.findNode(node.id))
     .filter((node): node is CanvasEditorNode => Boolean(node)),
 )
 
+/** 多选条出现与否的信号（对齐弹层跟着收） */
+const selectedFlowNodesCount = computed(() => selectedFlowNodes.value.length)
+// 写在 selectedFlowNodesCount 定义之后：watch 创建时会立即求值一次 getter，提前写会 TDZ 报错白屏
+watch(selectedFlowNodesCount, () => {
+  showAlignPop.value = false
+})
+
 function clearFlowSelection() {
+  showAlignPop.value = false
   removeSelectedElements()
 }
 
@@ -654,20 +1108,8 @@ function executableInOrder(list: CanvasEditorNode[]): string[] {
   return [...order, ...ids.filter((id) => !order.includes(id))]
 }
 
-async function runSelectionNodes() {
-  const order = executableInOrder(selectedFlowNodes.value)
-  if (!order.length) {
-    editorMessage.warning('选中的节点里没有可执行的生成或工具节点')
-    return
-  }
-  for (const id of order) await store.runNode(id)
-}
-
-function duplicateSelectionNodes() {
-  const created = store.duplicateNodes(selectedFlowNodes.value.map((node) => node.id))
-  if (!created.length) return
-  clearFlowSelection()
-  editorMessage.success(`已复制 ${created.length} 个节点`)
+function runSelectionNodes() {
+  void confirmAndRun(selectedFlowNodes.value.map((node) => node.id))
 }
 
 function confirmDeleteNodes() {
@@ -684,6 +1126,906 @@ function confirmDeleteNodes() {
       editorMessage.success(`已删除 ${removed} 个节点`)
     },
   })
+}
+
+
+// ---------------- 剪贴板（2026-11-06 二轮：Ctrl+C/V/X/D，带组内连线，新 id、偏移 48、清运行态） ----------------
+
+/**
+ * 剪贴板：复制 / 剪切那一刻的深拷贝（节点 + 组内连线，选中分组底板时连成员一起），粘贴从快照生成新 id，
+ * 剪切后原节点已删也能粘贴；同一份快照每粘一次多错开 48px，连粘不叠在一起。
+ */
+const clipboard = ref<ICanvasClipboard | null>(null)
+let pasteTimes = 0
+
+function selectionIds(): string[] {
+  if (selectedFlowNodes.value.length) return selectedFlowNodes.value.map((node) => node.id)
+  return selectedNode.value ? [selectedNode.value.id] : []
+}
+
+/** 选区里的普通节点数（不含分组底板），提示文案用 */
+function countMembers(ids: string[]): number {
+  return ids.filter((id) => store.findNode(id)?.type !== 'module').length
+}
+
+function copySelection(): boolean {
+  const snap = store.snapshotForClipboard(selectionIds())
+  if (!snap) {
+    editorMessage.warning('先选中节点再复制')
+    return false
+  }
+  clipboard.value = snap
+  pasteTimes = 0
+  editorMessage.success(`已复制 ${countMembers(snap.nodes.map((node) => node.id))} 个节点，Ctrl+V 粘贴`)
+  return true
+}
+
+function cutSelection() {
+  const ids = selectionIds()
+  const snap = store.snapshotForClipboard(ids)
+  if (!snap) return
+  clipboard.value = snap
+  // 剪切后第一次粘贴落回原位附近（偏移 0 起算），之后照常错开
+  pasteTimes = -1
+  const removed = store.removeNodes(snap.nodes.map((node) => node.id))
+  clearFlowSelection()
+  if (removed) editorMessage.success(`已剪切 ${countMembers(snap.nodes.map((node) => node.id)) || removed} 个节点，Ctrl+V 粘贴`)
+}
+
+function pasteClipboard() {
+  const snap = clipboard.value
+  if (!snap) {
+    editorMessage.warning('剪贴板里还没有节点')
+    return
+  }
+  pasteTimes += 1
+  const created = store.pasteClipboard(snap, 48 * pasteTimes)
+  if (!created.length) return
+  clearFlowSelection()
+  const first = created.find((id) => store.findNode(id)?.type !== 'module') ?? created[0]
+  if (first) store.selectNode(first)
+  editorMessage.success(`已粘贴 ${countMembers(created) || created.length} 个节点`)
+}
+
+/** 再制（Ctrl+D / 多选条「复制」/ 右键「复制」）：不占剪贴板，原地偏移 48 生成一份 */
+function duplicateSelection(ids = selectionIds()) {
+  if (!ids.length) return
+  const created = store.duplicateNodes(ids, 48)
+  if (!created.length) return
+  clearFlowSelection()
+  const first = created.find((id) => store.findNode(id)?.type !== 'module') ?? created[0]
+  if (first) store.selectNode(first)
+  editorMessage.success(`已复制 ${countMembers(created) || created.length} 个节点`)
+}
+
+// ---------------- 对齐分布（2026-11-06 二轮：6 种对齐 + 水平 / 垂直等距，锁定节点跳过） ----------------
+
+type AlignKind = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'
+
+/** 参与对齐 / 分布的节点（尺寸从 Vue Flow 运行时 dimensions 读，读不到按 data / 常见值兜底） */
+function alignableNodes(): { node: CanvasEditorNode; x: number; y: number; w: number; h: number }[] {
+  return selectedFlowNodes.value
+    .filter((node) => node.type !== 'module' && !store.isLocked(node.id))
+    .map((node) => {
+      const dims = (node as unknown as { dimensions?: { width?: number; height?: number } }).dimensions
+      return {
+        node,
+        x: node.position.x,
+        y: node.position.y,
+        w: dims?.width ?? node.data.width ?? 260,
+        h: dims?.height ?? node.data.height ?? 160,
+      }
+    })
+}
+
+function alignSelection(kind: AlignKind) {
+  const items = alignableNodes()
+  if (items.length < 2) return
+  const minX = Math.min(...items.map((it) => it.x))
+  const maxX = Math.max(...items.map((it) => it.x + it.w))
+  const minY = Math.min(...items.map((it) => it.y))
+  const maxY = Math.max(...items.map((it) => it.y + it.h))
+  for (const it of items) {
+    let nx = it.x
+    let ny = it.y
+    if (kind === 'left') nx = minX
+    else if (kind === 'hcenter') nx = (minX + maxX) / 2 - it.w / 2
+    else if (kind === 'right') nx = maxX - it.w
+    else if (kind === 'top') ny = minY
+    else if (kind === 'vcenter') ny = (minY + maxY) / 2 - it.h / 2
+    else if (kind === 'bottom') ny = maxY - it.h
+    it.node.position = { x: Math.round(nx), y: Math.round(ny) }
+  }
+  editorMessage.success('已对齐')
+}
+
+function distributeSelection(axis: 'h' | 'v') {
+  const items = alignableNodes()
+  if (items.length < 3) {
+    editorMessage.warning('等距分布至少要选 3 个节点')
+    return
+  }
+  const sorted = [...items].sort((a, b) => (axis === 'h' ? a.x - b.x : a.y - b.y))
+  const first = sorted[0]!
+  const last = sorted[sorted.length - 1]!
+  const spanOf = (it: { x: number; y: number; w: number; h: number }) => (axis === 'h' ? it.w : it.h)
+  const total = axis === 'h' ? last.x + last.w - first.x : last.y + last.h - first.y
+  const occupied = sorted.reduce((sum, it) => sum + spanOf(it), 0)
+  const gap = (total - occupied) / (sorted.length - 1)
+  let cursor = axis === 'h' ? first.x : first.y
+  for (const it of sorted) {
+    if (axis === 'h') {
+      it.node.position = { x: Math.round(cursor), y: it.y }
+      cursor += it.w + gap
+    } else {
+      it.node.position = { x: it.x, y: Math.round(cursor) }
+      cursor += it.h + gap
+    }
+  }
+  editorMessage.success('已等距分布')
+}
+
+// ---------------- 锁定 / 成组 / 解组 / 缩放到选区（多选操作条 + 右键菜单共用） ----------------
+
+/** 选区是否全部已锁（多选条按钮文案：全锁 → 解锁，否则 → 锁定） */
+const selectionAllLocked = computed(() => {
+  const ids = selectedFlowNodes.value.map((node) => node.id)
+  return ids.length > 0 && ids.every((id) => store.isLocked(id))
+})
+
+function toggleLockSelection() {
+  const ids = selectionIds()
+  if (!ids.length) return
+  const lock = !ids.every((id) => store.isLocked(id))
+  store.setLocked(ids, lock)
+  editorMessage.success(lock ? `已锁定 ${ids.length} 个节点` : `已解锁 ${ids.length} 个节点`)
+}
+
+function groupSelection() {
+  const ids = selectionIds().filter((id) => store.findNode(id)?.type !== 'module')
+  if (ids.length < 2) {
+    editorMessage.warning('选择两个及以上节点再成组')
+    return
+  }
+  const id = store.createModule(ids)
+  if (id) editorMessage.success('已成组：拖动虚线底板可整组移动')
+}
+
+/** 选区里恰好有一块成组底板时给「解组」 */
+const singleGroupId = computed(() => {
+  const plates = selectedFlowNodes.value.filter((node) => isGroupPlate(node))
+  return plates.length === 1 ? (plates[0]?.id ?? '') : ''
+})
+
+function ungroupSelection() {
+  const id = singleGroupId.value
+  if (!id) return
+  if (store.ungroup(id)) editorMessage.success('已解组，成员原位保留')
+}
+
+/** 缩放到选区（多选条「聚焦」/ 右键）：没有多选时用当前选中节点 */
+function zoomToSelection(ids = selectionIds()) {
+  if (!ids.length) return
+  void fitView({ nodes: ids, padding: 0.2, duration: 220, minZoom: 0.2, maxZoom: 1.2 })
+}
+
+// ---------------- 模块拖动带成员（锁定成员也跟着走；node-drag 实时同步，落点即成员落点） ----------------
+
+let moduleDrag: {
+  id: string
+  baseX: number
+  baseY: number
+  members: { node: CanvasEditorNode; x: number; y: number }[]
+} | null = null
+
+function onNodeDragStart(payload: { node: { id: string; position: { x: number; y: number } } }) {
+  const full = store.findNode(payload.node.id)
+  if (!full || !isGroupPlate(full)) return
+  moduleDrag = {
+    id: payload.node.id,
+    baseX: payload.node.position.x,
+    baseY: payload.node.position.y,
+    members: store.moduleChildren(payload.node.id).map((child) => ({ node: child, x: child.position.x, y: child.position.y })),
+  }
+}
+
+function onNodeDrag(payload: { node: { id: string; position: { x: number; y: number } } }) {
+  const drag = moduleDrag
+  if (!drag || drag.id !== payload.node.id) return
+  const dx = payload.node.position.x - drag.baseX
+  const dy = payload.node.position.y - drag.baseY
+  for (const member of drag.members) {
+    member.node.position = { x: member.x + dx, y: member.y + dy }
+  }
+}
+
+function onNodeDragStop(payload: { node: { id: string; position: { x: number; y: number } } }) {
+  if (moduleDrag?.id === payload.node.id) moduleDrag = null
+}
+
+// ---------------- 画布右键菜单 + 节点菜单（右键与节点「…」共用 nodeMenuGroups 一份定义） ----------------
+
+interface CtxMenu {
+  x: number
+  y: number
+  kind: 'pane' | 'node'
+  nodeId?: string
+  /** 节点菜单的二级视图：模型替换列表 */
+  view?: 'models'
+  /** 画布右键处的视口坐标（「添加节点」面板与新节点落在这里） */
+  clientX?: number
+  clientY?: number
+}
+
+const ctxMenu = ref<CtxMenu | null>(null)
+const CTX_MENU_W = 208
+
+function stagePoint(clientX: number, clientY: number): { x: number; y: number } {
+  const rect = stageRef.value?.getBoundingClientRect()
+  if (!rect) return { x: clientX, y: clientY }
+  return {
+    x: Math.max(8, Math.min(clientX - rect.left, rect.width - CTX_MENU_W - 8)),
+    y: Math.max(8, clientY - rect.top),
+  }
+}
+
+/** 菜单渲染后按实际高度夹回舞台（节点菜单最多十几行，固定估高会出底），并把焦点给第一项 */
+function settleCtxMenu() {
+  void nextTick(() => {
+    const el = ctxMenuEl.value
+    const rect = stageRef.value?.getBoundingClientRect()
+    const menu = ctxMenu.value
+    if (!el || !rect || !menu) return
+    const maxY = Math.max(8, rect.height - el.offsetHeight - 8)
+    if (menu.y > maxY) ctxMenu.value = { ...menu, y: maxY }
+    el.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled):not([aria-disabled="true"]), [role="menuitemradio"]:not(:disabled)')?.focus({ preventScroll: true })
+  })
+}
+
+/** 菜单关闭后焦点还给谁：节点「…」= 那个按钮；右键 = 打开前的焦点（是 body 就不还） */
+let menuReturnFocus: HTMLElement | null = null
+function rememberMenuFocus(trigger?: HTMLElement | null) {
+  const active = trigger ?? (document.activeElement as HTMLElement | null)
+  menuReturnFocus = active && active !== document.body && !ctxMenuEl.value?.contains(active) ? active : null
+}
+
+function onPaneContextMenu(event: MouseEvent) {
+  event.preventDefault()
+  rememberMenuFocus()
+  ctxMenu.value = {
+    kind: 'pane',
+    clientX: event.clientX,
+    clientY: event.clientY,
+    ...stagePoint(event.clientX, event.clientY),
+  }
+  settleCtxMenu()
+}
+
+function onNodeContextMenu(event: NodeMouseEvent) {
+  event.event.preventDefault()
+  const source = event.event as MouseEvent
+  store.selectNode(event.node.id)
+  rememberMenuFocus()
+  ctxMenu.value = { kind: 'node', nodeId: event.node.id, ...stagePoint(source.clientX, source.clientY) }
+  settleCtxMenu()
+}
+
+/** 节点「…」：菜单开在「…」下方 4px、右缘对齐（再次点同一个「…」收起） */
+function openNodeMenuAt(nodeId: string, anchor: DOMRect, trigger?: HTMLElement) {
+  if (ctxMenu.value?.kind === 'node' && ctxMenu.value.nodeId === nodeId && !ctxMenu.value.view) {
+    closeCtxMenu()
+    return
+  }
+  selectedEdgeId.value = ''
+  closeAddPanel()
+  store.selectNode(nodeId)
+  rememberMenuFocus(trigger ?? null)
+  ctxMenu.value = { kind: 'node', nodeId, ...stagePoint(anchor.right - CTX_MENU_W, anchor.bottom + 4) }
+  settleCtxMenu()
+}
+provide(NODE_MENU_HOST, { open: openNodeMenuAt })
+
+/**
+ * 收起菜单（Esc / 选了一项 / 再点「…」/ Tab 移出）：焦点还给打开它的「…」或原焦点。
+ * 点菜单外部收起不走这里（onOutsidePointerDown 直接置空），不抢用户刚点到的地方的焦点。
+ */
+function closeCtxMenu() {
+  if (!ctxMenu.value) return
+  ctxMenu.value = null
+  const back = menuReturnFocus
+  menuReturnFocus = null
+  if (back?.isConnected) back.focus({ preventScroll: true })
+}
+
+/** 二级视图（模型替换）退回主菜单 */
+function ctxMenuBack() {
+  if (!ctxMenu.value?.view) return
+  ctxMenu.value = { ...ctxMenu.value, view: undefined }
+  settleCtxMenu()
+}
+
+/** 菜单内上下键移动焦点（Home / End 到首尾）；Esc 先退一级（二级视图 → 主菜单）再关闭；Tab 移出即收起 */
+function onCtxMenuKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.stopPropagation()
+    if (ctxMenu.value?.view) ctxMenuBack()
+    else closeCtxMenu()
+    return
+  }
+  if (event.key === 'Tab') {
+    // 焦点先还给「…」，再让浏览器的 Tab 从它往后走（不拦默认行为）
+    closeCtxMenu()
+    return
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const items = Array.from(
+    ctxMenuEl.value?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled):not([aria-disabled="true"]), [role="menuitemradio"]:not(:disabled)') ?? [],
+  )
+  if (!items.length) return
+  const at = items.indexOf(document.activeElement as HTMLElement)
+  let next = 0
+  if (event.key === 'End') next = items.length - 1
+  else if (event.key === 'ArrowDown') next = at < 0 ? 0 : (at + 1) % items.length
+  else if (event.key === 'ArrowUp') next = at <= 0 ? items.length - 1 : at - 1
+  items[next]?.focus()
+}
+
+// 点外部收起浮层（右键菜单 / 导出菜单 / 对齐弹层）：在 document 捕获阶段判断，不铺全屏遮罩，
+// 这样滚轮缩放照常、在别处右键会先收起旧菜单再由画布在新位置弹出
+const ctxMenuEl = ref<HTMLElement | null>(null)
+const exportWrapEl = ref<HTMLElement | null>(null)
+const alignWrapEl = ref<HTMLElement | null>(null)
+const alignPopEl = ref<HTMLElement | null>(null)
+function onOutsidePointerDown(event: PointerEvent) {
+  const target = event.target as Element | null
+  if (!target) return
+  // 点节点「…」由 openNodeMenuAt 自己开关，这里不先收（否则收起后又被同一次点击重新打开）
+  if (ctxMenu.value && !ctxMenuEl.value?.contains(target) && !target.closest?.('[data-node-menu-trigger]')) {
+    ctxMenu.value = null
+  }
+  if (showExportMenu.value && !exportWrapEl.value?.contains(target)) showExportMenu.value = false
+  if (showAlignPop.value && !alignWrapEl.value?.contains(target) && !alignPopEl.value?.contains(target)) {
+    showAlignPop.value = false
+  }
+}
+onMounted(() => document.addEventListener('pointerdown', onOutsidePointerDown, true))
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePointerDown, true))
+
+const ctxNode = computed(() => (ctxMenu.value?.nodeId ? store.findNode(ctxMenu.value.nodeId) : undefined))
+
+/** 右键「添加节点」：关菜单，面板开在右键处，新节点也落在那里 */
+function ctxMenuAdd() {
+  const menu = ctxMenu.value
+  closeCtxMenu()
+  if (!menu || menu.clientX == null || menu.clientY == null || loading.value || !store.ready.value) {
+    openAddPanel()
+    return
+  }
+  selectedEdgeId.value = ''
+  addPanel.value = {
+    ...panelPoint(menu.clientX, menu.clientY),
+    spawnAt: screenToFlowCoordinate({ x: menu.clientX, y: menu.clientY }),
+  }
+}
+
+function ctxMenuTemplates() {
+  closeCtxMenu()
+  showTemplates.value = true
+}
+
+function ctxMenuPaste() {
+  closeCtxMenu()
+  pasteClipboard()
+}
+
+function ctxMenuFit() {
+  closeCtxMenu()
+  void fitView({ padding: 0.18, duration: 200 })
+}
+
+function ctxMenuUndo() {
+  closeCtxMenu()
+  void undoCanvas()
+}
+
+function ctxMenuRedo() {
+  closeCtxMenu()
+  void redoCanvas()
+}
+
+// ---------- 节点菜单定义 ----------
+
+interface INodeMenuItem {
+  key: string
+  label: string
+  icon: string
+  danger?: boolean
+  disabled?: boolean
+  /** 置灰原因 / 补充说明（悬停 title） */
+  hint?: string
+  /** 右侧快捷键提示 */
+  kbd?: string
+  run: () => void
+}
+
+/** 模板承接的结果图节点不可删（与节点组件里 NodeMenu removable 同口径） */
+function isRemovable(node: CanvasEditorNode): boolean {
+  return !(node.type === 'image' && node.data.kind === 'result' && !node.data.actionOrigin)
+}
+
+/** 节点是否挂图片动作（识别 / 图片编辑 / 多视图 / 图层；与各节点组件 imageActionsFor 同口径） */
+function hasImageActions(node: CanvasEditorNode): boolean {
+  if (node.type === 'image') return true
+  if (node.type === 'tool') return node.data.tool !== 'i2p'
+  if (node.type === 'model') return node.data.kind !== 'video' && !node.data.inputOnly
+  return false
+}
+
+/** 先关菜单再做事（动作里可能弹窗 / 改选中） */
+function menuAction(fn: (node: CanvasEditorNode) => void): () => void {
+  return () => {
+    const node = ctxNode.value
+    closeCtxMenu()
+    if (node) fn(node)
+  }
+}
+
+const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
+  const node = ctxNode.value
+  if (!node) return []
+  if (node.type === 'module') {
+    const plate = isGroupPlate(node)
+    const locked = store.isLocked(node.id)
+    return [
+      [
+        { key: 'rename', label: '编辑名称', icon: 'rename', run: menuAction(openRename) },
+        { key: 'copy', label: '复制（连成员）', icon: 'copy', kbd: `${MOD_KEY} D`, run: menuAction((n) => duplicateSelection([n.id])) },
+        {
+          key: 'lock',
+          label: locked ? '解锁' : '锁定',
+          icon: locked ? 'unlock' : 'lock',
+          run: menuAction((n) => editorMessage.success(store.toggleLock(n.id) ? '已锁定' : '已解锁')),
+        },
+        { key: 'focus', label: '聚焦', icon: 'target', run: menuAction((n) => zoomToSelection([n.id, ...store.moduleChildren(n.id).map((c) => c.id)])) },
+      ],
+      [
+        ...(plate
+          ? [{ key: 'ungroup', label: '解组', icon: 'folderOpen', run: menuAction((n) => store.ungroup(n.id) && editorMessage.success('已解组，成员原位保留')) }]
+          : []),
+        { key: 'delete-group', label: plate ? '删除分组（含成员）' : '删除模块（含成员）', icon: 'trash', danger: true, run: menuAction((n) => confirmRemoveModule(n.id)) },
+      ],
+    ]
+  }
+  const media: INodeMenuItem[] = []
+  if (node.data.video || node.data.image) {
+    media.push({ key: 'download', label: node.data.video ? '下载视频' : '下载原图', icon: 'download', run: menuAction(downloadNodeOutput) })
+  }
+  if (node.type === 'image') {
+    const isResult = node.data.kind === 'result'
+    media.push(
+      {
+        key: 'replace',
+        label: node.data.image ? '替换图片' : '上传图片',
+        icon: 'replace',
+        disabled: isResult,
+        hint: isResult ? '结果图由上游生成，不能手动替换' : undefined,
+        // 交给节点自己的上传通道（useNodeUpload）：上传中遮罩 / 可取消 / 清 assetId·mediaId / 30MB 校验都在那里
+        run: menuAction((n) => store.replaceNodeImage(n.id)),
+      },
+      { key: 'crop', label: '裁剪', icon: 'crop', run: menuAction((n) => spawnToolFrom(n, 'crop')) },
+      { key: 'upscale', label: '高清放大', icon: 'sparkles', run: menuAction((n) => spawnToolFrom(n, 'upscale')) },
+    )
+  }
+  const locked = store.isLocked(node.id)
+  const edit: INodeMenuItem[] = [
+    { key: 'rename', label: '编辑名称', icon: 'rename', run: menuAction(openRename) },
+    { key: 'lock', label: locked ? '解锁节点' : '锁定节点', icon: locked ? 'unlock' : 'lock', run: menuAction((n) => editorMessage.success(store.toggleLock(n.id) ? '已锁定节点' : '已解锁节点')) },
+  ]
+  if (node.type === 'model' && !node.data.inputOnly) {
+    edit.push({
+      key: 'models',
+      label: '模型替换',
+      icon: 'swap',
+      disabled: !modelOptionsOf(node).length,
+      hint: modelOptionsOf(node).length ? undefined : '模型列表还没加载好',
+      run: () => {
+        if (ctxMenu.value) ctxMenu.value = { ...ctxMenu.value, view: 'models' }
+        settleCtxMenu()
+      },
+    })
+  }
+  edit.push({ key: 'copy', label: '复制', icon: 'copy', kbd: `${MOD_KEY} D`, run: menuAction((n) => duplicateSelection([n.id])) })
+
+  const act: INodeMenuItem[] = []
+  if (hasImageActions(node)) {
+    const hasImage = collectImageSources(node.id).length > 0
+    for (const item of IMAGE_ACTIONS) {
+      act.push({
+        key: `action:${item.kind}`,
+        label: item.label,
+        icon: item.icon,
+        disabled: !hasImage,
+        hint: hasImage ? undefined : '先上传或生成图片',
+        run: menuAction((n) => openImageAction(n.id, item.kind)),
+      })
+    }
+  }
+  if ((node.type === 'model' && !node.data.inputOnly) || node.type === 'tool') {
+    act.push({ key: 'run', label: '执行节点', icon: 'play', disabled: batchRunning.value, run: menuAction((n) => void confirmAndRun([n.id])) })
+  }
+  act.push({ key: 'focus', label: '聚焦', icon: 'target', run: menuAction((n) => zoomToSelection([n.id])) })
+
+  const removable = isRemovable(node)
+  const danger: INodeMenuItem[] = [
+    {
+      key: 'delete',
+      label: '删除',
+      icon: 'trash',
+      danger: true,
+      kbd: 'Delete',
+      disabled: !removable,
+      hint: removable ? undefined : '模板结果节点不可删',
+      run: menuAction((n) => store.removeNode(n.id)),
+    },
+  ]
+  return [media, edit, act, danger].filter((group) => group.length)
+})
+
+function runMenuItem(item: INodeMenuItem) {
+  if (item.disabled) return
+  item.run()
+}
+
+function downloadNodeOutput(node: CanvasEditorNode) {
+  const url = node.data.video || node.data.image
+  if (!url) {
+    editorMessage.warning('这个节点还没有可下载的输出')
+    return
+  }
+  if (node.data.video) window.open(url, '_blank', 'noopener')
+  else void downloadImage(url)
+}
+
+/** 裁剪 / 高清放大：在节点右侧新建对应工具节点并从它连过去（新建 / 连线都走 store 既有方法） */
+function spawnToolFrom(node: CanvasEditorNode, tool: CanvasToolKind) {
+  const width = node.data.width ?? 260
+  const created = spawn('tool', tool, { x: node.position.x + width + 80, y: node.position.y })
+  if (!created) return
+  connectFrom(node.id, created.id)
+  void nextTick(() => setCenter(created.position.x + 170, created.position.y + 160, { duration: 220 }))
+}
+
+// ---------- 图片类型（拖文件到空白画布用；大小上限与节点上传同一口径，见 useNodeUpload） ----------
+
+const IMAGE_ACCEPT = ['image/jpeg', 'image/png', 'image/webp']
+
+// ---------- 编辑名称（复用 TitleModal） ----------
+
+const renameTarget = ref<{ id: string; title: string } | null>(null)
+const renameShow = computed({
+  get: () => Boolean(renameTarget.value),
+  set: (value: boolean) => {
+    if (!value) renameTarget.value = null
+  },
+})
+
+function openRename(node: CanvasEditorNode) {
+  renameTarget.value = { id: node.id, title: node.data.title || '' }
+}
+
+function confirmRename(value: string) {
+  const target = renameTarget.value
+  renameTarget.value = null
+  const next = value.trim().slice(0, 40)
+  if (!target || !next || next === target.title) return
+  store.updateNodeData(target.id, { title: next })
+}
+
+// ---------- 模型替换（节点菜单二级视图） ----------
+
+function modelOptionsOf(node: CanvasEditorNode): ICanvasCatalogModel[] {
+  const list = node.data.kind === 'video' ? store.catalog.value?.video_models : store.catalog.value?.image_models
+  return list ?? []
+}
+
+const ctxModelOptions = computed(() => (ctxNode.value ? modelOptionsOf(ctxNode.value) : []))
+
+function applyModelPick(model: ICanvasCatalogModel) {
+  const node = ctxNode.value
+  closeCtxMenu()
+  if (!node || !model.ready) return
+  store.changeModel(node.id, model)
+  editorMessage.success(`已切换为 ${model.model}`)
+}
+
+// ---------------- 导出（2026-11-06 二轮）：工程 JSON + 整张画布 PNG（SVG 2× 渲染，跨域图留灰块） ----------------
+
+const showExportMenu = ref(false)
+
+/** 节点数据的用户内容副本（剔除运行态；与复制节点的 slim 同口径） */
+function slimDataOf(node: CanvasEditorNode): Record<string, unknown> {
+  const data = { ...node.data } as Record<string, unknown>
+  for (const key of [
+    'status',
+    'progress',
+    'errorMessage',
+    'errorCode',
+    'retryable',
+    'requestId',
+    'runId',
+    'candidates',
+    'selectedCandidate',
+    'requestedCount',
+  ]) {
+    delete data[key]
+  }
+  return data
+}
+
+function exportWorkflowJson() {
+  showExportMenu.value = false
+  const payload = {
+    format: 'xiaoqi-canvas',
+    version: 1,
+    canvasId: canvasId.value,
+    title: title.value,
+    exportedAt: new Date().toISOString(),
+    viewport: { x: viewport.value.x, y: viewport.value.y, zoom: viewport.value.zoom },
+    nodes: nodes.value.map((node) => ({
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      width: node.data.width,
+      height: node.data.height,
+      data: slimDataOf(node),
+    })),
+    edges: edges.value.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle ?? undefined,
+      targetHandle: edge.targetHandle ?? undefined,
+      data: edge.data ?? undefined,
+    })),
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${title.value || 'canvas'}-${Date.now()}.json`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  editorMessage.success('已导出工程 JSON')
+}
+
+const exportingPng = ref(false)
+
+function escapeXml(text: string): string {
+  return text.replace(/[<>&'"]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[ch] ?? ch)
+}
+
+/** 按像素宽度折行（中文逐字、英文按词），用 2D 画布量字宽 */
+function wrapText(text: string, maxWidth: number, font: string): string[] {
+  const ctx = document.createElement('canvas').getContext('2d')
+  if (!ctx) return text.split('\n')
+  ctx.font = font
+  const lines: string[] = []
+  for (const paragraph of text.split('\n')) {
+    let line = ''
+    for (const token of paragraph.match(/[A-Za-z0-9_\-.,:;!?'"()]+\s*|\s+|./gu) ?? []) {
+      if (ctx.measureText(line + token).width > maxWidth && line) {
+        lines.push(line.trimEnd())
+        line = token.trimStart()
+      } else {
+        line += token
+      }
+    }
+    lines.push(line.trimEnd())
+  }
+  return lines
+}
+
+/** 图片转 dataURL（跨域取不到就返回空，对应节点画占位块；SVG 里引外链图会被浏览器拦） */
+async function imageToDataUrl(url?: string): Promise<string> {
+  if (!url) return ''
+  try {
+    const res = await fetch(url, { mode: 'cors', credentials: 'omit' })
+    if (!res.ok) return ''
+    const blob = await res.blob()
+    if (!blob.type.startsWith('image/')) return ''
+    return await new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => resolve('')
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 导出整张画布 PNG（原型 exportCanvasPng 同法）：不克隆 DOM（克隆件不带样式，导出来是裸 HTML），
+ * 而是按节点实际尺寸 + 数据重画一张 SVG——底色、分组底板（先画，不盖成员）、连线、节点卡（标题 / 副标题 /
+ * 图片或文字或占位），再以 2× 栅格化成 PNG。范围取所有节点外接框外扩 80px，与当前视口无关。
+ */
+async function exportCanvasPng() {
+  if (exportingPng.value) return
+  showExportMenu.value = false
+  const stage = stageRef.value
+  if (!stage) return
+  const host = stage.getBoundingClientRect()
+  const vp = viewport.value
+  const zoom = vp.zoom || 1
+  type Item = { node: CanvasEditorNode; x: number; y: number; w: number; h: number }
+  const items = nodes.value
+    .map((node): Item | null => {
+      const el = stage.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(node.id)}"]`)
+      const rect = el?.getBoundingClientRect()
+      if (!rect || !rect.width) return null
+      return {
+        node,
+        x: (rect.left - host.left - vp.x) / zoom,
+        y: (rect.top - host.top - vp.y) / zoom,
+        w: rect.width / zoom,
+        h: rect.height / zoom,
+      }
+    })
+    .filter((item): item is Item => Boolean(item))
+  if (!items.length) {
+    editorMessage.warning('画布上还没有可导出的节点')
+    return
+  }
+  exportingPng.value = true
+  try {
+    const pad = 80
+    const minX = Math.min(...items.map((it) => it.x)) - pad
+    const minY = Math.min(...items.map((it) => it.y)) - pad
+    const width = Math.round(Math.max(...items.map((it) => it.x + it.w)) + pad - minX)
+    const height = Math.round(Math.max(...items.map((it) => it.y + it.h)) + pad - minY)
+    // 浏览器画布单边上限约 16384：超大画布按比例降低倍率
+    const scale = Math.max(0.25, Math.min(2, 16000 / Math.max(width, height)))
+    const pos = new Map(items.map((it) => [it.node.id, it]))
+    const font = "'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif"
+
+    const edgePaths = edges.value
+      .map((edge) => {
+        const from = pos.get(edge.source)
+        const to = pos.get(edge.target)
+        if (!from || !to) return ''
+        const x1 = from.x + from.w
+        const y1 = from.y + from.h / 2
+        const x2 = to.x
+        const y2 = to.y + to.h / 2
+        const dx = Math.max(60, Math.abs(x2 - x1) * 0.5)
+        const raw = String(edge.data?.color ?? '')
+        const color = /^#[0-9a-f]{3,8}$/i.test(raw) ? raw : '#875f9a'
+        return `<path d="M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}" fill="none" stroke="${color}" stroke-opacity="0.7" stroke-width="2"/>`
+      })
+      .join('')
+
+    const plates = items.filter((it) => it.node.type === 'module')
+    const cards = items.filter((it) => it.node.type !== 'module')
+    const plateSvg = plates
+      .map(
+        ({ node, x, y, w, h }) =>
+          `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#875f9a" fill-opacity="0.06" stroke="#875f9a" stroke-opacity="0.35" stroke-dasharray="8 6"/>` +
+          `<text x="${x + 14}" y="${y + 26}" font-family="${font}" font-size="13" font-weight="600" fill="#1f2329" fill-opacity="0.66">${escapeXml(node.data.title || '模块')}</text>`,
+      )
+      .join('')
+
+    const cardSvg = await Promise.all(
+      cards.map(async ({ node, x, y, w, h }, index) => {
+        const headerH = 36
+        const bx = x + 8
+        const by = y + headerH + 4
+        const bw = Math.max(20, w - 16)
+        const bh = Math.max(20, h - headerH - 12)
+        const image = await imageToDataUrl(node.data.image || node.data.resultImage)
+        let body = ''
+        if (image) {
+          body =
+            `<clipPath id="clip-${index}"><rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="6"/></clipPath>` +
+            `<image href="${image}" x="${bx}" y="${by}" width="${bw}" height="${bh}" preserveAspectRatio="xMidYMid slice" clip-path="url(#clip-${index})"/>`
+        } else if (node.type === 'text' || node.data.resultText) {
+          const text = String(node.type === 'text' ? node.data.text || '（空文字）' : node.data.resultText)
+          const maxLines = Math.max(1, Math.floor(bh / 18))
+          body = wrapText(text, Math.max(60, bw - 8), `12px ${font}`)
+            .slice(0, maxLines)
+            .map(
+              (line, i) =>
+                `<text x="${bx + 4}" y="${by + 14 + i * 18}" font-family="${font}" font-size="12" fill="#4b5563">${escapeXml(line)}</text>`,
+            )
+            .join('')
+        } else {
+          const label = node.data.model ? `模型 · ${node.data.model}` : node.type === 'model' ? '生成结果' : '空节点'
+          body =
+            `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="6" fill="#f3f4f5" stroke="#e5e1e4" stroke-dasharray="5 5"/>` +
+            `<text x="${bx + bw / 2}" y="${by + bh / 2 + 4}" text-anchor="middle" font-family="${font}" font-size="12" fill="#8a9099">${escapeXml(label)}</text>`
+        }
+        return (
+          `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#ffffff" stroke="#e5e1e4" filter="url(#card-shadow)"/>` +
+          `<text x="${x + 10}" y="${y + 23}" font-family="${font}" font-size="13" font-weight="600" fill="#1f2329">${escapeXml(node.data.title || '节点')}</text>` +
+          `<line x1="${x}" y1="${y + headerH}" x2="${x + w}" y2="${y + headerH}" stroke="#eef0f2"/>${body}</g>`
+        )
+      }),
+    )
+
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+      `<defs><filter id="card-shadow" x="-20%" y="-20%" width="140%" height="140%">` +
+      `<feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#101828" flood-opacity="0.10"/></filter></defs>` +
+      `<rect width="100%" height="100%" fill="#f5f5f5"/>` +
+      `<g transform="translate(${-minX} ${-minY})">${plateSvg}${edgePaths}${cardSvg.join('')}</g></svg>`
+
+    const img = new Image()
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('render fail'))
+      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(width * scale)
+    canvas.height = Math.round(height * scale)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('画布不可用')
+    ctx.fillStyle = '#f5f5f5'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.scale(scale, scale)
+    ctx.drawImage(img, 0, 0, width, height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('export fail')
+    const pngUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = pngUrl
+    a.download = `${title.value || 'canvas'}-${Date.now()}.png`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(pngUrl), 1000)
+    editorMessage.success(`已导出画布 PNG（${canvas.width}×${canvas.height}）`)
+  } catch {
+    editorMessage.error('导出画布图片失败，可改用「下载所有输出」')
+  } finally {
+    exportingPng.value = false
+  }
+}
+
+// ---------------- 首启引导（2026-11-06 二轮）：一次即退，localStorage 记忆 ----------------
+
+const ONBOARD_KEY = 'fusion-canvas-onboarded'
+const showOnboard = ref(false)
+onMounted(() => {
+  try {
+    showOnboard.value = !localStorage.getItem(ONBOARD_KEY)
+  } catch {
+    showOnboard.value = false
+  }
+})
+function dismissOnboard() {
+  showOnboard.value = false
+  try {
+    localStorage.setItem(ONBOARD_KEY, '1')
+  } catch {
+    /* 隐私模式：每次进编辑器都会再看到一次，可接受 */
+  }
+}
+
+// ---------------- 提示词库浮层（2026-11-06 二轮：画布内直开，插入选中节点） ----------------
+
+const promptFlyoutOpen = ref(false)
+const promptAnchorEl = ref<HTMLElement | null>(null)
+
+function insertPrompt(text: string) {
+  const node = selectedNode.value
+  if (!node) {
+    editorMessage.warning('先选中一个节点（文字 / 生成 / 工具），提示词会插进去')
+    return
+  }
+  const key = node.type === 'text' ? 'text' : 'prompt'
+  const base = String(node.data[key] ?? '')
+  const merged = (base ? `${base}${base.endsWith('\n') ? '' : '\n'}` : '') + text
+  store.updateNodeData(node.id, { [key]: merged.slice(0, 3000) })
+  editorMessage.success('提示词已填入选中节点')
 }
 
 // ---------------- 模块删除（底板 + 模块内节点） ----------------
@@ -772,40 +2114,167 @@ watch(
   },
 )
 
-function openPromptLibrary() {
-  window.open(router.resolve({ name: 'prompt-library' }).href, '_blank', 'noopener')
-}
-
+/**
+ * 快捷键与画布操作（原型 .wf-help：两列网格 gap 8×20，左列 12px #7d767b；kbd 白底 2px 底边）。
+ * 只列真实可用的：缩放只有 Ctrl/⌘ + 滚轮（未做 Alt 缩放，不列）；本页额外的粘贴 / 再制 / ? 保留。
+ */
 function openHelp() {
-  const line = (text: string, cls = 'm-0 mb-6px text-ink-2 text-13px leading-20px') => h('p', { class: cls }, text)
+  const M = MOD_KEY
+  type Part = string | { k: string }
+  const rows: [string, Part[]][] = [
+    ['撤销 / 重做', [{ k: M }, { k: 'Z' }, ' · ', { k: M }, { k: 'Y' }]],
+    ['复制 / 粘贴', [{ k: M }, { k: 'C' }, ' · ', { k: M }, { k: 'V' }]],
+    ['剪切 / 再制', [{ k: M }, { k: 'X' }, ' · ', { k: M }, { k: 'D' }]],
+    ['删除选中', [{ k: 'Delete' }, ' / ', { k: 'Backspace' }]],
+    ['多选 / 框选加选', [{ k: 'Shift' }, ' + 点击 / 拖框']],
+    ['临时平移', ['按住 ', { k: 'Space' }, ' 拖动']],
+    ['保存', [{ k: M }, { k: 'S' }]],
+    ['缩放', [{ k: M }, ' + 滚轮']],
+    ['取消选择 / 关闭', [{ k: 'Esc' }]],
+    ['快捷键表', [{ k: '?' }]],
+    ['更多', ['右键画布或节点']],
+  ]
+  const kbd = (text: string) =>
+    h(
+      'kbd',
+      {
+        class:
+          'inline-block min-w-20px px-6px py-1px border border-solid border-[#d9d2d7] border-b-2 rounded-5px bg-white text-[#4b454a] text-11px leading-[1.5] text-center',
+        style: "font-family:'SFMono-Regular',Consolas,monospace",
+      },
+      text,
+    )
   editorDialog.info({
-    title: '画布缩放说明',
+    title: '快捷键与画布操作',
     positiveText: '我知道了',
+    style: { width: '420px', maxWidth: 'calc(100vw - 32px)' },
     content: () =>
       h('div', [
-        line('macOS：按住 ⌘，同时滚动鼠标滚轮；触控板可双指捏合'),
-        line('Windows：按住 Ctrl，同时滚动鼠标滚轮'),
-        line('也可以用下方工具条的放大 / 缩小 / 适应画布按钮。'),
-        line('提示：默认滚轮是上下平移画布，只有配合组合键时才会缩放。', 'm-0 mt-8px text-muted text-12px'),
+        h(
+          'div',
+          { class: 'grid grid-cols-[auto_1fr] items-center gap-x-20px gap-y-8px mt-4px mb-14px text-[#4b454a] text-13px' },
+          rows.flatMap(([label, parts]) => [
+            h('span', { class: 'text-[#7d767b] text-12px' }, label),
+            h(
+              'span',
+              { class: 'flex flex-wrap items-center gap-3px' },
+              parts.map((part) => (typeof part === 'string' ? h('span', part) : kbd(part.k))),
+            ),
+          ]),
+        ),
+        h(
+          'p',
+          { class: 'm-0 text-muted text-12px leading-[1.5]' },
+          `默认滚轮是上下平移画布，只有按住 ${M} 滚动时才会缩放；触控板可双指捏合。`,
+        ),
       ]),
   })
+}
+
+// ---------------- 小地图节点配色（原型 minimapNodeColor：模块 / 生成 / 其他三档） ----------------
+
+function minimapNodeColor(node: { type?: string }): string {
+  if (node.type === 'module') return '#ece5f0'
+  if (node.type === 'model') return '#cbb7d6'
+  return '#ded5e2'
+}
+
+// ---------------- 拖文件 / 资产到空白画布：逐张上传并在落点建图片节点（错开 24px） ----------------
+
+/** 资产栏若支持拖拽，约定用这个 dataTransfer 类型携带 {url} 或 {urls}（JSON） */
+const ASSET_DRAG_TYPE = 'application/x-canvas-asset'
+const stageDropActive = ref(false)
+
+/** 拖放事件的 target 就是最上层命中的元素：与拖线松手同一套「空白画布」判定（小地图 / 浮动面板 / 工具条不算） */
+function isEmptyStageTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && isBlankCanvasEl(target)
+}
+
+function dragCarriesUsable(event: DragEvent): boolean {
+  const types = Array.from(event.dataTransfer?.types ?? [])
+  return types.includes('Files') || types.includes(ASSET_DRAG_TYPE)
+}
+
+function onStageDragOver(event: DragEvent) {
+  if (!dragCarriesUsable(event)) return
+  // 一律拦住浏览器默认「打开文件」；落到节点上传块时由节点自己的拖入处理接管
+  event.preventDefault()
+  const ok = isEmptyStageTarget(event.target) && store.ready.value && !loading.value
+  if (event.dataTransfer) event.dataTransfer.dropEffect = ok ? 'copy' : 'none'
+  stageDropActive.value = ok
+}
+
+function onStageDragLeave(event: DragEvent) {
+  const next = event.relatedTarget as Node | null
+  if (next && stageRef.value?.contains(next)) return
+  stageDropActive.value = false
+}
+
+async function onStageDrop(event: DragEvent) {
+  stageDropActive.value = false
+  if (!dragCarriesUsable(event)) return
+  event.preventDefault()
+  // 落点不是空白画布（如节点里的上传块，它自己会接管）：不再重复建节点
+  if (!isEmptyStageTarget(event.target) || !store.ready.value || loading.value) return
+  const base = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
+  const at = (i: number) => ({ x: base.x + i * 24, y: base.y + i * 24 })
+
+  const assetRaw = event.dataTransfer?.getData(ASSET_DRAG_TYPE)
+  if (assetRaw) {
+    let urls: string[] = []
+    try {
+      const parsed = JSON.parse(assetRaw) as { url?: string; urls?: string[] }
+      urls = parsed.urls ?? (parsed.url ? [parsed.url] : [])
+    } catch {
+      urls = []
+    }
+    urls
+      .filter((url) => /^https?:\/\//i.test(url))
+      .forEach((url, i) => {
+        const created = store.addNode('image', undefined, at(i))
+        if (created) store.updateNodeData(created.id, { image: url })
+      })
+    return
+  }
+
+  const files = Array.from(event.dataTransfer?.files ?? [])
+  const images = files.filter((file) => IMAGE_ACCEPT.includes(file.type))
+  const tooBig = images.filter((file) => uploadSizeError(file))
+  const usable = images.filter((file) => !uploadSizeError(file))
+  if (files.length > images.length) editorMessage.warning('只支持 JPG / PNG / WebP 图片，其他文件已跳过')
+  if (tooBig.length) editorMessage.warning(`${tooBig.length} 张图片超过 ${MAX_IMAGE_UPLOAD_MB}MB，已跳过`)
+  if (!usable.length) return
+  const progress = editorMessage.loading(`正在上传 ${usable.length} 张图片…`, { duration: 0 })
+  let done = 0
+  let failed = 0
+  try {
+    await Promise.all(
+      usable.map(async (file, i) => {
+        try {
+          const url = await canvasUploadMedia(file)
+          const created = store.addNode('image', undefined, at(i))
+          if (created) store.updateNodeData(created.id, { image: url })
+          done += 1
+        } catch {
+          failed += 1
+        }
+      }),
+    )
+  } finally {
+    progress.destroy()
+  }
+  if (failed) editorMessage.error(`${failed} 张图片上传失败${done ? `，已放入 ${done} 张` : ''}`)
+  else editorMessage.success(`已放入 ${done} 张图片`)
 }
 </script>
 
 <template>
   <n-config-provider :theme-overrides="llTheme" abstract>
-    <div class="flex flex-col h-100vh overflow-hidden bg-page">
+    <div ref="pageEl" class="flex flex-col h-100vh overflow-hidden bg-page">
       <header class="flex shrink-0 items-center gap-8px h-48px px-12px border-b border-b-solid border-line bg-white">
-        <button
-          type="button"
-          class="grid shrink-0 w-28px h-28px p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-ink-2 cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
-          :class="FOCUS_RING"
-          title="返回画布首页"
-          aria-label="返回画布首页"
-          @click="backToList"
-        >
+        <IconButton label="返回画布首页" variant="quiet" class="shrink-0" @click="backToList">
           <EditorIcon name="arrowBack" :size="18" />
-        </button>
+        </IconButton>
         <input
           v-if="titleEditing"
           ref="titleInputRef"
@@ -832,7 +2301,8 @@ function openHelp() {
         <span
           class="shrink-0 px-7px py-2px rounded-4px text-11px whitespace-nowrap"
           :class="saveStateClass"
-          :title="saveState === 'error' ? saveError : undefined"
+          :title="saveState === 'error' ? `保存失败：${saveError || '请稍后重试'}` : undefined"
+          role="status"
           >{{ saveText }}</span
         >
         <span
@@ -854,7 +2324,9 @@ function openHelp() {
             type="button"
             :class="TOP_BTN"
             :aria-disabled="saveState === 'saving' || undefined"
-            title="保存当前画布（Ctrl/Cmd+S）"
+            data-tip="保存当前画布"
+            data-tip-key="Mod+S"
+            aria-keyshortcuts="Control+S Meta+S"
             @click="saveState !== 'saving' && store.saveNow()"
           >
             {{ saveState === 'saving' ? '保存中…' : '保存' }}
@@ -862,14 +2334,52 @@ function openHelp() {
           <button type="button" :class="TOP_BTN" title="复制当前画布到一张新画布" @click="showSaveAs = true">
             另存为
           </button>
+          <!-- 余额 pill（原型顶栏 credit pill）：胶囊本身只展示（失败态它自带重试按钮），刷新是旁边的独立图标钮，不嵌套按钮 -->
+          <div class="flex flex-none items-center gap-2px">
+            <PointsBalanceChip />
+            <IconButton label="刷新余额" size="sm" variant="quiet" @click="refreshBalance">
+              <EditorIcon name="refresh" :size="14" />
+            </IconButton>
+          </div>
+          <!-- 导出下拉（原型 .wf-export：下载所有输出 / 导出工程 JSON / 导出画布 PNG） -->
+          <div ref="exportWrapEl" class="relative flex-none">
+            <button
+              type="button"
+              :class="TOP_BTN"
+              :aria-expanded="showExportMenu"
+              aria-haspopup="menu"
+              title="导出"
+              @click="showExportMenu = !showExportMenu"
+            >
+              <EditorIcon name="download" :size="16" /> 导出
+            </button>
+            <div
+              v-if="showExportMenu"
+              class="sx-squircle absolute right-0 top-38px z-[6000] w-190px flex flex-col rounded-14px border border-solid border-[#e5e1e4] bg-white p-6px shadow-[0_16px_36px_rgba(31,35,41,0.14)]"
+              :class="POP_FADE"
+              role="menu"
+              @click.stop
+            >
+              <button type="button" class="export-item" role="menuitem" @click="downloadAll">
+                <EditorIcon name="download" :size="14" /> 下载所有输出
+              </button>
+              <button type="button" class="export-item" role="menuitem" @click="exportWorkflowJson">
+                <EditorIcon name="doc" :size="14" /> 导出工程 JSON
+              </button>
+              <button type="button" class="export-item" role="menuitem" :disabled="exportingPng" @click="exportCanvasPng">
+                <EditorIcon name="image" :size="14" /> {{ exportingPng ? '正在导出…' : '导出画布 PNG' }}
+              </button>
+            </div>
+          </div>
           <button
             type="button"
             :class="TOP_BTN_PRIMARY"
-            :aria-disabled="!runTarget || undefined"
+            :aria-disabled="runDisabled || undefined"
             :title="runHint"
             @click="runSelected"
           >
-            执行模型
+            <EditorIcon name="play" :size="14" />
+            {{ batchActive ? '批量执行中…' : runScope === 'selection' ? `执行选中 ${selectedFlowNodes.length} 个` : '执行模型' }}
           </button>
         </div>
       </header>
@@ -878,7 +2388,14 @@ function openHelp() {
         <EditorAssetPanel @locate="locateNode" @add-from-library="showAssetPicker = true" />
 
         <!-- 舞台：原型 .wf-canvas 底色 #f5f5f5；框选框藤紫描边 + 8% 浅底；非法连线红色虚线 -->
-        <div ref="stageRef" class="relative flex-1 min-w-0 overflow-hidden bg-[#f5f5f5]" @dblclick="onStageDblClick">
+        <div
+          ref="stageRef"
+          class="relative flex-1 min-w-0 overflow-hidden bg-[#f5f5f5]"
+          @dblclick="onStageDblClick"
+          @dragover="onStageDragOver"
+          @dragleave="onStageDragLeave"
+          @drop="onStageDrop"
+        >
           <VueFlow
             :id="FLOW_ID"
             v-model:nodes="nodes"
@@ -891,9 +2408,11 @@ function openHelp() {
             :pan-on-scroll="true"
             :pan-on-drag="toolMode === 'pan'"
             :selection-key-code="toolMode === 'select' ? true : 'Shift'"
+            multi-select-key-code="Shift"
             :snap-to-grid="snapEnabled"
             :snap-grid="[20, 20]"
             :zoom-on-double-click="false"
+            :elevate-nodes-on-select="false"
             :delete-key-code="null"
             :connect-on-click="false"
             :connection-mode="ConnectionMode.Strict"
@@ -905,8 +2424,26 @@ function openHelp() {
             @connect="onConnect"
             @connect-start="onConnectStart"
             @connect-end="onConnectEnd"
+            @node-contextmenu="onNodeContextMenu"
+            @pane-contextmenu="onPaneContextMenu"
+            @node-drag-start="onNodeDragStart"
+            @node-drag="onNodeDrag"
+            @node-drag-stop="onNodeDragStop"
           >
             <Background :gap="dotGrid.gap" :size="dotGrid.size" pattern-color="rgba(31, 35, 41, 0.20)" />
+
+            <!-- 小地图（原型 .wf-minimap：150×96、右下 16、r14、白 92%、蒙版藤紫 8%、节点圆角 3、可拖动 / 滚轮缩放） -->
+            <MiniMap
+              position="bottom-right"
+              :width="150"
+              :height="96"
+              :pannable="true"
+              :zoomable="true"
+              mask-color="rgba(106, 72, 123, 0.08)"
+              :node-color="minimapNodeColor"
+              node-radius="3"
+              class="canvas-minimap"
+            />
 
             <template #edge-canvas-bezier="edgeProps">
               <EditorBezierEdge v-bind="edgeProps" />
@@ -952,34 +2489,39 @@ function openHelp() {
             </template>
           </VueFlow>
 
-          <!-- 空态 / 加载态（原型 .wf-canvas-empty + v3.1：虚线 r8、白 94%、轻投影，按钮藤紫浅底） -->
+          <!-- 空态 / 加载态（原型 .wf-canvas-empty：虚线 r8、白 94%、轻投影；新画布给「从模板开始 / 从资产导入」两个入口） -->
           <div
             v-if="loading || !nodes.length"
             class="absolute top-50% left-50% z-6 flex flex-col items-center gap-6px px-24px py-20px border border-dashed border-line-strong rounded-8px bg-white/94 text-muted text-center shadow-[0_1px_2px_rgba(16,24,40,0.06)] -translate-x-50% -translate-y-50% pointer-events-none"
+            :class="stageDropActive && '!border-violet !bg-[rgba(244,238,247,0.94)]'"
             :role="loading ? 'status' : undefined"
           >
             <strong class="text-ink text-14px">{{
-              loading ? '正在加载画布…' : loadError ? '画布加载失败' : '这是一张新画布'
+              loading ? '正在加载画布…' : loadError ? '画布加载失败' : stageDropActive ? '松手放入图片' : '这是一张新画布'
             }}</strong>
             <template v-if="!loading">
               <p v-if="loadError" class="m-0 text-13px">{{ loadError }}</p>
-              <p v-else class="m-0 text-13px">双击空白处或点左侧工具条「+」添加节点，也可「从素材库添加」放入素材。</p>
+              <p v-else class="m-0 text-13px">从模板开始，或点左侧「从资产导入」放入素材。</p>
               <button
                 v-if="loadError"
                 type="button"
-                class="h-30px mt-4px px-12px border border-solid border-violet-line rounded-4px bg-violet-soft text-violet-ink text-13px cursor-pointer pointer-events-auto hover:border-[#c9b2d8] hover:bg-violet-soft-2"
+                class="empty-btn"
                 :class="FOCUS_RING"
                 @click="store.init(canvasId)"
               >
                 重试
               </button>
+              <div v-else class="flex items-center gap-8px mt-4px">
+                <button type="button" class="empty-btn" :class="FOCUS_RING" @click="showTemplates = true">从模板开始</button>
+                <button type="button" class="empty-btn" :class="FOCUS_RING" @click="showAssetPicker = true">从资产导入</button>
+              </div>
             </template>
           </div>
 
           <!-- 连线选中条（原型 .wf-selection-bar--edge：顶部居中 36px、r8、浮层投影） -->
           <div
             v-if="selectedEdgeId"
-            class="absolute top-10px left-50% z-6 flex h-36px items-center gap-2px px-6px py-4px border border-solid border-line rounded-8px bg-white/98 text-ink-2 text-13px shadow-[0_12px_28px_rgba(58,38,72,0.14),0_2px_6px_rgba(31,35,41,0.06)] -translate-x-50%"
+            class="absolute top-10px left-50% z-6 sx-squircle flex h-38px items-center gap-2px px-6px py-4px border border-solid border-line rounded-14px bg-white/98 text-ink-2 text-13px shadow-[0_12px_28px_rgba(58,38,72,0.14),0_2px_6px_rgba(31,35,41,0.06)] -translate-x-50%"
             :class="POP_FADE"
             role="toolbar"
             aria-label="连线操作"
@@ -996,22 +2538,15 @@ function openHelp() {
               断开
             </button>
             <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
-            <button
-              type="button"
-              class="grid w-28px h-28px p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted text-14px cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
-              :class="FOCUS_RING"
-              aria-label="取消选中"
-              title="取消选中"
-              @click="selectedEdgeId = ''"
-            >
-              ×
-            </button>
+            <IconButton label="取消选中" no-title data-tip="取消选中" data-tip-key="Esc" size="sm" variant="quiet" @click="selectedEdgeId = ''">
+              <EditorIcon name="close" :size="14" />
+            </IconButton>
           </div>
 
-          <!-- 多选操作条（原型 .wf-selection-bar：顶部居中 36px、r8；执行 / 复制 / 删除 / 取消选择） -->
+          <!-- 多选操作条（原型 .wf-selection-bar：顶部 10 居中、38h r14、padding 4×6；对齐弹层锚在整条正下方） -->
           <div
             v-else-if="selectedFlowNodes.length > 1"
-            class="absolute top-10px left-50% z-6 flex h-36px items-center gap-2px px-6px py-4px border border-solid border-line rounded-8px bg-white/98 text-ink-2 text-13px shadow-[0_12px_28px_rgba(58,38,72,0.14),0_2px_6px_rgba(31,35,41,0.06)] -translate-x-50%"
+            class="absolute top-10px left-50% z-6 sx-squircle flex h-38px max-w-[calc(100%-24px)] items-center gap-2px px-6px py-4px border border-solid border-line rounded-14px bg-white/98 text-ink-2 text-13px whitespace-nowrap shadow-[0_12px_28px_rgba(58,38,72,0.14),0_2px_6px_rgba(31,35,41,0.06)] -translate-x-50%"
             :class="POP_FADE"
             role="toolbar"
             aria-label="多选节点操作"
@@ -1024,7 +2559,8 @@ function openHelp() {
             <button
               type="button"
               :class="SELECTION_BTN"
-              title="按上下游顺序执行选中的生成 / 工具节点"
+              title="按上下游顺序执行选中的生成 / 工具节点（先确认预计消耗）"
+              :aria-disabled="batchRunning || undefined"
               @click="runSelectionNodes"
             >
               <EditorIcon name="play" :size="12" /> 执行
@@ -1032,174 +2568,246 @@ function openHelp() {
             <button
               type="button"
               :class="SELECTION_BTN"
-              title="复制选中节点（含它们之间的连线）"
-              @click="duplicateSelectionNodes"
+              data-tip="复制选中节点（含组内连线）"
+              data-tip-key="Mod+D"
+              @click="duplicateSelection()"
             >
               <EditorIcon name="copy" :size="12" /> 复制
+            </button>
+            <div ref="alignWrapEl" class="inline-flex">
+              <button
+                type="button"
+                :class="SELECTION_BTN"
+                :aria-expanded="showAlignPop"
+                aria-haspopup="menu"
+                @click="showAlignPop = !showAlignPop"
+              >
+                <EditorIcon name="grid" :size="12" /> 对齐
+              </button>
+            </div>
+            <button
+              v-if="!singleGroupId"
+              type="button"
+              :class="SELECTION_BTN"
+              title="把选中节点框进一块虚线底板"
+              @click="groupSelection"
+            >
+              <EditorIcon name="layers" :size="12" /> 成组
+            </button>
+            <button
+              v-else
+              type="button"
+              :class="SELECTION_BTN"
+              title="只拆底板，成员原位保留"
+              @click="ungroupSelection"
+            >
+              <EditorIcon name="folderOpen" :size="12" /> 解组
+            </button>
+            <button
+              type="button"
+              :class="SELECTION_BTN"
+              :title="selectionAllLocked ? '解锁选中节点' : '锁定选中节点（拖不动，可解锁 / 删除）'"
+              @click="toggleLockSelection"
+            >
+              <EditorIcon :name="selectionAllLocked ? 'unlock' : 'lock'" :size="12" />
+              {{ selectionAllLocked ? '解锁' : '锁定' }}
+            </button>
+            <button type="button" :class="SELECTION_BTN" title="把选中节点放大到视野中央" @click="zoomToSelection()">
+              <EditorIcon name="fit" :size="12" /> 聚焦
             </button>
             <button
               type="button"
               :class="SELECTION_BTN"
               class="!text-danger hover:!border-[#e4b7b4] hover:!bg-[#fbeeed] hover:!text-[#9b3935]"
-              title="删除选中节点（Delete）"
+              data-tip="删除选中节点"
+              data-tip-key="Delete"
               @click="confirmDeleteNodes"
             >
               <EditorIcon name="trash" :size="12" /> 删除
             </button>
             <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
-            <button
-              type="button"
-              class="grid w-28px h-28px p-0 place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted text-14px cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
-              :class="FOCUS_RING"
-              aria-label="取消选择"
-              title="取消选择（Esc）"
-              @click="clearFlowSelection"
+            <IconButton label="取消选择" no-title data-tip="取消选择" data-tip-key="Esc" size="sm" variant="quiet" @click="clearFlowSelection">
+              <EditorIcon name="close" :size="14" />
+            </IconButton>
+
+            <!-- 对齐分布（原型 .wf-align-pop：240 宽 r14 padding 8，两列 30h r8 12px 左对齐；小标「对齐」「分布」） -->
+            <div
+              v-if="showAlignPop"
+              ref="alignPopEl"
+              class="sx-squircle absolute left-1/2 top-[calc(100%+8px)] z-[6000] grid w-240px grid-cols-2 gap-2px rounded-14px border border-solid border-[#e5e1e4] bg-white p-8px -translate-x-1/2 shadow-[0_16px_36px_rgba(31,35,41,0.14)]"
+              :class="POP_FADE"
+              role="menu"
+              aria-label="对齐与分布"
+              @click.stop
             >
-              ×
-            </button>
+              <span class="align-label">对齐</span>
+              <button type="button" class="align-item" role="menuitem" @click="alignSelection('left')">左对齐</button>
+              <button type="button" class="align-item" role="menuitem" @click="alignSelection('hcenter')">水平居中</button>
+              <button type="button" class="align-item" role="menuitem" @click="alignSelection('right')">右对齐</button>
+              <button type="button" class="align-item" role="menuitem" @click="alignSelection('top')">顶对齐</button>
+              <button type="button" class="align-item" role="menuitem" @click="alignSelection('vcenter')">垂直居中</button>
+              <button type="button" class="align-item" role="menuitem" @click="alignSelection('bottom')">底对齐</button>
+              <span class="align-label">分布</span>
+              <button type="button" class="align-item" role="menuitem" @click="distributeSelection('h')">水平等距</button>
+              <button type="button" class="align-item" role="menuitem" @click="distributeSelection('v')">垂直等距</button>
+            </div>
           </div>
 
-          <!-- 左竖工具条（原型 .wf-toolbar-left：left 12 / 垂直居中） -->
+          <!-- 左竖工具条（原型 .wf-toolbar-left：left 12 / 垂直居中）；图标钮统一 IconButton（32px 命中区），提示出在右侧 -->
           <div
             :class="TOOLBAR"
             class="left-12px top-50% -translate-y-50% flex-col"
             role="toolbar"
             aria-label="画布工具"
+            data-tip-side="right"
           >
-            <button
-              type="button"
-              :class="[TOOLBAR_BTN, { 'is-on': toolMode === 'pan' }]"
-              title="拖动模式（平移画布）"
-              aria-label="拖动模式"
-              :aria-pressed="toolMode === 'pan'"
+            <IconButton
+              label="拖动模式（平移画布）"
+              no-title
+              data-tip="拖动模式（平移画布）"
+              data-tip-key="Space"
+              variant="quiet"
+              :pressed="toolMode === 'pan'"
               @click="toolMode = 'pan'"
             >
               <EditorIcon name="hand" :size="19" />
-            </button>
-            <button
-              type="button"
-              :class="[TOOLBAR_BTN, { 'is-on': toolMode === 'select' }]"
-              title="选择模式（框选节点）"
-              aria-label="选择模式"
-              :aria-pressed="toolMode === 'select'"
+            </IconButton>
+            <IconButton
+              label="选择模式（框选节点，Shift 加选）"
+              no-title
+              data-tip="选择模式（框选，Shift 加选）"
+              variant="quiet"
+              :pressed="toolMode === 'select'"
               @click="toolMode = 'select'"
             >
               <EditorIcon name="pointer" :size="18" />
-            </button>
+            </IconButton>
             <span class="h-1px mx-6px my-2px bg-line" aria-hidden="true" />
-            <button
-              type="button"
-              :class="[TOOLBAR_BTN, { 'is-on': addPanel && !addPanel.spawnAt }]"
-              title="添加节点（也可双击空白画布）"
-              aria-label="添加节点"
+            <IconButton
+              label="添加节点（也可双击空白画布）"
+              no-title
+              data-tip="添加节点（也可双击空白画布）"
+              variant="quiet"
+              :pressed="Boolean(addPanel && !addPanel.spawnAt)"
               aria-haspopup="dialog"
               :aria-expanded="Boolean(addPanel)"
               @click="openAddPanel"
             >
               <EditorIcon name="plus" :size="20" />
-            </button>
+            </IconButton>
             <span class="h-1px mx-6px my-2px bg-line" aria-hidden="true" />
-            <button
-              type="button"
-              :class="TOOLBAR_BTN"
-              title="从素材库导入"
-              aria-label="从素材库导入"
-              @click="showAssetPicker = true"
-            >
+            <IconButton label="从资产导入" no-title data-tip="从资产导入（也可把图片拖到画布）" variant="quiet" @click="showAssetPicker = true">
               <EditorIcon name="albums" :size="18" />
-            </button>
-            <button
-              type="button"
-              :class="TOOLBAR_BTN"
-              title="提示词库（新标签页打开）"
-              aria-label="提示词库（新标签页打开）"
-              @click="openPromptLibrary"
-            >
-              <EditorIcon name="book" :size="18" />
-            </button>
+            </IconButton>
+            <span ref="promptAnchorEl" class="inline-flex">
+              <IconButton
+                label="提示词库（插入选中节点）"
+                no-title
+                data-tip="提示词库（插入选中节点）"
+                variant="quiet"
+                :pressed="promptFlyoutOpen"
+                aria-haspopup="dialog"
+                :aria-expanded="promptFlyoutOpen"
+                @click="promptFlyoutOpen = !promptFlyoutOpen"
+              >
+                <EditorIcon name="book" :size="18" />
+              </IconButton>
+            </span>
           </div>
 
-          <!-- 底横工具条（原型 .wf-toolbar-bottom：bottom 16 / 水平居中） -->
+          <!-- 底横工具条（原型 .wf-toolbar-bottom：bottom 16 / 水平居中；网格后、适应画布后各一道 1×18 #ececef 分隔） -->
           <div
             :class="TOOLBAR"
             class="bottom-16px left-50% -translate-x-50% items-center"
             role="toolbar"
             aria-label="画布视图"
+            @click.stop
           >
-            <button
-              type="button"
-              :class="TOOLBAR_BTN"
-              :aria-disabled="!runTarget || undefined"
-              :title="runTarget ? '执行选中节点' : '先选中一个生成或工具节点'"
-              aria-label="执行选中节点"
-              @click.stop="runSelected"
+            <IconButton
+              :label="runHint"
+              no-title
+              :data-tip="runScope === 'selection' ? `执行选中的 ${selectedFlowNodes.length} 个节点` : runScope === 'single' ? '执行选中节点' : '执行全部模型节点'"
+              variant="quiet"
+              :disabled="runDisabled"
+              :loading="batchActive"
+              @click="runSelected"
             >
               <EditorIcon name="play" :size="16" />
-            </button>
-            <button
-              type="button"
-              :class="[TOOLBAR_BTN, { 'is-on': snapEnabled }]"
-              title="对齐网格（20px，默认关）"
-              aria-label="对齐网格"
-              :aria-pressed="snapEnabled"
-              @click.stop="snapEnabled = !snapEnabled"
+            </IconButton>
+            <IconButton
+              label="对齐网格（20px，默认关）"
+              no-title
+              data-tip="对齐网格（20px）"
+              variant="quiet"
+              :pressed="snapEnabled"
+              @click="snapEnabled = !snapEnabled"
             >
               <EditorIcon name="grid" :size="16" />
-            </button>
-            <button type="button" :class="TOOLBAR_BTN" title="放大" aria-label="放大" @click.stop="zoomIn()">
-              <EditorIcon name="plus" :size="16" />
-            </button>
-            <button type="button" :class="TOOLBAR_BTN" title="缩小" aria-label="缩小" @click.stop="zoomOut()">
+            </IconButton>
+            <span class="w-1px h-18px mx-2px bg-[#ececef]" aria-hidden="true" />
+            <IconButton label="缩小" no-title data-tip="缩小" variant="quiet" @click="zoomOut()">
               <EditorIcon name="minus" :size="16" />
-            </button>
+            </IconButton>
+            <!-- 缩放读数（原型 .wf-zoom-value）：min-w 44、11px tabular，点击回 100%（保持视口中心不动） -->
             <button
               type="button"
-              :class="TOOLBAR_BTN"
-              title="适应画布"
-              aria-label="适应画布"
-              @click.stop="fitView({ padding: 0.18, duration: 200 })"
+              class="grid h-32px min-w-44px place-items-center border-none rounded-12px bg-transparent px-4px text-11px leading-none tabular-nums text-ink-2 cursor-pointer hover:bg-surface3 hover:text-ink"
+              :class="FOCUS_RING"
+              data-tip="点击回到 100%"
+              aria-label="缩放读数，点击恢复 100%"
+              @click="resetZoom"
             >
-              <EditorIcon name="fit" :size="16" />
+              {{ Math.round((viewport.zoom || 1) * 100) }}%
             </button>
-            <button
-              type="button"
-              :class="TOOLBAR_BTN"
-              :aria-disabled="!canUndo || undefined"
-              title="撤销（Ctrl/Cmd+Z）"
-              aria-label="撤销"
-              @click.stop="canUndo && undoCanvas()"
+            <IconButton label="放大" no-title data-tip="放大" variant="quiet" @click="zoomIn()">
+              <EditorIcon name="plus" :size="16" />
+            </IconButton>
+            <IconButton label="适应画布" no-title data-tip="适应画布" variant="quiet" @click="fitView({ padding: 0.18, duration: 200 })">
+              <EditorIcon name="fit" :size="16" />
+            </IconButton>
+            <span class="w-1px h-18px mx-2px bg-[#ececef]" aria-hidden="true" />
+            <IconButton
+              label="撤销"
+              no-title
+              data-tip="撤销"
+              data-tip-key="Mod+Z"
+              aria-keyshortcuts="Control+Z Meta+Z"
+              variant="quiet"
+              :disabled="!canUndo"
+              @click="undoCanvas()"
             >
               <EditorIcon name="undo" :size="16" />
-            </button>
-            <button
-              type="button"
-              :class="TOOLBAR_BTN"
-              :aria-disabled="!canRedo || undefined"
-              title="重做（Shift+Ctrl/Cmd+Z）"
-              aria-label="重做"
-              @click.stop="canRedo && redoCanvas()"
+            </IconButton>
+            <IconButton
+              label="重做"
+              no-title
+              data-tip="重做"
+              data-tip-key="Mod+Y"
+              aria-keyshortcuts="Control+Y Meta+Y Control+Shift+Z Meta+Shift+Z"
+              variant="quiet"
+              :disabled="!canRedo"
+              @click="redoCanvas()"
             >
               <EditorIcon name="redo" :size="16" />
-            </button>
-            <button
-              type="button"
-              :class="TOOLBAR_BTN"
-              :aria-disabled="downloading || undefined"
-              :aria-busy="downloading || undefined"
-              title="批量下载所有图片/视频输出"
-              aria-label="批量下载所有图片/视频输出"
-              @click.stop="downloadAll"
+            </IconButton>
+            <IconButton
+              label="批量下载所有图片/视频输出"
+              no-title
+              data-tip="下载所有图片 / 视频输出"
+              variant="quiet"
+              :loading="downloading"
+              @click="downloadAll"
             >
               <EditorIcon name="download" :size="16" />
-            </button>
-            <button type="button" :class="TOOLBAR_BTN" title="缩放说明" aria-label="缩放说明" @click.stop="openHelp">
+            </IconButton>
+            <IconButton label="快捷键与画布操作" no-title data-tip="快捷键与画布操作" data-tip-key="?" aria-keyshortcuts="?" variant="quiet" @click="openHelp">
               <EditorIcon name="help" :size="16" />
-            </button>
+            </IconButton>
           </div>
 
           <!-- 浮动控制台（原型 CanvasConsolePanel：约 520×360，节点下方，放不下翻到上方） -->
           <div
-            v-if="selectedNode && consoleBox && selectedFlowNodes.length <= 1"
+            v-if="selectedNode && selectedNode.type !== 'module' && consoleBox && selectedFlowNodes.length <= 1"
             class="absolute z-15"
             :style="{
               left: `${consoleBox.left}px`,
@@ -1218,10 +2826,135 @@ function openHelp() {
             :kinds="addPanel.kinds"
             @close="closeAddPanel"
             @add="addFromPanel"
+            @add-text="addQuickText"
           />
 
           <!-- 图片动作面板（节点「…」菜单：识别 / 图片编辑 / 多视图 / 图层） -->
           <ImageActionPanel v-if="activeImageAction" :key="activeImageAction.nodeId" />
+
+          <!--
+            右键菜单 / 节点「…」菜单（原型 .wf-node-menu：208 宽 r14、白 62% + blur 18 saturate 1.6、无描边仅细影；
+            头 11/14/9 + 底分隔，组 padding 4×6，组间分隔左右内缩 14，行 36h gap 10 px10 r6 + 14px 图标）
+          -->
+          <div
+            v-if="ctxMenu"
+            ref="ctxMenuEl"
+            class="sx-squircle absolute z-[6000] w-208px flex flex-col rounded-14px bg-white/62 text-ink-2 backdrop-blur-[18px] backdrop-saturate-[1.6] shadow-[0_0_0_0.5px_rgba(15,23,42,0.10),0_18px_44px_rgba(15,23,42,0.16)]"
+            :class="POP_FADE"
+            :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }"
+            role="menu"
+            data-canvas-popover
+            :aria-label="ctxMenu.kind === 'pane' ? '画布菜单' : `${ctxNode?.data.title || '节点'} 菜单`"
+            @keydown="onCtxMenuKeydown"
+            @contextmenu.prevent
+          >
+            <template v-if="ctxMenu.kind === 'pane'">
+              <div class="ctx-group">
+                <button type="button" class="ctx-item" role="menuitem" @click="ctxMenuAdd">
+                  <EditorIcon name="plus" :size="14" /> 添加节点
+                </button>
+                <button type="button" class="ctx-item" role="menuitem" :disabled="!clipboard" @click="ctxMenuPaste">
+                  <EditorIcon name="copy" :size="14" /> 粘贴<span class="ctx-kbd">{{ MOD_KEY }} V</span>
+                </button>
+                <button type="button" class="ctx-item" role="menuitem" @click="ctxMenuTemplates">
+                  <EditorIcon name="card" :size="14" /> 从模板新建…
+                </button>
+              </div>
+              <span class="ctx-sep" aria-hidden="true" />
+              <div class="ctx-group">
+                <button type="button" class="ctx-item" role="menuitem" @click="ctxMenuFit">
+                  <EditorIcon name="fit" :size="14" /> 适应画布
+                </button>
+                <button type="button" class="ctx-item" role="menuitem" :aria-disabled="!canUndo || undefined" @click="canUndo && ctxMenuUndo()">
+                  <EditorIcon name="undo" :size="14" /> 撤销<span class="ctx-kbd">{{ MOD_KEY }} Z</span>
+                </button>
+                <button type="button" class="ctx-item" role="menuitem" :aria-disabled="!canRedo || undefined" @click="canRedo && ctxMenuRedo()">
+                  <EditorIcon name="redo" :size="14" /> 重做<span class="ctx-kbd">{{ MOD_KEY }} Y</span>
+                </button>
+              </div>
+            </template>
+            <template v-else-if="ctxNode && ctxMenu.view === 'models'">
+              <header class="ctx-head">
+                <b class="truncate text-13px font-600 leading-18px text-ink">模型替换</b>
+                <small class="truncate text-10.5px leading-14px text-muted">{{ ctxNode.data.kind === 'video' ? '视频模型' : '图片模型' }}</small>
+              </header>
+              <div class="ctx-group">
+                <button type="button" class="ctx-item" role="menuitem" @click="ctxMenuBack">
+                  <EditorIcon name="arrowBack" :size="14" /> 返回
+                </button>
+              </div>
+              <span class="ctx-sep" aria-hidden="true" />
+              <div class="ctx-group max-h-320px overflow-y-auto [scrollbar-width:thin]">
+                <button
+                  v-for="option in ctxModelOptions"
+                  :key="option.model_id"
+                  type="button"
+                  class="ctx-item"
+                  :class="ctxNode.data.modelId === option.model_id && '!bg-violet-soft !text-violet-ink'"
+                  role="menuitemradio"
+                  :aria-checked="ctxNode.data.modelId === option.model_id"
+                  :disabled="!option.ready"
+                  :title="option.ready ? undefined : '该模型暂不可用'"
+                  @click="applyModelPick(option)"
+                >
+                  <EditorIcon :name="ctxNode.data.modelId === option.model_id ? 'check' : 'model'" :size="14" />
+                  <span class="min-w-0 flex-1 truncate">{{ option.model }}</span>
+                  <small v-if="option.badge" class="shrink-0 text-11px text-muted">{{ option.badge }}</small>
+                </button>
+              </div>
+            </template>
+            <template v-else-if="ctxNode">
+              <header class="ctx-head">
+                <b class="truncate text-13px font-600 leading-18px text-ink">{{ ctxNode.data.title || '节点' }}</b>
+                <small class="truncate text-10.5px leading-14px text-muted">{{
+                  ctxNode.type === 'module' ? (isGroupPlate(ctxNode) ? '分组' : '模块') : ctxNode.data.subtitle || '节点'
+                }}</small>
+              </header>
+              <template v-for="(group, gi) in nodeMenuGroups" :key="gi">
+                <span v-if="gi > 0" class="ctx-sep" aria-hidden="true" />
+                <div class="ctx-group">
+                  <button
+                    v-for="item in group"
+                    :key="item.key"
+                    type="button"
+                    class="ctx-item"
+                    :class="item.danger && 'is-danger'"
+                    role="menuitem"
+                    :aria-disabled="item.disabled || undefined"
+                    :title="item.hint"
+                    @click="runMenuItem(item)"
+                  >
+                    <EditorIcon :name="item.icon" :size="14" />
+                    <span class="min-w-0 flex-1 truncate">{{ item.label }}</span>
+                    <span v-if="item.kbd" class="ctx-kbd">{{ item.kbd }}</span>
+                  </button>
+                </div>
+              </template>
+            </template>
+          </div>
+
+          <!-- 首启引导（原型 .wf-onboard：底部 78 居中、max-w 560、#e2d6e9 描边 r14、白 96% 毛玻璃；知道了即退并记忆） -->
+          <div
+            v-if="showOnboard && !loading"
+            class="sx-squircle absolute bottom-78px left-1/2 z-20 flex max-w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-center gap-10px rounded-14px border border-solid border-[#e2d6e9] bg-white/96 py-10px pl-16px pr-12px backdrop-blur-[10px] shadow-[0_12px_28px_rgba(31,35,41,0.10)]"
+            :class="POP_FADE"
+            role="status"
+          >
+            <b class="shrink-0 whitespace-nowrap text-13px font-600 text-[#5b3f6b]">第一次用画布？</b>
+            <p class="m-0 min-w-0 flex-1 text-12px leading-[1.5] text-[#7d767b]">
+              双击空白添加节点 · 右键更多 · 拖节点右侧圆点连线 · 空格 / 底部工具条拖动画布
+            </p>
+            <button
+              type="button"
+              class="relative h-26px shrink-0 rounded-full border border-solid border-[#d8c9df] bg-white px-10px text-12px text-[#6a487b] cursor-pointer hover:border-[#c9b2d8] hover:bg-[#faf7fc] after:content-empty after:absolute after:-inset-y-3px after:-inset-x-0"
+              :class="FOCUS_RING"
+              @click="dismissOnboard"
+            >
+              知道了
+            </button>
+          </div>
+
+          <CanvasTip :root="pageEl" />
         </div>
       </div>
 
@@ -1236,6 +2969,21 @@ function openHelp() {
       />
       <TemplatePicker v-model:show="showTemplates" @created="onCreatedFromTemplate" />
       <AssetPickerModal v-model:show="showAssetPicker" :limit="10" @select="addLibraryImages" />
+      <TitleModal
+        v-model:show="renameShow"
+        title="编辑名称"
+        label="节点名称"
+        :initial="renameTarget?.title ?? ''"
+        placeholder="给这个节点起个名字（最多 40 字）"
+        @confirm="confirmRename"
+      />
+      <PromptLibraryFlyout
+        v-model:show="promptFlyoutOpen"
+        :anchor="promptAnchorEl"
+        heading="提示词库"
+        show-counts
+        @select="(item) => insertPrompt(item.prompt)"
+      />
     </div>
   </n-config-provider>
 </template>
@@ -1247,6 +2995,176 @@ function openHelp() {
   不覆盖操作条自身的 -translate-x-50% 居中。减少动态效果时由 motion-reduce:animate-none 关掉。
 -->
 <style>
+/*
+ * 画布浮层的行样式（UnoCSS 写起来重复，落全局类；画布页专用命名，不与工具页冲突）：
+ * - ctx-*：右键 / 节点「…」菜单（原型 .wf-node-menu：行 36h gap 10 px10 r6、14px 图标；组 4×6；分隔内缩 14）
+ * - export-item：导出菜单（原型 .wf-export-menu：32h gap 8 r8 12.5px，悬停 #f4eef7）
+ * - align-*：对齐弹层（原型 .wf-align-pop：30h r8 12px 左对齐；小标 11px #a39ca0）
+ */
+.ctx-group {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 6px;
+}
+.ctx-sep {
+  display: block;
+  height: 1px;
+  margin: 0 14px;
+  background: rgba(15, 23, 42, 0.08);
+}
+.ctx-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 11px 14px 9px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #4b5563;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.ctx-item > svg {
+  flex: none;
+}
+.ctx-kbd {
+  margin-left: auto;
+  color: #9ca3af;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ctx-item:hover:not(:disabled):not([aria-disabled='true']),
+.ctx-item:focus-visible {
+  background: rgba(15, 23, 42, 0.06);
+  color: #1f2329;
+  outline: none;
+}
+.ctx-item:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(135, 95, 154, 0.55);
+}
+.ctx-item.is-danger {
+  color: #b4433e;
+}
+.ctx-item.is-danger:hover:not([aria-disabled='true']) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #9b3935;
+}
+.ctx-item:disabled,
+.ctx-item[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.export-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #4b454a;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.export-item > svg {
+  flex: none;
+}
+.export-item:hover:not(:disabled) {
+  background: #f4eef7;
+  color: #5b3f6b;
+}
+.export-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.align-label {
+  grid-column: span 2;
+  padding: 4px 8px 2px;
+  color: #a39ca0;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.align-item {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #4b454a;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.align-item:hover {
+  background: #f4eef7;
+  color: #5b3f6b;
+}
+.export-item:focus-visible,
+.align-item:focus-visible {
+  outline: 2px solid #875f9a;
+  outline-offset: -2px;
+}
+/* 空态按钮（原型 .wf-canvas-empty button：30h r4 藤紫浅底；命中区补到 32） */
+.empty-btn {
+  position: relative;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #ddcfe6;
+  border-radius: 14px;
+  background: #f4eef7;
+  color: #6a487b;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.empty-btn::after {
+  content: '';
+  position: absolute;
+  inset: -1px 0;
+}
+.empty-btn:hover {
+  border-color: #c9b2d8;
+  background: #ede3f2;
+}
+/*
+ * 模板模块底板（非成组）只作视觉框：Vue Flow 给监听了 node-click 的节点外层写行内 pointer-events:all，
+ * 会挡住框内的框选 / 双击加节点（框选只在指针直接落在 pane 上时开始），这里用 !important 放行；
+ * 框内的删除钮自己是 pointer-events:auto，照样能点。
+ */
+.vue-flow__node-module:has(.canvas-module-frame) {
+  pointer-events: none !important;
+}
+/* 小地图（原型 .wf-minimap）：右下 16、r14、白 92%、细描边 + 短投影 */
+.canvas-minimap {
+  right: 16px !important;
+  bottom: 16px !important;
+  border: 1px solid #e5e1e4;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.10);
+  overflow: hidden;
+}
+
 @keyframes canvas-editor-fade {
   from {
     opacity: 0;

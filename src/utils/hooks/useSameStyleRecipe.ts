@@ -18,7 +18,7 @@ const first = (v: unknown): string => {
  *
  * <p>用 watch 而不是 setup 里读一次：非电商页 keep-alive 的 cacheKey 恒为 undefined，
  * 同一条 route record 只变 query 走的是 patch 而非 remount（见 useEntryCodeFromQuery
- * 的同款说明），setup 不会重跑，一次性读法在「已在 /picture 再做一次同款」时会失效。
+ * 的同款说明），setup 不会重跑，一次性读法在「已在 /image/generate 再做一次同款」时会失效。
  *
  * @param entryCodeOps 本页支持的创作场景，充当白名单
  * @param apply        把配方写进页面自己的 formData；entryCode 已校验过。

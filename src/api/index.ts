@@ -216,6 +216,11 @@ const SILENT_ERROR_URLS = [
   '/studio/tryon/quote',
   '/studio/pose/quote',
   '/studio/image-generate/quote',
+  // 姿态复刻「识别人物与配对」：失败原因（4002 并发、未成年、无人物）由面板就地展示，不再弹全局 toast
+  '/studio/pose/preview',
+  // 智能体出图报价 / 批量托管估价：失败就隐藏点数行，不打扰
+  '/agent/image-quote',
+  '/batch-hosting/ecom-image/quote',
 ]
 
 // 走「引导购买」弹框而非 toast 的接口白名单：前端在用的全部创作提交口。
@@ -234,10 +239,16 @@ const BILLING_GUARD_URLS = [
   '/v1/tools/cutout',
   '/v1/tools/ocr',
 ]
+// 按路径规则匹配的扣点口：商拍工作室单张重试 POST /studio/tasks/{id}/retry（重新冻结这 1 张的点数）、
+// 智能体结果卡「重试这 n 张」POST /agent/conversations/{id}/generation-retry（逐张重新冻结）
+const BILLING_GUARD_PATTERNS = [
+  /\/studio\/tasks\/[^/?]+\/retry(?:$|\?)/,
+  /\/agent\/conversations\/[^/?]+\/generation-retry(?:$|\?)/,
+]
 
 function isBillingBlock(body: ApiResponse, url?: string): boolean {
-  if (!BILLING_BLOCK_CODES.has(body.code)) return false
-  return BILLING_GUARD_URLS.some((u) => url?.includes(u))
+  if (!BILLING_BLOCK_CODES.has(body.code) || !url) return false
+  return BILLING_GUARD_URLS.some((u) => url.includes(u)) || BILLING_GUARD_PATTERNS.some((re) => re.test(url))
 }
 
 // 响应拦截。令牌语义对齐 App 端 auth_interceptor：401/业务失效码 → 先刷新重放；403 → 直接重新登录

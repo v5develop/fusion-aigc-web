@@ -11,6 +11,7 @@ import assetLibraryRouter from './asset-library'
 import taskCenterRouter from './task-center'
 import studioRouter from './studio'
 import workflowRouter from './workflow'
+import { generatorRedirect } from './generator'
 
 const hasBridge = !!(window as any).ThirdServiceBridge
 
@@ -46,14 +47,28 @@ const router = createRouter({
           component: () => import('@/views/home/index.vue'),
         },
         {
-          path: '/picture',
-          name: 'picture',
-          component: () => import('@/views/picture/index.vue'),
+          path: '/image',
+          name: 'image',
+          meta: { title: 'AI 图片' },
+          component: () => import('@/views/image/index.vue'),
+        },
+        {
+          path: '/image/generate',
+          name: 'image-generate',
+          meta: { title: '图片生成' },
+          component: () => import('@/views/image/PictureGenerator.vue'),
         },
         {
           path: '/video',
           name: 'video',
+          meta: { title: 'AI 视频' },
           component: () => import('@/views/video/index.vue'),
+        },
+        {
+          path: '/video/generate',
+          name: 'video-generate',
+          meta: { title: '视频生成' },
+          component: () => import('@/views/video/VideoGenerator.vue'),
         },
         ...eCommerceRouter,
         ...localLifeRouter,
@@ -170,5 +185,8 @@ async function ensureBootAuth() {
     // 绝不能因为这一枪失败就清 token —— 那等于把一次网络抖动变成强制登出
   }
 }
+
+// 入口参数 /image?entryCode=…、/video?… 转到生成页（排在登录守卫之后；见 generator.ts）
+router.beforeEach(generatorRedirect)
 
 export default router

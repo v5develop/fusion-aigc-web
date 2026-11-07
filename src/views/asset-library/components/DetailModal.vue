@@ -6,11 +6,13 @@
  * 版本列表（设为当前版本 / 回到原图 / 分页加载更多）、相关资产与生成结果（分页加载更多）。
  *
  * <p>modelValue 为资产 id，null = 关闭；点相关资产 / 生成结果的缩略图会换 id 重载。
+ * hasPrev / hasNext 由列表页给出：媒体两侧的翻页钮与键盘 ← / → 发 prev / next，列表页负责跨页。
  * 详情接口一次带回三组子列表的当前页，翻页各自 page+1 重拉后追加。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { NCollapse, NCollapseItem, NInput, NModal, NSelect, useMessage } from 'naive-ui'
 import MediaFallback from '@/components/MediaFallback/index.vue'
+import IconButton from '@/components/IconButton/index.vue'
 import {
   assetLibAddRelation,
   assetLibAddVersion,
@@ -24,12 +26,17 @@ import { formatTime } from '@/views/local-life/constants.ts'
 import { goUploadImage } from '@/api/goUpload.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
+import { copyText, downloadName } from '../ui.ts'
+import { useAssetsInCanvas } from '../useInCanvas.ts'
 
 const assetId = defineModel<number | null>({ required: true })
 
-const emit = defineEmits<{ changed: [] }>()
+const props = withDefaults(defineProps<{ hasPrev?: boolean; hasNext?: boolean }>(), { hasPrev: false, hasNext: false })
+
+const emit = defineEmits<{ changed: []; prev: []; next: [] }>()
 
 const message = useMessage()
+const { opening: openingCanvas, openAssetsInCanvas } = useAssetsInCanvas()
 
 const PAGE_SIZE = 6
 
@@ -117,6 +124,43 @@ watch(assetId, (id) => {
 })
 
 const asset = computed<IAssetLibAsset | null>(() => detail.value?.asset ?? null)
+
+// ---------------- 翻页（← / →）、下载、复制提示词 ----------------
+
+/** 正在输入 / 操作媒体时方向键留给控件本身 */
+function isEditableTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null
+  if (!el || !el.tagName) return false
+  if (el.isContentEditable) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT', 'VIDEO', 'AUDIO'].includes(el.tagName) || !!el.closest('.n-base-selection')
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (!show.value || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || versionAssetShow.value) return
+  if (isEditableTarget(e.target)) return
+  if (e.key === 'ArrowLeft' && props.hasPrev) {
+    e.preventDefault()
+    emit('prev')
+  } else if (e.key === 'ArrowRight' && props.hasNext) {
+    e.preventDefault()
+    emit('next')
+  }
+}
+watch(
+  () => assetId.value !== null,
+  (open) => {
+    if (open) window.addEventListener('keydown', onKeydown)
+    else window.removeEventListener('keydown', onKeydown)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+
+const downloadHref = computed(() => {
+  const a = asset.value
+  if (!a) return ''
+  return (a.media === 'video' ? a.video_url : a.image) || ''
+})
 
 // ---------------- 通用 PATCH（返回完整资产，就地覆盖） ----------------
 
@@ -282,6 +326,17 @@ const provRows = computed(() => {
 // ---------------- 版本 ----------------
 
 const versions = computed(() => detail.value?.versions ?? { items: [], total: 0 })
+
+/** 版本胶囊标签：校色后（params 带 colorFix）优先按它标，其余回退提示词 / 版本号（原型标签取自 v.prompt） */
+function versionLabel(v: { id: number; prompt: string; params: string }, index: number): string {
+  try {
+    if (v.params && JSON.parse(v.params)?.colorFix) return '校色后'
+  } catch {
+    /* params 不是 JSON 就当普通版本 */
+  }
+  const prompt = (v.prompt || '').trim()
+  return prompt ? prompt.slice(0, 8) : `版本 ${index + 1}`
+}
 const hasMoreVersions = computed(() => versions.value.items.length < versions.value.total)
 const loadingVersions = ref(false)
 
@@ -480,12 +535,12 @@ async function removeRelation(relatedId: number) {
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" title="资产详情" style="width: 960px">
+  <n-modal v-model:show="show" preset="card" title="资产详情" style="width: 960px; max-width: calc(100vw - 32px)">
     <div v-loading="loading" class="min-h-320px max-h-74vh overflow-auto">
       <template v-if="asset">
         <div class="flex gap-16px">
           <div
-            class="w-400px shrink-0 self-start h-420px flex items-center justify-center bg-sunken rounded-10px overflow-hidden"
+            class="relative w-400px shrink-0 self-start h-420px flex items-center justify-center bg-sunken rounded-10px overflow-hidden"
           >
             <video
               v-if="asset.media === 'video' && asset.video_url && !previewFailed"
@@ -503,6 +558,62 @@ async function removeRelation(relatedId: number) {
               @error="previewFailed = true"
             />
             <MediaFallback v-else type="image" reason="loadFailed" />
+            <!-- 上一个 / 下一个（原型 relay-nav）：按列表页当前筛选顺序，跨页由列表页处理；键盘 ← / → 同效 -->
+            <IconButton
+              v-if="hasPrev"
+              label="上一个（←）"
+              variant="overlay"
+              class="!absolute left-8px top-1/2 -translate-y-1/2 z-1"
+              @click="emit('prev')"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m15 5-7 7 7 7" />
+              </svg>
+            </IconButton>
+            <IconButton
+              v-if="hasNext"
+              label="下一个（→）"
+              variant="overlay"
+              class="!absolute right-8px top-1/2 -translate-y-1/2 z-1"
+              @click="emit('next')"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m9 5 7 7-7 7" />
+              </svg>
+            </IconButton>
+            <!-- 版本胶囊（原型 .relay-versions）：媒体底部居中悬浮，原图 / 各版本一键切换（= 切当前版本） -->
+            <div
+              v-if="versions.items.length"
+              class="absolute bottom-10px left-1/2 -translate-x-1/2 flex items-center gap-2px p-4px rounded-full border border-solid border-white/70 bg-white/92 backdrop-blur-[6px] shadow-[0_4px_12px_rgba(31,35,41,0.14)] max-w-[92%]"
+            >
+              <button
+                type="button"
+                class="h-28px box-border px-12px rounded-full border-none text-12px cursor-pointer whitespace-nowrap [transition:background_140ms,color_140ms] motion-reduce:transition-none"
+                :class="
+                  !asset.current_version_id
+                    ? 'bg-violet text-white font-600'
+                    : 'bg-transparent text-ink-2 hover:(bg-surface3 text-ink)'
+                "
+                @click="patchAsset({ current_version_id: 0 })"
+              >
+                原图
+              </button>
+              <button
+                v-for="(v, vi) in versions.items"
+                :key="v.id"
+                type="button"
+                class="h-28px box-border px-12px rounded-full border-none text-12px cursor-pointer whitespace-nowrap [transition:background_140ms,color_140ms] motion-reduce:transition-none"
+                :class="
+                  v.id === asset.current_version_id
+                    ? 'bg-violet text-white font-600'
+                    : 'bg-transparent text-ink-2 hover:(bg-surface3 text-ink)'
+                "
+                :title="v.prompt || undefined"
+                @click="patchAsset({ current_version_id: v.id })"
+              >
+                {{ versionLabel(v, vi) }}
+              </button>
+            </div>
           </div>
 
           <div class="flex-1 min-w-0">
@@ -528,6 +639,39 @@ async function removeRelation(relatedId: number) {
                   >{{ asset.title || '未命名资产' }}</span
                 >
                 <span class="ll-link">编辑</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-8px mt-10px">
+                <a
+                  v-if="downloadHref"
+                  class="sx-btn no-underline"
+                  :href="downloadHref"
+                  :download="downloadName(asset.title, asset.media === 'video')"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
+                  </svg>
+                  下载
+                </a>
+                <button v-if="asset.prompt" type="button" class="sx-btn" @click="copyText(asset.prompt, message)">
+                  复制提示词
+                </button>
+                <button
+                  v-if="downloadHref"
+                  type="button"
+                  class="sx-btn"
+                  :disabled="openingCanvas"
+                  :aria-busy="openingCanvas || undefined"
+                  title="新建一张画布，把这个素材放进去"
+                  @click="openAssetsInCanvas([asset])"
+                >
+                  <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3.5" y="4.5" width="17" height="12" rx="2" />
+                    <path d="M8 20.5 12 16.5l4 4" />
+                  </svg>
+                  {{ openingCanvas ? '正在创建画布…' : '用于画布' }}
+                </button>
               </div>
             </div>
 
@@ -828,12 +972,18 @@ async function removeRelation(relatedId: number) {
                 :title="r.title"
                 >{{ r.title || '未命名资产' }}</span
               >
-              <span
-                class="hidden group-hover:block absolute top-4px right-4px w-18px h-18px rounded-full bg-[rgba(0,0,0,0.5)] text-white text-12px leading-18px text-center cursor-pointer hover:bg-danger"
-                title="解除关联"
+              <IconButton
+                label="解除关联"
+                variant="overlay"
+                size="sm"
+                reveal
+                class="absolute top-4px right-4px"
                 @click.stop="removeRelation(r.id)"
-                >×</span
               >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </IconButton>
             </div>
           </div>
           <div v-if="hasMoreRelated" class="flex gap-16px mt-8px">

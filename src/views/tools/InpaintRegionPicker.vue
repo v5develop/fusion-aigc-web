@@ -160,7 +160,7 @@ function onKeydown(e: KeyboardEvent) {
 /** 框的四个角标（纯装饰） */
 const CORNERS = ['-left-5px -top-5px', '-right-5px -top-5px', '-right-5px -bottom-5px', '-left-5px -bottom-5px']
 
-const pillCls = 'll-pill outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
+const pillCls = 'll-pill !min-h-32px !text-13px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 </script>
 
 <template>

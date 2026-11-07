@@ -24,7 +24,7 @@ function onClick(event: MouseEvent) {
 <template>
   <button
     type="button"
-    class="absolute -right-40px z-10 grid w-28px h-28px p-0 place-items-center border border-solid border-line rounded-full bg-white text-muted cursor-pointer -translate-y-50% opacity-0 transition-opacity duration-120 shadow-[0_1px_2px_rgba(16,24,40,0.06)] group-hover:opacity-100 [.is-selected_&]:opacity-100 hover:border-violet hover:bg-violet-soft hover:text-violet-ink focus-visible:opacity-100 nodrag"
+    class="absolute -right-40px z-10 grid w-28px h-28px after:content-empty after:absolute after:-inset-3px p-0 place-items-center border border-solid border-line rounded-full bg-white text-muted cursor-pointer -translate-y-50% opacity-0 transition-opacity duration-120 shadow-[0_1px_2px_rgba(16,24,40,0.06)] group-hover:opacity-100 [.is-selected_&]:opacity-100 hover:border-violet hover:bg-violet-soft hover:text-violet-ink focus-visible:opacity-100 nodrag"
     :class="FOCUS_RING"
     :style="{ top: top ?? '50%' }"
     title="从此节点添加"

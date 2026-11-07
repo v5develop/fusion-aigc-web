@@ -46,7 +46,7 @@ export const useSessionIdStore = defineStore('useSessionIdStore', () => {
    * 清掉无主的电商标签会话，防止 localStorage 里越积越多。
    *
    * 只动含 '#' 的键 —— 那是电商标签的实例键格式（`<类目>#<标签id>`）。
-   * 图片模块（views/picture/hooks.ts）用的是同一份 sessionIdMap，键是裸的 'picture'，
+   * 图片模块（views/image/hooks.ts）用的是同一份 sessionIdMap，键是裸的 'picture'，
    * 少了这道前置条件会把它的会话一起清掉。
    */
   function pruneSessionIds(validKeys: Set<string>) {

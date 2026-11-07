@@ -79,7 +79,7 @@ onBeforeUnmount(clearPeek)
         <StudioMedBtn
           v-if="!disabled"
           label="移除这张图"
-          class="top-[-9px] left-21px z-2 opacity-0 pointer-events-none transition-opacity duration-120 group-hover:(opacity-100 pointer-events-auto) group-focus-within:(opacity-100 pointer-events-auto) motion-reduce:transition-none"
+          class="top-[-9px] left-21px z-2 opacity-0 pointer-events-none transition-opacity duration-120 group-hover:(opacity-100 pointer-events-auto) group-focus-within:(opacity-100 pointer-events-auto) [@media(hover:none)]:(opacity-100 pointer-events-auto) motion-reduce:transition-none"
           @mousedown.prevent
           @click.prevent.stop="emit('remove', url)"
         >

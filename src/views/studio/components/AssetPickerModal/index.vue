@@ -172,7 +172,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
           <span
             v-for="s in SOURCES"
             :key="s.key"
-            class="ll-pill"
+            class="ll-pill !min-h-32px !text-13px"
             :class="{ 'll-pill-active': source === s.key }"
             @click="source = s.key"
             >{{ s.label }}</span
@@ -190,7 +190,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
         <span
           v-for="c in categories"
           :key="c.key"
-          class="ll-pill"
+          class="ll-pill !min-h-32px !text-13px"
           :class="{ 'll-pill-active': kind === c.key }"
           @click="kind = c.key"
           >{{ c.label }} {{ c.count }}</span
@@ -200,7 +200,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
       <div class="max-h-[min(52vh,480px)] min-h-200px overflow-y-auto" v-loading="loading">
         <div v-if="failed && !loading && !items.length" class="py-40px text-center text-12px text-placeholder">
           资产加载失败
-          <span class="ll-link ml-6px" @click="reload">重试</span>
+          <span class="ll-link ml-6px !text-13px" @click="reload">重试</span>
         </div>
         <div v-else-if="!loading && !items.length" class="py-40px text-center text-12px text-placeholder">
           没有匹配的{{ mediaWord }}资产，换个分类或关键词试试
@@ -235,7 +235,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
             />
             <span
               v-if="isVideoMode"
-              class="absolute left-4px bottom-4px px-4px rounded-4px bg-black/55 text-white text-10px leading-16px"
+              class="absolute left-4px bottom-4px px-4px rounded-4px bg-black/55 text-white text-11px leading-16px"
               aria-hidden="true"
               >视频</span
             >
@@ -249,7 +249,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
         <div v-if="loadingMore" class="py-8px text-11px text-center text-placeholder">加载中…</div>
         <div
           v-else-if="hasMore && items.length && !failed"
-          class="ll-link py-8px !text-11px text-center"
+          class="ll-link py-8px !text-13px text-center"
           @click="loadMore"
         >
           加载更多（{{ items.length }}/{{ total }}）

@@ -8,27 +8,39 @@
 
 export type PortTone = 'prompt' | 'text' | 'image' | 'out' | 'video' | 'garment' | 'models'
 
-const PORT_BASE = 'w-10px h-10px min-w-10px min-h-10px rounded-full border-[1.5px] border-solid border-white'
+/**
+ * 10px 圆点视觉 + 透明 ::after 23px 圆形命中区（居中，原型 canvas-v31 .wf-model-port::after）：
+ * 伪元素算作 Handle 本身，拖线落点与悬停都更好命中；伸进卡片只有 6.5px，压在卡片内边距上，不挡正文控件。
+ * 连线拖动中 Vue Flow 给指针下的口加 .connecting，合法再加 .valid：不合法的目标口变红（浅红底 + 3px 红环），
+ * 合法的加一圈浅绿环。
+ */
+const PORT_HIT =
+  'after:content-empty after:absolute after:left-50% after:top-50% after:w-23px after:h-23px after:rounded-full after:-translate-x-50% after:-translate-y-50%'
+// 注意：UnoCSS 的 [&.x:not(.y)] 变体会丢掉自身类名、生成全局选择器（画布容器也带 .connecting），所以不用 :not：
+// 先给所有 .connecting 上红，再用更高优先级的 .connecting.valid 按端口色还原（见 PORT_TONE 里的 VALID_*）
+const PORT_CONNECTING =
+  '[&.connecting]:!bg-[#e4b7b4] [&.connecting]:!shadow-[0_0_0_3px_#b4433e] [&.connecting]:!opacity-100 [&.connecting.valid]:!shadow-[0_0_0_3px_rgba(52,121,90,0.35)]'
+const PORT_BASE = `w-10px h-10px min-w-10px min-h-10px rounded-full border-[1.5px] border-solid border-white ${PORT_HIT} ${PORT_CONNECTING}`
 
 /**
  * 端口配色走设计系统（原型 --canvas-edge-* 主题变量同值）：提示词绿、图片藤紫、视频红；
  * 外圈 1px 浅色环同原型 canvas-v31 `.wf-model-port` 的 box-shadow。
  */
 const PORT_TONE: Record<PortTone, string> = {
-  prompt: 'bg-success shadow-[0_0_0_1px_#bcd8c9]',
-  text: 'bg-success shadow-[0_0_0_1px_#bcd8c9]',
-  image: 'bg-violet shadow-[0_0_0_1px_#d9c7e3]',
-  out: 'bg-violet shadow-[0_0_0_1px_#d9c7e3]',
-  video: 'bg-danger shadow-[0_0_0_1px_#e4b7b4]',
-  garment: 'bg-violet-deep shadow-[0_0_0_1px_#d9c7e3]',
-  models: 'bg-[#2f80ed] shadow-[0_0_0_1px_#d9c7e3]',
+  prompt: 'bg-success shadow-[0_0_0_1px_#bcd8c9] [&.connecting.valid]:!bg-success',
+  text: 'bg-success shadow-[0_0_0_1px_#bcd8c9] [&.connecting.valid]:!bg-success',
+  image: 'bg-violet shadow-[0_0_0_1px_#d9c7e3] [&.connecting.valid]:!bg-violet',
+  out: 'bg-violet shadow-[0_0_0_1px_#d9c7e3] [&.connecting.valid]:!bg-violet',
+  video: 'bg-danger shadow-[0_0_0_1px_#e4b7b4] [&.connecting.valid]:!bg-danger',
+  garment: 'bg-violet-deep shadow-[0_0_0_1px_#d9c7e3] [&.connecting.valid]:!bg-violet-deep',
+  models: 'bg-[#2f80ed] shadow-[0_0_0_1px_#d9c7e3] [&.connecting.valid]:!bg-[#2f80ed]',
 }
 
 export function portClass(tone: PortTone): string {
   return `${PORT_BASE} ${PORT_TONE[tone]}`
 }
 
-/** 端口标签：原型 v3.1 `.wf-port-label.is-*` 浅底 + 同色字 + 细描边（r4 / 11px / 600） */
+/** 端口标签：原型 v3.1 `.wf-port-label.is-*` 浅底 + 同色字 + 细描边（r4 / 11px / 600）；常驻显示（2026-11-07 审计 18） */
 const LABEL_TONE: Record<PortTone, string> = {
   prompt: 'bg-[#eaf3ee] text-success border-[#bcd8c9]',
   text: 'bg-[#eaf3ee] text-success border-[#bcd8c9]',
@@ -40,7 +52,7 @@ const LABEL_TONE: Record<PortTone, string> = {
 }
 
 const LABEL_BASE =
-  'absolute -left-10px px-7px py-2px border border-solid rounded-4px text-11px font-600 leading-14px whitespace-nowrap -translate-x-full -translate-y-50% pointer-events-none opacity-0 transition-opacity duration-120 group-hover:opacity-100 [.is-selected_&]:opacity-100'
+  'absolute -left-10px px-7px py-2px border border-solid rounded-4px text-11px font-600 leading-14px whitespace-nowrap -translate-x-full -translate-y-50% pointer-events-none'
 
 export function portLabelClass(tone: PortTone): string {
   return `${LABEL_BASE} ${LABEL_TONE[tone]}`

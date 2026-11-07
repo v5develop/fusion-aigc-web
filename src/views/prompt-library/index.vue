@@ -5,17 +5,32 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
+import type { GlobalThemeOverrides } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
 import { promptLibList, promptLibRemove } from '@/api/promptLibrary.ts'
 import type { IPromptLibItem } from '@/api/promptLibrary.ts'
 import { useDebounce } from '@/utils/hooks'
+import PageEmpty from '@/components/PageEmpty/index.vue'
 import PromptEditor from './PromptEditor.vue'
 
 defineOptions({ name: 'prompt-library-page' })
 
 const message = useMessage()
 
+// 材质对齐（原型 material-align.css）：按钮 r14 · 输入/选择 r15 · 弹窗卡片 r18；仅本页生效
+const pageTheme: GlobalThemeOverrides = {
+  ...llTheme,
+  Button: { ...llTheme.Button, borderRadiusSmall: '14px', borderRadiusMedium: '14px' },
+  Input: { ...llTheme.Input, borderRadius: '15px' },
+  InternalSelection: { ...llTheme.InternalSelection, borderRadius: '15px' },
+  Card: { ...llTheme.Card, borderRadius: '18px' },
+}
+
 const PAGE_SIZE = 20
+
+/** 卡片底部文字操作：可点高 ≥ 28px、文字 13px */
+const ACTION =
+  'sx-focus inline-flex items-center h-28px px-6px rounded-md border-none bg-transparent text-13px text-violet cursor-pointer hover:text-violet-press'
 
 const TABS = [
   { key: 'ecommerce', label: '官方电商' },
@@ -157,7 +172,7 @@ function onSaved() {
 </script>
 
 <template>
-  <n-config-provider :theme-overrides="llTheme" abstract>
+  <n-config-provider :theme-overrides="pageTheme" abstract>
     <div class="prompt-library h-full overflow-auto px-32px py-24px">
       <div class="flex items-center justify-between mb-16px">
         <div>
@@ -169,15 +184,17 @@ function onSaved() {
 
       <div class="flex items-center justify-between gap-12px mb-16px">
         <div class="flex gap-8px">
-          <span
+          <button
             v-for="t in TABS"
             :key="t.key"
-            class="ll-pill"
+            type="button"
+            class="ll-pill sx-focus min-h-32px text-13px"
             :class="{ 'll-pill-active': vertical === t.key }"
+            :aria-pressed="vertical === t.key"
             @click="switchTab(t.key)"
           >
             {{ t.label }}
-          </span>
+          </button>
         </div>
         <n-input v-model:value="q" clearable placeholder="搜索标题 / 提示词 / 标签" style="width: 240px" />
         <n-select
@@ -202,7 +219,7 @@ function onSaved() {
         <div
           v-for="item in items"
           :key="item.id"
-          class="ll-card p-16px flex flex-col gap-10px cursor-pointer transition-shadow duration-200 hover:shadow-[0_4px_12px_0_rgba(31,35,41,0.12)]"
+          class="ll-card sx-enter-card p-16px flex flex-col gap-10px cursor-pointer transition-shadow duration-200 hover:shadow-[0_4px_12px_0_rgba(31,35,41,0.12)]"
           @click="detail = item"
         >
           <div class="flex items-center justify-between gap-8px">
@@ -232,17 +249,15 @@ function onSaved() {
 
           <div class="mt-auto pt-6px flex justify-between items-center text-12px text-placeholder">
             <span>{{ formatTime(item.updated_at || item.created_at) }}</span>
-            <div class="flex gap-12px">
-              <span class="text-violet cursor-pointer hover:text-violet-press" @click.stop="copyPrompt(item.prompt)"
-                >复制</span
-              >
+            <div class="flex gap-8px">
+              <button type="button" :class="ACTION" @click.stop="copyPrompt(item.prompt)">复制</button>
               <template v-if="item.owner === 'mine'">
-                <span class="text-violet cursor-pointer hover:text-violet-press" @click.stop="openEdit(item)"
-                  >编辑</span
-                >
+                <button type="button" :class="ACTION" @click.stop="openEdit(item)">编辑</button>
                 <n-popconfirm @positive-click="removeItem(item)">
                   <template #trigger>
-                    <span class="ll-danger-link" @click.stop>删除</span>
+                    <button type="button" :class="[ACTION, '!text-danger hover:!text-#c1524c']" @click.stop>
+                      删除
+                    </button>
                   </template>
                   删除后不可恢复，确定删除这条提示词？
                 </n-popconfirm>
@@ -251,21 +266,19 @@ function onSaved() {
           </div>
         </div>
 
-        <div v-if="!loading && !items.length" class="col-span-full bg-white rounded-12px text-center py-60px px-0">
-          <div class="text-40px mb-10px">📄</div>
-          <p class="text-muted text-13px mx-0 mt-0 mb-14px">{{ q ? '没有找到匹配的提示词' : '这里还没有提示词' }}</p>
-          <n-button v-if="vertical === 'mine' && !q" type="primary" ghost size="small" @click="openCreate">
-            新建第一条提示词
-          </n-button>
+        <div v-if="!loading && !items.length" class="col-span-full h-360px">
+          <PageEmpty :text="q ? '没有找到匹配的提示词' : '这里还没有提示词'">
+            <button v-if="vertical === 'mine' && !q" type="button" class="sx-btn-primary" @click="openCreate">
+              新建第一条提示词
+            </button>
+          </PageEmpty>
         </div>
       </div>
 
-      <div
-        v-if="hasMore && !loading"
-        class="text-center pt-16px pb-4px text-13px text-violet cursor-pointer hover:text-violet-press"
-        @click="loadMore()"
-      >
-        {{ loadingMore ? '加载中…' : '加载更多' }}
+      <div v-if="hasMore && !loading" class="text-center pt-16px pb-4px">
+        <button type="button" :class="ACTION" :disabled="loadingMore" @click="loadMore()">
+          {{ loadingMore ? '加载中…' : '加载更多' }}
+        </button>
       </div>
 
       <!-- 详情弹层 -->

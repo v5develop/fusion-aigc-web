@@ -300,19 +300,19 @@ const { dragging } = useFileDropPaste(uploadTileEl, {
           <span class="max-w-full px-9px overflow-hidden text-12px font-600 text-ink whitespace-nowrap text-ellipsis">{{
             item.name
           }}</span>
-          <span class="max-w-full px-9px overflow-hidden text-10px text-ink-2 whitespace-nowrap text-ellipsis">{{
+          <span class="max-w-full px-9px overflow-hidden text-11px text-ink-2 whitespace-nowrap text-ellipsis">{{
             item.tag
           }}</span>
           <div
             v-if="item.source === 'custom'"
-            class="absolute top-6px right-6px flex gap-4px opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            class="absolute top-6px right-6px flex gap-4px opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
             @click.stop
             @keydown.stop
           >
-            <n-button size="tiny" secondary @click="openEdit(item)">编辑</n-button>
+            <n-button size="small" secondary @click="openEdit(item)">编辑</n-button>
             <n-popconfirm @positive-click="removeUserModel(item)">
               <template #trigger>
-                <n-button size="tiny" secondary type="error" :loading="deleting === item.userModelId">删除</n-button>
+                <n-button size="small" secondary type="error" :loading="deleting === item.userModelId">删除</n-button>
               </template>
               删除自建模特「{{ item.name }}」？
             </n-popconfirm>
@@ -339,13 +339,13 @@ const { dragging } = useFileDropPaste(uploadTileEl, {
               <path d="M7 18a5 5 0 0 1-.6-9.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9" stroke-linecap="round" />
               <path d="M12 12v8M9 15l3-3 3 3" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
-            <span class="text-12px font-600 text-ink">{{ busy ? '上传中…' : '上传我的模特' }}</span>
-            <span class="text-10px text-ink-2">单人、正脸、清晰的图片效果最好</span>
+            <span class="text-13px font-600 text-ink">{{ busy ? '上传中…' : '上传我的模特' }}</span>
+            <span class="text-11px text-ink-2">单人、正脸、清晰的图片效果最好</span>
           </button>
           <!-- 从资产库添加：整格上传按钮的兄弟节点（按钮里不能再套按钮），右上角内缩 12 -->
           <button
             type="button"
-            class="absolute right-12px top-12px z-1 px-4px text-12px leading-18px text-violet bg-transparent border-none cursor-pointer rounded-sm hover:underline disabled:(opacity-45 cursor-not-allowed) sx-focus"
+            class="sx-btn-ghost absolute right-8px top-8px z-1 !text-violet-ink disabled:(opacity-45 cursor-not-allowed)"
             aria-label="从资产库添加模特图"
             :disabled="busy"
             @click="openAssetPicker"

@@ -4,6 +4,7 @@ import { useMessage } from 'naive-ui'
 import { upload } from '@/api/ossUpload.ts'
 import { ACCEPT_IMAGE, ACCEPT_VIDEO } from '@/utils/utils'
 import { onPickerKeydown, useFileDropPaste } from '@/composables/useFileDropPaste'
+import IconButton from '@/components/IconButton/index.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 
 interface IProps {
@@ -253,21 +254,28 @@ defineExpose({ addFiles })
     <div class="content">
       <div class="preview-cont" @mouseleave="expand = false">
         <div
-          class="item"
+          class="item group"
           :style="{ '--transformX': expand ? 60 * i + 'px' : 0 }"
           v-for="(item, i) in fileList"
           :key="type === 'video' ? item.url : item"
         >
           <img class="img-item" :src="getPreviewSrc(item)" alt="" @mouseenter="expand = true" />
 
-          <div class="delete-box" @click="deleteImg(i)">
+          <IconButton
+            class="delete-box"
+            size="sm"
+            variant="overlay"
+            reveal
+            label="删除图片"
+            @click.stop="deleteImg(i)"
+          >
             <i class="icon-ic_ds_return-2"></i>
-          </div>
+          </IconButton>
         </div>
 
         <div
           :style="{ '--transformX': expand ? 60 * fileList.length + 'px' : 0 }"
-          class="item upload-btn sx-focus"
+          class="item upload-btn sx-grad-upload border border-solid border-control sx-focus"
           :class="[fileList.length && !expand ? 'upload-btn-small' : '', { disabled: loading }]"
           role="button"
           tabindex="0"
@@ -328,11 +336,6 @@ defineExpose({ addFiles })
         top: 0;
         transition: all 0.3s;
         .rotate-to-right();
-        &:hover {
-          .delete-box {
-            opacity: 1;
-          }
-        }
         > .img-item {
           width: 100%;
           height: 100%;
@@ -342,24 +345,10 @@ defineExpose({ addFiles })
         }
 
         > .delete-box {
-          width: 16px;
-          height: 16px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           position: absolute;
-          top: -8px;
-          right: 0;
-          background-color: #444444;
-          color: white;
-          font-size: 12px;
-          cursor: pointer;
-          opacity: 0;
-          transition: opacity 0.3s;
-          > .icon-ic_ds_return-2 {
-            font-size: 8px;
-          }
+          top: -10px;
+          right: -6px;
+          z-index: 1;
         }
       }
       > .item:nth-child(even) {
@@ -367,10 +356,14 @@ defineExpose({ addFiles })
       }
 
       > .upload-btn {
-        border: 1px solid #ffffff;
+        // 底与描边走上传槽材质：sx-grad-upload（白 → #f9fafb）+ border-control（模板上的工具类）；
+        // 悬停描边 violet-line、底 → #fbf7fd，与 ImageUpload / VideoUpload 上传槽同一套
         box-shadow: 0 1px 6px 0 rgba(0, 0, 0, 0.03);
-        background: linear-gradient(319deg, #fff6fb 2%, #ede6ff 97%);
         border-radius: 8px;
+        &:hover {
+          border-color: #d9c7e3;
+          --un-gradient-to: #fbf7fd;
+        }
         cursor: pointer;
         display: flex;
         justify-content: center;

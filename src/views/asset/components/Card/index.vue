@@ -106,8 +106,18 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
       </template>
     </div>
 
-    <span v-if="manageMode" class="icon" @click="toggleImage">
-      <svg viewBox="0 0 16 16" width="20" height="20">
+    <span
+      v-if="manageMode"
+      class="icon"
+      role="checkbox"
+      tabindex="0"
+      :aria-checked="!!isImgChecked()"
+      aria-label="选择这张图片"
+      @click="toggleImage"
+      @keydown.enter.prevent="toggleImage"
+      @keydown.space.prevent="toggleImage"
+    >
+      <svg viewBox="0 0 16 16" width="22" height="22">
         <template v-if="isImgChecked()">
           <circle cx="8" cy="8" r="8" fill="#202020" />
           <path :d="CHECK_PATH" fill="#FFFFFF" />
@@ -189,10 +199,16 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
   }
   > .icon {
     position: absolute;
-    top: 10px;
-    right: 20px;
+    top: 4px;
+    right: 14px;
     display: inline-flex;
+    padding: 6px; // 视觉 22，命中 34
+    border-radius: 50%;
     cursor: pointer;
+    &:focus-visible {
+      outline: 2px solid #7c5cff;
+      outline-offset: -2px;
+    }
     > svg {
       display: block;
     }

@@ -35,6 +35,8 @@ const props = withDefaults(
     label?: string
     /** 是否显示今日剩余次数 */
     showQuota?: boolean
+    /** sm：22 高胶囊（提示词框底行的「AI帮写」档，原型 .op-ai-write）；md：默认 28 高 */
+    size?: 'sm' | 'md'
   }>(),
   {
     content: undefined,
@@ -45,6 +47,7 @@ const props = withDefaults(
     disabled: false,
     label: 'AI帮写',
     showQuota: true,
+    size: 'md',
   },
 )
 
@@ -169,14 +172,19 @@ defineExpose({ refreshQuota })
   <span class="inline-flex items-center gap-8px">
     <button
       type="button"
-      class="sx-focus inline-flex items-center gap-4px h-28px px-10px rounded-lg border-none bg-violet-soft text-12px font-500 text-violet-ink cursor-pointer select-none transition-colors hover:bg-violet-soft-2 disabled:(opacity-55 cursor-not-allowed)"
+      class="sx-focus inline-flex items-center gap-4px border-none text-violet-ink cursor-pointer select-none transition-colors disabled:(opacity-55 cursor-not-allowed)"
+      :class="
+        size === 'sm'
+          ? 'h-22px px-8px rounded-full border border-solid border-violet-line bg-violet-soft text-11px font-500 leading-20px hover:(bg-white border-violet)'
+          : 'h-28px px-10px rounded-lg bg-violet-soft text-12px font-500 hover:bg-violet-soft-2'
+      "
       :disabled="disabled || loading"
       :aria-busy="loading"
       @click="onClick"
     >
       <svg
         v-if="loading"
-        class="w-14px h-14px animate-spin motion-reduce:animate-none"
+        class="w-14px h-14px animate-spin"
         viewBox="0 0 24 24"
         fill="none"
         aria-hidden="true"

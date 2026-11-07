@@ -9,7 +9,7 @@ import type { VNode } from 'vue'
 import type { SelectOption } from 'naive-ui'
 import EditorIcon from './EditorIcon.vue'
 import RunErrorNotice from './RunErrorNotice.vue'
-import { normalizeHandle, toolLabel } from './graph.ts'
+import { compareRefOrder, normalizeHandle, toolLabel } from './graph.ts'
 import { editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
 import { canvasUploadMedia } from '@/api/canvasHome.ts'
 import type { ICanvasCatalogTool } from '@/api/canvasHome.ts'
@@ -99,6 +99,17 @@ const priceHint = computed(() => {
   )
   return hit ? `约 ${hit.points} 点/张` : ''
 })
+/** 预计消耗（原型 .wf-console__estimate）：单价 × 张数（视频单价已按所选时长，1 条） */
+const estimatePoints = computed(() => {
+  const size = modelNode.value?.size
+  const duration = modelNode.value?.duration
+  const hit = currentModel.value?.prices?.find(
+    (price) => (size ? price.size === size : true) && (isVideoModel.value && duration ? price.duration === duration : true),
+  )
+  if (!hit) return null
+  const count = isVideoModel.value ? 1 : Math.max(1, Math.round(Number(modelNode.value?.count) || 1))
+  return hit.points * count
+})
 /** 参数格列数：视频 4 列（原型 .wf-console__controls.is-video），图片 3 列 */
 const controlCols = computed(() => (isVideoModel.value ? 'grid-cols-4' : 'grid-cols-3'))
 
@@ -127,7 +138,13 @@ const references = computed(() => {
     .filter((item): item is { edge: (typeof item)['edge']; source: CanvasEditorNode } => Boolean(item.source))
   const seq: Record<string, number> = {}
   return incoming
-    .sort((a, b) => (a.edge.data?.order ?? 0) - (b.edge.data?.order ?? 0))
+    // 与 run 请求同一排序（首尾帧在前、普通参考按 order）：「图N」= 提交时 references[].index
+    .sort((a, b) =>
+      compareRefOrder(
+        { handle: a.edge.targetHandle, order: a.edge.data?.order },
+        { handle: b.edge.targetHandle, order: b.edge.data?.order },
+      ),
+    )
     .map(({ edge, source }) => {
       const handle = edge.targetHandle ?? ''
       const group = normalizeHandle(handle) ?? handle
@@ -148,9 +165,78 @@ const references = computed(() => {
       const data = source.data
       const thumb = data.resultImage ?? data.candidates?.[data.selectedCandidate ?? 0] ?? data.image ?? ''
       const badge = handle === 'image1' ? '首' : handle === 'image2' ? '尾' : group === 'garment' ? '衣' : String(n)
-      return { id: edge.id, sourceId: source.id, name: data.title || source.id, label, badge, thumb }
+      // 首尾帧各占一个固定口、服装只有 1 条：不参与拖拽排序
+      const sortable = handle !== 'image1' && handle !== 'image2' && group !== 'garment'
+      return { id: edge.id, sourceId: source.id, name: data.title || source.id, label, badge, thumb, group, sortable }
     })
 })
+
+// ---- 参考排序（拖动缩略图，同口内重排 → 写回连线 data.order）----
+const dragRefId = ref('')
+function onRefDragStart(event: DragEvent, item: { id: string; sortable: boolean }) {
+  if (!item.sortable) {
+    event.preventDefault()
+    return
+  }
+  dragRefId.value = item.id
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', item.id)
+  }
+}
+function canDropOn(item: { id: string; group: string; sortable: boolean }): boolean {
+  const from = references.value.find((ref) => ref.id === dragRefId.value)
+  return Boolean(from && item.sortable && from.id !== item.id && from.group === item.group)
+}
+function onRefDragOver(event: DragEvent, item: { id: string; group: string; sortable: boolean }) {
+  if (canDropOn(item)) event.preventDefault()
+}
+function onRefDrop(item: { id: string; group: string; sortable: boolean }) {
+  if (canDropOn(item)) {
+    const sameGroup = references.value.filter((ref) => ref.group === item.group && ref.sortable)
+    store.reorderReference(props.node.id, dragRefId.value, sameGroup.findIndex((ref) => ref.id === item.id))
+  }
+  dragRefId.value = ''
+}
+
+/** 提示词下的引用片：「图1 / 视频1」，点一下插到光标处（提示词里按序号指代参考） */
+const refTokens = computed(() =>
+  references.value.filter((item) => /^(图|视频)\d+$/.test(item.label)).map((item) => ({ id: item.id, token: item.label })),
+)
+const promptInputRef = ref<{ textareaElRef?: HTMLTextAreaElement | null } | null>(null)
+function insertToken(token: string) {
+  const node = modelNode.value
+  if (!node) return
+  const current = node.prompt ?? ''
+  const el = promptInputRef.value?.textareaElRef ?? null
+  const start = el && document.activeElement === el ? el.selectionStart : current.length
+  const end = el && document.activeElement === el ? el.selectionEnd : current.length
+  const before = current.slice(0, start)
+  const after = current.slice(end)
+  const pad = before && !/\s$/.test(before) ? ' ' : ''
+  const next = `${before}${pad}${token}${after}`.slice(0, 3000)
+  store.updateNodeData(props.node.id, { prompt: next })
+}
+
+/** 「+」从画布选参考：可以喂图的节点（不含自身、分组框、文字、已连上的） */
+const pickableRefs = computed(() => {
+  const linked = new Set(
+    store.edges.value.filter((edge) => edge.target === props.node.id).map((edge) => edge.source),
+  )
+  return store.nodes.value
+    .filter(
+      (item) =>
+        item.id !== props.node.id &&
+        item.type !== 'module' &&
+        item.type !== 'text' &&
+        !linked.has(item.id) &&
+        !(item.type === 'tool' && item.data.tool === 'i2p'),
+    )
+    .map((item) => ({ label: item.data.title || item.id, key: item.id }))
+})
+function onPickRef(key: string | number) {
+  store.addReferenceFrom(props.node.id, String(key))
+}
 
 // ---- 工具节点 ----
 const toolNode = computed(() => (props.node.type === 'tool' ? (props.node.data as CanvasNodeData) : null))
@@ -398,6 +484,8 @@ const isRunning = computed(() => props.node.data.status === 'running' || props.n
 const canRun = computed(() => props.node.type === 'model' || props.node.type === 'tool')
 const candidates = computed(() => props.node.data.candidates ?? [])
 const selectedIdx = computed(() => props.node.data.selectedCandidate ?? 0)
+/** 节点上「×」移除的候选（下标不重排），控制台同样不显示 */
+const hiddenSet = computed(() => store.hiddenCandidatesOf(props.node.data))
 
 function onSelectCandidate(index: number) {
   void store.selectCandidate(props.node.id, index)
@@ -415,7 +503,7 @@ function cancel() {
 const footHint = computed(() => {
   if (modelNode.value) {
     const refs = `参考图上限 ${modelNode.value.maxImageRefs ?? 5} 张 · 参考视频 ${currentModel.value?.max_reference_videos ?? 0} 个`
-    return priceHint.value ? `${refs} · ${priceHint.value}` : refs
+    return priceHint.value && estimatePoints.value === null ? `${refs} · ${priceHint.value}` : refs
   }
   if (toolNode.value) return '工具产出可继续连到生成节点'
   if (props.node.type === 'module') return '分组框仅作视觉分组，不参与连线'
@@ -504,7 +592,7 @@ const footHint = computed(() => {
           type="file"
           :accept="
             isVideoInput
-              ? '.mp4,.mov,.webm,video/mp4,video/quicktime,video/webm'
+              ? '.mp4,.mov,video/mp4,video/quicktime'
               : '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp'
           "
           hidden
@@ -514,14 +602,20 @@ const footHint = computed(() => {
 
       <!-- 生成节点 -->
       <template v-else-if="modelNode">
-        <!-- 上游参考（原型 .wf-console__assets）：44px 缩略图 + 藤紫序号；点击定位、× 断开 -->
-        <div class="flex items-start gap-8px mb-8px pt-6px pl-5px overflow-x-auto" role="list" aria-label="上游参考">
+        <!-- 上游参考（原型 .wf-console__assets）：44px 缩略图 + 藤紫序号；点击定位、× 断开（视觉 16、::after 外扩 8 → 命中 32；间距 14 / 上内边距 14 免得命中区被裁或压到邻居）-->
+        <div class="flex items-start gap-14px mb-8px pt-14px pl-5px pr-14px overflow-x-auto" role="list" aria-label="上游参考">
           <div
             v-for="item in references"
             :key="item.id"
             class="relative shrink-0 w-44px"
+            :class="{ 'opacity-50': dragRefId === item.id, 'cursor-grab': item.sortable }"
             role="listitem"
-            :title="`${item.label} · ${item.name}`"
+            :draggable="item.sortable"
+            :title="item.sortable ? `${item.label} · ${item.name}（拖动可调整序号）` : `${item.label} · ${item.name}`"
+            @dragstart="onRefDragStart($event, item)"
+            @dragover="onRefDragOver($event, item)"
+            @drop.prevent="onRefDrop(item)"
+            @dragend="dragRefId = ''"
           >
             <button
               type="button"
@@ -531,7 +625,7 @@ const footHint = computed(() => {
               @click="emit('locate', item.sourceId)"
             >
               <span
-                class="absolute -top-5px -left-5px z-2 grid min-w-16px h-16px px-3px place-items-center border border-solid border-violet-line rounded-full bg-violet-soft text-violet-ink text-10px font-600 leading-none"
+                class="absolute -top-5px -left-5px z-2 grid min-w-16px h-16px px-3px place-items-center border border-solid border-violet-line rounded-full bg-violet-soft text-violet-ink text-11px font-600 leading-none"
                 aria-hidden="true"
                 >{{ item.badge }}</span
               >
@@ -555,7 +649,7 @@ const footHint = computed(() => {
             </button>
             <button
               type="button"
-              class="absolute -top-6px -right-6px grid w-16px h-16px p-0 place-items-center border border-solid border-line-strong rounded-full bg-white text-muted text-11px leading-none cursor-pointer hover:border-[#e4b7b4] hover:text-danger after:content-empty after:absolute after:-inset-6px"
+              class="absolute -top-6px -right-6px z-3 grid w-16px h-16px p-0 place-items-center border border-solid border-line-strong rounded-full bg-white text-muted text-11px leading-none cursor-pointer hover:border-[#e4b7b4] hover:text-danger after:content-empty after:absolute after:-inset-8px"
               :class="FOCUS_RING"
               :aria-label="`断开参考 ${item.label}`"
               title="断开这个参考"
@@ -564,8 +658,31 @@ const footHint = computed(() => {
               ×
             </button>
           </div>
+          <!-- 虚线「+」：从画布上的节点里选一个连到参考口（连线校验同拖线） -->
+          <n-dropdown
+            v-if="!modelNode.inputOnly && pickableRefs.length"
+            trigger="click"
+            :options="pickableRefs"
+            scrollable
+            :menu-props="() => ({ style: 'max-height: 260px' })"
+            @select="onPickRef"
+          >
+            <button
+              type="button"
+              class="grid shrink-0 w-44px h-44px p-0 place-items-center border border-dashed border-line-strong rounded-4px bg-white text-muted cursor-pointer hover:border-violet hover:bg-violet-soft hover:text-violet-ink"
+              :class="FOCUS_RING"
+              title="从画布选一个节点作为参考"
+              aria-label="从画布选一个节点作为参考"
+              aria-haspopup="menu"
+            >
+              <EditorIcon name="plus" :size="16" />
+            </button>
+          </n-dropdown>
           <span v-if="!references.length" class="self-center text-muted text-11px leading-[1.5]"
-            >还没有上游参考：把图片 / 生成节点连到左侧参考口，或直接写提示词</span
+            >还没有上游参考：把图片 / 生成节点连到左侧参考口，点「+」从画布选，或直接写提示词</span
+          >
+          <span v-else-if="references.some((item) => item.sortable)" class="self-center text-muted text-11px leading-[1.5]"
+            >拖动缩略图可调整序号</span
           >
         </div>
 
@@ -589,7 +706,7 @@ const footHint = computed(() => {
           <input
             ref="fileRef"
             type="file"
-            accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm"
+            accept=".mp4,.mov,video/mp4,video/quicktime"
             hidden
             @change="onFile"
           />
@@ -597,6 +714,7 @@ const footHint = computed(() => {
 
         <label :class="LABEL" for="canvas-console-prompt">提示词</label>
         <n-input
+          ref="promptInputRef"
           v-model:value="modelNode.prompt"
           type="textarea"
           class="nodrag nowheel"
@@ -606,6 +724,21 @@ const footHint = computed(() => {
           :autosize="{ minRows: 3, maxRows: 8 }"
           :input-props="{ id: 'canvas-console-prompt' }"
         />
+        <!-- 引用片：点一下把「图1 / 视频1」插到提示词光标处 -->
+        <div v-if="refTokens.length" class="flex flex-wrap gap-6px mt-6px" aria-label="插入参考引用">
+          <button
+            v-for="chip in refTokens"
+            :key="chip.id"
+            type="button"
+            class="h-28px px-10px border border-solid border-violet-line rounded-14px bg-violet-soft text-violet-ink text-12px leading-none cursor-pointer hover:border-violet hover:bg-violet-soft-2"
+            :class="FOCUS_RING"
+            :title="`在提示词里插入「${chip.token}」`"
+            @mousedown.prevent
+            @click="insertToken(chip.token)"
+          >
+            {{ chip.token }}
+          </button>
+        </div>
 
         <!-- 模型行（原型 .wf-console__model） -->
         <div class="flex items-center gap-8px mt-8px">
@@ -647,6 +780,12 @@ const footHint = computed(() => {
               <n-switch v-model:value="modelNode.sound" size="small" aria-label="声音" />
             </div>
           </div>
+        </div>
+        <!-- 预计消耗（单独一行）：服务端以实际扣点为准 -->
+        <div v-if="estimatePoints !== null" class="flex items-baseline gap-6px mt-8px text-muted text-11px">
+          <span>预计消耗</span>
+          <b class="text-ink text-13px font-600 tabular-nums">{{ estimatePoints }}</b>
+          <span>点 · 按当前{{ isVideoModel ? '时长' : '张数' }}估算</span>
         </div>
       </template>
 
@@ -953,6 +1092,7 @@ const footHint = computed(() => {
           <div class="flex flex-wrap gap-8px">
             <button
               v-for="(url, index) in candidates"
+              v-show="!hiddenSet.has(index)"
               :key="url + index"
               type="button"
               class="relative shrink-0 w-48px h-48px p-0 overflow-hidden border border-solid border-line rounded-4px bg-surface2 cursor-pointer hover:border-violet-line"
