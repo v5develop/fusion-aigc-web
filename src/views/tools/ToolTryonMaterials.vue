@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /**
- * 商拍换装的素材板（线上原型 AiDigitalModel `.dm-mat`）：一块内凹白板里并排两叠 60×100 白边浮片——服装图 / 模特图。
+ * 商拍换装的素材板（线上原型 AiDigitalModel `.dm-mat`）：一块内凹白板里并排两叠 78×130 白边浮片——服装图 / 模特图
+ * （收起叠 8px、悬停摊开步长最多 81 = 3px 间距；姿态复刻的 PoseMaterialSlots 仍是 60×100，不走这里）。
  *
  * <p>服装图：点叠片开「服装图」弹窗（ToolGarmentDialog，选单品 + 角度格）；右下云钮从资产库往第一件没满的单品里加；
  * 悬停出按单品分组的预览卡。写回服装图槽位的是原型 clothUrl() 那一张（契约只收一张 cloth_image_url）。
  *
- * <p>模特图：点叠片直接选文件（最多 9 位，逐位各提交一次，与原槽位同一个 modelImageUrl）；云钮开模特选择器
- * （components/model-picker，公共模板 / 我的模特多选，选中的图与资产库同一条入列路径）；
+ * <p>模特图：点叠片直接选文件（最多 9 位，逐位各提交一次，与原槽位同一个 modelImageUrl）；云钮「从资产库选模特图」
+ * 开资产库选图（产品决定 2026-10-29：模特库选择撤掉；AssetPickerModal 暂不支持预置 kind，打开即全部分类）；
  * 悬停出「模特 n 位」面板，3 列逐位删除。满 9 位入口不再弹文件框，给原型同一句提示。
  *
  * <p>校验（格式 / 体积）与上传通道同 ToolUploadSlot（api/ossUpload.ts）。
@@ -15,7 +16,6 @@ import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
-import { ModelPicker } from '@/components/model-picker'
 import ToolGarmentDialog from './ToolGarmentDialog.vue'
 import { MAX_GARMENT, outfitLabel, useToolImageUpload, useTryonGarment } from './useTryonGarment'
 import type { TryonGarment } from './useTryonGarment'
@@ -112,22 +112,30 @@ onBeforeUnmount(() => observer?.disconnect())
 
 const garmentPlates = computed(() => Math.max(1, Math.min(garmentShown.value.length, PLATES)))
 const modelPlates = computed(() => Math.max(1, Math.min(models.value.length, PLATES)))
-/** 收起宽度：60 + (n-1) × 6 */
-const stackWidth = (n: number) => 60 + (n - 1) * 6
-/** 展开步长：3px 间距放得下用 63；放不下按另一块的宽度压缩，最密 8 */
+/** 白边浮片尺寸（原型 .dm-plate 78×130）；收起时每片露 8，展开步长上限 81（= 3px 间距） */
+const PLATE_W = 78
+const COLLAPSED_STEP = 8
+const MAX_STEP = PLATE_W + 3
+/** 收起宽度：78 + (n-1) × 8 */
+const stackWidth = (n: number) => PLATE_W + (n - 1) * COLLAPSED_STEP
+/** 展开步长：3px 间距放得下用 81；放不下按另一块的宽度压缩，最密 8 */
 function expandStep(n: number, other: number) {
   const gaps = n - 1
-  if (!gaps) return 63
+  if (!gaps) return MAX_STEP
   const room = (rowWidth.value || 410) - stackWidth(other) - SLOT_GAP
-  return Math.min(63, Math.max(8, (room - 60) / gaps))
+  return Math.min(MAX_STEP, Math.max(COLLAPSED_STEP, (room - PLATE_W) / gaps))
 }
 
 const garmentHover = ref(false)
 const garmentExpanded = computed(() => garmentHover.value && garmentShown.value.length > 0)
-const garmentStep = computed(() => (garmentExpanded.value ? expandStep(garmentPlates.value, modelPlates.value) : 6))
+const garmentStep = computed(() =>
+  garmentExpanded.value ? expandStep(garmentPlates.value, modelPlates.value) : COLLAPSED_STEP,
+)
 const modelsPeek = ref(false)
 const modelsExpanded = computed(() => modelsPeek.value && models.value.length > 0)
-const modelsStep = computed(() => (modelsExpanded.value ? expandStep(modelPlates.value, garmentPlates.value) : 6))
+const modelsStep = computed(() =>
+  modelsExpanded.value ? expandStep(modelPlates.value, garmentPlates.value) : COLLAPSED_STEP,
+)
 
 /** 模特块 / 面板之间悬停接力：离开任意一边先等 180ms */
 let peekTimer: ReturnType<typeof setTimeout> | undefined
@@ -225,18 +233,17 @@ function dropOnModels(event: DragEvent) {
   if (files.length) void addModels(files)
 }
 
-/** 模特图云钮：开模特选择器（不再开资产库）；关闭后焦点回到云钮 */
-const modelPickerShow = ref(false)
-const modelCloudBtn = ref<{ $el: HTMLElement } | null>(null)
-const modelCloudEl = computed(() => modelCloudBtn.value?.$el ?? null)
-
+/** 模特图云钮：开资产库选图（模特库选择已撤掉，产品决定 2026-10-29），选中的图走 addModelUrls 入列 */
 function openModelAssets() {
   if (props.disabled || modelUploader.uploading.value) return
   if (modelsFull.value) {
     message.warning(fullTip())
     return
   }
-  modelPickerShow.value = true
+  assetFor.value = 'models'
+  assetKey.value = ''
+  assetLimit.value = MAX_MODELS.value - models.value.length
+  assetShow.value = true
 }
 
 function clearModels() {
@@ -260,7 +267,7 @@ function onAssets(picked: string[]) {
   addModelUrls(picked)
 }
 
-/** 按地址加模特图（资产库 / 模特选择器共用）：去重、只收 http(s)、按余量截断、格式同上传校验 */
+/** 按地址加模特图（资产库选图）：去重、只收 http(s)、按余量截断、格式同上传校验 */
 function addModelUrls(picked: string[]) {
   const fresh = picked.filter((u) => /^https?:\/\//i.test(u) && !models.value.includes(u))
   if (fresh.length < picked.length) message.warning('已跳过重复或不可用的图片')
@@ -273,27 +280,27 @@ function addModelUrls(picked: string[]) {
 
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 const ease = 'duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none'
-/** 白边浮片：60×100 · r5 · 1px #fff · 0 1px 3px .16 */
+/** 白边浮片：78×130 · r5 · 1px #fff · 0 1px 3px .16 */
 const plateCls =
-  'relative block flex-[0_0_60px] w-60px h-100px box-border overflow-hidden rounded-5px border border-solid border-white ' +
+  'relative block flex-[0_0_78px] w-78px h-130px box-border overflow-hidden rounded-5px border border-solid border-white ' +
   'shadow-[0_1px_3px_rgba(31,35,41,0.16)] transition-[margin-left] ' +
   ease
 const emptyCls =
   'border border-solid border-white bg-white text-placeholder shadow-[0_1px_3px_rgba(31,35,41,0.16)] hover:shadow-[0_2px_6px_rgba(31,35,41,0.2)]'
 /** 浮层卡：1px line · r8 · 白 · 0 12 32 .18 + 0 2 8 .08；顶上 12 高透明桥，入场 120ms + 4px 上浮 */
 const popCls =
-  'absolute top-108px box-border p-10px rounded-8px border border-solid border-line bg-white text-left ' +
+  'absolute top-138px box-border p-10px rounded-8px border border-solid border-line bg-white text-left ' +
   'shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)] animate-[tus-preview-in_120ms_ease_both] motion-reduce:animate-none ' +
   "before:(content-[''] absolute -top-12px inset-x-0 h-12px)"
 /** 切口：两块隔 16，缝里居中一条细线（9 宽柔边带 + 1px 中线，上下渐隐） */
 const seamCls = [
   "[.ttm-slot+&]:before:content-[''] [.ttm-slot+&]:before:absolute [.ttm-slot+&]:before:top-0",
-  '[.ttm-slot+&]:before:left-[-12px] [.ttm-slot+&]:before:w-9px [.ttm-slot+&]:before:h-100px [.ttm-slot+&]:before:pointer-events-none',
+  '[.ttm-slot+&]:before:left-[-12px] [.ttm-slot+&]:before:w-9px [.ttm-slot+&]:before:h-130px [.ttm-slot+&]:before:pointer-events-none',
   '[.ttm-slot+&]:before:bg-[linear-gradient(90deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.026)_35%,rgba(31,35,41,0.026)_65%,rgba(31,35,41,0)_100%)]',
   '[.ttm-slot+&]:before:[mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
   '[.ttm-slot+&]:before:[-webkit-mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
   "[.ttm-slot+&]:after:content-[''] [.ttm-slot+&]:after:absolute [.ttm-slot+&]:after:top-0",
-  '[.ttm-slot+&]:after:left-[-8px] [.ttm-slot+&]:after:w-1px [.ttm-slot+&]:after:h-100px [.ttm-slot+&]:after:pointer-events-none',
+  '[.ttm-slot+&]:after:left-[-8px] [.ttm-slot+&]:after:w-1px [.ttm-slot+&]:after:h-130px [.ttm-slot+&]:after:pointer-events-none',
   '[.ttm-slot+&]:after:bg-[linear-gradient(180deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.09)_14%,rgba(31,35,41,0.09)_86%,rgba(31,35,41,0)_100%)]',
 ]
 const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5'
@@ -327,14 +334,14 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
         <div class="relative">
           <button
             type="button"
-            class="relative flex flex-col items-center justify-center gap-4px h-100px box-border p-0 overflow-visible rounded-5px cursor-pointer transition-[width] disabled:cursor-not-allowed"
+            class="relative flex flex-col items-center justify-center gap-4px h-130px box-border p-0 overflow-visible rounded-5px cursor-pointer transition-[width] disabled:cursor-not-allowed"
             :class="[
               ease,
               focusRing,
               garmentShown.length ? 'border-0 bg-transparent' : emptyCls,
               garmentExpanded ? 'z-5' : '',
             ]"
-            :style="{ width: `${60 + (garmentPlates - 1) * garmentStep}px` }"
+            :style="{ width: `${PLATE_W + (garmentPlates - 1) * garmentStep}px` }"
             :disabled="disabled"
             :aria-label="`服装图，${garmentShown.length} 张，点击编辑`"
             @click="openDialog"
@@ -346,7 +353,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
                 v-for="(url, index) in garmentShown.slice(-PLATES)"
                 :key="url"
                 :class="plateCls"
-                :style="{ zIndex: index, marginLeft: index ? `${garmentStep - 60}px` : '0px' }"
+                :style="{ zIndex: index, marginLeft: index ? `${garmentStep - PLATE_W}px` : '0px' }"
               >
                 <img :src="url" alt="" class="block w-full h-full object-cover" />
               </span>
@@ -366,7 +373,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
                 <circle cx="9" cy="10" r="1.6" />
                 <path d="M20.5 16l-5-5L6 19.5" />
               </svg>
-              <span class="text-9px leading-13px">{{ g.uploading ? '上传中…' : '待上传' }}</span>
+              <span class="text-12px leading-16px">{{ g.uploading ? '上传中…' : '待上传' }}</span>
             </template>
           </button>
           <StudioMedBtn
@@ -385,7 +392,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
             label="清空服装图"
             class="-top-8px z-14 transition-[left]"
             :class="ease"
-            :style="{ left: `${60 + (garmentPlates - 1) * garmentStep - 8}px` }"
+            :style="{ left: `${PLATE_W + (garmentPlates - 1) * garmentStep - 8}px` }"
             @click.stop="clearGarment"
           >
             <svg
@@ -402,9 +409,9 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
           </StudioMedBtn>
         </div>
         <p
-          class="flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-11px leading-15px text-center text-placeholder"
+          class="flex flex-col items-center gap-2px w-78px mt-8px mb-0 text-11px leading-15px text-center text-placeholder"
         >
-          <b class="text-11px font-500 text-ink-2">服装图</b>
+          <b class="text-12px font-500 text-ink-2">服装图</b>
           <span>{{
             g.allPhotos.length ? `${g.selected.length}件·${g.allPhotos.length}张` : `最多${MAX_GARMENT}张`
           }}</span>
@@ -417,13 +424,13 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
           role="group"
           aria-label="服装图预览"
         >
-          <div class="flex items-baseline gap-6px mb-2px text-11px text-muted">
+          <div class="flex items-baseline gap-6px mb-2px text-10px text-muted">
             <b class="text-11px font-600 text-ink-2">服装图</b>
             <span>{{ g.selected.length }} 件 · {{ g.allPhotos.length }} 张</span>
-            <em class="ml-auto not-italic text-9px text-placeholder">点开编辑</em>
+            <em class="ml-auto not-italic text-10px text-placeholder">点开编辑</em>
           </div>
           <div v-for="group in peekGroups" :key="group.key" class="mt-9px">
-            <div class="flex gap-5px mb-4px text-[9.5px] text-placeholder">
+            <div class="flex gap-5px mb-4px text-10px text-placeholder">
               <b class="text-11px font-600 text-ink-2">{{ group.label }}</b>
               <span>{{ group.photos.length ? `${group.photos.length} 张` : '还没有图' }}</span>
             </div>
@@ -450,7 +457,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
         <div class="relative">
           <button
             type="button"
-            class="relative flex flex-col items-center justify-center gap-4px h-100px box-border p-0 overflow-visible rounded-5px transition-[width] disabled:cursor-not-allowed"
+            class="relative flex flex-col items-center justify-center gap-4px h-130px box-border p-0 overflow-visible rounded-5px transition-[width] disabled:cursor-not-allowed"
             :class="[
               ease,
               focusRing,
@@ -458,7 +465,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
               modelsFull ? 'cursor-default' : 'cursor-pointer',
               modelsExpanded ? 'z-5' : '',
             ]"
-            :style="{ width: `${60 + (modelPlates - 1) * modelsStep}px` }"
+            :style="{ width: `${PLATE_W + (modelPlates - 1) * modelsStep}px` }"
             :disabled="disabled"
             :aria-label="modelsFull ? `模特图已满 ${MAX_MODELS} 位` : `模特图，${models.length} 位，点击上传`"
             :aria-disabled="modelsFull || undefined"
@@ -471,7 +478,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
                 v-for="(url, index) in models.slice(-PLATES)"
                 :key="url"
                 :class="plateCls"
-                :style="{ zIndex: index, marginLeft: index ? `${modelsStep - 60}px` : '0px' }"
+                :style="{ zIndex: index, marginLeft: index ? `${modelsStep - PLATE_W}px` : '0px' }"
               >
                 <img :src="url" alt="" class="block w-full h-full object-cover" />
               </span>
@@ -491,12 +498,11 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
                 <circle cx="9" cy="10" r="1.6" />
                 <path d="M20.5 16l-5-5L6 19.5" />
               </svg>
-              <span class="text-9px leading-13px">{{ modelUploader.uploading.value ? '上传中…' : '待上传' }}</span>
+              <span class="text-12px leading-16px">{{ modelUploader.uploading.value ? '上传中…' : '待上传' }}</span>
             </template>
           </button>
           <StudioMedBtn
-            ref="modelCloudBtn"
-            label="从模特库选模特图"
+            label="从资产库选模特图"
             class="-right-12px -bottom-12px transition-opacity duration-120 motion-reduce:transition-none"
             :class="modelsExpanded ? 'opacity-0 pointer-events-none' : ''"
             :disabled="disabled"
@@ -511,7 +517,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
             label="清空模特图"
             class="-top-8px z-14 transition-[left]"
             :class="ease"
-            :style="{ left: `${60 + (modelPlates - 1) * modelsStep - 8}px` }"
+            :style="{ left: `${PLATE_W + (modelPlates - 1) * modelsStep - 8}px` }"
             @click.stop="clearModels"
           >
             <svg
@@ -528,9 +534,9 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
           </StudioMedBtn>
         </div>
         <p
-          class="flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-11px leading-15px text-center text-placeholder"
+          class="flex flex-col items-center gap-2px w-78px mt-8px mb-0 text-11px leading-15px text-center text-placeholder"
         >
-          <b class="text-11px font-500 text-ink-2">模特图</b>
+          <b class="text-12px font-500 text-ink-2">模特图</b>
           <span>{{ models.length ? `${models.length}/${MAX_MODELS}` : `最多${MAX_MODELS}张` }}</span>
         </p>
       </div>
@@ -545,7 +551,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
         @mouseenter="enterModels"
         @mouseleave="leaveModels"
       >
-        <div class="flex items-baseline gap-6px mb-6px text-11px text-muted">
+        <div class="flex items-baseline gap-6px mb-6px text-10px text-muted">
           <b class="text-11px font-600 text-ink-2">模特</b>
           <span>{{ models.length }} 位</span>
         </div>
@@ -583,13 +589,5 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
 
     <ToolGarmentDialog v-model:show="dialogOpen" :g="g" :accept="clothSpec.accept" :note="garmentNote" />
     <AssetPickerModal v-model:show="assetShow" :limit="Math.max(1, assetLimit)" media="image" @select="onAssets" />
-    <ModelPicker
-      v-model:show="modelPickerShow"
-      :limit="MAX_MODELS - models.length"
-      :max="MAX_MODELS"
-      :exclude="models"
-      :return-focus="modelCloudEl"
-      @confirm="addModelUrls"
-    />
   </div>
 </template>

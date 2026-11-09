@@ -12,6 +12,10 @@
  * 电商 / 商拍点开后同样并排出二级目录（取已注册路由里带 meta.title 的下级静态页）。
  * 侧栏可收起为 44 图标条，此时「AI 创作」点开整组目录。
  *
+ * <p>2026-11-09 产品决定：「工作流」「AI 电商」「AI 商拍」「本地生活」四个入口只隐藏不删（`hidden: true`，去掉该标记即恢复）；
+ * 页面与路由都留着，深链照开，子功能已按图片 / 视频并进 AI 图片 / AI 视频的落地页与工具目录（views/image/landing.ts）。
+ * 停在这些隐藏模块的页面上时，按页面的媒介高亮「AI 图片」或「AI 视频」（见 mediaKindOf），让人知道自己在哪。
+ *
  * <p>选中态取原型计算样式：底色 linear-gradient(#f3f4f5,#fafbfc) +
  * inset 0 1px 3px rgba(31,35,41,.10), inset 0 -1px 0 #fff，细描边，无左侧色条。
  */
@@ -24,6 +28,7 @@ import { useUserInfoStore } from '@/stores/userInfo.ts'
 import { catalogFor, type CatalogGroup } from '@/views/tools/catalog'
 import { tools } from '@/views/home/tools'
 import { chuandaitu_data, shangpingshiping_data, shangpingtu_data, type EcEntry } from '@/views/e-commerce/entries'
+import { pictureLanding, videoLanding, SECTION_ENTRY_ICONS, type LandingPageData } from '@/views/image/landing'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import CheckInButton from '@/components/check-in/CheckInButton.vue'
 
@@ -99,6 +104,8 @@ interface NavSub {
   owns?: 'image' | 'video'
   /** 一级老入口的图标（24×24 描边片段） */
   icon?: string
+  /** 只隐藏不删：不渲染入口，路由、页面、目录代码都留着；恢复时去掉即可 */
+  hidden?: boolean
 }
 
 interface PanelEntry {
@@ -122,7 +129,8 @@ interface PanelGroup {
 const aiSubs: NavSub[] = [
   { name: '智能体', path: '/agent' },
   // 原型 AppSidebar 的 AI 创作组：智能体之后即工作流；进导航首页 /workflow/home，模板页 /workflow?flow=&category=&template= 由首页卡片进
-  { name: '工作流', path: '/workflow/home' },
+  // 2026-11-09 隐藏：模板功能多已由 AI 商拍另行实现；页面仍可深链，单图复刻 / SKU替换等模板从 AI 图片 / AI 视频进
+  { name: '工作流', path: '/workflow/home', hidden: true },
   { name: '画布', path: '/canvas' },
   { name: 'AI 图片', path: '/image', owns: 'image' },
   { name: 'AI 视频', path: '/video', owns: 'video' },
@@ -169,68 +177,20 @@ const videoCatalog = catalogFor('ai-video-enhance')
 
 /** 原型侧栏没有、但产品决定保留的一级入口，接在「AI 创作」组之后；我的资产、创意广场与提示词库无下级目录 */
 const legacySubs: NavSub[] = [
-  { name: 'AI 电商', path: '/e-commerce', panel: 'e-commerce', icon: LEGACY_ICON.ecommerce },
-  { name: 'AI 商拍', path: '/studio', panel: 'studio', icon: LEGACY_ICON.studio },
+  // 2026-11-09 隐藏：电商 / 商拍 / 本地生活的子功能按图片 / 视频并进 AI 图片 / AI 视频；页面与路由都在
+  { name: 'AI 电商', path: '/e-commerce', panel: 'e-commerce', icon: LEGACY_ICON.ecommerce, hidden: true },
+  { name: 'AI 商拍', path: '/studio', panel: 'studio', icon: LEGACY_ICON.studio, hidden: true },
   // 本地生活与 AI 图片 / AI 视频一样直接进落地页（/local-life），不再展开二级目录栏
-  { name: '本地生活', path: '/local-life', icon: LEGACY_ICON.localLife },
+  { name: '本地生活', path: '/local-life', icon: LEGACY_ICON.localLife, hidden: true },
   { name: '我的资产', path: '/assets', icon: LEGACY_ICON.asset },
   { name: '任务中心', path: '/tasks', icon: LEGACY_ICON.tasks },
   { name: '创意广场', path: '/plaza', icon: LEGACY_ICON.plaza },
   { name: '提示词库', path: '/prompt-library', icon: LEGACY_ICON.prompt },
 ]
 
-/**
- * 电商 / 商拍目录的条目图标（24×24 描边片段），按路由取。
- * 原型目录有同名功能的用原型图标（qi-tool-icons.mjs，与首页工具箱注册表里抄来的是同一份）：
- * 视频复刻 / 商品替换 / 模特替换 / 服装去皱 / 商拍换装 / 姿态复刻 / 图片生成；
- * 原型没有的功能借本项目已用的最近似图标（注册表工具图标，或商拍首页 studio/index.vue 的线性图标）。
- */
+/** 电商 / 商拍目录的条目图标：与 AI 图片 / AI 视频落地页同一份（views/image/landing.ts），按路由取 */
 const toolIcon = (id: string) => tools.find((t) => t.id === id)?.icon
-const paths = (ds: string[]) => ds.map((d) => `<path d="${d}"/>`).join('')
-const ENTRY_ICON: Record<string, string | undefined> = {
-  // 原型没有：借「首屏主图」（手机首屏 + 主图）
-  '/e-commerce/product-detail': toolIcon('ai-first-screen-main-image'),
-  // 原型没有：借「商品精修」（商品瓶 + 星芒）
-  '/e-commerce/product-kit': toolIcon('ai-product-retouch'),
-  // 原型没有：借商拍首页「循环箭头」（studio/index.vue ICONS.repeat）
-  '/e-commerce/product-clone': paths([
-    'M17 2l3 3-3 3',
-    'M4 11V9a4 4 0 0 1 4-4h12',
-    'M7 22l-3-3 3-3',
-    'M20 13v2a4 4 0 0 1-4 4H4',
-  ]),
-  // 原型没有：借商拍首页「人像」（studio/index.vue ICONS.person）
-  '/e-commerce/product-in-hand': paths(['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M4 21c0-4 3.6-6 8-6s8 2 8 6']),
-  '/e-commerce/video-clone': toolIcon('ai-video-clone'),
-  // 原型没有：借「视频生成」（播放键 + 大星芒）
-  '/e-commerce/video-hot': toolIcon('ai-video-generator'),
-  // 原型 qi-tool-icons.mjs「model-replace」（两个人 + 交换）；注册表里没有，原样抄过来
-  '/e-commerce/model-replace': `
-    <circle cx="5.8" cy="7.2" r="2.2"/>
-    <path d="M1.9 15.4c.3-2.6 1.7-4.1 3.9-4.1s3.6 1.5 3.9 4.1"/>
-    <circle cx="18.2" cy="7.2" r="2.2"/>
-    <path d="M14.3 15.4c.3-2.6 1.7-4.1 3.9-4.1s3.6 1.5 3.9 4.1"/>
-    <path d="M7.4 19.6h9.2M9.1 17.9 7.4 19.6l1.7 1.7M14.9 17.9l1.7 1.7-1.7 1.7"/>`,
-  '/e-commerce/product-replace': toolIcon('product-replace'),
-  // 原型没有：借「场景生成」（风景相框 + 小星芒）
-  '/e-commerce/change-background': toolIcon('ai-background-generator'),
-  // 原型没有：借商拍首页「上衣」（studio/index.vue ICONS.shirt）
-  '/e-commerce/clothing-kit': paths(['M8 3l-5 3 2 4 2-1v12h10V9l2 1 2-4-5-3a4 4 0 0 1-8 0z']),
-  // 原型没有：借「商拍换装」（T 恤 + 交换箭头）
-  '/e-commerce/clothing-try': toolIcon('ai-digital-model'),
-  '/e-commerce/clothing-remove-wrinkle': toolIcon('cloth-wrinkle-removal'),
-  // 原型没有：借商拍首页「图片」（studio/index.vue ICONS.images）
-  '/e-commerce/merge-image': paths([
-    'M3 5h18v14H3z',
-    'M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
-    'M21 15l-5-5-9 9',
-  ]),
-  // 原型没有：借商拍首页「姿态」全身剪影（studio/index.vue ICONS.pose）
-  '/e-commerce/try-shoe': paths(['M12 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M5 9l7 1 7-3', 'M12 10v5l-4 6', 'M12 15l4 6']),
-  '/studio/ai-digital-model': toolIcon('ai-digital-model'),
-  '/studio/ai-posture-fission': toolIcon('ai-posture-fission'),
-  '/studio/image-generate': toolIcon('image-generate'),
-}
+const ENTRY_ICON = SECTION_ENTRY_ICONS
 /** 以后新加的下级页还没配图标时，与工具目录同一做法借「图片生成」占位，保持图标框一致 */
 const PLACEHOLDER_ICON = toolIcon('image-generate')
 
@@ -273,13 +233,19 @@ function routeGroups(path: string): PanelGroup[] {
   return groups.filter((g) => g.entries.length)
 }
 
+/** 实际渲染的入口（去掉 hidden） */
+const visibleAiSubs = aiSubs.filter((s) => !s.hidden)
+const visibleLegacySubs = legacySubs.filter((s) => !s.hidden)
+
 const panels: Record<'image' | 'video' | 'ai', { title: string; groups: PanelGroup[] }> = {
   image: { title: imageCatalog.title, groups: toGroups(imageCatalog.groups) },
   video: { title: videoCatalog.title, groups: toGroups(videoCatalog.groups) },
   ai: {
     title: 'AI 创作',
     groups: [
-      { entries: aiSubs.map((s) => ({ key: s.path, name: s.name, route: s.path, panel: s.panel, owns: s.owns })) },
+      {
+        entries: visibleAiSubs.map((s) => ({ key: s.path, name: s.name, route: s.path, panel: s.panel, owns: s.owns })),
+      },
     ],
   },
 }
@@ -293,10 +259,50 @@ function matches(path: string, prefix: string) {
 const panelRoutes = (key: 'image' | 'video') =>
   panels[key].groups.flatMap((g) => g.entries.map((e) => e.route).filter((r): r is string => !!r))
 
-const ownedRoutes: Partial<Record<PanelKey, string[]>> = {
-  image: ['/image', ...panelRoutes('image')],
-  video: ['/video', ...panelRoutes('video')],
+/** 落地页卡片的路径部分（去掉 query）；工作流模板都落在 /workflow，按 flow 另判，不进这张表 */
+const landingRoutes = (page: LandingPageData) =>
+  page.sections
+    .flatMap((x) => x.tools)
+    .map((t) => t.route?.split('?')[0])
+    .filter((r): r is string => !!r && r !== '/workflow')
+
+/**
+ * 电商视频页（爆款视频 / 视频复刻 / 商品替换…）：不一定都在 AI 视频目录 / 落地页上，但电商标签条在这些页上
+ * 给的是「返回 AI 视频」（e-commerce/Tabs VIDEO_PAGE_NAMES 同源），高亮必须跟着算视频
+ */
+const ecVideoRoutes = shangpingshiping_data
+  .map((e) => {
+    try {
+      return router.resolve({ name: e.pathName }).path
+    } catch {
+      return ''
+    }
+  })
+  .filter((r) => !!r && r !== '/')
+
+const ownedRoutes: Record<'image' | 'video', string[]> = {
+  image: ['/image', ...panelRoutes('image'), ...landingRoutes(pictureLanding)].filter((r) => !r.startsWith('/workflow')),
+  video: ['/video', ...panelRoutes('video'), ...landingRoutes(videoLanding), ...ecVideoRoutes].filter(
+    (r) => !r.startsWith('/workflow'),
+  ),
 }
+
+/** 已隐藏的一级模块：页面里没在两份目录上的（模块首页、深链才进得去的页）一律算 AI 图片 */
+const HIDDEN_SECTION_PREFIXES = ['/e-commerce', '/studio', '/local-life', '/workflow']
+
+/**
+ * 当前页属于 AI 图片还是 AI 视频（决定高亮哪一项）：
+ * 工作流模板页按 query.flow（video 流算视频，其余算图片）；其余先查两份目录 / 落地页的路由，
+ * 视频优先（同一路由不会两边都有，先查视频免得 /local-life 之类前缀被图片吞掉）；隐藏模块里查不到的页回落到图片。
+ */
+function mediaKindOf(path: string, flow: unknown): 'image' | 'video' | null {
+  if (path === '/workflow') return flow === 'video' ? 'video' : 'image'
+  if (ownedRoutes.video.some((p) => matches(path, p))) return 'video'
+  if (ownedRoutes.image.some((p) => matches(path, p))) return 'image'
+  if (HIDDEN_SECTION_PREFIXES.some((p) => matches(path, p))) return 'image'
+  return null
+}
+const routeKind = computed(() => mediaKindOf(route.path, route.query.flow))
 
 // ---------- 原型样式（UnoCSS） ----------
 const FOCUS =
@@ -320,7 +326,7 @@ const showUpdateBar = computed(() => !!props.updateNotice && !updateDismissed.va
 const homeActive = computed(() => route.path === '/tools')
 
 function subActive(sub: NavSub) {
-  if (sub.owns) return (ownedRoutes[sub.owns] ?? [sub.path]).some((p) => matches(route.path, p))
+  if (sub.owns) return routeKind.value === sub.owns
   if (sub.panel) return panel.value === sub.panel || matches(route.path, sub.path)
   // 工作流：导航首页 /workflow/home 与模板页 /workflow 同属一个入口，进模板页也保持高亮
   if (sub.path === '/workflow/home') return route.path === '/workflow/home' || route.path === '/workflow'
@@ -328,7 +334,7 @@ function subActive(sub: NavSub) {
 }
 
 const legacyActive = (sub: NavSub) => subActive(sub)
-const aiSubActive = computed(() => aiSubs.some(subActive))
+const aiSubActive = computed(() => visibleAiSubs.some(subActive))
 
 /** 一级 `.v3-row`：高 44、14/500、gap 10、内边距 0 10 */
 function rowClass(active: boolean) {
@@ -347,7 +353,7 @@ function subClass(active: boolean) {
 
 function entryActive(e: PanelEntry) {
   if (e.panel) return panel.value === e.panel
-  if (e.owns) return (ownedRoutes[e.owns] ?? []).some((p) => matches(route.path, p))
+  if (e.owns) return routeKind.value === e.owns
   return !!e.route && matches(route.path, e.route)
 }
 
@@ -692,7 +698,7 @@ onBeforeUnmount(() => hideRailTips(true))
           :class="aiExpanded ? 'max-h-[400px] opacity-100' : 'invisible max-h-0 opacity-0'"
         >
           <button
-            v-for="sub in aiSubs"
+            v-for="sub in visibleAiSubs"
             :key="sub.path"
             type="button"
             :class="subClass(subActive(sub))"
@@ -718,9 +724,9 @@ onBeforeUnmount(() => hideRailTips(true))
           </button>
         </div>
 
-        <!-- 电商 / 商拍 / 本地生活 / 提示词库：独立一级入口；带下级目录的点开并排目录栏 -->
+        <!-- 我的资产 / 任务中心 / 创意广场 / 提示词库：独立一级入口（电商 / 商拍 / 本地生活已 hidden）；带下级目录的点开并排目录栏 -->
         <button
-          v-for="sub in legacySubs"
+          v-for="sub in visibleLegacySubs"
           :key="sub.path"
           type="button"
           :class="rowClass(legacyActive(sub))"

@@ -127,6 +127,13 @@ function commitCount(next: number) {
         :disabled="disabled"
         @update:model-value="update(row.key, $event)"
       />
+      <p
+        v-if="row.key === 'count' && countRange && row.hint"
+        class="m-0 text-11px leading-15px text-muted"
+        :class="inSettings ? '-mt-4px pb-8px' : '-mt-8px'"
+      >
+        {{ row.hint }}
+      </p>
     </template>
   </div>
 </template>

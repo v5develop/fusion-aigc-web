@@ -67,7 +67,7 @@ useDebounce(reactiveObj, callback, 300)
 - ⚠️ 全局 App.vue themeOverrides 的 `common.baseColor: 'red'` 会把彩色按钮文字推导成红色——藤紫按钮必须显式覆盖 naive Button 的 textColor*（见 theme.ts）
 
 ### 尺寸与可点区域（2026-11-07 整改，用户反馈下载等图标太小、不好点）
-- **主导航不动**：产品决定不按 5185 原型收成六项，`src/views/layout/**` 的入口结构与顺序保持现状；只改页面内部与共用组件
+- **主导航**：不按 5185 原型收成六项；2026-11-09 起隐藏「工作流」「AI 电商」「AI 商拍」「本地生活」（只隐藏，见「路由要点」），其余入口结构与顺序不动
 - **图标按钮一律用 `src/components/IconButton`**：`label` 必填（读屏标签 + 悬停提示）；`size` sm 24（列表行内）/ md 32 / lg 40；`variant` plate / quiet / overlay（压在图上）/ danger；`href` + `download` 渲染成下载链接；不要再手写 `w-16px h-16px p-0` 这类按钮
 - 可点区域 ≥ 32×32、触屏 ≥ 40：小控件用 `sx-hit` 外扩；外扩不超过相邻间距的一半，**同一排图标按钮之间至少 `gap-8px`**
 - 只在悬停时出现的操作用 `reveal` / `sx-reveal`（父级要有 `.group`），触屏与键盘聚焦时始终可见；下载类操作不能只靠悬停
@@ -76,12 +76,13 @@ useDebounce(reactiveObj, callback, 300)
 - 设计规范与 5185 对齐记录见 `docs/design/ui-design-spec.md` §10
 
 ### 路由要点
+- **主导航隐藏四项（2026-11-09）**：「工作流」「AI 电商」「AI 商拍」「本地生活」在 `src/views/layout/Navigation` 里标 `hidden: true`（去掉即恢复），路由与页面都在、深链照开。子功能按图片 / 视频并进 `src/views/image/landing.ts` 的分组（AI 图片：图片处理 / 商拍 / 电商 / 服装 / 本地生活；AI 视频：视频处理 / 电商 / 本地生活），工具页目录 `src/views/tools/catalog.ts` 除处理组外直接取这份；新增这几个模块的功能要在这里登记，否则没有入口。停在隐藏模块页上时按媒介高亮「AI 图片」/「AI 视频」（`mediaKindOf`）。模块内「回首页」类按钮回对应总览页（电商标签条已改；商拍 `StudioWorkspaceColumns` 返回键的兜底仍是 `{ name: 'studio' }`）
 - `/image`、`/video` 是 AI 图片 / AI 视频总览页（对齐原型 /ai/image；不保留 `/picture` 旧地址）。「图片生成」「视频生成」卡片指向原型同名工具页 `/tools/image-generate`、`/tools/ai-video-generator`（与左侧导航目录同一页面）。原通用生图 / 生视频在 `/image/generate`、`/video/generate`，原型没有、不放卡片，只承接老链接 `?entryCode=…`、`?sameStyleId=…`（`src/router/generator.ts` 全局守卫原样转过去，不加 replace，返回键正常）
 
 ## 本地生活模块（src/views/local-life）
 
 对接 Go 网关 `/api/v1/local-life`（fusion_aigc_go），API 封装在 src/api/localLife.ts（snake_case 字段原样收发）。
-入口页 /local-life + 11 个功能页（AI文案 / 店铺档案 / AI数字人 / 图文笔记 / AI海报 / AI长图 / 数字人口播 / 动作迁移 / 探店视频 / 带货短剧 / 爆款视频复刻）。
+入口页 /local-life（主导航已隐藏，深链可开；功能从 AI 图片 / AI 视频总览进）+ 11 个功能页（AI文案 / 店铺档案 / AI数字人 / 图文笔记 / AI海报 / AI长图 / 数字人口播 / 动作迁移 / 探店视频 / 带货短剧 / 爆款视频复刻）。
 关键约定：提交生成带 `Idempotency-Key`；首次生成前走 useAgreement 约定弹窗；列表用 useLLList（有在跑任务自动轮询、跑完刷积分）；详情轮询用 usePollingWhile。
 
 ## Go 后端其余模块（同为藤紫设计体系）
@@ -91,7 +92,7 @@ useDebounce(reactiveObj, callback, 300)
 - **资产库增强 src/views/asset-library**（/api/v1/asset-library）：分类条/来源/类型/收藏/标签筛选 + 批量打标签 + 详情（版本/相关资产/生成结果）
 - **画布 src/views/canvas**（/api/v1/canvas）：画布列表 / 从模板创建 / 重命名 / 另存为 / 删除 / 运行历史；节点编辑器（剪贴板、成组、对齐分布、锁定、小地图、快捷键、导出 JSON/PNG、执行前费用确认）
 - **姿态复刻多人配对**（/api/v1/studio/pose/preview）：提交前「识别人物与配对」，免费但慢（20 秒–2 分钟，前端超时 260 秒）；换图即失效；单人照片提交体与以前一致
-- 左侧导航（src/views/layout/Navigation）含 9 项 + 分组线；无 iconfont 的入口用内联 SVG path
+- 左侧导航（src/views/layout/Navigation）现渲染：首页 / AI 创作（智能体、画布、AI 图片、AI 视频）/ 我的资产 / 任务中心 / 创意广场 / 提示词库；工作流、AI 电商、AI 商拍、本地生活为 `hidden`；无 iconfont 的入口用内联 SVG path
 
 ### 文件命名
 - 组件目录使用 PascalCase，入口文件为 index.vue/index.ts

@@ -404,9 +404,9 @@ const versionModel = ref('')
 
 const versionModelOptions = [
   { label: '通用', value: '通用' },
-  { label: 'GPT Image 2', value: 'GPT' },
-  { label: 'Nano Banana Pro', value: 'Banana' },
-  { label: 'Seedream 5 Pro', value: 'Seedream' },
+  { label: 'GPT Image 2.6 Sunburst', value: 'GPT' },
+  { label: 'Nano Banana 2.1 Dev', value: 'Banana' },
+  { label: 'Seedream 5.5', value: 'Seedream' },
 ]
 
 const versionFileRef = ref<HTMLInputElement | null>(null)

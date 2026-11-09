@@ -1795,9 +1795,12 @@ async function copyMessage(item: ChatItem) {
 
 /** 工具清单的状态归类：已完成 / 进行中 / 失败 / 等待执行 */
 type ToolState = 'ok' | 'run' | 'fail' | 'idle'
-function toolState(status: string): ToolState {
+function toolState(status: string, item?: ChatItem): ToolState {
   const s = status.toLowerCase()
   if (['completed', 'success', 'succeeded', 'done'].includes(s)) return 'ok'
+  // 参数确认（question_asker）在发起表单的那一轮恒为 interrupted；表单已提交后这一步就算完成，
+  // 否则这轮的执行清单永远停在「进行中 1/2」
+  if (s === 'interrupted') return item?.form?.done && !item.form.superseded ? 'ok' : 'run'
   if (['failed', 'error'].includes(s)) return 'fail'
   if (['pending', 'waiting', 'queued'].includes(s)) return 'idle'
   return 'run'
@@ -3053,7 +3056,7 @@ onUnmounted(() => {
                           </svg>
                           执行清单
                           <span class="ml-auto text-11px font-400 leading-16px text-placeholder tabular-nums">
-                            {{ item.reply.tools.filter((t) => toolState(t.status) === 'ok').length }} /
+                            {{ item.reply.tools.filter((t) => toolState(t.status, item) === 'ok').length }} /
                             {{ item.reply.tools.length }}
                           </span>
                         </div>
@@ -3064,21 +3067,21 @@ onUnmounted(() => {
                             :title="t.message || undefined"
                             class="flex h-23px items-center gap-8px text-12px text-ink-2"
                           >
-                            <span :class="['st-ic grid h-14px w-14px flex-none place-items-center', `is-${toolState(t.status)}`]" aria-hidden="true">
+                            <span :class="['st-ic grid h-14px w-14px flex-none place-items-center', `is-${toolState(t.status, item)}`]" aria-hidden="true">
                               <svg class="h-14px w-14px" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle v-if="toolState(t.status) === 'run'" class="st-track" cx="12" cy="12" r="9" />
+                                <circle v-if="toolState(t.status, item) === 'run'" class="st-track" cx="12" cy="12" r="9" />
                                 <circle class="st-r" cx="12" cy="12" r="9" stroke="currentColor" />
-                                <path v-if="toolState(t.status) === 'ok'" d="M8 12.4l2.6 2.6L16 9.6" stroke="currentColor" />
-                                <path v-else-if="toolState(t.status) === 'fail'" d="M9 9l6 6M15 9l-6 6" stroke="currentColor" />
+                                <path v-if="toolState(t.status, item) === 'ok'" d="M8 12.4l2.6 2.6L16 9.6" stroke="currentColor" />
+                                <path v-else-if="toolState(t.status, item) === 'fail'" d="M9 9l6 6M15 9l-6 6" stroke="currentColor" />
                               </svg>
                             </span>
-                            <span :class="['min-w-0 flex-1 truncate', toolState(t.status) === 'ok' ? 'text-#8a919c' : '']">{{ t.name }}</span>
+                            <span :class="['min-w-0 flex-1 truncate', toolState(t.status, item) === 'ok' ? 'text-#8a919c' : '']">{{ t.name }}</span>
                             <span
-                              v-if="toolState(t.status) === 'fail'"
+                              v-if="toolState(t.status, item) === 'fail'"
                               class="max-w-[50%] flex-none truncate text-11px leading-16px text-#c24545"
                             >{{ t.message || '失败' }}</span>
                             <span v-else class="flex-none text-11px leading-16px text-#a3a9b2 tabular-nums">{{
-                              TOOL_STATE_TEXT[toolState(t.status)]
+                              TOOL_STATE_TEXT[toolState(t.status, item)]
                             }}</span>
                           </li>
                         </ul>

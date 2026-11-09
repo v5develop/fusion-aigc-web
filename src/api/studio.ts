@@ -8,7 +8,7 @@
  * <p>幂等：三个提交接口必须带 Idempotency-Key（UUID），每次点「生成」新生成一个；
  * 重新编辑后的再提交是新的一次提交，自然拿到新 key。
  */
-import { get, post, del } from './index.ts'
+import { get, post, del, patch, authorizedFetch } from './index.ts'
 import type * as types from './studioTypes.ts'
 import { llIdempotencyHeaders } from './localLife.ts'
 
@@ -82,6 +82,27 @@ export function studioCancelBatch(id: number) {
  */
 export function studioRetryTask(taskId: string) {
   return post<types.StudioBatchDetail>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}/retry`, {})
+}
+
+/**
+ * 保存子任务的校色参数（PATCH /tasks/{task_id}/color-fix）：仅本人、仅成功的任务；浏览器里烘图，服务端只存五个滑杆值。
+ * 回该子任务（含 color_fix_params）。老网关没有这个接口时返回 HTTP 404。
+ */
+export function studioSaveTaskColorFix(taskId: string, data: types.StudioTaskColorFixReq) {
+  return patch<types.StudioTask>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}/color-fix`, data)
+}
+
+/**
+ * 同一接口的「页面关闭前」版本：fetch keepalive（页面卸载后浏览器仍把请求发完），与 axios 同一 baseURL 与 Bearer。
+ * 不走拦截器（不 toast、不刷新令牌后重放）；sendBeacon 只能 POST、带不了 Authorization，所以用 keepalive。
+ */
+export function studioSaveTaskColorFixKeepalive(taskId: string, data: types.StudioTaskColorFixReq): Promise<Response> {
+  return authorizedFetch(`${PREFIX}/tasks/${encodeURIComponent(taskId)}/color-fix`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    keepalive: true,
+  })
 }
 
 /** 删除批次（逻辑删除；生成中不能删，code=4002） */

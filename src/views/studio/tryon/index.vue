@@ -9,7 +9,7 @@
  * 页面持有 useTryonGarment 状态，按单品 / 角度拼 garment_images；上传走 goUploadImage（studio 只收本服务签发的地址）。
  * 逐件面料 / 长度 / 袖长（没填显示「按图」）；面料提交时拼成契约的「上衣：真丝；鞋子：皮革」一段（fabric 字段不变）。
  */
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { studioSubmitTryon } from '@/api/studio.ts'
 import { goUploadImage } from '@/api/goUpload.ts'
@@ -20,6 +20,8 @@ import { useTryonGarment } from '@/views/tools/useTryonGarment.ts'
 import type { UploadSpec } from '@/views/tools/schemas.ts'
 import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
+import ColorFixToggle from '../components/StudioSubmitBar/ColorFixToggle.vue'
+import { useColorFix } from '@/views/studio/colorfix/useColorFix'
 import ModelSettings from '../components/ModelSettings/index.vue'
 import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
 import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
@@ -110,10 +112,54 @@ const GARMENT_NOTE = '每张生图连同模特最多参考 9 张（含细节裁�
 const fabrics = reactive<Record<string, string>>({})
 
 const selectedItems = computed(() => g.selected.map((key) => OUTFIT_MAP[key]).filter((i): i is StudioOutfitItem => !!i))
-/** 参数行下拉：第一项「按图」= 不填（空串），其余为该单品的档位 */
-function pickOptions(values: string[]) {
-  return [{ label: '按图', value: '' }, ...values.map((v) => ({ label: v, value: v }))]
+
+// ---------------- 长度 / 袖长下拉（原型 .dm-pick：自绘向上浮层，同一时间只开一个） ----------------
+
+type PickKind = 'length' | 'sleeve'
+/** 该单品有的参数下拉：第一项「按图」= 不填（空串），其余为该单品的档位；鞋子 / 配饰 / 文胸 / 内裤没有 */
+function pickKinds(item: StudioOutfitItem) {
+  const out: { kind: PickKind; label: string; options: string[] }[] = []
+  if (item.length.length) out.push({ kind: 'length', label: '长度', options: ['', ...item.length] })
+  if (item.sleeve.length) out.push({ kind: 'sleeve', label: '袖长', options: ['', ...item.sleeve] })
+  return out
 }
+const pickStore = (kind: PickKind) => (kind === 'length' ? lengths : sleeves)
+/** 打开中的下拉：`${单品}:${kind}`；空 = 都关着 */
+const picker = ref('')
+function togglePick(id: string) {
+  picker.value = picker.value === id ? '' : id
+}
+function choosePick(key: string, kind: PickKind, value: string) {
+  pickStore(kind)[key] = value
+  closePick(true)
+}
+/** 收起下拉；restoreFocus = 焦点回到打开它的那个按钮（Esc / 键盘选完后不丢焦点） */
+function closePick(restoreFocus = false) {
+  const id = picker.value
+  picker.value = ''
+  if (!restoreFocus || !id) return
+  const sel = `[data-pick-trigger="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id}"]`
+  document.querySelector<HTMLElement>(sel)?.focus()
+}
+/** 点到下拉外面 / 按 Esc 收起（捕获阶段，别的地方 stopPropagation 也拦不住） */
+function closePickOutside(event: Event) {
+  if (!picker.value) return
+  if ((event.target as HTMLElement | null)?.closest?.('[data-tryon-pick]')) return
+  picker.value = ''
+}
+function closePickOnEsc(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !picker.value) return
+  event.preventDefault()
+  closePick(true)
+}
+onMounted(() => {
+  document.addEventListener('pointerdown', closePickOutside, true)
+  document.addEventListener('keydown', closePickOnEsc, true)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closePickOutside, true)
+  document.removeEventListener('keydown', closePickOnEsc, true)
+})
 
 /** 中文角度 ↔ 接口传值 */
 const angleCode = (label: string) => ANGLE_OPTIONS.find((o) => o.label === label)?.value ?? 'unknown'
@@ -132,6 +178,9 @@ const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
 
 /** 幂等重试：失败缓存 key 进「重试生成」态；表单任意字段变化换新 key */
 const idem = useIdempotentSubmit()
+
+/** 默认校色（与结果区校色面板同一份状态）：提交时作 color_fix 下发 */
+const { enabled: colorFix } = useColorFix()
 
 /** 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例）原样发给报价接口，拿不到价就不显示 */
 const { points: costPoints } = useStudioCost('tryon', () => ({
@@ -152,9 +201,9 @@ idem.bindForm(
   lengths,
   sleeves,
   fabrics,
+  colorFix,
 )
 
-// TODO(默认校色)：原型的「默认校色」需要出图后的色彩后处理（服务端暂无此步骤），产品决定先不做，后端支持后在这里加开关并随提交下发。
 // 产品决定：「精细读图」「提示词可见」不加。
 
 /** 逐件面料拼成契约格式：「上衣：真丝；鞋子：皮革」，空的不写 */
@@ -180,6 +229,17 @@ const submitText = computed(() => (taskCount.value ? `开始换装（${taskCount
 
 /** 素材板上传中（服装图 / 模特图）：还没回来的图不会进提交体，先拦下 */
 const materialsUploading = ref(false)
+
+/** 未就绪原因（提交条悬停提示；按钮保持可点，点了 toast 同一句）；空 = 就绪，悬停改显示原型的拆任务说明 */
+const notReadyReason = computed(() => {
+  if (materialsUploading.value) return '图片上传中，稍等再提交'
+  if (!g.selected.length) return '先选单品：点服装图打开弹窗'
+  if (missing.value.length) return `还没传图：${missing.value.join('、')}`
+  if (garmentOver.value) return `服装图最多 ${MAX_GARMENT_IMAGES} 张`
+  if (!modelImages.value.length) return '至少上传 1 位模特'
+  return ''
+})
+const SUBMIT_HINT = '按模特 × 生成张数逐个提交，每个任务单独出图'
 
 async function submit() {
   if (submitting.value) return
@@ -218,6 +278,7 @@ async function submit() {
     fabric: fabricText.value || undefined,
     ...(Object.keys(lengthsOut).length ? { lengths: lengthsOut } : {}),
     ...(Object.keys(sleevesOut).length ? { sleeves: sleevesOut } : {}),
+    color_fix: colorFix.value,
   }
 
   submitting.value = true
@@ -226,8 +287,9 @@ async function submit() {
     const res = await studioSubmitTryon(body, { 'Idempotency-Key': idem.take() })
     idem.settle()
     const d = res.data
+    const points = d?.estimated_points
     message.success(
-      `已提交 ${d?.task_total ?? taskCount.value} 张，预估消耗 ${d?.estimated_points ?? 0} 点${
+      `已提交 ${d?.task_total ?? taskCount.value} 个换装任务${points ? `，预估消耗 ${points} 点` : ''}${
         d?.replayed ? '（幂等重放，返回原批次）' : ''
       }`,
     )
@@ -309,6 +371,8 @@ function onReedit(payload: Record<string, unknown>) {
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
   form.aspect_ratio = typeof p.aspect_ratio === 'string' ? p.aspect_ratio : ''
   form.count_per_model = Math.min(9, Math.max(1, Math.round(Number(p.count_per_model) || 1)))
+  // 默认校色跟着快照走（老快照没有这个字段 = 没开）
+  colorFix.value = p.color_fix === true
   // 回填是一次全新的提交：bindForm 的深度 watch 会作废旧 key，这里再兜一道
   idem.invalidate()
 }
@@ -336,7 +400,7 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
         :garment-note="GARMENT_NOTE"
         :disabled="submitting"
       >
-        <!-- 补充说明（原型 .dm-notes：卡面上无框 textarea 13/20，左下计数 10px、上外边距 2） -->
+        <!-- 补充说明（原型 .dm-notes：卡面上无框 textarea 13/20；底行左计数 11px、右「默认校色」开关，上外边距 2） -->
         <div class="flex min-h-0 flex-[1_1_auto] flex-col gap-6px">
           <label for="tryon-prompt" class="sr-only">补充说明</label>
           <textarea
@@ -347,12 +411,15 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
             aria-describedby="tryon-prompt-count"
             placeholder="门襟暗扣、裤脚前开衩这类设计点写这里；包和背景不要动也可以写；不对称、镂空、绑带、五金、拼接、异形下摆也可以写（选填）"
           />
-          <span
-            id="tryon-prompt-count"
-            class="self-start mt-2px text-11px leading-15px tabular-nums select-none"
-            :class="form.prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
-            >{{ form.prompt.length }} / 3000</span
-          >
+          <div class="flex items-center justify-between gap-8px mt-2px">
+            <span
+              id="tryon-prompt-count"
+              class="text-11px leading-15px tabular-nums select-none"
+              :class="form.prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
+              >{{ form.prompt.length }} / 3000</span
+            >
+            <ColorFixToggle v-model="colorFix" :disabled="submitting" />
+          </div>
         </div>
 
         <!-- 各单品参数（原型 .dm-params：段距 7、上内边距 5；标题 12·600）：按件一行
@@ -409,32 +476,35 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
               :title="`每件面料最多 ${FABRIC_MAX} 字`"
               :aria-label="`${item.label}面料`"
             />
-            <n-popselect
-              v-if="item.length.length"
-              :value="lengths[item.key] ?? ''"
-              :options="pickOptions(item.length)"
-              trigger="click"
-              placement="top-start"
-              size="small"
-              scrollable
-              @update:value="(v: string) => (lengths[item.key] = v ?? '')"
+            <!-- 长度 / 袖长：与输入框同一块材质的按钮 + 自绘向上浮层（原型 .dm-pick__menu：底 100%+4、最小同宽、内边距 4、r8；
+                 行 32 高 12px（原型 26，按可点区域 ≥32 放大），选中 白→#f8f3fc + 紫字；箭头展开时转 180°；点外面 / Esc 收起，同一时间只开一个）。
+                 按钮视觉 30 高，sx-hit 外扩 4 到 38（行内间距 8 的一半） -->
+            <span
+              v-for="pk in pickKinds(item)"
+              :key="pk.kind"
+              data-tryon-pick
+              class="relative flex flex-[1.15_1_0] min-w-0"
             >
               <button
                 type="button"
                 :class="[
                   FIELD,
-                  'flex-[1.15_1_0] min-w-0 flex items-center gap-5px pl-8px pr-6px cursor-pointer focus-visible:border-violet',
+                  'sx-hit w-full min-w-0 flex items-center gap-5px pl-8px pr-6px cursor-pointer focus-visible:border-violet',
+                  picker === `${item.key}:${pk.kind}` ? 'border-violet' : '',
                 ]"
-                :aria-label="`${item.label}长度`"
+                :aria-label="`${item.label}${pk.label}`"
+                :data-pick-trigger="`${item.key}:${pk.kind}`"
                 aria-haspopup="listbox"
+                :aria-expanded="picker === `${item.key}:${pk.kind}`"
+                @click="togglePick(`${item.key}:${pk.kind}`)"
               >
-                <span class="shrink-0 text-11px text-placeholder">长度</span>
-                <b
-                  class="flex-1 min-w-0 overflow-hidden text-left text-11px font-400 whitespace-nowrap text-ellipsis"
-                  >{{ lengths[item.key] || '按图' }}</b
-                >
+                <span class="shrink-0 text-11px text-placeholder">{{ pk.label }}</span>
+                <b class="flex-1 min-w-0 overflow-hidden text-left text-12px font-400 whitespace-nowrap text-ellipsis">{{
+                  pickStore(pk.kind)[item.key] || '按图'
+                }}</b>
                 <svg
-                  class="shrink-0 w-10px h-10px text-placeholder"
+                  class="shrink-0 w-10px h-10px text-placeholder transition-transform duration-160 motion-reduce:transition-none"
+                  :class="picker === `${item.key}:${pk.kind}` ? 'rotate-180' : ''"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -444,43 +514,30 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
                   <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
               </button>
-            </n-popselect>
-            <n-popselect
-              v-if="item.sleeve.length"
-              :value="sleeves[item.key] ?? ''"
-              :options="pickOptions(item.sleeve)"
-              trigger="click"
-              placement="top-start"
-              size="small"
-              scrollable
-              @update:value="(v: string) => (sleeves[item.key] = v ?? '')"
-            >
-              <button
-                type="button"
-                :class="[
-                  FIELD,
-                  'flex-[1.15_1_0] min-w-0 flex items-center gap-5px pl-8px pr-6px cursor-pointer focus-visible:border-violet',
-                ]"
-                :aria-label="`${item.label}袖长`"
-                aria-haspopup="listbox"
+              <div
+                v-if="picker === `${item.key}:${pk.kind}`"
+                role="listbox"
+                :aria-label="`${item.label}${pk.label}`"
+                class="absolute z-24 bottom-[calc(100%+4px)] left-0 min-w-full max-h-260px overflow-y-auto overscroll-contain box-border p-4px rounded-8px border border-solid border-line bg-white shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)]"
               >
-                <span class="shrink-0 text-11px text-placeholder">袖长</span>
-                <b
-                  class="flex-1 min-w-0 overflow-hidden text-left text-11px font-400 whitespace-nowrap text-ellipsis"
-                  >{{ sleeves[item.key] || '按图' }}</b
+                <button
+                  v-for="opt in pk.options"
+                  :key="opt || 'auto'"
+                  type="button"
+                  role="option"
+                  :aria-selected="(pickStore(pk.kind)[item.key] || '') === opt"
+                  class="block w-full h-32px box-border px-8px border-0 rounded-5px text-12px text-left whitespace-nowrap cursor-pointer sx-focus"
+                  :class="
+                    (pickStore(pk.kind)[item.key] || '') === opt
+                      ? 'bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] text-violet-ink'
+                      : 'bg-transparent text-ink-2 hover:bg-surface3'
+                  "
+                  @click="choosePick(item.key, pk.kind, opt)"
                 >
-                <svg
-                  class="shrink-0 w-10px h-10px text-placeholder"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  aria-hidden="true"
-                >
-                  <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </button>
-            </n-popselect>
+                  {{ opt || '按图' }}
+                </button>
+              </div>
+            </span>
           </div>
         </section>
       </ToolTryonMaterials>
@@ -494,7 +551,8 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
           v-model:resolution="form.resolution"
           v-model:aspect-ratio="form.aspect_ratio"
           v-model:count="form.count_per_model"
-          count-label="每位模特生成张数"
+          count-label="生成张数"
+          count-hint="按模特算：每位模特各出这么多张"
           auto-ratio
         />
         <StudioSubmitBar
@@ -502,6 +560,8 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
           :points="costPoints"
           :submitting="submitting"
           :disabled="submitting"
+          :disabled-reason="notReadyReason"
+          :hint="SUBMIT_HINT"
           :retry="idem.retrying.value"
           @submit="submit"
         />

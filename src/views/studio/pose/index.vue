@@ -14,6 +14,8 @@ import { studioSubmitPose } from '@/api/studio.ts'
 import type { StudioPosePayload, StudioPoseSubmitReq } from '@/api/studioTypes.ts'
 import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
+import ColorFixToggle from '../components/StudioSubmitBar/ColorFixToggle.vue'
+import { useColorFix } from '@/views/studio/colorfix/useColorFix'
 import ModelSettings from '../components/ModelSettings/index.vue'
 import PoseMaterialSlots from './PoseMaterialSlots.vue'
 import PoseNotesList from './PoseNotesList.vue'
@@ -73,6 +75,9 @@ const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
 /** 幂等重试：失败缓存 key 进「重试生成」态；表单任意字段变化换新 key */
 const idem = useIdempotentSubmit()
 
+/** 默认校色（与结果区校色面板同一份状态）：提交时作 color_fix 下发 */
+const { enabled: colorFix } = useColorFix()
+
 /** 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例）原样发给报价接口，拿不到价就不显示 */
 const { points: costPoints } = useStudioCost('pose', () => ({
   pose_image_urls: poseImages.value,
@@ -80,7 +85,7 @@ const { points: costPoints } = useStudioCost('pose', () => ({
   resolution: form.resolution || undefined,
   aspect_ratio: form.aspect_ratio || undefined,
 }))
-idem.bindForm(form, sourceImages, poseImages, poseNotes, pairing.state)
+idem.bindForm(form, sourceImages, poseImages, poseNotes, pairing.state, colorFix)
 
 const submitText = computed(() => (poseImages.value.length ? `开始复刻（${poseImages.value.length} 张）` : '开始复刻'))
 
@@ -90,6 +95,7 @@ const disabledReason = computed(() => {
   if (!poseImages.value.length) return '上传 1–9 张姿势参考图'
   return ''
 })
+const SUBMIT_HINT = '每个姿势一个任务，单独出图'
 
 async function submit() {
   if (submitting.value) return
@@ -111,6 +117,7 @@ async function submit() {
     resolution: form.resolution || undefined,
     aspect_ratio: form.aspect_ratio || undefined,
     ...(pair ? { source_person_count: pair.sourcePersonCount, mappings: pair.mappings } : {}),
+    color_fix: colorFix.value,
   }
 
   submitting.value = true
@@ -119,8 +126,9 @@ async function submit() {
     const res = await studioSubmitPose(body, { 'Idempotency-Key': idem.take() })
     idem.settle()
     const d = res.data
+    const points = d?.estimated_points
     message.success(
-      `已提交 ${d?.task_total ?? poseImages.value.length} 张，预估消耗 ${d?.estimated_points ?? 0} 点${
+      `已提交 ${d?.task_total ?? poseImages.value.length} 个复刻任务${points ? `，预估消耗 ${points} 点` : ''}${
         d?.replayed ? '（幂等重放，返回原批次）' : ''
       }`,
     )
@@ -159,6 +167,8 @@ function onReedit(payload: Record<string, unknown>) {
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
   form.aspect_ratio = typeof p.aspect_ratio === 'string' ? p.aspect_ratio : ''
   pairing.restore(p, sourceImages.value, poseImages.value)
+  // 默认校色跟着快照走（老快照没有这个字段 = 没开）
+  colorFix.value = p.color_fix === true
   // 回填是一次全新的提交：bindForm 的深度 watch 会作废旧 key，这里再兜一道
   idem.invalidate()
 }
@@ -199,7 +209,7 @@ function onReedit(payload: Record<string, unknown>) {
           @set="pairing.setMapping"
         />
 
-        <!-- 补充说明（全局）：框内无边 textarea，左下计数 -->
+        <!-- 补充说明（全局）：框内无边 textarea；底行左计数 11px、右「默认校色」开关 -->
         <div class="flex min-h-0 flex-1 flex-col gap-6px">
           <label for="pose-global-prompt" class="sr-only">补充说明</label>
           <textarea
@@ -210,12 +220,15 @@ function onReedit(payload: Record<string, unknown>) {
             aria-describedby="pose-global-prompt-count"
             placeholder="这套姿势统一的补充要求，会加到每一张里，例如：动作幅度小一点、手里不要拿东西（选填）"
           />
-          <span
-            id="pose-global-prompt-count"
-            class="self-start mt-2px text-11px leading-15px tabular-nums select-none"
-            :class="form.global_prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
-            >{{ form.global_prompt.length }} / 3000</span
-          >
+          <div class="flex items-center justify-between gap-8px mt-2px">
+            <span
+              id="pose-global-prompt-count"
+              class="text-11px leading-15px tabular-nums select-none"
+              :class="form.global_prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
+              >{{ form.global_prompt.length }} / 3000</span
+            >
+            <ColorFixToggle v-model="colorFix" :disabled="submitting" />
+          </div>
         </div>
 
         <!-- 各姿势补充：两列，每格 32 缩略图（悬停小预览 / 右上删除）+ 30 高 / 11px 单行输入（200 字） -->
@@ -237,6 +250,7 @@ function onReedit(payload: Record<string, unknown>) {
           :points="costPoints"
           :submitting="submitting"
           :disabled-reason="disabledReason"
+          :hint="SUBMIT_HINT"
           :retry="idem.retrying.value"
           @submit="submit"
         />

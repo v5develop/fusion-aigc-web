@@ -59,6 +59,29 @@ export function sourceItems(d: StudioBatchDetail, task: StudioTask): LightboxIte
   return out
 }
 
+/**
+ * 「前后对比」的前图（原型 ToolPreviewPanel COMPARE_BEFORE_INDEX）：
+ * 商拍换装 = 该任务的模特图（model_image_urls[model_index]）「模特图」；
+ * 姿态复刻 = 该任务的姿势图（pose_image_urls[pose_index]）「参考姿势图」；图片生成不做前后对比。
+ */
+export function compareBefore(d: StudioBatchDetail, task: StudioTask): { url: string; label: string } | null {
+  const p = parsePayload(d.batch.payload)
+  if (d.batch.kind === 'tryon') {
+    const url = str((p as StudioTryonPayload).model_image_urls?.[task.model_index])
+    return url ? { url, label: '模特图' } : null
+  }
+  if (d.batch.kind === 'pose') {
+    const url = str((p as StudioPosePayload).pose_image_urls?.[task.pose_index])
+    return url ? { url, label: '参考姿势图' } : null
+  }
+  return null
+}
+
+/** 提交时是否开了「默认校色」（payload.color_fix）；老批次没有这个字段按没开 */
+export function batchColorFix(d: StudioBatchDetail): boolean {
+  return parsePayload(d.batch.payload).color_fix === true
+}
+
 /** 对照组：输入图 → 成品；index 指向成品 */
 export function compareItems(d: StudioBatchDetail, task: StudioTask): { items: LightboxItem[]; index: number } {
   const items = [...sourceItems(d, task), { url: task.result_url, name: `结果 · ${taskCaption(task)}` }]

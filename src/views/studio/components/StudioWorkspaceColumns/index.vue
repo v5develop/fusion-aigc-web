@@ -82,13 +82,17 @@ function onSwitch(path: string) {
   if (route.path !== path) void router.push(path)
 }
 
-/** 返回：有站内上一页就退回，否则回工作室首页 */
+/** 返回：有站内上一页就退回，否则回 AI 图片总览（商拍入口已收进 AI 图片，工作室首页不在导航露出） */
 function back() {
   if (window.history.state?.back) router.back()
-  else void router.push({ name: 'studio' })
+  else void router.push('/image')
 }
 
-const ctl = useStudioHistory(kind, 20, 2000, () => message.warning('该批次已不存在或已被删除'))
+const ctl = useStudioHistory(kind, 20, 2000, (id) => {
+  message.warning('该批次已不存在或已被删除')
+  // 正在预览的那条没了：回到功能介绍（回调总在挂载之后的轮询里触发，selectedId 已初始化）
+  if (selectedId.value === id) selectedId.value = null
+})
 onMounted(() => void ctl.reload())
 
 // ---------------- 选中与预览 ----------------
@@ -98,14 +102,36 @@ const detail = computed(() => ctl.items.value.find((d) => d.batch.id === selecte
 /** 选中但详情还没进已加载列表（提交后刷新的瞬间） */
 const pending = computed(() => selectedId.value !== null && !detail.value)
 
-/** 未选中时自动落到「最近批次」；选中的批次被删除后同样回落，空列表显示空态引导 */
+/**
+ * 进页面不自动选「最近批次」：右列先给功能介绍（原型 ToolWorkspaceColumns 进页即介绍）。
+ * 只有本次会话提交出来的批次（openBatch）和用户点过的历史才会打开；不回落到别的批次。
+ * 选中的批次不在已加载列表里（刷新只重拉第一页时它在更后面 / 刚提交还没进第一页）时单独拉一次批次详情补进列表，
+ * 期间右列显示「加载中」；只有服务端明确回「不存在 / 已删除」（4001 → onGone）才清掉选中、回到功能介绍。
+ * awaitingId：openBatch 打开、但刷新后的列表里还没出现的那条，先显示「加载中」，等下一次刷新带出来。
+ */
+const awaitingId = ref<number | null>(null)
 watch(
   () => ctl.items.value.map((d) => d.batch.id).join(','),
   () => {
-    if (detail.value) return
-    selectedId.value = ctl.items.value[0]?.batch.id ?? null
+    const id = selectedId.value
+    if (id === null) return
+    if (detail.value) {
+      if (awaitingId.value === id) awaitingId.value = null
+      return
+    }
+    if (awaitingId.value === id) return
+    // 用户自己删掉的：直接回到功能介绍
+    if (ctl.wasDropped(id)) {
+      selectedId.value = null
+      return
+    }
+    void ctl.ensure(id)
   },
 )
+function selectBatch(id: number) {
+  awaitingId.value = null
+  selectedId.value = id
+}
 
 // 详情批次从非终态走到终态时给一次反馈（列表里其余批次静默，卡片上能看到状态）
 watch(
@@ -129,6 +155,7 @@ defineExpose({
   /** 打开某批次详情（提交成功后打开新批次用） */
   openBatch(id: number) {
     selectedId.value = id
+    awaitingId.value = detail.value ? null : id
   },
 })
 </script>
@@ -178,7 +205,7 @@ defineExpose({
               <div
                 class="relative mx-12px mt-12px flex h-64px box-border flex-none items-center gap-8px rounded-10px border border-solid border-#e9dff2 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7fe_100%)] pl-8px pr-14px py-12px shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
               >
-                <IconButton label="返回AI 商拍" variant="quiet" @click="back">
+                <IconButton label="返回 AI 图片" variant="quiet" @click="back">
 <svg
                     viewBox="0 0 24 24"
                     fill="none"
@@ -319,7 +346,7 @@ defineExpose({
           <StudioHistoryColumn
             :history="ctl"
             :selected-id="selectedId"
-            @select="selectedId = $event.batch.id"
+            @select="selectBatch($event.batch.id)"
             @reedit="(p, d) => emit('reedit', p, d)"
           />
         </section>

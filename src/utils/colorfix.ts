@@ -9,6 +9,8 @@
  * `maskUrl`——有蒙版时按软边 alpha 只合成蒙版内像素，没有时整图校色，合成逻辑两种共用。
  * 输出一律无损 PNG：承诺「蒙版外一个像素不动」时 JPEG 的有损压缩不成立。
  */
+import { reactive } from 'vue'
+
 export interface ColorFixParams {
   hue: number
   sat: number
@@ -28,6 +30,35 @@ export const COLORFIX_RANGES: Record<keyof ColorFixParams, { min: number; max: n
   contrast: { min: -50, max: 50 },
 }
 
+/** 两组参数是否完全相同（「恢复默认」禁用、是否调过参数都看它） */
+export function colorFixEquals(a: ColorFixParams, b: ColorFixParams): boolean {
+  return (
+    a.hue === b.hue && a.sat === b.sat && a.light === b.light && a.bright === b.bright && a.contrast === b.contrast
+  )
+}
+
+/** 任意来源（接口 / localStorage）的参数 → 合法五参数（缺字段 / 非数字返回 null，越界夹回范围） */
+export function colorFixSanitize(raw: unknown): ColorFixParams | null {
+  let v = raw
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v)
+    } catch {
+      return null
+    }
+  }
+  if (!v || typeof v !== 'object') return null
+  const o = v as Record<string, unknown>
+  const out = {} as ColorFixParams
+  for (const k of Object.keys(COLORFIX_RANGES) as (keyof ColorFixParams)[]) {
+    const n = o[k]
+    if (typeof n !== 'number' || !Number.isFinite(n)) return null
+    const { min, max } = COLORFIX_RANGES[k]
+    out[k] = Math.min(max, Math.max(min, Math.round(n)))
+  }
+  return out
+}
+
 /** 参数是否为全零（零 = 不校色，UI 上「恢复默认」禁用 / 预览不挂滤镜都看它） */
 export function colorFixIsZero(p: ColorFixParams): boolean {
   return p.hue === 0 && p.sat === 0 && p.light === 0 && p.bright === 0 && p.contrast === 0
@@ -45,37 +76,139 @@ export function colorFixFilter(p: ColorFixParams): string {
   ].join(' ')
 }
 
+// ---------------- 图片 / 结果缓存（有界，长会话不涨内存） ----------------
+
+/** 已解码原图 / 蒙版的 LRU 上限：同屏最多几张结果来回切，8 张够用 */
+const IMAGE_CACHE_MAX = 8
+/** 预览尺寸烘图结果的上限（dataURL 字符串） */
+const RESULT_CACHE_MAX = 8
+/** 导出尺寸（长边 > 预览默认值）的烘图只留最近 1 张：4096 PNG 的 dataURL 动辄几十 MB */
+const EXPORT_CACHE_MAX = 1
+const PREVIEW_MAX_SIDE = 1600
+
 const imageCache = new Map<string, Promise<HTMLImageElement>>()
 const resultCache = new Map<string, string>()
+const exportCache = new Map<string, string>()
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-  const hit = imageCache.get(src)
-  if (hit) return hit
-  const task = new Promise<HTMLImageElement>((resolve, reject) => {
+/** Map 当 LRU 用：命中挪到队尾 */
+function touch<V>(map: Map<string, V>, key: string, value: V) {
+  map.delete(key)
+  map.set(key, value)
+}
+
+/** 淘汰到上限以内；被淘汰的图片解掉 src，让浏览器尽早回收解码后的位图 */
+function evictImages() {
+  while (imageCache.size > IMAGE_CACHE_MAX) {
+    const oldest = imageCache.keys().next().value as string
+    const task = imageCache.get(oldest)
+    imageCache.delete(oldest)
+    void task?.then((img) => {
+      img.onload = img.onerror = null
+      img.removeAttribute('src')
+    }, () => {})
+  }
+}
+
+function evictStrings(map: Map<string, string>, max: number) {
+  while (map.size > max) {
+    const oldest = map.keys().next().value as string
+    const v = map.get(oldest)
+    map.delete(oldest)
+    if (v?.startsWith('blob:')) URL.revokeObjectURL(v)
+  }
+}
+
+/** 加一个防缓存查询参数（同一地址先被不带 crossorigin 的 <img> 拉过、缓存里是没有 CORS 头的那份时用） */
+function bustCache(src: string): string {
+  if (src.startsWith('data:') || src.startsWith('blob:')) return src
+  try {
+    const u = new URL(src, location.href)
+    u.searchParams.set('_cf', Date.now().toString(36))
+    return u.toString()
+  } catch {
+    return src
+  }
+}
+
+function loadOnce(src: string): Promise<HTMLImageElement> {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
+    img.decoding = 'async'
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error('图片加载失败'))
     img.src = src
   })
+}
+
+/**
+ * 跨域加载一张可读像素的图。第一次失败（多半是缓存里命中了先前不带 CORS 头的响应）时带防缓存参数再拉一次，
+ * 两次都失败才算失败。签名地址加参数可能验签失败——那种情况本来就读不了像素，结果一样是失败。
+ */
+function loadImage(src: string): Promise<HTMLImageElement> {
+  const hit = imageCache.get(src)
+  if (hit) {
+    touch(imageCache, src, hit)
+    return hit
+  }
+  const task = loadOnce(src).catch(() => {
+    const busted = bustCache(src)
+    if (busted === src) throw new Error('图片加载失败')
+    return loadOnce(busted)
+  })
   imageCache.set(src, task)
+  evictImages()
   return task
+}
+
+// ---------------- <img crossorigin> 兜底：展示用的图带 crossorigin，服务端没配 CORS 时退回普通加载 ----------------
+
+const corsBlocked = reactive(new Set<string>())
+
+/**
+ * 展示校色相关结果图的 `crossorigin` 属性值：默认 'anonymous'，让浏览器缓存里存的是带 CORS 头的那份，
+ * 烘图（canvas 读像素）不会命中没有 CORS 头的缓存而失败；这张图带 crossorigin 加载失败过就退回不带
+ * （配合 {@link markCorsBlocked}），保证至少能看到图。
+ */
+export function corsAttr(src: string | null | undefined): 'anonymous' | undefined {
+  return src && !corsBlocked.has(src) && !src.startsWith('data:') && !src.startsWith('blob:') ? 'anonymous' : undefined
+}
+
+/** 带 crossorigin 的 <img> 加载失败时调用（@error），之后这张图退回普通加载 */
+export function markCorsBlocked(src: string | null | undefined) {
+  if (src && !corsBlocked.has(src) && corsAttr(src)) corsBlocked.add(src)
 }
 
 /**
  * 把五参数烘成一张 PNG dataURL。
  * - 有 maskUrl：原图打底，校色层按蒙版 alpha 合成（逐件校色，蒙版外不动）；
  * - 无 maskUrl：整图校色。
- * 结果缓存 ≤12（超过整表清掉，避免长会话内存增长）。
+ * 结果缓存：预览尺寸 LRU ≤8，导出尺寸（maxSide > 1600）只留最近 1 张。
  */
-export async function colorFixImage(src: string, p: ColorFixParams, maskUrl?: string | null): Promise<string> {
-  const key = `${src}|${maskUrl ?? 'none'}|${p.hue}|${p.sat}|${p.light}|${p.bright}|${p.contrast}`
-  const hit = resultCache.get(key)
-  if (hit) return hit
+export async function colorFixImage(
+  src: string,
+  p: ColorFixParams,
+  maskUrl?: string | null,
+  /** 长边上限：舞台预览默认 1600；下载 / 存资产传更大的值（如 4096）尽量保留原分辨率 */
+  maxSide = PREVIEW_MAX_SIDE,
+): Promise<string> {
+  const key = `${src}|${maskUrl ?? 'none'}|${maxSide}|${p.hue}|${p.sat}|${p.light}|${p.bright}|${p.contrast}`
+  const isExport = maxSide > PREVIEW_MAX_SIDE
+  const cache = isExport ? exportCache : resultCache
+  const hit = cache.get(key)
+  if (hit) {
+    touch(cache, key, hit)
+    return hit
+  }
 
-  const img = await loadImage(src)
-  const mask = maskUrl ? await loadImage(maskUrl).catch(() => null) : null
-  const max = 1600
+  const img = await loadImage(src).catch((err) => {
+    // 失败的加载不留在缓存里，下次（如网络恢复）重新拉
+    imageCache.delete(src)
+    throw err
+  })
+  // 蒙版加载失败（跨域 / 404）时整图校色兜底；生产要求蒙版时应在调用方禁用校色（见交接文档「兜底与失败」）
+  const mask = maskUrl ? await loadImage(maskUrl).catch(() => (imageCache.delete(maskUrl), null)) : null
+  const max = maxSide
   const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight))
   const width = Math.max(1, Math.round(img.naturalWidth * scale))
   const height = Math.max(1, Math.round(img.naturalHeight * scale))
@@ -103,11 +236,14 @@ export async function colorFixImage(src: string, p: ColorFixParams, maskUrl?: st
     cctx.drawImage(mask, 0, 0, width, height)
     ctx.drawImage(img, 0, 0, width, height)
     ctx.drawImage(corrected, 0, 0)
+    corrected.width = corrected.height = 0
   }
 
   const out = canvas.toDataURL('image/png')
-  if (resultCache.size > 12) resultCache.clear()
-  resultCache.set(key, out)
+  // 用完即释放画布的像素缓冲（Safari 对画布总内存有上限）
+  canvas.width = canvas.height = 0
+  cache.set(key, out)
+  evictStrings(cache, isExport ? EXPORT_CACHE_MAX : RESULT_CACHE_MAX)
   return out
 }
 

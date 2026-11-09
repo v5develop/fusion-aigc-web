@@ -46,6 +46,8 @@ export interface StudioTryonSubmitReq {
   aspect_ratio?: string
   /** 每位模特生成几张，1–9 */
   count_per_model: number
+  /** 默认校色：出图后按校色默认参数自动校一遍；不传 = 不校 */
+  color_fix?: boolean
 }
 
 /** 姿态复刻整批提交：人物图 1 张 + 姿势图 1–9 张，每张姿势一个任务 */
@@ -67,6 +69,8 @@ export interface StudioPoseSubmitReq {
   source_person_count?: number
   /** 多人配对（用户在预览里确认 / 反转后的结果）；不传的姿势图按默认配对（左→左、右→右） */
   mappings?: StudioPoseMapping[]
+  /** 默认校色：出图后按校色默认参数自动校一遍；不传 = 不校 */
+  color_fix?: boolean
 }
 
 /** 一张姿势图的多人配对 */
@@ -238,6 +242,29 @@ export interface StudioTask {
   started_at: number
   /** 0 = 未结束 */
   finished_at: number
+  /** 成品在素材库的资产 id（可直接 POST /asset-library/assets/{id}/versions）；没入库 / 已删除为 0。老网关不下发 */
+  asset_id?: number
+  /** 已保存的校色参数；没保存过为 null。老网关不下发 */
+  color_fix_params?: StudioColorFixParams | null
+  /** 服装蒙版（软 alpha PNG，校色只作用于蒙版内）；网关暂未下发，预留 */
+  mask_url?: string
+}
+
+/**
+ * 校色五参数（服务端键名，整数）：hue [-30,30]、saturation [-60,70]、value 明度 [-40,40]、
+ * brightness 亮度 [-80,80]、contrast [-50,50]。前端 utils/colorfix.ts 对应 hue / sat / light / bright / contrast。
+ */
+export interface StudioColorFixParams {
+  hue: number
+  saturation: number
+  value: number
+  brightness: number
+  contrast: number
+}
+
+/** PATCH /tasks/{task_id}/color-fix 请求体；回该子任务 */
+export interface StudioTaskColorFixReq {
+  params: StudioColorFixParams
 }
 
 /** 批次详情 = 批次 + 它的全部任务（轮询 / 历史共用的结构） */

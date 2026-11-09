@@ -29,9 +29,9 @@ import { useUserInfoStore } from '@/stores/userInfo'
 import {
   COLORFIX_DEFAULT,
   colorFixDataUrlToFile,
-  colorFixFilter,
-  colorFixImage,
+  corsAttr,
   loadColorFix,
+  markCorsBlocked,
   saveColorFix,
   type ColorFixParams,
 } from '@/utils/colorfix.ts'
@@ -40,6 +40,7 @@ import { assetLibAddVersion } from '@/api/assetLibrary.ts'
 import { taskCenterTask } from '@/api/taskCenter.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import ColorFixPanel from './ColorFixPanel.vue'
+import { downloadDataUrl, useColorFixBake } from '@/views/studio/colorfix/useColorFixBake.ts'
 import {
   findToolSchema,
   isFieldVisible,
@@ -1517,13 +1518,13 @@ const compareLabels = computed<[string, string]>(() => [compareSpec.value?.label
 const canCompare = computed(() => !!compareAfter.value && !!compareBefore.value)
 /** 校色只在 schema.colorFix 的工具（商拍换装 / 姿态复刻）出现 */
 const colorFixEnabled = computed(() => !!schema.value?.colorFix)
-/** 第三档「校色对比」：校色过的图片结果才有 */
+/** 第三档「校色对比」：校色开着（参数台打开过 / 调过参数）的图片结果才有 */
 const canColorCompare = computed(
-  () => colorFixEnabled.value && colorFixTouched.value && selectedProduct.value?.type === 'image',
+  () =>
+    colorFixEnabled.value &&
+    (colorFixTouched.value || colorFixPanelOpen.value) &&
+    selectedProduct.value?.type === 'image',
 )
-watch(canColorCompare, (ok) => {
-  if (!ok && resultMode.value === 'colorfix') resultMode.value = 'result'
-})
 /** 头部名称：记录自带标题时用它，否则写工具名 */
 const recordTitle = computed(() => {
   const t = (current.value as (ToolHistoryItem & { title?: unknown }) | null)?.title
@@ -1532,6 +1533,14 @@ const recordTitle = computed(() => {
 
 const lightboxOpen = ref(false)
 const lightboxIndex = ref(0)
+/** 灯箱：选中的那张图给烘好的校色图（还在烘 / 烘失败时给原图） */
+const lightboxItems = computed<PreviewItem[]>(() =>
+  products.value.map((p, i) =>
+    i === selectedIndex.value && p.type === 'image' && canColorCompare.value && !stageFilter.value
+      ? { ...p, src: stageSrc.value }
+      : p,
+  ),
+)
 function openLightbox() {
   if (!products.value.length) return
   lightboxIndex.value = Math.min(selectedIndex.value, products.value.length - 1)
@@ -1539,8 +1548,9 @@ function openLightbox() {
 }
 
 // ---------------- 校色闭环 v1（整图） ----------------
-// 面板五参数改动即时挂在舞台图上（CSS filter 预览）；「完成」/切记录把参数按任务号存 localStorage，
-// 切回记录自动还原；存资产 / 下载时才烘真图（无损 PNG），资产侧原图 + 校色后两版。
+// 面板五参数改动后烘进真像素（useColorFixBake，按 原图 + 参数 缓存），舞台 / 前后对比右侧 / 校色对比右侧 / 灯箱 /
+// 下载 / 存资产都用烘好的图；烘好之前 CSS filter 只做即时预览。「完成」/切记录把参数按任务号存 localStorage，
+// 切回记录自动还原；资产侧原图 + 校色后两版。工具页结果没有蒙版，整图校色。
 const colorFixPanelOpen = ref(false)
 const colorFix = ref<ColorFixParams>({ ...COLORFIX_DEFAULT })
 /** 本条记录是否校色过：面板动过参数，或 localStorage 里有这条记录的参数 */
@@ -1568,13 +1578,21 @@ watch(
   { deep: true },
 )
 
-/** 舞台图滤镜：校色过（或面板打开在调）才挂，视频与对比模式不挂 */
-const stageFilter = computed(() => {
-  if (!colorFixEnabled.value) return undefined
-  if (!colorFixTouched.value && !colorFixPanelOpen.value) return undefined
-  if (selectedProduct.value?.type !== 'image') return undefined
-  return colorFixFilter(colorFix.value)
+// 放在校色状态声明之后：watch 建立时就会求值 canColorCompare（读 colorFixTouched / colorFixPanelOpen）
+watch(canColorCompare, (ok) => {
+  if (!ok && resultMode.value === 'colorfix') resultMode.value = 'result'
 })
+
+/** 校色烘图：校色开着（canColorCompare）时烘当前选中的图片结果 */
+const colorFixBake = useColorFixBake({
+  src: computed(() => (selectedProduct.value?.type === 'image' ? selectedProduct.value.src : '')),
+  params: colorFix,
+  on: canColorCompare,
+})
+/** 舞台 / 对比右侧显示的图：校色开着时是烘好的图（烘好前是原图 + stageFilter 即时预览） */
+const stageSrc = colorFixBake.displaySrc
+/** 只在显示原图、还没烘好时挂的 CSS filter */
+const stageFilter = colorFixBake.liveFilter
 
 function closeColorFixPanel() {
   colorFixPanelOpen.value = false
@@ -1594,7 +1612,7 @@ async function saveAsAsset() {
     message.warning('这条记录没有任务号，无法写入素材库')
     return
   }
-  const withColorFix = colorFixEnabled.value && colorFixTouched.value
+  const withColorFix = canColorCompare.value
   colorFixSaving.value = true
   try {
     const detail = await taskCenterTask(uid)
@@ -1618,7 +1636,7 @@ async function saveAsAsset() {
       message.success('这张结果已在素材库，可到资产库查看')
       return
     }
-    const baked = await colorFixImage(product.src, colorFix.value)
+    const baked = await colorFixBake.exportBaked()
     const url = await goUploadImage(colorFixDataUrlToFile(baked, `colorfix-${uid}.png`))
     await assetLibAddVersion(target.id, {
       image_url: url,
@@ -1637,19 +1655,9 @@ async function saveAsAsset() {
 async function downloadSelected() {
   const product = selectedProduct.value
   if (!product) return
-  if (product.type === 'image' && colorFixEnabled.value && colorFixTouched.value) {
+  if (product.type === 'image' && canColorCompare.value) {
     try {
-      const baked = await colorFixImage(product.src, colorFix.value)
-      const bin = atob(baked.slice(baked.indexOf(',') + 1))
-      const buf = new Uint8Array(bin.length)
-      for (let k = 0; k < bin.length; k++) buf[k] = bin.charCodeAt(k)
-      const url = URL.createObjectURL(new Blob([buf], { type: 'image/png' }))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${product.name || 'result'}-校色后.png`
-      a.click()
-      // 立刻回收会让部分浏览器（Safari / 旧版 Firefox）下载落空：等下载接手后再回收
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      downloadDataUrl(await colorFixBake.exportBaked(), `${product.name || 'result'}-校色后.png`)
     } catch {
       // 烘图要跨域读像素（依赖 OSS CORS），失败就退回原地址下载，别让用户拿不到图
       message.warning('校色效果未能写入，已下载原图')
@@ -1716,10 +1724,10 @@ const resultEmptyCls =
   'flex-1 min-h-[220px] flex flex-col items-center justify-center gap-5px p-18px text-center text-11px leading-[1.55] text-muted'
 
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
-/** 压在结果图上的毛玻璃胶囊（原型 .v3-cf-edit）：32 高、r16、白 88% + 模糊，13/600 */
+/** 压在结果图上的毛玻璃胶囊（原型 .v3-cf-edit）：视觉 26 高 r13、白 84% + 模糊 8、影 0 2 8 .14，11px；命中区 sx-hit 外扩到 34 */
 const cfPillCls =
-  'inline-flex items-center gap-4px h-32px box-border px-12px rounded-16px border border-solid border-white/60 bg-white/88 backdrop-blur-[8px] ' +
-  'text-13px font-600 cursor-pointer shadow-[0_1px_3px_rgba(31,35,41,0.12)] [transition:background_120ms,border-color_120ms] hover:(bg-white border-violet-line) ' +
+  'sx-hit inline-flex items-center gap-4px h-26px box-border px-10px rounded-13px border border-solid border-white/60 bg-white/84 backdrop-blur-[8px] ' +
+  'text-11px font-500 leading-none whitespace-nowrap cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.14)] [transition:background_120ms] hover:bg-white motion-reduce:transition-none ' +
   'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 /** 输入框（原型 `.sx-input` 材质对齐档）：高 34、1px #c9cfd6、r15、inset-input；hover #aeb6bf；焦点 violet 描边 + 3px 光晕 α.14 */
 const inputCls =
@@ -3003,7 +3011,7 @@ const plateBtnCls =
       <div class="flex min-h-0 min-w-0 flex-col gap-10px">
         <section
           v-if="!compact && hasRecord"
-          class="ll-card flex-1 min-h-0 min-w-0 flex flex-col gap-10px box-border overflow-hidden p-12px"
+          class="ll-card relative flex-1 min-h-0 min-w-0 flex flex-col gap-10px box-border overflow-hidden p-12px"
           aria-labelledby="tool-result-title"
         >
           <div class="flex-none flex flex-wrap items-center gap-8px min-w-0">
@@ -3086,21 +3094,27 @@ const plateBtnCls =
           >
             <ToolImageCompare
               :before="selectedProduct.src"
-              :after="selectedProduct.src"
-              :after-filter="colorFixFilter(colorFix)"
+              :after="stageSrc"
+              :after-filter="stageFilter"
               :labels="['校色前', '校色后']"
               aria-label="校色前后对比"
+              cors
             />
-            <span class="absolute left-10px bottom-10px z-6 flex items-center gap-8px">
-              <button type="button" :class="[cfPillCls, 'text-ink-2']" @click="downloadBeforeColorFix">下载校色前</button>
+            <span class="absolute right-10px bottom-10px z-6 flex items-center gap-8px">
+              <button type="button" :class="[cfPillCls, '!bg-white/72 text-ink-2']" @click="downloadBeforeColorFix">下载校色前</button>
               <button type="button" :class="[cfPillCls, 'text-violet-ink']" @click="downloadSelected">下载校色后</button>
             </span>
             <button
               type="button"
               :class="[cfPillCls, 'absolute top-10px right-10px z-6 text-violet-ink']"
               :aria-pressed="colorFixPanelOpen"
-              @click="colorFixPanelOpen ? closeColorFixPanel() : (colorFixPanelOpen = true)"
+              @click="colorFixPanelOpen = true"
             >
+              <svg class="w-13px h-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+                <circle cx="15" cy="7" r="2" />
+                <circle cx="9" cy="17" r="2" />
+              </svg>
               校色调整
             </button>
           </div>
@@ -3112,10 +3126,26 @@ const plateBtnCls =
           >
             <ToolImageCompare
               :before="compareBefore"
-              :after="compareAfter"
+              :after="canColorCompare ? stageSrc : compareAfter"
+              :after-filter="canColorCompare ? stageFilter : undefined"
               :labels="compareLabels"
               :aria-label="`${compareLabels[0]}与生成结果前后对比`"
             />
+            <!-- 校色入口：前后对比档也在（原型三档都有「校色调整」） -->
+            <button
+              v-if="colorFixEnabled && selectedProduct?.type === 'image'"
+              type="button"
+              :class="[cfPillCls, 'absolute top-10px right-10px z-6 text-violet-ink']"
+              :aria-pressed="colorFixPanelOpen"
+              @click="colorFixPanelOpen = true"
+            >
+              <svg class="w-13px h-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+                <circle cx="15" cy="7" r="2" />
+                <circle cx="9" cy="17" r="2" />
+              </svg>
+              校色调整
+            </button>
           </div>
 
           <!-- 结果舞台：产物绝对定位 contain 居中；图片点开灯箱，视频用原生控件。
@@ -3127,7 +3157,8 @@ const plateBtnCls =
           >
             <img
               v-if="selectedProduct.type === 'image'"
-              :src="selectedProduct.src"
+              :src="stageSrc || selectedProduct.src"
+              :crossorigin="colorFixEnabled ? corsAttr(stageSrc || selectedProduct.src) : undefined"
               :alt="selectedProduct.name"
               class="absolute inset-0 block m-auto max-w-full max-h-full object-contain cursor-zoom-in"
               :class="focusRing"
@@ -3139,6 +3170,7 @@ const plateBtnCls =
               @click="openLightbox"
               @keydown.enter.prevent="openLightbox"
               @keydown.space.prevent="openLightbox"
+              @error="colorFixEnabled && markCorsBlocked(stageSrc || selectedProduct.src)"
             />
             <video
               v-else
@@ -3154,12 +3186,12 @@ const plateBtnCls =
               type="button"
               :class="[cfPillCls, 'absolute top-10px right-10px z-2 text-violet-ink']"
               :aria-pressed="colorFixPanelOpen"
-              @click="colorFixPanelOpen ? closeColorFixPanel() : (colorFixPanelOpen = true)"
+              @click="colorFixPanelOpen = true"
             >
-              <svg class="w-12px h-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
-                <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
-                <circle cx="16" cy="7" r="2" />
-                <circle cx="8" cy="17" r="2" />
+              <svg class="w-13px h-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+                <circle cx="15" cy="7" r="2" />
+                <circle cx="9" cy="17" r="2" />
               </svg>
               校色调整
             </button>
@@ -3242,9 +3274,11 @@ const plateBtnCls =
               <img
                 v-if="item.type === 'image'"
                 :src="item.src"
+                :crossorigin="colorFixEnabled ? corsAttr(item.src) : undefined"
                 :alt="`候选 ${i + 1}`"
                 class="block w-full h-full object-cover"
                 draggable="false"
+                @error="colorFixEnabled && markCorsBlocked(item.src)"
               />
               <video
                 v-else
@@ -3263,10 +3297,15 @@ const plateBtnCls =
           >
             还有 {{ history.running.value }} 个任务处理中，完成后会补进中间那一列
           </p>
+
+          <!-- 校色参数台（与商拍工作室共用）：相对结果卡定位、贴右缘垂直居中、可拖并夹在卡内；完成 / 切记录存 localStorage -->
+          <ColorFixPanel
+            v-model="colorFix"
+            :open="colorFixEnabled && colorFixPanelOpen && selectedProduct?.type === 'image'"
+            @done="closeColorFixPanel"
+          />
         </section>
 
-        <!-- 校色面板（364 宽、Teleport 到 body、可拖）：参数即时挂舞台预览，完成 / 切记录存 localStorage -->
-        <ColorFixPanel v-if="colorFixEnabled && colorFixPanelOpen" v-model="colorFix" @done="closeColorFixPanel" />
 
         <!--
           功能介绍（原型 ToolIntroPanel fill）：内边距 18、gap 14；标题 14/600，正文 13/1.65 ink-2；
@@ -3307,7 +3346,7 @@ const plateBtnCls =
       </div>
     </div>
 
-    <ToolMediaPreview v-model:open="lightboxOpen" v-model:index="lightboxIndex" :items="products" />
+    <ToolMediaPreview v-model:open="lightboxOpen" v-model:index="lightboxIndex" :items="lightboxItems" />
     <!-- 历史缩略图 / 抠图结果卡的放大：共用 MediaLightbox -->
     <MediaLightbox
       v-model:show="thumbLightbox.show"

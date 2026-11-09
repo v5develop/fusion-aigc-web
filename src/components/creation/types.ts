@@ -19,6 +19,8 @@ export interface CreationSettingField {
   label?: string
   /** 标签后加红色星号（只是展示，校验仍由页面负责） */
   required?: boolean
+  /** 字段下方一行 11px 说明（目前只有张数行用，如「按模特算：每位模特各出这么多张」）；不传不显示 */
+  hint?: string
 }
 
 export type CreationSettingsConfig = Partial<Record<CreationSettingKey, CreationSettingField>>

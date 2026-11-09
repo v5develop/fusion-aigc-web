@@ -8,6 +8,7 @@
  * 拖柄 30 圆、白→#f4f5f6 渐变 + line-strong 描边 + 短影，箭头 violet-ink（原型 v3 对比柄）。只做直线分割，不做原型的弹簧弯曲。
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 
 const {
   before,
@@ -15,6 +16,7 @@ const {
   labels = ['输入图', '生成结果'],
   ariaLabel = '图片前后对比',
   afterFilter,
+  cors = false,
 } = defineProps<{
   before: string
   after: string
@@ -22,6 +24,11 @@ const {
   ariaLabel?: string
   /** 挂在结果图上的 CSS filter（校色对比：同一张图，右侧挂校色滤镜预览） */
   afterFilter?: string
+  /**
+   * 两张图带 crossorigin="anonymous" 加载（校色场景）：让浏览器缓存里是带 CORS 头的那份，随后烘图读像素不会命中
+   * 不带 CORS 头的缓存；服务端没配 CORS 时自动退回普通加载（utils/colorfix corsAttr）
+   */
+  cors?: boolean
 }>()
 
 const root = ref<HTMLElement | null>(null)
@@ -120,18 +127,22 @@ const tagCls =
     <img
       ref="afterImg"
       :src="after"
+      :crossorigin="cors ? corsAttr(after) : undefined"
       :alt="labels[1]"
       class="absolute inset-0 block w-full h-full object-contain pointer-events-none"
       :style="afterFilter ? { filter: afterFilter } : undefined"
       draggable="false"
       @load="measure"
+      @error="cors && markCorsBlocked(after)"
     />
     <div class="absolute inset-0" :style="{ clipPath: `inset(0 ${100 - pos}% 0 0)` }">
       <img
         :src="before"
+        :crossorigin="cors ? corsAttr(before) : undefined"
         :alt="labels[0]"
         class="absolute inset-0 block w-full h-full object-contain pointer-events-none"
         draggable="false"
+        @error="cors && markCorsBlocked(before)"
       />
     </div>
     <span :class="[tagCls, 'left-10px']" :style="{ opacity: Math.min(1, Math.max(0, (pos / 100 - 0.14) * 4)) }">{{

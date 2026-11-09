@@ -175,16 +175,62 @@ export function useStudioHistory(
     return { list: res.data?.list ?? [], next: res.data?.next_cursor ?? '' }
   }
 
-  /** 首屏 / 手动刷新（提交成功、取消、删除后调用） */
+  /** 列表排序口径（与服务端一致：created_at DESC, id DESC）：a 是否排在 b 前面 */
+  const newer = (a: StudioBatchDetail, b: StudioBatchDetail) =>
+    a.batch.created_at !== b.batch.created_at ? a.batch.created_at > b.batch.created_at : a.batch.id > b.batch.id
+
+  /**
+   * 首屏 / 手动刷新（提交成功、取消、删除、重试后调用）。
+   *
+   * <p>只重拉第一页并<b>合并</b>，不把已加载的后几页扔掉：第一页按服务端结果原样替换（其间不在新一页里的 = 已删除，摘掉）；
+   * 比第一页最后一条还旧的已加载批次原样保留（游标也保留，触底接着翻）。否则用户翻到第三页选中一条，
+   * 一次取消 / 重试 / 删除之后列表回到第一页，选中的那条「消失」，右列被当成删除清空。
+   */
   async function reload() {
     loading.value = true
     try {
       const { list, next } = await fetchPage('')
-      items.value = list
-      nextCursor.value = next
+      const tail = next && list.length ? items.value.filter((d) => newer(list[list.length - 1]!, d)) : []
+      const seen = new Set(list.map((d) => d.batch.id))
+      const keep = tail.filter((d) => !seen.has(d.batch.id))
+      items.value = [...list, ...keep]
+      // 保留了已加载的后几页：游标仍指向它们之后；否则用新一页的游标
+      if (!keep.length) nextCursor.value = next
       startPollingIfNeeded()
     } finally {
       loading.value = false
+    }
+  }
+
+  /** 本会话里用户自己删掉的批次（选中的那条被删后，页面据此直接清选中，不当成「被别处删除」去补拉 / 提示） */
+  const dropped = new Set<number>()
+
+  /** 从列表里摘掉一条（删除成功后先本地摘，后几页的批次 reload 不会再碰它） */
+  function drop(id: number) {
+    dropped.add(id)
+    items.value = items.value.filter((d) => d.batch.id !== id)
+  }
+
+  /**
+   * 单独拉一个批次放进列表（选中的批次不在已加载范围里时用）：按排序口径插到对应位置。
+   * 4001（不存在 / 已删除）走 onGone；其它失败返回 false，调用方保持选中、下次再试。
+   */
+  async function ensure(id: number): Promise<boolean> {
+    if (items.value.some((d) => d.batch.id === id)) return true
+    if (dropped.has(id)) return false
+    try {
+      const data = (await studioBatchDetail(id)).data
+      if (!data) return false
+      if (!items.value.some((d) => d.batch.id === id)) {
+        const at = items.value.findIndex((d) => newer(data, d))
+        if (at < 0) items.value.push(data)
+        else items.value.splice(at, 0, data)
+      }
+      startPollingIfNeeded()
+      return true
+    } catch (err) {
+      if (toApiError(err)?.code === 4001) onGone?.(id)
+      return false
     }
   }
 
@@ -259,6 +305,10 @@ export function useStudioHistory(
     hasRunning,
     reload,
     loadMore,
+    drop,
+    ensure,
+    /** 是否是本会话里用户自己删掉的批次 */
+    wasDropped: (id: number) => dropped.has(id),
     stopPolling,
     /** 连续网络失败后已暂停轮询（页面显示「网络异常，已暂停轮询」条） */
     offline: poller.offline,

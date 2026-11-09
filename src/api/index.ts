@@ -221,6 +221,8 @@ const SILENT_ERROR_URLS = [
   // 智能体出图报价 / 批量托管估价：失败就隐藏点数行，不打扰
   '/agent/image-quote',
   '/batch-hosting/ecom-image/quote',
+  // 商拍工作室保存校色参数（PATCH /studio/tasks/{id}/color-fix）：后台防抖保存，失败本机 localStorage 兜底，不打扰
+  '/color-fix',
 ]
 
 // 走「引导购买」弹框而非 toast 的接口白名单：前端在用的全部创作提交口。

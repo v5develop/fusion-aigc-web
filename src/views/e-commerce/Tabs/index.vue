@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { NDropdown, type DropdownOption } from 'naive-ui'
 import { sessionKeyOf, tabLabel, useEcTabsStore, type EcTab } from '@/stores/e-commerce/tabs'
 import { useSessionIdStore } from '@/stores/e-commerce'
+import { shangpingshiping_data } from '@/views/e-commerce/entries'
 
 const route = useRoute()
 const router = useRouter()
@@ -12,13 +13,21 @@ const tabsStore = useEcTabsStore()
 const sessionIdStore = useSessionIdStore()
 const { tabs, runningMap } = storeToRefs(tabsStore)
 
-// 首页不在 tabs 里（它不进缓存也不可关闭），标签条上单独渲染为固定首项
-const isHomeActive = computed(() => route.name === 'e-commerce')
+// 首项固定为「返回 AI 图片 / AI 视频」（见 overviewOf），不进 tabs、不可关闭
 
 // 同类目可以多开，光比 name 不够，还要比实例 id
 const isActive = (id: string) => route.query.tab === id
 
 const go = (id: string, name: string) => router.push({ name, query: { tab: id } })
+
+/**
+ * 「回模块首页」去哪：2026-11-09 主导航隐藏了 AI 电商，电商功能并进 AI 图片 / AI 视频，
+ * 所以回到对应总览页（商品视频四项回 /video，其余回 /image）；电商首页 /e-commerce 仍可深链打开。
+ */
+const VIDEO_PAGE_NAMES = new Set(shangpingshiping_data.map((e) => e.pathName))
+const overviewOf = (name: unknown) =>
+  VIDEO_PAGE_NAMES.has(String(name)) ? { path: '/video', label: 'AI 视频' } : { path: '/image', label: 'AI 图片' }
+const overview = computed(() => overviewOf(route.name))
 
 /** 关闭后的会话清理：只保留仍然打开的标签对应的会话 */
 const pruneSessions = () => sessionIdStore.pruneSessionIds(new Set(tabs.value.map(sessionKeyOf)))
@@ -30,7 +39,7 @@ const close = (tab: { id: string; name: string }) => {
 
   // 关的不是当前标签就不用动路由，停在原地
   if (!isActive(tab.id)) return
-  router.push(next ? { name: next.name, query: { tab: next.id } } : { name: 'e-commerce' })
+  router.push(next ? { name: next.name, query: { tab: next.id } } : overviewOf(tab.name).path)
 }
 
 /**
@@ -45,8 +54,9 @@ function removeMany(ids: string[]) {
 
   if (!ids.some((id) => isActive(id))) return
   const remaining = tabs.value
+  const fallback = overviewOf(route.name).path
   if (!remaining.length) {
-    router.push({ name: 'e-commerce' })
+    router.push(fallback)
     return
   }
   let best: EcTab | undefined
@@ -59,7 +69,7 @@ function removeMany(ids: string[]) {
     }
   }
   if (!best) {
-    router.push({ name: 'e-commerce' })
+    router.push(fallback)
     return
   }
   router.push({ name: best.name, query: { tab: best.id } })
@@ -181,11 +191,9 @@ function onMenuSelect(key: string | number) {
     <button
       type="button"
       class="sx-pilltab flex-none border-none bg-transparent sx-focus"
-      :class="{ 'sx-pilltab-on': isHomeActive }"
-      :aria-current="isHomeActive ? 'page' : undefined"
-      @click="router.push({ name: 'e-commerce' })"
+      @click="router.push(overview.path)"
     >
-      电商首页
+      返回{{ overview.label }}
     </button>
 
     <div

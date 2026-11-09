@@ -3,7 +3,8 @@
  * 商拍换装 · 服装图弹窗（线上原型 AiDigitalModel：标题「服装图」、720 宽）。
  *
  * <p>上方 8 个单品片（4 列）→ 说明 → 选 2 件起出「一套合影 / 分别上传」→
- * 分别上传：每件一行，名称 40 + 6 个 78×78 角度格（正面 / 背面 / 侧面 / 细节 / 平铺 / 其他）+ 右侧 n / 6；
+ * 分别上传：每件一行，名称 40 + 6 个 78×130 r12 角度格（3 列 × 2 行、间距 8；正面 / 背面 / 侧面 / 细节 / 平铺 / 其他）+ 右侧 n / 6；
+ * 已传格左下角度标 10px、右上悬停删除（StudioMedBtn，命中 32）；单品片 30 高 / 分段 26 高，可点字 12、说明 11。
  * 一套合影：220 高整块虚线格放一张合影。底栏「改动即时保存，关掉即生效」+「完成」。
  *
  * <p>状态在 useTryonGarment（页面持有）：弹窗里的增删即时生效，关掉 / 完成只是收起；
@@ -74,7 +75,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
           v-for="item in OUTFIT"
           :key="item.key"
           type="button"
-          class="h-32px box-border rounded-6px border border-solid text-13px cursor-pointer"
+          class="h-30px box-border rounded-6px border border-solid text-12px cursor-pointer"
           :class="[focusRing, g.selected.includes(item.key) ? onCls : 'border-line bg-white text-muted']"
           :aria-pressed="g.selected.includes(item.key)"
           @click="g.toggleItem(item.key)"
@@ -97,7 +98,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
           ] as const"
           :key="opt.key"
           type="button"
-          class="flex-1 h-28px box-border rounded-4px border border-solid text-13px cursor-pointer"
+          class="flex-1 h-26px box-border rounded-4px border border-solid text-12px cursor-pointer"
           :class="[focusRing, g.mode === opt.key ? onCls : 'border-transparent bg-transparent text-muted']"
           :aria-pressed="g.mode === opt.key"
           @click="g.switchMode(opt.key)"
@@ -127,7 +128,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
             <template v-if="g.look">
               <img :src="g.look" alt="" class="absolute inset-0 w-full h-full object-cover" />
               <span
-                class="absolute left-8px bottom-8px px-8px py-2px rounded-full bg-[rgba(31,35,41,0.68)] text-white text-9px"
+                class="absolute left-8px bottom-8px px-8px py-2px rounded-full bg-[rgba(31,35,41,0.68)] text-white text-10px"
                 >整套合影 · 1 张</span
               >
             </template>
@@ -164,11 +165,11 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
           @drop.prevent="dropOn(key, $event)"
         >
           <span class="flex-[0_0_40px] w-40px text-11px text-ink-2">{{ outfitLabel(key) }}</span>
-          <div class="flex gap-8px">
+          <div class="grid grid-cols-[repeat(3,78px)] gap-8px">
             <template v-for="angle in ANGLES" :key="angle">
               <div
                 v-if="g.photoAt(key, angle)"
-                class="group relative flex-[0_0_78px] w-78px h-78px box-border overflow-hidden rounded-6px border border-solid border-line bg-white"
+                class="group relative w-78px h-130px box-border overflow-hidden rounded-12px border border-solid border-line bg-white"
               >
                 <img
                   :src="g.photoAt(key, angle)!.url"
@@ -176,7 +177,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
                   class="block w-full h-full object-cover"
                 />
                 <span
-                  class="absolute left-4px bottom-4px px-5px rounded-full bg-[rgba(31,35,41,0.72)] text-white text-9px leading-16px"
+                  class="absolute left-4px bottom-4px px-5px rounded-full bg-[rgba(31,35,41,0.72)] text-white text-10px leading-16px"
                   >{{ angle }}</span
                 >
                 <StudioMedBtn
@@ -200,14 +201,14 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
               <button
                 v-else
                 type="button"
-                class="flex flex-col items-center justify-center gap-2px flex-[0_0_78px] w-78px h-78px box-border p-0 rounded-6px border border-dashed border-line bg-white text-placeholder cursor-pointer disabled:cursor-progress"
+                class="flex flex-col items-center justify-center gap-2px w-78px h-130px box-border p-0 rounded-12px border border-dashed border-line bg-white text-placeholder cursor-pointer disabled:cursor-progress"
                 :class="focusRing"
                 :disabled="g.uploading"
                 :aria-label="`上传${outfitLabel(key)}${angle}角度`"
                 @click="pick({ kind: 'item', key, angle })"
               >
                 <span class="text-14px leading-none" aria-hidden="true">＋</span>
-                <span class="text-9px leading-12px">{{ angle }}</span>
+                <span class="text-11px leading-15px">{{ angle }}</span>
               </button>
             </template>
           </div>

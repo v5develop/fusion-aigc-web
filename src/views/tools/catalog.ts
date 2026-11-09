@@ -5,11 +5,15 @@
  * 注册表里没有的条目（或没有 route 的）显示为「即将开放」，不自造路由；
  * 例外是单图复刻 / SKU替换：注册表没收，但工作流页（/workflow，wf:13 / wf:14）已可用，按工作流页同一 query 直达；
  * 局部重绘同理：注册表没收，但工具页 schema 已有，直达 /tools/ai-inpaint。
- * 「本地生活」组（原型 image-local-life）：图文笔记 / 门店全案走外部路由 /local-life/*，图标取本地生活导航页同路由条目，名称与说明对齐 views/image/landing.ts。
+ * 「本地生活」组（原型 image-local-life）：走外部路由 /local-life/*，条目取自 views/image/landing.ts（见下）。
+ *
+ * <p>2026-11-09：主导航隐藏了「工作流」「AI 电商」「AI 商拍」「本地生活」，它们的子功能并进 AI 图片 / AI 视频。
+ * 「图片处理」「视频处理」两组仍由这里自己列（含局部重绘、数字人口播等落地页没有的条目）；
+ * 其余分组（商拍 / 电商 / 服装 / 本地生活）直接取落地页 views/image/landing.ts 的同名分组，两处同源、只维护一份；
+ * 已在处理组里出现过的路由不再重复列。
  */
 import { tools, type ToolItem } from '@/views/home/tools'
-import { workflowRouteOf } from '@/views/workflow/schemas'
-import { localLifeBannerTools, localLifeLanding } from '@/views/local-life/landingData'
+import { pictureLanding, videoLanding, type LandingPageData } from '@/views/image/landing'
 
 export interface CatalogEntry {
   /** 注册表 id（同首页卡片 id / 工具页 toolId） */
@@ -39,78 +43,58 @@ const byId = new Map<string, ToolItem>(tools.map((t) => [t.id, t]))
 /** 即将开放条目没有注册表图标，借用「图片生成」的通用图标占位，保持图标框一致 */
 const PLACEHOLDER_ICON = byId.get('image-generate')?.icon
 
-/** 本地生活导航页条目的图标（按路由）；含顶部横幅工具（门店全案在横幅里，不在分区） */
-const LOCAL_LIFE_ICONS = new Map<string, string>(
-  [...localLifeBannerTools, ...localLifeLanding.sections.flatMap((x) => x.tools)].flatMap((t) =>
-    t.route && t.icon ? [[t.route, t.icon] as const] : [],
-  ),
-)
-
 function entry([id, name, tagline, route, iconFrom]: Spec): CatalogEntry {
   const t = byId.get(id)
-  const icon = t?.icon ?? (route ? LOCAL_LIFE_ICONS.get(route) : undefined) ?? (iconFrom ? byId.get(iconFrom)?.icon : undefined) ?? PLACEHOLDER_ICON
+  const icon = t?.icon ?? (iconFrom ? byId.get(iconFrom)?.icon : undefined) ?? PLACEHOLDER_ICON
   return { id, name: t?.name ?? name, tagline, route: t?.route ?? route, icon }
 }
 
 const group = (label: string, specs: Spec[]): CatalogGroup => ({ label, entries: specs.map(entry) })
 
+/** 落地页除首组（处理组）外的分组，原样转成目录分组；与 head 里已有路由（或 id）重复的条目跳过 */
+function landingGroups(page: LandingPageData, head: CatalogGroup): CatalogGroup[] {
+  const seen = new Set(head.entries.flatMap((e) => [e.id, e.route ?? '']).filter(Boolean))
+  return page.sections.slice(1).flatMap((sec) => {
+    const entries = sec.tools
+      .filter((t) => !seen.has(t.id) && !(t.route && seen.has(t.route)))
+      .map((t): CatalogEntry => ({ id: t.id, name: t.name, tagline: t.tagline, route: t.route, icon: t.icon }))
+    return entries.length ? [{ label: sec.label, entries }] : []
+  })
+}
+
+const imageHead = group('图片处理', [
+  ['ai-upscale', '高清放大', '放大补细节'],
+  ['ai-eraser', '智能消除', '去除杂物'],
+  // 注册表没收（也没有原型）：工具页 schema 已就绪（schemas.ts ai-inpaint），直达 /tools/ai-inpaint，借智能消除的图标
+  ['ai-inpaint', '局部重绘', '框选重画', '/tools/ai-inpaint', 'ai-eraser'],
+  ['ai-cutout', '智能抠图', '一键去背景'],
+  ['image-translate', '图片翻译', '多语换字'],
+  ['text-replace', '文字替换', '换字不换版'],
+  ['aspect-ratio-convert', '比例转换', '智能改比例'],
+  ['image-generate', '图片生成', '提示词生图'],
+])
+
 const imageCatalog: Catalog = {
   title: 'AI 图片',
-  groups: [
-    group('图片处理', [
-      ['ai-upscale', '高清放大', '放大补细节'],
-      ['ai-eraser', '智能消除', '去除杂物'],
-      // 注册表没收（也没有原型）：工具页 schema 已就绪（schemas.ts ai-inpaint），直达 /tools/ai-inpaint，借智能消除的图标
-      ['ai-inpaint', '局部重绘', '框选重画', '/tools/ai-inpaint', 'ai-eraser'],
-      ['ai-cutout', '智能抠图', '一键去背景'],
-      ['image-translate', '图片翻译', '多语换字'],
-      ['text-replace', '文字替换', '换字不换版'],
-      ['aspect-ratio-convert', '比例转换', '智能改比例'],
-      ['image-generate', '图片生成', '提示词生图'],
-    ]),
-    group('电商', [
-      ['ai-product-retouch', '商品精修', '提升质感'],
-      ['product-replace', '产品替换', '换品保场景'],
-      ['ai-first-screen-main-image', '首屏主图', '卖点主图'],
-      ['ai-background-generator', '场景生成', '更换场景'],
-      // 注册表里没有这两项：直达工作流页的视觉复刻流（wf:13 单图复制 / wf:14 SKU替换）
-      ['single-image-clone', '单图复刻', '同款复制', workflowRouteOf('visual-style-replace')],
-      ['sku-replace', 'SKU替换', '批量换货', workflowRouteOf('visual-sku-replace')],
-    ]),
-    group('服装', [
-      ['cloth-wrinkle-removal', '服装去皱', '抚平褶皱'],
-      ['ai-digital-model', '商拍换装', '整套换装'],
-      ['ai-posture-fission', '姿态复刻', '同人换姿势'],
-    ]),
-    // 外部路由（不在工具页内）：原型 ai-note → 图文笔记、门店全案 → 全案页
-    group('本地生活', [
-      ['ai-note', '图文笔记', '先文案后配图', '/local-life/note'],
-      ['local-life-full-set', '门店全案', '品牌档案 + 模板一键成套', '/local-life/full-set'],
-    ]),
-  ],
+  groups: [imageHead, ...landingGroups(pictureLanding, imageHead)],
 }
 
 /**
  * 视频工具页（视频高清 / 视频翻译）不属于「AI 图片」，用注册表的视频分类单独成栏；分组、顺序与短说明抄新版原型。
- * 「电商」组三项注册表没收，按单图复刻同一做法直达工作流页的视频流（wf:6 / wf:7 / wf:41）。
+ * 「电商」组三项注册表没收，按单图复刻同一做法直达工作流页的视频流（wf:6 / wf:7 / wf:41）；电商 / 本地生活组取视频落地页。
  * 侧栏 AI 视频面板（layout/Navigation）也读这一份。
  */
+const videoHead = group('视频处理', [
+  ['ai-video-enhance', '视频高清', '提升画质'],
+  ['ai-video-translate', '视频翻译', '配音翻译'],
+  ['ai-video-generator', '视频生成', '文生视频'],
+  ['ai-video-clone', '视频复刻', '参照原片生成'],
+  ['ai-voiceover', '数字人口播', '文案出口播'],
+])
+
 const videoCatalog: Catalog = {
   title: 'AI 视频',
-  groups: [
-    group('视频处理', [
-      ['ai-video-enhance', '视频高清', '提升画质'],
-      ['ai-video-translate', '视频翻译', '配音翻译'],
-      ['ai-video-generator', '视频生成', '文生视频'],
-      ['ai-video-clone', '视频复刻', '参照原片生成'],
-      ['ai-voiceover', '数字人口播', '文案出口播'],
-    ]),
-    group('电商', [
-      ['model-sell', '模特带货', '模特卖货', workflowRouteOf('video-product-sell')],
-      ['video-product-replace', '商品替换', '原片换品', workflowRouteOf('video-product-replace'), 'product-replace'],
-      ['voice-sell', '口播带货', '产品口播', workflowRouteOf('video-product-talk')],
-    ]),
-  ],
+  groups: [videoHead, ...landingGroups(videoLanding, videoHead)],
 }
 
 /** 功能切换弹层（原型 FunctionSwitcher ml）顶部的一级「AI 图片 / AI 视频」分段，按这个顺序 */

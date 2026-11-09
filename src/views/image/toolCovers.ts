@@ -21,6 +21,11 @@ export const TOOL_COVERS: Record<string, string> = {
   服装去皱: '/images/tool-covers/wrinkle.jpg',
   商拍换装: '/images/tool-covers/product-garment.jpg',
   姿态复刻: '/images/tool-covers/pose-fission.jpg',
+  // 2026-11-09 并入的原 AI 商拍 / AI 电商条目：没有专属实拍图，借同类功能的那张
+  商拍生图: '/images/tool-covers/image-generate.jpg',
+  AI试衣: '/images/tool-covers/product-garment.jpg',
+  爆款图复刻: '/images/tool-covers/single-copy.jpg',
+  人像换背景: '/images/tool-covers/scene-generate.jpg',
   本地生活: '/images/tool-covers/local-life.jpg',
   门店全案: '/images/tool-covers/local-life.jpg',
   数字人口播: '/images/tool-covers/oral-sell.jpg',

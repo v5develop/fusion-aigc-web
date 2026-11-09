@@ -1,22 +1,25 @@
 <script setup lang="ts">
 /**
- * 三栏工作台 · 中列历史列表（批次卡片）。
+ * 三栏工作台 · 中列历史列表（批次卡片，对齐原型 StudioHistoryColumn ml 卡片）。
  *
- * <p>批次卡片：封面 / 状态 chip / 进度 / 成功失败数 / 时间，点击选中批次交给右列预览；
- * 顶部「搜索提示词」按已加载批次的提示词本地过滤，底部翻页（原型 .v3-hist__pager「1 / 1」）：
- * 每页 20 条在已加载列表上切片，翻到最后一页且后端还有游标时「下一页」先拉下一批；
- * 列表末尾保留「加载更多」按钮（拉后端下一批游标，追加到已加载列表；原型无触底自动加载，故只留按钮）/「没有更多了」；
+ * <p>卡片：左 44 叠放缩略（优先提交时的输入图，没有再用结果图，最多叠 3 张，右上角标总张数；悬停看大图、点击开灯箱，
+ * 灯箱优先放结果图）→ 右侧第一行提示词（没有就用「功能 · N 张」），张数 / 成功 / 失败 / 点数放在悬停提示里；
+ * 失败 / 部分成功 / 已取消时第二行给状态与原因；底行时间（今天 HH:mm，其它天 MM-DD，完整时间在悬停提示）+ 下载 / 删除 / 重新编辑。
+ * 进行中的批次显示骨架 + 进度条与百分比（任务 progress 均值，终态任务按 100 算），右侧保留「取消批次」。
+ * 点击卡片选中批次交给右列预览；顶部「搜索提示词」按已加载批次本地过滤，底部翻页每页 8 条（原型 ML_PAGE_SIZE）；
+ * 翻到最后一页且后端还有游标时「下一页」先拉下一批，列表末尾保留「加载更多」/「没有更多了」。
  * 在跑批次由 useStudioHistory 自动轮询。
- * 操作：重新编辑（parse payload 后上抛）/ 取消（非终态）/ 删除（终态，二次确认）。
  */
 import { computed, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { NPopover, useMessage } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
+import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
 import { studioCancelBatch, studioDeleteBatch } from '@/api/studio.ts'
 import type { StudioBatchDetail } from '@/api/studioTypes.ts'
+import { downloadImagesAsZip } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
-import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal } from '../../constants.ts'
+import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal, shortTime } from '../../constants.ts'
 
 const props = defineProps<{
   /** useStudioHistory 实例（游标分页 + 在跑批次轮询） */
@@ -56,8 +59,100 @@ async function cancelBatch(d: StudioBatchDetail) {
 
 async function removeBatch(d: StudioBatchDetail) {
   await studioDeleteBatch(d.batch.id)
-  message.success('已删除')
+  message.success('已删除这条记录')
+  ctl.drop(d.batch.id)
   await ctl.refresh()
+}
+
+/** 下载：多张打包成 zip，一张直接下（跨域抓不到时 util 自己降级成逐张 / 新标签页） */
+const downloading = ref<number | null>(null)
+async function download(d: StudioBatchDetail) {
+  const urls = resultsOf(d)
+  if (!urls.length || downloading.value !== null) return
+  downloading.value = d.batch.id
+  try {
+    const t = formatTime(d.batch.created_at).replace(/[\s:]/g, '-')
+    await downloadImagesAsZip(urls, `${KIND_LABEL[d.batch.kind] ?? '商拍'}_${t || d.batch.id}`)
+  } finally {
+    downloading.value = null
+  }
+}
+
+// ---------------- 卡片内容 ----------------
+
+/** 提交快照（payload JSON）；解析失败按空对象 */
+function payloadOf(d: StudioBatchDetail): Record<string, unknown> {
+  try {
+    const p = JSON.parse(d.batch.payload || '{}')
+    return p && typeof p === 'object' && !Array.isArray(p) ? (p as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
+}
+const strList = (v: unknown) =>
+  (Array.isArray(v) ? v : []).filter((u): u is string => typeof u === 'string' && /^https?:\/\//i.test(u))
+
+/** 提交时的输入图：换装 = 服装图 + 模特图；姿态 = 人物图 + 姿势图；图片生成 = 参考图 */
+function inputsOf(d: StudioBatchDetail): string[] {
+  const p = payloadOf(d)
+  if (d.batch.kind === 'tryon') {
+    const garments = (Array.isArray(p.garment_images) ? p.garment_images : []).map(
+      (g) => (g as { url?: unknown } | null)?.url,
+    )
+    return [...strList(garments), ...strList(p.model_image_urls)]
+  }
+  if (d.batch.kind === 'pose') return [...strList([p.source_image_url]), ...strList(p.pose_image_urls)]
+  return strList(p.image_urls)
+}
+/** 已出的结果图（成功任务，按任务顺序） */
+const resultsOf = (d: StudioBatchDetail) => d.tasks.filter((t) => t.status === 2 && t.result_url).map((t) => t.result_url)
+
+/** 左侧叠放图：优先输入图（用户传的），没有再看结果图 / 封面；最多 3 张 */
+function stackOf(d: StudioBatchDetail) {
+  const inputs = inputsOf(d)
+  if (inputs.length) return inputs.slice(0, 3)
+  const results = resultsOf(d)
+  if (results.length) return results.slice(0, 3)
+  return d.batch.cover_url ? [d.batch.cover_url] : []
+}
+function stackCount(d: StudioBatchDetail) {
+  return inputsOf(d).length || resultsOf(d).length || (d.batch.cover_url ? 1 : 0)
+}
+
+/** 卡片第一行：提示词（换装 prompt / 姿态 global_prompt / 图片生成 prompt），没有就用「功能 · N 张」 */
+function promptOf(d: StudioBatchDetail) {
+  const p = payloadOf(d)
+  const text = [p.prompt, p.global_prompt].find((v) => typeof v === 'string' && v.trim())
+  return typeof text === 'string' ? text.trim() : `${KIND_LABEL[d.batch.kind] ?? '批次'} · ${d.batch.task_total} 张`
+}
+/** 悬停提示：完整提示词 + 统计 */
+function statsOf(d: StudioBatchDetail) {
+  const b = d.batch
+  return `${KIND_LABEL[b.kind] ?? b.kind} · ${b.task_total} 张 · 成功 ${b.task_done} · 失败 ${b.task_failed} · ${b.estimated_points} 点`
+}
+
+/** 进行中进度：任务 progress 均值（成功 / 失败 / 取消按 100）；没有任务明细时按完成数估 */
+function progressOf(d: StudioBatchDetail) {
+  if (!d.tasks.length) return batchProgress(d.batch)
+  const sum = d.tasks.reduce((acc, t) => acc + ([2, 3, 4].includes(t.status) ? 100 : Math.max(0, t.progress || 0)), 0)
+  return Math.max(0, Math.min(100, Math.round(sum / d.tasks.length)))
+}
+
+// ---------------- 灯箱 ----------------
+
+const lightboxShow = ref(false)
+const lightboxIndex = ref(0)
+/** 与 MediaLightbox 的 items 同形 */
+const lightboxItems = ref<{ url: string; type?: 'image' | 'video'; name?: string }[]>([])
+/** 灯箱条目：优先结果图；没有结果就放输入图 */
+function openLightbox(d: StudioBatchDetail) {
+  const results = resultsOf(d)
+  const urls = results.length ? results : inputsOf(d)
+  if (!urls.length) return
+  const word = results.length ? '结果' : '输入图'
+  lightboxItems.value = urls.map((url, i) => ({ url, type: 'image', name: `${KIND_LABEL[d.batch.kind] ?? ''}${word}-${i + 1}` }))
+  lightboxIndex.value = 0
+  lightboxShow.value = true
 }
 
 function reedit(d: StudioBatchDetail) {
@@ -75,7 +170,8 @@ function reedit(d: StudioBatchDetail) {
 
 // ---------------- 搜索 + 翻页（原型 .v3-hist__tools / .v3-hist__pager） ----------------
 
-const PAGE_SIZE = 20
+/** 每页 8 条（原型 ML_PAGE_SIZE） */
+const PAGE_SIZE = 8
 const query = ref('')
 const page = ref(1)
 
@@ -168,73 +264,46 @@ function prevPage() {
     >
       <!-- 卡片列表（原型 .v3-hist__list.is-cards：gap 8，内边距 2 0 10） -->
       <div class="flex flex-col gap-8px pt-2px pb-10px">
+        <!-- 卡片（原型 .v3-hist__card：44 缩略 + 内容两栏、gap 10、内边距 10、r18、最小高 74；选中 柔紫线 + 白→#faf4fd） -->
         <div
           v-for="d in paged"
           :key="d.batch.id"
-          class="sx-squircle flex flex-none gap-10px items-center min-h-74px box-border p-10px border border-solid rounded-18px cursor-pointer transition-[border-color,background-color,box-shadow] duration-fast"
+          class="sx-squircle flex flex-none gap-10px items-center min-h-74px box-border p-10px border border-solid rounded-18px cursor-pointer transition-[border-color,background-color,box-shadow] duration-fast sx-focus"
           :class="
             d.batch.id === selectedId
               ? 'border-violet-line bg-gradient-to-b from-white to-#faf4fd shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
               : 'border-line bg-white hover:(border-control shadow-[0_1px_2px_rgba(31,35,41,0.05)])'
           "
+          tabindex="0"
+          :aria-current="d.batch.id === selectedId ? 'true' : undefined"
+          :aria-label="`${promptOf(d)}，${statsOf(d)}`"
           @click="emit('select', d)"
+          @keydown.enter.self.prevent="emit('select', d)"
+          @keydown.space.self.prevent="emit('select', d)"
         >
-          <!-- 缩略图 44 / r6（原型 .v3-hist__stack） -->
-          <div
-            class="flex w-44px h-44px flex-[0_0_44px] box-border items-center justify-center overflow-hidden border border-solid border-line rounded-14px bg-surface3"
-          >
-            <img
-              v-if="d.batch.cover_url"
-              :src="d.batch.cover_url"
-              alt=""
-              class="block w-full h-full rounded-13px object-cover"
-            />
-            <span v-else class="text-11px text-placeholder">{{
-              (KIND_LABEL[d.batch.kind] ?? '批次').slice(0, 2)
-            }}</span>
-          </div>
-          <div class="flex flex-1 min-w-0 flex-col gap-6px">
-            <div class="flex gap-6px items-start justify-between">
-              <p class="m-0 min-w-0 line-clamp-1 text-13px leading-18px text-ink">
-                {{ KIND_LABEL[d.batch.kind] ?? d.batch.kind }} · {{ d.batch.task_total }}张 · 成功
-                {{ d.batch.task_done }} · 失败 {{ d.batch.task_failed }} · {{ d.batch.estimated_points }}点
-              </p>
-              <span class="ll-chip" :class="batchChip(d.batch.status).cls">{{ batchChip(d.batch.status).label }}</span>
-            </div>
-            <div v-if="!isBatchTerminal(d.batch.status)" class="h-4px overflow-hidden rounded-pill bg-line-soft">
-              <div
-                class="h-full rounded-pill sx-grad-progress transition-[width] duration-slow ease-sx"
-                :style="{ width: batchProgress(d.batch) + '%' }"
-              />
-            </div>
-            <div
-              v-else-if="d.batch.error_reason"
-              class="overflow-hidden text-12px leading-16px text-danger whitespace-nowrap text-ellipsis"
-              :title="d.batch.error_reason"
-            >
-              {{ d.batch.error_reason }}
-            </div>
-            <!-- 时间 + 操作钮（间距 4） -->
-            <div class="flex min-w-0 items-center gap-4px" @click.stop>
-              <span class="flex-none text-11px leading-16px text-muted tabular-nums whitespace-nowrap">{{
-                formatTime(d.batch.created_at)
-              }}</span>
-              <span class="ml-auto flex items-center gap-8px">
-                <IconButton label="重新编辑" size="sm" @click="reedit(d)">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M4 20h4L19 9l-4-4L4 16z" />
-                    <path d="M13.5 6.5l4 4" />
-                  </svg>
-                </IconButton>
-                <n-popconfirm v-if="!isBatchTerminal(d.batch.status)" @positive-click="cancelBatch(d)">
+          <!-- 进行中：骨架 + 进度条（原型 .v3-hist__skeleton-* / .v3-hist__progress） -->
+          <template v-if="!isBatchTerminal(d.batch.status)">
+            <span class="stu-shimmer block w-44px h-44px flex-[0_0_44px] rounded-14px" aria-hidden="true" />
+            <div class="flex flex-1 min-w-0 min-h-52px flex-col justify-center gap-8px">
+              <span class="stu-shimmer block w-82% h-10px rounded-4px" aria-hidden="true" />
+              <span class="stu-shimmer block w-64% h-10px rounded-4px" aria-hidden="true" />
+              <div class="flex min-w-0 items-center gap-6px" @click.stop>
+                <div
+                  class="flex-1 min-w-0 h-4px overflow-hidden rounded-pill bg-line-soft"
+                  role="progressbar"
+                  :aria-valuenow="progressOf(d)"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  :aria-label="`${batchChip(d.batch.status).label}，生成进度`"
+                  :title="`${batchChip(d.batch.status).label} · ${statsOf(d)}`"
+                >
+                  <div
+                    class="h-full rounded-pill sx-grad-progress transition-[width] duration-slow ease-sx"
+                    :style="{ width: progressOf(d) + '%' }"
+                  />
+                </div>
+                <b class="flex-none text-11px font-600 leading-16px text-ink-2 tabular-nums">{{ progressOf(d) }}%</b>
+                <n-popconfirm @positive-click="cancelBatch(d)">
                   <template #trigger>
                     <IconButton label="取消批次" size="sm">
                       <svg
@@ -253,27 +322,135 @@ function prevPage() {
                   </template>
                   只会取消还没开始的任务，已开始的继续跑完，确定取消？
                 </n-popconfirm>
-                <n-popconfirm v-else @positive-click="removeBatch(d)">
-                  <template #trigger>
-                    <IconButton label="删除批次" size="sm" variant="danger">
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.8"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
-                      </svg>
-                    </IconButton>
-                  </template>
-                  删除后历史里不再显示（已入素材库的成品图不受影响），确定删除？
-                </n-popconfirm>
-              </span>
+              </div>
             </div>
-          </div>
+          </template>
+
+          <template v-else>
+            <!-- 叠放缩略（原型 .v3-hist__stack：44 / r14，2 张起右上错位叠影，角标总张数）：悬停看大图，点击开灯箱 -->
+            <NPopover
+              trigger="hover"
+              placement="right-start"
+              raw
+              :show-arrow="false"
+              :delay="240"
+              :disabled="!stackOf(d).length"
+            >
+              <template #trigger>
+                <button
+                  type="button"
+                  class="relative w-44px h-44px flex-[0_0_44px] box-border p-0 border border-solid border-line rounded-14px bg-surface3 text-11px text-placeholder sx-focus"
+                  :class="[
+                    stackOf(d).length ? 'cursor-zoom-in' : 'cursor-default',
+                    stackCount(d) >= 3
+                      ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb,6px_-6px_0_-1px_#fff,6px_-6px_0_0_#e5e7eb]'
+                      : stackCount(d) === 2
+                        ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb]'
+                        : '',
+                  ]"
+                  :aria-label="stackOf(d).length ? '放大图片' : '没有可预览的图片'"
+                  :aria-disabled="!stackOf(d).length || undefined"
+                  @click.stop="openLightbox(d)"
+                >
+                  <img
+                    v-if="stackOf(d)[0]"
+                    :src="stackOf(d)[0]"
+                    alt=""
+                    class="block w-full h-full rounded-13px object-cover"
+                  />
+                  <span v-else>{{ (KIND_LABEL[d.batch.kind] ?? '批次').slice(0, 2) }}</span>
+                  <span
+                    v-if="stackCount(d) > 1"
+                    class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px border border-solid border-white rounded-full bg-ink text-white text-10px font-600 leading-none"
+                    aria-hidden="true"
+                    >{{ stackCount(d) }}</span
+                  >
+                </button>
+              </template>
+              <img
+                v-if="stackOf(d)[0]"
+                :src="stackOf(d)[0]"
+                alt=""
+                class="block max-w-220px max-h-280px rounded-8px border border-solid border-line bg-white object-contain shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)]"
+              />
+            </NPopover>
+
+            <div class="flex flex-1 min-w-0 min-h-52px flex-col justify-center gap-6px">
+              <p class="m-0 min-w-0 line-clamp-1 text-12px leading-18px text-ink" :title="`${promptOf(d)}\n${statsOf(d)}`">
+                {{ promptOf(d) }}
+              </p>
+              <!-- 非全部成功：状态 + 原因（全部成功不出这一行，状态只显示一次） -->
+              <div
+                v-if="d.batch.status !== 4"
+                class="flex min-w-0 items-center gap-6px text-11px leading-16px"
+                :title="d.batch.error_reason || statsOf(d)"
+              >
+                <span class="ll-chip" :class="batchChip(d.batch.status).cls">{{ batchChip(d.batch.status).label }}</span>
+                <span v-if="d.batch.error_reason" class="min-w-0 truncate text-danger">{{ d.batch.error_reason }}</span>
+              </div>
+              <!-- 操作行：时间左、三颗按钮右（间距 8，sm 视觉 24 / 命中 32） -->
+              <div class="flex min-w-0 min-h-24px items-center gap-6px" @click.stop>
+                <span
+                  class="flex-none text-11px leading-16px text-muted tabular-nums whitespace-nowrap"
+                  :title="formatTime(d.batch.created_at)"
+                  >{{ shortTime(d.batch.created_at) }}</span
+                >
+                <span class="ml-auto flex items-center gap-8px">
+                  <IconButton
+                    :label="resultsOf(d).length > 1 ? `下载 ${resultsOf(d).length} 张（打包）` : '下载'"
+                    size="sm"
+                    :disabled="!resultsOf(d).length"
+                    :loading="downloading === d.batch.id"
+                    @click="download(d)"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />
+                    </svg>
+                  </IconButton>
+                  <n-popconfirm positive-text="删除" negative-text="取消" @positive-click="removeBatch(d)">
+                    <template #trigger>
+                      <IconButton label="删除" size="sm" variant="danger">
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.8"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
+                        </svg>
+                      </IconButton>
+                    </template>
+                    删除这条记录？
+                  </n-popconfirm>
+                  <IconButton label="重新编辑" size="sm" @click="reedit(d)">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 20h4L19 9l-4-4L4 16z" />
+                      <path d="M13.5 6.5l4 4" />
+                    </svg>
+                  </IconButton>
+                </span>
+              </div>
+            </div>
+          </template>
         </div>
 
         <!-- 空态 = 一张历史卡大小（原型 .v3-hist__empty.sx-empty：高 65、内边距 0 10、28 圆图标在左） -->
@@ -365,11 +542,33 @@ function prevPage() {
         </svg>
       </IconButton>
     </div>
+
+    <MediaLightbox v-model:show="lightboxShow" v-model:index="lightboxIndex" :items="lightboxItems" />
   </div>
 </template>
 
 <style scoped lang="less">
 @import '@/assets/variables.less';
+
+/* 进行中骨架的流光（原型 .v3-hist__skeleton-*：1.2s 左右扫，减少动效时静止） */
+.stu-shimmer {
+  background: linear-gradient(90deg, #f1f2f4 25%, #f8f9fa 50%, #f1f2f4 75%);
+  background-size: 200% 100%;
+  animation: stu-hist-shimmer 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stu-shimmer {
+    animation: none;
+  }
+}
+@keyframes stu-hist-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
 
 /* 滚动条 mixin 无法用原子类表达 */
 .stu-scroll {
