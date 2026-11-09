@@ -13,8 +13,9 @@ import { checkMinShortSide } from '../../imageSize.ts'
  * 已传回来的也不再回调，避免把旧批次追加进清空或换过的格子里。
  *
  * @param options.minShortSide 给了就在上传前读尺寸，短边不够的跳过并提示（见 imageSize.ts）；不给不检查
+ * @param options.onOverflow 多选超出余量时的提示；不给沿用默认 warning 文案（只有姿态页自定义）
  */
-export function useStudioUploader(options: { minShortSide?: number } = {}) {
+export function useStudioUploader(options: { minShortSide?: number; onOverflow?: (info: { room: number; max: number; extra: number }) => void } = {}) {
   const message = useMessage()
   const uploading = ref(false)
   let generation = 0
@@ -53,7 +54,8 @@ export function useStudioUploader(options: { minShortSide?: number } = {}) {
     if (picked.length > room) {
       const extra = picked.length - room
       picked = picked.slice(0, room)
-      message.warning(`最多还能添加 ${room} 张（上限 ${max} 张），多选的其余 ${extra} 张未添加`)
+      if (options.onOverflow) options.onOverflow({ room, max, extra })
+      else message.warning(`最多还能添加 ${room} 张（上限 ${max} 张），多选的其余 ${extra} 张未添加`)
     }
     if (!picked.length) return
 

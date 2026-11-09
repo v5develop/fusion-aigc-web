@@ -35,6 +35,7 @@ import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
 import ResultPreview from '../components/ResultPreview/index.vue'
+import { ColorFixItem, ColorFixPill, ColorFixStage, provideColorFixHost } from '@/components/ColorFix'
 import { useAgreement, useLLList, usePollingWhile } from '../hooks.ts'
 import { NOTE_STATUS_MAP, formatTime, isNoteRunning } from '../constants.ts'
 
@@ -368,13 +369,25 @@ onMounted(async () => {
     .map((d) => ({ label: d.name || `数字人#${d.id}`, value: d.id }))
 })
 
-// 成品图预览
+// 成品图预览（校色过的图给校色后的预览）
 const imagePreviewShow = ref(false)
 const previewUrl = ref('')
-function openImage(url: string) {
+const previewStyle = ref<Record<string, string> | undefined>(undefined)
+function openImage(url: string, style?: Record<string, string>) {
   previewUrl.value = url
+  previewStyle.value = style
   imagePreviewShow.value = true
 }
+
+// 配图校色（components/ColorFix 套件）：每张配图左上「校色调整」，点开后配图上方出校色舞台；
+// 键 ll:note-<笔记 id>:<序号>（笔记与海报 / 长图不同表，id 会重号）。笔记不在任务中心，只下载不存资产
+const colorFixHost = provideColorFixHost()
+const noteCfKey = (i: number) => (activeNote.value ? `ll:note-${activeNote.value.id}:${i}` : '')
+const noteFileName = (i: number) => `${(activeNote.value?.title || '图文笔记').slice(0, 24)}_${i + 1}`
+watch(
+  () => activeNote.value?.id,
+  () => colorFixHost.close(),
+)
 </script>
 
 <template>
@@ -648,30 +661,63 @@ function openImage(url: string) {
               </Field>
             </div>
 
+            <!-- 校色舞台：点某张配图的「校色调整」后出现 -->
+            <ColorFixStage
+              v-if="colorFixHost.focused.value"
+              class="mt-14px"
+              :host="colorFixHost"
+              stage-class="h-[min(56vh,560px)] min-h-280px"
+            />
             <div class="grid grid-cols-3 gap-10px mt-14px">
-              <div
+              <!-- 校色来源 = image_urls[i]：与「下载配图」同一个地址，后端已按观看者档位下发（免费档是带水印的交付图） -->
+              <ColorFixItem
                 v-for="(url, i) in activeNote.image_urls"
                 :key="url"
-                class="relative overflow-hidden rounded-8px cursor-pointer"
-                @click="openImage(url)"
+                v-slot="fx"
+                :cf-key="noteCfKey(i)"
+                :src="url"
+                :index="i"
+                :name="noteFileName(i)"
               >
-                <img :src="url" alt="" class="block w-full aspect-[3/4] object-cover" />
-                <IconButton
-                  label="下载配图"
-                  variant="overlay"
-                  class="!absolute bottom-6px right-6px"
-                  :href="url"
-                  download
-                  target="_blank"
-                  @click.stop
+                <div
+                  class="group relative overflow-hidden rounded-8px cursor-pointer"
+                  @click="openImage(fx.displaySrc, fx.previewStyle)"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14" /></svg>
-                </IconButton>
-                <span
-                  class="absolute top-6px left-6px w-20px h-20px flex items-center justify-center rounded-full bg-black/50 text-11px text-white"
-                  >{{ i + 1 }}</span
-                >
-              </div>
+                  <img
+                    :src="fx.displaySrc"
+                    :crossorigin="fx.cors"
+                    :style="fx.previewStyle"
+                    alt=""
+                    class="block w-full aspect-[3/4] object-cover"
+                    @error="fx.onImgError()"
+                  />
+                  <IconButton
+                    :label="fx.active ? '下载配图（校色后）' : '下载配图'"
+                    variant="overlay"
+                    class="!absolute bottom-6px right-6px"
+                    @click.stop="fx.download()"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14" /></svg>
+                  </IconButton>
+                  <span
+                    class="absolute top-6px left-6px w-20px h-20px flex items-center justify-center rounded-full bg-black/50 text-11px text-white"
+                    >{{ i + 1 }}</span
+                  >
+                  <!-- 校色入口：悬停出现、触屏 / 键盘聚焦常显；校色过的常显「已校色」 -->
+                  <ColorFixPill
+                    class="absolute top-6px right-6px z-1"
+                    :class="fx.touched || fx.focused ? '' : 'sx-reveal'"
+                    :label="fx.touched ? '已校色' : '校色调整'"
+                    :pressed="fx.focused"
+                    @click.stop="fx.openFix()"
+                  />
+                  <span
+                    v-if="fx.focused"
+                    class="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_0_0_2px_#875f9a]"
+                    aria-hidden="true"
+                  />
+                </div>
+              </ColorFixItem>
             </div>
           </div>
           <div class="flex gap-8px mt-14px">
@@ -700,6 +746,6 @@ function openImage(url: string) {
   <CopywritingPicker v-model:show="showCopyPicker" @select="pickCopy" />
 
   <n-modal v-model:show="imagePreviewShow" preset="card" class="!w-560px" title="笔记配图">
-    <img v-if="previewUrl" :src="previewUrl" class="block w-full rounded-8px" alt="" />
+    <img v-if="previewUrl" :src="previewUrl" :style="previewStyle" class="block w-full rounded-8px" alt="" />
   </n-modal>
 </template>

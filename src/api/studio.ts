@@ -120,3 +120,21 @@ export function studioHistory(params: types.StudioHistoryParams = {}) {
     limit: params.limit ?? 20,
   })
 }
+
+// ---------------- 区域蒙版（局部校色） ----------------
+
+/** 区域蒙版超时：服务端未命中缓存时要等一次分割调用（上限约 120s），比网关路由超时（250s）短 */
+export const SEGMENT_MASK_TIMEOUT = 130000
+
+/**
+ * 区域蒙版（POST /masks，免费）：识别 imageUrl 的服装 / 商品 / 人物 / 背景区域，回白色 + 软 alpha 的 PNG 蒙版地址。
+ * 服装可带 parts（上衣 / 外套 / 下装 / 裙装 / 鞋 / 包 / 帽，多选）只取这些部位；响应 available_parts 缺省 = 老网关不支持细分。
+ * 服务端按（去查询串的地址, 区域, 部位）缓存，重复请求立即返回 cached=true。
+ * 错误（已在 SILENT_ERROR_URLS，不弹全局 toast，调用方就地提示）：4001「没识别到对应区域」、
+ * 4002「识别太频繁，请稍后再试」、1003 地址不是本服务的、6001 识别服务暂不可用、7003 未开放；老网关 HTTP 404。
+ */
+export function studioSegmentMask(imageUrl: string, target: types.StudioMaskTarget, parts?: types.StudioMaskGarmentPart[]) {
+  const body: types.StudioMaskReq = { image_url: imageUrl, target }
+  if (target === 'garment' && parts?.length) body.parts = parts
+  return post<types.StudioMaskResp>(`${PREFIX}/masks`, body, undefined, SEGMENT_MASK_TIMEOUT)
+}

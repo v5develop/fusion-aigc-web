@@ -24,6 +24,7 @@ import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
 import NodeLightbox from './NodeLightbox.vue'
+import { openColorFix } from '../colorFixAction.ts'
 import { useNodeUpload } from './useNodeUpload.ts'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
@@ -224,6 +225,15 @@ const { dragging } = useFileDropPaste(dropRef, {
           </button>
           <button v-if="!isResult" type="button" :class="BAR_BTN" title="更换" aria-label="更换图片" @click.stop="pick">
             <EditorIcon name="replace" :size="14" />
+          </button>
+          <button
+            type="button"
+            :class="BAR_BTN"
+            title="校色"
+            aria-label="校色：调整偏色并生成新节点"
+            @click.stop="openColorFix(id, data.image)"
+          >
+            <EditorIcon name="sliders" :size="14" />
           </button>
           <button
             type="button"

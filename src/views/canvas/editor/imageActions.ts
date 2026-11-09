@@ -12,7 +12,7 @@ import { reactive, ref } from 'vue'
 import { get, toApiError } from '@/api/index.ts'
 import { canvasIdentify, type CanvasPoint, type ICanvasIdentifyReq } from '@/api/agent.ts'
 import { useCanvasEditor } from './useCanvasEditor.ts'
-import type { CanvasEditorNode } from './types.ts'
+import type { CanvasEditorNode, CanvasNodeData } from './types.ts'
 
 export type ImageActionKind = 'identify' | 'edit' | 'multiview' | 'layer'
 
@@ -117,7 +117,7 @@ export function identifiableUrl(url: string): boolean {
 export function addResultNodes(
   source: IImageSource,
   urls: string[],
-  origin: Exclude<ImageActionKind, 'identify'>,
+  origin: NonNullable<CanvasNodeData['actionOrigin']>,
   title: string,
 ): string[] {
   const store = useCanvasEditor()

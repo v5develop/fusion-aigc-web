@@ -68,6 +68,11 @@ function iconOf(k: StudioKind | '') {
   return tools.find((t) => t.id === id)?.icon ?? ''
 }
 const headIcon = computed(() => iconOf(kind))
+/** 功能卡缩略优先用照片封面（public/images/tool-covers）；没有封面的功能回落线性图标 */
+const HEAD_COVER: Partial<Record<StudioKind, string>> = {
+  pose: '/images/tool-covers/pose-fission.jpg',
+}
+const headCover = computed(() => (kind ? HEAD_COVER[kind] : undefined))
 
 /** 功能卡切换面板里的三件套；说明取原型 next-directory TOOL_DESC 的 4–5 字短说明 */
 const SWITCH_ENTRIES: { kind: StudioKind; name: string; desc: string; path: string }[] = [
@@ -226,9 +231,16 @@ defineExpose({
                 >
                   <!-- 缩略 56×40（原型 .fn-switch__thumb：r6、1px line、135° 淡紫渐变、顶部 1px 白内高光） -->
                   <span
-                    class="grid h-40px w-56px flex-none place-items-center rounded-6px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] text-violet shadow-[inset_0_1px_0_#fff]"
+                    class="grid h-40px w-56px flex-none place-items-center overflow-hidden rounded-6px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] text-violet shadow-[inset_0_1px_0_#fff]"
                   >
+                    <img
+                      v-if="headCover"
+                      class="block h-full w-full rounded-[inherit] object-cover"
+                      :src="headCover"
+                      alt=""
+                    />
                     <svg
+                      v-else
                       class="h-20px w-20px"
                       viewBox="0 0 24 24"
                       fill="none"

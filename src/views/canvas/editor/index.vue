@@ -34,6 +34,8 @@ import NodeParamsPanel from './NodeParamsPanel.vue'
 import NodeAddPanel from './NodeAddPanel.vue'
 import ImageActionPanel from './ImageActionPanel.vue'
 import { IMAGE_ACTIONS, activeImageAction, collectImageSources, openImageAction } from './imageActions.ts'
+import CanvasColorFixDialog from './CanvasColorFixDialog.vue'
+import { activeColorFix, colorFixSources, openColorFix } from './colorFixAction.ts'
 import EditorAssetPanel from './EditorAssetPanel.vue'
 import TitleModal from '../TitleModal.vue'
 import TemplatePicker from '../TemplatePicker.vue'
@@ -418,6 +420,10 @@ function onKeydown(event: KeyboardEvent) {
     void store.saveNow()
     return
   }
+  // 校色弹窗（含点选 / 涂抹子弹窗）开着、或焦点在任一弹窗里：其余快捷键归弹窗，不碰画布（⌘Z / Backspace 误删节点）
+  if (activeColorFix.value) return
+  const eventTarget = event.target as HTMLElement | null
+  if (eventTarget?.closest?.('.n-modal, .n-dialog, [role="dialog"]')) return
   const target = event.target as HTMLElement | null
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
   // 控制台 / 添加面板里的下拉、开关等控件聚焦时，按键归控件（避免 Backspace 误删节点）
@@ -1650,6 +1656,15 @@ const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
         run: menuAction((n) => openImageAction(n.id, item.kind)),
       })
     }
+    const ownImage = colorFixSources(node.id).length > 0
+    act.push({
+      key: 'colorfix',
+      label: '校色',
+      icon: 'sliders',
+      disabled: !ownImage,
+      hint: ownImage ? '调整偏色（支持局部选区），生成新的结果图节点' : '这个节点还没有图片',
+      run: menuAction((n) => openColorFix(n.id)),
+    })
   }
   if ((node.type === 'model' && !node.data.inputOnly) || node.type === 'tool') {
     act.push({ key: 'run', label: '执行节点', icon: 'play', disabled: batchRunning.value, run: menuAction((n) => void confirmAndRun([n.id])) })
@@ -2831,6 +2846,8 @@ async function onStageDrop(event: DragEvent) {
 
           <!-- 图片动作面板（节点「…」菜单：识别 / 图片编辑 / 多视图 / 图层） -->
           <ImageActionPanel v-if="activeImageAction" :key="activeImageAction.nodeId" />
+          <!-- 结果图校色（节点「…」菜单 / 图片悬停「校色」）：弹窗内调色，生成新的结果图节点 -->
+          <CanvasColorFixDialog />
 
           <!--
             右键菜单 / 节点「…」菜单（原型 .wf-node-menu：208 宽 r14、白 62% + blur 18 saturate 1.6、无描边仅细影；

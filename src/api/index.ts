@@ -220,6 +220,8 @@ const SILENT_ERROR_URLS = [
   '/studio/pose/preview',
   // 智能体出图报价 / 批量托管估价：失败就隐藏点数行，不打扰
   '/agent/image-quote',
+  // 校色「自动识别」选区：失败由参数台就地提示，不弹全局 toast
+  '/studio/masks',
   '/batch-hosting/ecom-image/quote',
   // 商拍工作室保存校色参数（PATCH /studio/tasks/{id}/color-fix）：后台防抖保存，失败本机 localStorage 兜底，不打扰
   '/color-fix',

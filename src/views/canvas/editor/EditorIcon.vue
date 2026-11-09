@@ -40,6 +40,8 @@ const PATHS: Record<string, string> = {
   download: 'M12 4.5v10M7.5 10.5L12 15l4.5-4.5M5 19.5h14',
   help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01',
   crop: 'M7 3.5V17h13.5M3.5 7H17v13.5',
+  /** 校色（滑杆，与 ColorFixPill 同形） */
+  sliders: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9.5 9.5h5v5h-5z',
   shirt: 'M9 4L4 7l2 4 2-1v10h8V10l2 1 2-4-5-3a3 3 0 0 1-6 0z',
   brush: 'M14.5 4.5l5 5-8 8-5-5zM6.5 12.5L4 20l7.5-2.5',

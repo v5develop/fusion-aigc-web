@@ -8,6 +8,11 @@
  * <p>modelValue 为资产 id，null = 关闭；点相关资产 / 生成结果的缩略图会换 id 重载。
  * hasPrev / hasNext 由列表页给出：媒体两侧的翻页钮与键盘 ← / → 发 prev / next，列表页负责跨页。
  * 详情接口一次带回三组子列表的当前页，翻页各自 page+1 重拉后追加。
+ *
+ * <p>校色（2026-11-09，components/ColorFix 套件）：图片资产右上「校色调整」，参数台含局部调色选区；调过之后
+ * 「下载」给校色后的 PNG（另留「下载原图」）、可切「校色对比」、可「存为校色版本」——追加版本（prompt「校色后」，
+ * params = { colorFix, colorFixRegion?, sourceImage }），已有同参数的校色版本时直接切过去不重复追加。
+ * 当前版本本身是校色版本时以它的 sourceImage 为底图，免得在校色结果上再叠一层。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { NCollapse, NCollapseItem, NInput, NModal, NSelect, useMessage } from 'naive-ui'
@@ -27,6 +32,17 @@ import { goUploadImage } from '@/api/goUpload.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
 import { copyText, downloadName } from '../ui.ts'
+import {
+  ColorFixCompare,
+  ColorFixPill,
+  ColorFixResultPanel,
+  colorFixRegionSanitize,
+  colorFixSanitize,
+  corsAttr,
+  markCorsBlocked,
+  saveColorFixVersion,
+  useResultColorFix,
+} from '@/components/ColorFix'
 import { useAssetsInCanvas } from '../useInCanvas.ts'
 
 const assetId = defineModel<number | null>({ required: true })
@@ -137,6 +153,8 @@ function isEditableTarget(t: EventTarget | null): boolean {
 
 function onKeydown(e: KeyboardEvent) {
   if (!show.value || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || versionAssetShow.value) return
+  // 校色参数台 / 涂抹弹窗开着：方向键留给它们
+  if (cf.panelOpen.value || cf.painterOpen.value) return
   if (isEditableTarget(e.target)) return
   if (e.key === 'ArrowLeft' && props.hasPrev) {
     e.preventDefault()
@@ -404,7 +422,8 @@ const versionModel = ref('')
 
 const versionModelOptions = [
   { label: '通用', value: '通用' },
-  { label: 'GPT Image 2.6 Sunburst', value: 'GPT' },
+  { label: 'GPT Image 2.6', value: 'GPT' },
+  { label: 'GPT Image 2.5', value: 'GPT25Dev' },
   { label: 'Nano Banana 2.1 Dev', value: 'Banana' },
   { label: 'Seedream 5.5', value: 'Seedream' },
 ]
@@ -490,6 +509,112 @@ async function submitVersion() {
   }
 }
 
+// ---------------- 校色（components/ColorFix 套件） ----------------
+
+function parseVersionParams(raw: string | null | undefined): Record<string, unknown> | null {
+  try {
+    const o = raw ? JSON.parse(raw) : null
+    return o && typeof o === 'object' ? (o as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+/** 当前版本若是校色版本，取它的 params（colorFix / colorFixRegion / sourceImage） */
+const currentFixParams = computed(() => {
+  const a = asset.value
+  if (!a?.current_version_id) return null
+  const v = versions.value.items.find((x) => x.id === a.current_version_id)
+  const o = parseVersionParams(v?.params)
+  return o?.colorFix ? o : null
+})
+/**
+ * 校色底图：当前是校色版本 → 它的 sourceImage；否则当前展示图（= 本页「下载」的 asset.image）。
+ * 免费档水印：asset.image 是后端按观看者档位下发的地址；sourceImage 是当初存校色版本时那一页给这位用户的校色来源
+ * （同样是他有权下载的那张，各页都按「普通下载同一地址」取），不会是另取的干净原件。
+ */
+const colorFixBase = computed(() => {
+  const a = asset.value
+  if (!a || a.media !== 'image') return ''
+  const source = currentFixParams.value?.sourceImage
+  return (typeof source === 'string' && source) || a.image || ''
+})
+const colorFixKey = computed(() => {
+  const a = asset.value
+  const base = colorFixBase.value
+  return a && base ? `asset:${a.id}:${(base.split('?')[0] ?? '').slice(-64)}` : ''
+})
+const cf = useResultColorFix({
+  key: colorFixKey,
+  src: colorFixBase,
+  enabled: computed(() => asset.value?.media === 'image' && !previewFailed.value),
+  // 本机没存过、当前又是整图校色版本：参数从版本里取（选区版本还原不了蒙版，不自动套）
+  saver: {
+    load: () => {
+      const o = currentFixParams.value
+      if (!o) return null
+      const region = colorFixRegionSanitize(o.colorFixRegion)
+      return region && region.mode !== 'whole' ? null : colorFixSanitize(o.colorFix)
+    },
+  },
+})
+/** 大图：校色开着显示校色预览，否则当前版本图 */
+const mediaSrc = computed(() => (cf.active.value ? cf.displaySrc.value : asset.value?.image || ''))
+function onMediaError() {
+  const src = mediaSrc.value
+  // 带 crossorigin 加载失败（存储没开 CORS）：先退回普通加载，再失败才是真挂了
+  if (corsAttr(src)) markCorsBlocked(src)
+  else previewFailed.value = true
+}
+
+const fixMode = ref<'result' | 'compare'>('result')
+watch(colorFixKey, () => (fixMode.value = 'result'))
+watch(cf.compareAvailable, (ok) => {
+  if (!ok) fixMode.value = 'result'
+})
+
+async function downloadColorFixed() {
+  const a = asset.value
+  if (!a) return
+  if (!(await cf.downloadBaked(`${downloadName(a.title, false).replace(/\.[a-z0-9]+$/i, '')}-校色后.png`))) {
+    message.warning('校色效果未能写入，已下载原图')
+  }
+}
+function downloadColorFixOriginal() {
+  const a = asset.value
+  if (a) cf.downloadOriginal(downloadName(a.title, false))
+}
+
+const savingColorFix = ref(false)
+/** 存为校色版本：已有同参数的校色版本就切过去，否则烘 PNG → 直传 → 追加版本（追加即设为当前） */
+async function saveFixVersion() {
+  const id = assetId.value
+  const base = colorFixBase.value
+  if (!id || !base || !cf.active.value || savingColorFix.value) return
+  savingColorFix.value = true
+  try {
+    const r = await saveColorFixVersion(id, cf, {
+      sourceImage: base,
+      fileName: `colorfix-asset-${id}.png`,
+      existingVersions: versions.value.items,
+    })
+    if (r.status === 'not-active') return
+    cf.close()
+    if (r.status === 'duplicate') {
+      if (!r.versionId || r.versionId === asset.value?.current_version_id) message.info('当前已是这组参数的校色版本')
+      else if (await patchAsset({ current_version_id: r.versionId })) message.success('已有相同参数的校色版本，已切换到它')
+      return
+    }
+    message.success('已存为校色版本并设为当前版本')
+    await load(id)
+    emit('changed')
+  } catch {
+    message.error('校色版本保存失败，请重试')
+  } finally {
+    savingColorFix.value = false
+  }
+}
+
 // ---------------- 相关资产：手动建立 / 解除关联 ----------------
 
 const addingRelation = ref(false)
@@ -538,10 +663,25 @@ async function removeRelation(relatedId: number) {
   <n-modal v-model:show="show" preset="card" title="资产详情" style="width: 960px; max-width: calc(100vw - 32px)">
     <div v-loading="loading" class="min-h-320px max-h-74vh overflow-auto">
       <template v-if="asset">
-        <div class="flex gap-16px">
+        <!-- relative：校色参数台相对这一行定位（贴右缘，压在右侧信息栏上，不挡大图） -->
+        <div class="relative flex gap-16px">
+          <ColorFixResultPanel :cf="cf" title="资产校色" />
           <div
             class="relative w-400px shrink-0 self-start h-420px flex items-center justify-center bg-sunken rounded-10px overflow-hidden"
           >
+            <!-- 校色对比：左原图右校色后（下载按钮在右侧操作区） -->
+            <ColorFixCompare
+              v-if="fixMode === 'compare' && cf.compareAvailable.value && !previewFailed"
+              :before="cf.src.value"
+              :after="cf.displaySrc.value"
+              :after-filter="cf.liveFilter.value"
+              :labels="['原图', '校色后']"
+              :downloads="false"
+            >
+              <template #actions>
+                <ColorFixPill :pressed="cf.panelOpen.value" @click="cf.open()" />
+              </template>
+            </ColorFixCompare>
             <video
               v-if="asset.media === 'video' && asset.video_url && !previewFailed"
               :src="asset.video_url"
@@ -553,9 +693,11 @@ async function removeRelation(relatedId: number) {
             <img
               v-else-if="asset.image && !previewFailed"
               class="max-w-full max-h-full object-contain"
-              :src="asset.image"
+              :src="mediaSrc"
+              :crossorigin="corsAttr(mediaSrc)"
+              :style="cf.active.value ? cf.previewStyle.value : undefined"
               alt=""
-              @error="previewFailed = true"
+              @error="onMediaError"
             />
             <MediaFallback v-else type="image" reason="loadFailed" />
             <!-- 上一个 / 下一个（原型 relay-nav）：按列表页当前筛选顺序，跨页由列表页处理；键盘 ← / → 同效 -->
@@ -581,9 +723,17 @@ async function removeRelation(relatedId: number) {
                 <path d="m9 5 7 7-7 7" />
               </svg>
             </IconButton>
-            <!-- 版本胶囊（原型 .relay-versions）：媒体底部居中悬浮，原图 / 各版本一键切换（= 切当前版本） -->
+            <!-- 校色入口（图片资产）：右上毛玻璃胶囊，常显 -->
+            <ColorFixPill
+              v-if="asset.media === 'image' && asset.image && !previewFailed && fixMode !== 'compare'"
+              class="absolute top-10px right-10px z-2"
+              :label="cf.active.value ? '校色中' : '校色调整'"
+              :pressed="cf.panelOpen.value"
+              @click="cf.open()"
+            />
+            <!-- 版本胶囊（原型 .relay-versions）：媒体底部居中悬浮，原图 / 各版本一键切换（= 切当前版本）；对比档让位给滑杆 -->
             <div
-              v-if="versions.items.length"
+              v-if="versions.items.length && fixMode !== 'compare'"
               class="absolute bottom-10px left-1/2 -translate-x-1/2 flex items-center gap-2px p-4px rounded-full border border-solid border-white/70 bg-white/92 backdrop-blur-[6px] shadow-[0_4px_12px_rgba(31,35,41,0.14)] max-w-[92%]"
             >
               <button
@@ -641,8 +791,36 @@ async function removeRelation(relatedId: number) {
                 <span class="ll-link">编辑</span>
               </div>
               <div class="flex flex-wrap items-center gap-8px mt-10px">
+                <!-- 校色开着：下载给校色后的 PNG，另留「下载原图」 -->
+                <template v-if="cf.active.value">
+                  <button type="button" class="sx-btn" @click="downloadColorFixed">
+                    <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
+                    </svg>
+                    下载校色后
+                  </button>
+                  <button type="button" class="sx-btn" @click="downloadColorFixOriginal">下载原图</button>
+                  <button
+                    type="button"
+                    class="sx-btn"
+                    :disabled="savingColorFix"
+                    :aria-busy="savingColorFix || undefined"
+                    title="追加一个「校色后」版本并设为当前版本；同参数的版本已存在时直接切过去"
+                    @click="saveFixVersion"
+                  >
+                    {{ savingColorFix ? '保存中…' : '存为校色版本' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="sx-btn"
+                    :aria-pressed="fixMode === 'compare'"
+                    @click="fixMode = fixMode === 'compare' ? 'result' : 'compare'"
+                  >
+                    {{ fixMode === 'compare' ? '退出对比' : '校色对比' }}
+                  </button>
+                </template>
                 <a
-                  v-if="downloadHref"
+                  v-else-if="downloadHref"
                   class="sx-btn no-underline"
                   :href="downloadHref"
                   :download="downloadName(asset.title, asset.media === 'video')"

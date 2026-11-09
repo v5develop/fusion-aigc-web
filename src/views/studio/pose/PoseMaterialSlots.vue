@@ -36,7 +36,13 @@ const poses = defineModel<string[]>('poses', { required: true })
 
 const message = useMessage()
 const sourceUp = useStudioUploader({ minShortSide: MIN_SHORT_SIDE })
-const poseUp = useStudioUploader({ minShortSide: MIN_SHORT_SIDE })
+const poseUp = useStudioUploader({
+  minShortSide: MIN_SHORT_SIDE,
+  onOverflow: ({ room, max: cap }) => message.info(`只放了前 ${room} 张，最多 ${cap} 张`),
+})
+/** 任一入口还有图在上传：页面提交前据此拦截 */
+const uploading = computed(() => sourceUp.uploading.value || poseUp.uploading.value)
+defineExpose({ uploading })
 // 清空 / 回填 / 重置整组换掉时，还在路上的上传作废（不追加进新内容）
 sourceUp.invalidateOnReplace(() => source.value)
 poseUp.invalidateOnReplace(() => poses.value)
@@ -210,12 +216,13 @@ function openAssets(kind: 'source' | 'poses') {
 /** 资产图与上传同口径：只收 http(s)、去重、不超过余量 */
 function onAssets(picked: string[]) {
   const ok = picked.filter((u) => /^https?:\/\//i.test(u))
-  if (ok.length < picked.length) message.warning('已跳过重复或不可用的图片')
   if (assetFor.value === 'source') {
+    if (ok.length < picked.length) message.warning('已跳过重复或不可用的图片')
     if (ok[0]) source.value = [ok[0]]
     return
   }
-  const fresh = ok.filter((u) => !poses.value.includes(u))
+  const fresh = [...new Set(ok.filter((u) => !poses.value.includes(u)))]
+  if (fresh.length < picked.length) message.warning('已跳过重复或不可用的图片')
   poses.value.push(...fresh.slice(0, Math.max(0, max - poses.value.length)))
 }
 
@@ -228,7 +235,7 @@ const entryCls =
 const emptyCls =
   'border border-solid border-white bg-white text-placeholder shadow-[0_1px_3px_rgba(31,35,41,0.16)] hover:shadow-[0_2px_6px_rgba(31,35,41,0.2)]'
 const capCls =
-  'flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-11px leading-15px text-center text-placeholder'
+  'flex flex-col items-center gap-2px w-60px mt-8px mb-0 text-10px leading-15px text-center text-placeholder'
 const popCls =
   'absolute top-108px box-border border border-solid border-line rounded-8px bg-white shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)] animate-[stu-preview-in_120ms_ease_both] motion-reduce:animate-none'
 </script>
@@ -249,6 +256,7 @@ const popCls =
           :class="[entryCls, sourceUrl ? 'border-0 bg-transparent' : emptyCls, sourceDragging && 'sx-drop-ring']"
           :disabled="disabled"
           :aria-label="sourceUrl ? '人物图已上传，点击更换' : '上传人物图'"
+          title="图里需有人物，且不能是未成年人"
           @click="pickSource"
         >
           <span v-if="sourceUrl" class="absolute left-0 top-0 flex" aria-hidden="true">
@@ -438,7 +446,7 @@ const popCls =
       @mouseenter="enterPose"
       @mouseleave="leavePose"
     >
-      <div class="flex items-baseline gap-6px mb-6px text-11px text-muted">
+      <div class="flex items-baseline gap-6px mb-6px text-10px text-muted">
         <b class="text-11px font-600 text-ink-2">姿势图</b><span>{{ poses.length }} 张</span>
       </div>
       <div class="grid grid-cols-3 gap-8px">

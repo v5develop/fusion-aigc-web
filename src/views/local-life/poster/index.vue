@@ -324,6 +324,7 @@ async function removeItem(item: ILCreation) {
         :time="current?.create_time"
         :images="current?.image_urls ?? []"
         :fail-reason="current?.fail_reason"
+        :record-id="current?.id"
         ratio="3 / 4"
       >
         <template v-if="current?.size" #meta>

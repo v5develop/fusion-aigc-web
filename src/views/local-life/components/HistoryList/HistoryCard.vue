@@ -11,7 +11,7 @@
  * 本地生活列表没有真实进度：不传 progress 时按 startedAt + etaSec 外推，夹在 6–95%（只是估算）。
  */
 import { computed, inject, ref, watchEffect } from 'vue'
-import { formatTime } from '../../constants.ts'
+import { formatFullTime, formatShortTime } from '@/utils/time.ts'
 import { LL_WORKBENCH_KEY } from '../Workbench/context.ts'
 
 type Status = 'running' | 'success' | 'error' | 'warning'
@@ -87,9 +87,9 @@ const percent = computed(() => {
   return Math.min(95, Math.max(6, Math.round(ratio * 100)))
 })
 
-/** 历史卡空间窄，时间取 MM-DD HH:mm，完整时间放悬停提示 / 读屏名 */
-const fullTime = computed(() => formatTime(time))
-const shortTime = computed(() => fullTime.value.slice(5))
+/** 历史卡空间窄：今天 HH:mm / 同年 MM-DD / 跨年 YYYY-MM-DD，完整时间放悬停提示 / 读屏名 */
+const fullTime = computed(() => formatFullTime(time))
+const shortTime = computed(() => formatShortTime(time))
 
 const CHIP: Record<Status, string> = {
   running: 'bg-info-soft text-violet-ink',
@@ -189,6 +189,7 @@ const DOT: Record<Status, string> = {
           <span
             v-else-if="status === 'success'"
             class="min-w-0 truncate text-11px leading-16px text-muted tabular-nums whitespace-nowrap pointer-events-none"
+            :title="fullTime"
             >{{ shortTime }}</span
           >
           <span

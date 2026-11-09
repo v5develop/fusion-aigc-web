@@ -335,8 +335,29 @@ export function useFullSet() {
   }
 
   /**
-   * 每个选中图种的张数估算 = 单价 × 组数 × 版数；推荐菜按所选特色菜图拆组（Java closeupGroups：每张特色菜图一组，没有则整体一组）。
-   * 某图种报不出价 unit 为 undefined。
+   * 本地生活按实际资产数计价（与 Java CreaftV1PricingRules.localLifeKey / CompatV1PricingFactsResolver.localLife +
+   * V1.0.214 §8 定价行逐项一致）：五连图每张跑完整流水线（ll-five / 带风格 ll-five-style）；其它图种每版第 1 组是锚点
+   * （ll-anchor / 带风格 ll-anchor-style），同版其余各组是替换（ll-replace，不分风格）。下表是未打用户等级折扣的原价；
+   * 接口 biz-points 报的是打过折的「五连图 / 锚点、不带风格」价，按它与原价的比例折算其余各档（只用于预估，
+   * 实扣以提交时后端报价为准）。改价时与迁移一起改。
+   */
+  const LL_FIVE = 424
+  const LL_FIVE_STYLE = 466
+  const LL_ANCHOR = 190
+  const LL_ANCHOR_STYLE = 232
+  const LL_REPLACE = 68
+
+  /** 某图种每版（groupsPerVersion 组）的原价合计：五连图每张同价；其它图种 = 锚点 + (组数 − 1) × 替换。 */
+  function listVersionTotalOf(kind: LLKindKey, groupsPerVersion: number, style: boolean): number {
+    const g = Math.max(1, groupsPerVersion)
+    if (kind === 'fivePanel') return (style ? LL_FIVE_STYLE : LL_FIVE) * g
+    return (style ? LL_ANCHOR_STYLE : LL_ANCHOR) + (g - 1) * LL_REPLACE
+  }
+
+  /**
+   * 每个选中图种的估算 = 每版合计 × 版数（unit 为每张均价，count 为张数，unit × count 即该图种合计）；
+   * 推荐菜按所选特色菜图拆组（Java closeupGroups：每张特色菜图一组，没有则整体一组）。
+   * 按 biz-points 的折扣比例折算。某图种报不出价 unit 为 undefined。
    */
   const costLines = computed(() =>
     SECTIONS.filter((s) => sections[s.key].selected).map((s) => {
@@ -345,12 +366,18 @@ export function useFullSet() {
         const features = new Set((profile.value?.images ?? []).filter((i) => i.role === 'feature').map((i) => i.url))
         groups = Math.max(1, sections.closeupImage.items[0]?.images.filter((u) => features.has(u)).length ?? 0)
       }
-      const unit = prices.value[s.key]
+      const quoted = prices.value[s.key]
+      const style = !!styleRequirement.value.trim()
+      // biz-points 报的是该图种「每版 1 组、不带风格」的价（已含用户等级折扣）：按折扣比例折算实际分档
+      const base = listVersionTotalOf(s.key, 1, false)
+      const count = groups * Math.max(1, versionsOf(s.key))
+      const unit =
+        quoted == null ? undefined : Math.ceil((quoted * listVersionTotalOf(s.key, groups, style)) / base / groups)
       return {
         key: s.key,
         title: s.title,
         unit,
-        count: groups * Math.max(1, versionsOf(s.key)),
+        count,
         /** 续跑时版数未知、按 1 版估：实际可能更多 */
         approx: !!continueFrom.value,
       }

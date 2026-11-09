@@ -9,6 +9,7 @@
 import { computed, inject, ref, unref, useId, watch, type Ref } from 'vue'
 import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
 import { withWatermark } from '@/utils/oss'
+import { formatFullTime, formatShortTime } from '@/utils/time.ts'
 import { isVideoUrl } from '@/utils/utils'
 import { EC_SELECTED_TASK_KEY, selectedGroupOf } from './selection'
 
@@ -42,12 +43,6 @@ const current = computed(() => selectedGroupOf(groups.value, selectedId.value))
 /** 缩略图：本批生成成功、未违规的产物（叠影张数也按它算） */
 const stackOf = (g: any): string[] =>
   (g.contents ?? []).filter((c: any) => c.resultUrl && c.status === 2 && !c.blocked).map((c: any) => c.resultUrl)
-
-/** 历史卡空间窄，时间取 MM-DD HH:mm（原型同款短格式），完整时间放读屏名 */
-const shortTime = (t?: string) => {
-  const m = String(t ?? '').match(/^\d{4}-(\d{2}-\d{2})[ T](\d{2}:\d{2})/)
-  return m ? `${m[1]} ${m[2]}` : String(t ?? '')
-}
 
 /** 进行中批次的进度：终态子任务占比（与任务中心 FAN_OUT 口径一致），无子任务时给个 6% 起步 */
 const progressOf = (g: any) => {
@@ -174,9 +169,11 @@ const EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都
               <span class="flex-none text-11px font-600 leading-16px text-violet-ink tabular-nums">{{ progressOf(item) }}%</span>
             </span>
             <span v-else class="flex items-center gap-4px min-w-0">
-              <span class="flex-none text-11px leading-16px text-muted tabular-nums whitespace-nowrap">{{
-                shortTime(item.createTime)
-              }}</span>
+              <span
+                class="min-w-0 truncate text-11px leading-16px text-muted tabular-nums whitespace-nowrap"
+                :title="formatFullTime(item.createTime)"
+                >{{ formatShortTime(item.createTime) }}</span
+              >
               <span
                 class="flex-none ml-auto inline-flex items-center h-16px px-6px rounded-full text-10px leading-14px whitespace-nowrap"
                 :class="isFailed(item) ? 'bg-danger-soft text-danger' : 'bg-success-soft text-success'"

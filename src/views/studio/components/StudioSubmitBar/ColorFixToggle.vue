@@ -7,13 +7,17 @@
  * 整个 label 可点（label 会把点击转给里面的 button）。
  */
 const enabled = defineModel<boolean>({ required: true })
-const { disabled = false } = defineProps<{ disabled?: boolean }>()
+const { disabled = false, size = 'md' } = defineProps<{
+  disabled?: boolean
+  /** md = 12/16 gap 6（商拍）；sm = 10/14 gap 6（姿态复刻，与计数同一档） */
+  size?: 'sm' | 'md'
+}>()
 </script>
 
 <template>
   <label
-    class="flex flex-none items-center gap-6px text-12px leading-16px text-muted whitespace-nowrap select-none"
-    :class="disabled ? 'cursor-not-allowed' : 'cursor-pointer'"
+    class="flex flex-none items-center gap-6px text-muted whitespace-nowrap select-none"
+    :class="[size === 'sm' ? 'text-10px leading-14px' : 'text-12px leading-16px', disabled ? 'cursor-not-allowed' : 'cursor-pointer']"
     title="出图后按校色的默认参数自动校一遍，结果里还能再调"
   >
     <span>默认校色</span>

@@ -9,8 +9,9 @@ import type { StudioKind, StudioTask } from '@/api/studioTypes.ts'
  * （GPT / Seedream / Banana 取原型 model-configs.defaults.ts 的 description；后端没有模型配置接口，选项仍写死四档）
  */
 export const MODEL_OPTIONS = [
-  { label: '通用', value: '通用', description: '默认档，适合大多数场景' },
-  { label: 'GPT Image 2.6 Sunburst', value: 'GPT', description: '细节稳定、出图干净，适合商品图、人物与场景' },
+  { label: '通用', value: '通用', description: '默认档（GPT Image 2.5，按张计费），适合大多数场景' },
+  { label: 'GPT Image 2.6', value: 'GPT', description: '细节稳定、出图干净，适合商品图、人物与场景' },
+  { label: 'GPT Image 2.5', value: 'GPT25Dev', description: '按张计费、性价比高' },
   { label: 'Nano Banana 2.1 Dev', value: 'Banana', description: '出图快、主体一致性稳，适合批量试稿' },
   { label: 'Seedream 5.5', value: 'Seedream', description: '质感更强，适合成片与详情页' },
 ]
@@ -176,17 +177,6 @@ export function taskCaption(task: StudioTask) {
   if (task.kind === 'tryon') return `模特${task.model_index + 1} · 第${task.shot_index + 1}张`
   if (task.kind === 'pose') return `姿态复刻 · 姿势 ${task.pose_index + 1}`
   return `第${task.shot_index + 1}张`
-}
-
-/** 历史卡片上的短时间（原型 StudioHistoryColumn formatTime）：今天给 HH:mm，其它天给 MM-DD；完整时间用 formatTime 放 title */
-export function shortTime(ms?: number) {
-  if (!ms) return ''
-  const d = new Date(ms)
-  const now = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  const sameDay =
-    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
-  return sameDay ? `${p(d.getHours())}:${p(d.getMinutes())}` : `${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
 export function formatTime(ms?: number) {

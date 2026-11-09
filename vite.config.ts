@@ -60,6 +60,12 @@ export default defineConfig(({ mode }) => {
     // 显式声明确保 Vite 预构建 jszip（电商素材打包下载用）
     optimizeDeps: {
       include: ['jszip'],
+      // onnxruntime-web 按 import.meta.url 找自己的 .wasm，预构建会改路径（校色「点选」本机分割用）
+      exclude: ['onnxruntime-web'],
+    },
+    // 点选分割 Worker 里 onnxruntime-web 需要 ES 模块格式（动态 import / import.meta.url）
+    worker: {
+      format: 'es',
     },
     css: {
       preprocessorOptions: {

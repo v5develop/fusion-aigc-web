@@ -11,6 +11,7 @@ import type { DropdownOption } from 'naive-ui'
 import { useNodeId } from '@vue-flow/core'
 import { NODE_ICON_BTN, NODE_MENU_HOST } from './ui.ts'
 import { IMAGE_ACTIONS, collectImageSources, openImageAction, type ImageActionKind } from './imageActions.ts'
+import { colorFixSources, openColorFix } from './colorFixAction.ts'
 
 const props = defineProps<{
   /** 节点标题，用于无障碍名 */
@@ -36,6 +37,7 @@ function openHost(event: MouseEvent) {
 
 // ---------- 退回下拉 ----------
 const hasImage = computed(() => (props.imageActionsFor ? collectImageSources(props.imageActionsFor).length > 0 : false))
+const hasOwnImage = computed(() => (props.imageActionsFor ? colorFixSources(props.imageActionsFor).length > 0 : false))
 
 const options = computed<DropdownOption[]>(() => [
   ...(props.imageActionsFor
@@ -45,6 +47,7 @@ const options = computed<DropdownOption[]>(() => [
           label: hasImage.value ? item.label : `${item.label}（先上传或生成图片）`,
           disabled: !hasImage.value,
         })),
+        { key: 'colorfix', label: hasOwnImage.value ? '校色' : '校色（先上传或生成图片）', disabled: !hasOwnImage.value },
         { key: 'divider', type: 'divider' },
       ]
     : []),
@@ -57,6 +60,7 @@ const options = computed<DropdownOption[]>(() => [
 
 function onSelect(key: string | number) {
   if (key === 'remove') emit('remove')
+  else if (key === 'colorfix' && props.imageActionsFor) openColorFix(props.imageActionsFor)
   else if (props.imageActionsFor && typeof key === 'string' && key.startsWith('action:')) {
     openImageAction(props.imageActionsFor, key.slice('action:'.length) as ImageActionKind)
   }

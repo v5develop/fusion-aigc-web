@@ -9,6 +9,7 @@
  * 状态与校验在 usePosePairing，这里只负责展示。
  */
 import { computed } from 'vue'
+import PickDropdown, { type PickOption } from '../components/PickDropdown.vue'
 import { PEOPLE_LETTERS, poseWho, validateMapping, type PairPose, type PairState } from './usePosePairing.ts'
 
 const {
@@ -58,10 +59,21 @@ function problem(p: PairPose, n: number) {
   return validateMapping(p.mapping, n, p.poseCount)
 }
 
-function pick(p: PairPose, i: number, e: Event) {
+function pick(p: PairPose, i: number, value: number) {
   const next = [...p.mapping]
-  next[i] = Number((e.target as HTMLSelectElement).value)
+  next[i] = value
   emit('set', p.poseIndex, next)
+}
+
+function optionsOf(p: PairPose, i: number): PickOption<number>[] {
+  return [
+    { value: -1, label: '保持原姿势（该人物不换姿势）' },
+    ...Array.from({ length: p.poseCount }, (_, k) => ({
+      value: k,
+      label: `${poseWho(p, k)}${taken(p, i, k) ? '（已被占用）' : ''}`,
+      disabled: taken(p, i, k),
+    })),
+  ]
 }
 
 /** 逐人下拉：2 对 2 只给「反转配对」，其余（姿势图 ≥2 人且人数不同，或原图 ≥3 人）都给下拉 */
@@ -84,14 +96,13 @@ const fixedDefault = computed(() => !!state && state.sourceCount >= 2 && !state.
   <section class="flex flex-[0_0_auto] flex-col gap-8px" aria-label="识别人物与配对">
     <header class="flex flex-wrap items-center gap-8px">
       <span class="text-12px font-600 leading-18px text-ink-2">识别人物与配对</span>
-      <span class="text-11px leading-16px text-placeholder">多人照片建议先识别配对；单人照片可直接提交</span>
       <span class="flex-1" />
       <button
         v-if="!running"
         type="button"
         class="sx-btn-tint"
         :disabled="!canRun || disabled"
-        :title="cooldown > 0 ? '上一次识别还在服务端进行，稍等几秒再试' : undefined"
+        :title="cooldown > 0 ? '上一次识别还在服务端进行，稍等几秒再试' : '多人照片建议先识别配对；单人照片可直接提交'"
         @click="emit('run')"
       >
         {{ state && !stale ? '重新识别' : '识别人物与配对'
@@ -100,17 +111,17 @@ const fixedDefault = computed(() => !!state && state.sourceCount >= 2 && !state.
       <button v-else type="button" class="sx-btn" @click="emit('cancel')">取消识别</button>
     </header>
 
-    <p v-if="running" class="m-0 text-12px leading-18px text-ink-2" role="status">
+    <p v-if="running" class="m-0 text-11px leading-17px text-ink-2" role="status">
       正在识别人物，约 20 秒–2 分钟（已等待 {{ elapsed }} 秒）。免费，不扣点数；取消只是放弃结果。
     </p>
-    <p v-else-if="errorText" class="m-0 text-12px leading-18px text-danger" role="alert">{{ errorText }}</p>
-    <p v-else-if="stale" class="m-0 text-12px leading-18px text-warning" role="status">
+    <p v-else-if="errorText" class="m-0 text-11px leading-17px text-danger" role="alert">{{ errorText }}</p>
+    <p v-else-if="stale" class="m-0 text-11px leading-17px text-warning" role="status">
       人物图或姿势图有变动，之前的识别结果已失效，需要的话请重新识别。
     </p>
 
     <template v-if="state && !stale">
       <template v-if="single || fixedDefault">
-        <p class="m-0 text-12px leading-18px text-ink-2">
+        <p class="m-0 text-11px leading-17px text-ink-2">
           <template v-if="single">原图只识别到 1 位人物，无需配对，直接提交即可。</template>
           <template v-else>已识别 {{ state.sourceCount }} 位人物，将按默认左→左、右→右配对。</template>
         </p>
@@ -118,7 +129,7 @@ const fixedDefault = computed(() => !!state && state.sourceCount >= 2 && !state.
           <li
             v-for="p in state.poses"
             :key="p.poseIndex"
-            class="flex flex-wrap items-baseline gap-x-8px text-12px leading-18px text-ink-2"
+            class="flex flex-wrap items-baseline gap-x-8px text-11px leading-17px text-ink-2"
           >
             <span class="font-600 text-ink">姿势图{{ p.poseIndex + 1 }}</span>
             <span v-if="p.error" class="text-danger">{{ p.error }}</span>
@@ -132,7 +143,7 @@ const fixedDefault = computed(() => !!state && state.sourceCount >= 2 && !state.
         </ul>
       </template>
       <template v-else>
-        <div class="sx-card flex flex-col gap-6px p-10px">
+        <div class="flex flex-col gap-6px p-10px rounded-6px border border-solid border-line-soft bg-surface2">
           <div class="text-12px font-600 leading-18px text-ink">
             已锁定 {{ state.sourceCount }} 位人物<template v-if="state.group"> · {{ state.group }}</template>
           </div>
@@ -143,7 +154,7 @@ const fixedDefault = computed(() => !!state && state.sourceCount >= 2 && !state.
             <li
               v-for="(person, i) in state.sourcePeople"
               :key="i"
-              class="flex flex-wrap items-baseline gap-6px text-12px leading-18px text-ink-2"
+              class="flex flex-wrap items-baseline gap-6px text-11px leading-17px text-ink-2"
             >
               <span class="sx-chip bg-violet-soft text-violet-ink font-600">人物{{ letter(i) }}</span>
               <span>{{ person.position }}</span>
@@ -159,7 +170,7 @@ const fixedDefault = computed(() => !!state && state.sourceCount >= 2 && !state.
         <div
           v-for="p in state.poses"
           :key="p.poseIndex"
-          class="sx-card flex flex-col gap-4px p-10px"
+          class="flex flex-col gap-4px p-10px rounded-6px border border-solid border-line-soft bg-surface2"
           :aria-label="`姿势图${p.poseIndex + 1}的人物配对`"
         >
           <div class="flex flex-wrap items-center gap-8px">
@@ -188,32 +199,23 @@ const fixedDefault = computed(() => !!state && state.sourceCount >= 2 && !state.
             </template>
           </div>
 
-          <p v-if="p.error" class="m-0 text-12px leading-18px text-danger">
+          <p v-if="p.error" class="m-0 text-11px leading-17px text-danger">
             姿势图{{ p.poseIndex + 1 }}：{{ p.error }}（提交时这张按默认配对：左→左、右→右）
           </p>
           <template v-else>
-            <p class="m-0 text-12px leading-20px text-ink-2">
+            <p class="m-0 text-11px leading-18px text-ink-2">
               配对：{{ p.mapping.map((_, i) => line(p, i)).join('；') }}
             </p>
             <div v-if="needSelects(p, state.sourceCount)" class="flex flex-col gap-4px">
-              <label
+              <PickDropdown
                 v-for="(_, i) in p.mapping"
                 :key="i"
-                class="flex items-center gap-8px text-12px leading-18px text-ink-2"
-              >
-                <span class="w-48px flex-[0_0_48px]">人物{{ letter(i) }}</span>
-                <select
-                  class="h-32px min-w-0 flex-1 box-border px-8px border border-solid border-line rounded-6px bg-white text-12px text-ink"
-                  :value="p.mapping[i]"
-                  :disabled="disabled"
-                  @change="pick(p, i, $event)"
-                >
-                  <option :value="-1">保持原姿势（该人物不换姿势）</option>
-                  <option v-for="k in p.poseCount" :key="k" :value="k - 1" :disabled="taken(p, i, k - 1)">
-                    {{ poseWho(p, k - 1) }}{{ taken(p, i, k - 1) ? '（已被占用）' : '' }}
-                  </option>
-                </select>
-              </label>
+                :label="`人物${letter(i)}`"
+                :model-value="p.mapping[i] ?? -1"
+                :options="optionsOf(p, i)"
+                :disabled="disabled"
+                @update:model-value="pick(p, i, $event)"
+              />
             </div>
             <p v-if="mismatch(p, state.sourceCount)" class="m-0 text-11px leading-16px text-warning">
               {{ mismatch(p, state.sourceCount) }}

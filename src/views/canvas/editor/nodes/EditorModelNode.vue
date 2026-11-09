@@ -33,6 +33,8 @@ import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
 import NodeLightbox from './NodeLightbox.vue'
+import { ColorFixPill } from '@/components/ColorFix'
+import { openColorFix } from '../colorFixAction.ts'
 
 const props = defineProps<{
   id: string
@@ -215,7 +217,7 @@ function onRemoveCandidate(index: number) {
       <div v-if="data.inputOnly" class="mb-6px text-warning text-11px">参考素材 · 不执行</div>
 
       <div
-        class="relative grid w-full place-items-center overflow-hidden rounded-6px"
+        class="canvas-media relative grid w-full place-items-center overflow-hidden rounded-6px"
         :class="CHECKER_BG"
         :style="{ height: `${mediaHeight}px` }"
       >
@@ -250,6 +252,14 @@ function onRemoveCandidate(index: number) {
             >点击放大查看</span
           >
         </button>
+        <!-- 校色（图片结果）：与放大按钮是兄弟节点，不嵌套；悬停 / 选中 / 键盘聚焦 / 触屏可见 -->
+        <ColorFixPill
+          v-if="!isVideo && data.image && !data.inputOnly"
+          label="校色"
+          :aria-label="`校色：${data.title || '生成结果'}`"
+          class="absolute top-8px right-8px z-3 nodrag opacity-0 [.canvas-media:hover_&]:opacity-100 [.is-selected_&]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+          @click="(e: MouseEvent) => { e.stopPropagation(); openColorFix(id, data.image) }"
+        />
         <div v-else class="flex flex-col items-center justify-center gap-8px text-muted text-11px">
           <span class="grid w-40px h-40px place-items-center border border-solid border-line rounded-full text-ink-2">
             <EditorIcon :name="isVideo ? 'video' : 'play'" :size="18" />

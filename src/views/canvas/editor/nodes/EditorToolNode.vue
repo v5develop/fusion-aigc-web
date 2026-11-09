@@ -29,6 +29,8 @@ import {
 import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
+import { ColorFixPill } from '@/components/ColorFix'
+import { openColorFix } from '../colorFixAction.ts'
 
 const props = defineProps<{
   id: string
@@ -300,9 +302,16 @@ function onCropUp() {
         </div>
         <div
           v-if="resultImage"
-          class="grid w-full place-items-center overflow-hidden min-h-110px border border-solid border-[#e9ecf2] rounded-6px bg-[#f4f6fa]"
+          class="canvas-media relative grid w-full place-items-center overflow-hidden min-h-110px border border-solid border-[#e9ecf2] rounded-6px bg-[#f4f6fa]"
         >
           <img :src="resultImage" :alt="data.title" draggable="false" class="block w-full max-h-240px object-contain" />
+          <ColorFixPill
+            v-if="data.tool !== 'i2p'"
+            label="校色"
+            :aria-label="`校色：${data.title || '工具结果'}`"
+            class="absolute top-8px right-8px z-3 nodrag opacity-0 [.canvas-media:hover_&]:opacity-100 [.is-selected_&]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+            @click="(e: MouseEvent) => { e.stopPropagation(); openColorFix(id, resultImage) }"
+          />
         </div>
         <div
           v-else-if="!(isCrop && cropSource)"

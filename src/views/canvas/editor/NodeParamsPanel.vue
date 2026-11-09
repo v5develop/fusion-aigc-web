@@ -289,7 +289,14 @@ const outpaintRatioOptions = computed(() => {
 })
 const outpaintResolutionOptions = ['1k', '2k', '4k'].map((value) => ({ label: value, value }))
 const tryonResolutionOptions = outpaintResolutionOptions
-const tryonModelOptions = ['通用', 'GPT', 'Banana', 'Seedream'].map((value) => ({ label: value, value }))
+// 传值与 studio 模型档一致（GPT = GPT Image 2.6、GPT25Dev = GPT Image 2.5 按张计费）
+const tryonModelOptions = [
+  { label: '通用', value: '通用' },
+  { label: 'GPT Image 2.6', value: 'GPT' },
+  { label: 'GPT Image 2.5', value: 'GPT25Dev' },
+  { label: 'Banana', value: 'Banana' },
+  { label: 'Seedream', value: 'Seedream' },
+]
 const TRYON_ITEMS = [
   { value: 'top', label: '上衣' },
   { value: 'bottom', label: '下装' },

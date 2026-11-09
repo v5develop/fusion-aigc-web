@@ -45,3 +45,6 @@ __screenshots__/
 
 .cocoindex_code/
 .rtk/
+
+# 校色「点选」本机分割模型（几十 MB 的 ONNX），不进仓库；部署另放或配 VITE_POINT_SEGMENT_MODEL_BASE
+public/models/

@@ -71,6 +71,7 @@ function clearPoses() {
 
 const submitting = ref(false)
 const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
+const slots = ref<InstanceType<typeof PoseMaterialSlots> | null>(null)
 
 /** 幂等重试：失败缓存 key 进「重试生成」态；表单任意字段变化换新 key */
 const idem = useIdempotentSubmit()
@@ -91,16 +92,21 @@ const submitText = computed(() => (poseImages.value.length ? `开始复刻（${p
 
 /** 未就绪原因：按钮保持可点（点了 toast 同一句），悬停在提交条上能看到；空 = 就绪 */
 const disabledReason = computed(() => {
-  if (!sourceImages.value.length) return '上传一张人物图（图里需有人物，且不能是未成年人）'
-  if (!poseImages.value.length) return '上传 1–9 张姿势参考图'
+  if (slots.value?.uploading) return UPLOADING_TEXT
+  if (!sourceImages.value.length) return NEED_SOURCE
+  if (!poseImages.value.length) return NEED_POSE
   return ''
 })
+const UPLOADING_TEXT = '图片还在上传中，请稍候'
+const NEED_SOURCE = '先上传一张人物图'
+const NEED_POSE = '至少放 1 张姿势图'
 const SUBMIT_HINT = '每个姿势一个任务，单独出图'
 
 async function submit() {
   if (submitting.value) return
-  if (!sourceImages.value.length) return message.warning('请上传一张人物图（图里需有人物，且不能是未成年人）')
-  if (!poseImages.value.length) return message.warning('请上传 1–9 张姿势参考图')
+  if (slots.value?.uploading) return message.warning(UPLOADING_TEXT)
+  if (!sourceImages.value.length) return message.warning(NEED_SOURCE)
+  if (!poseImages.value.length) return message.warning(NEED_POSE)
 
   // 提交即放弃进行中的识别；有效的多人配对先校验，不合规直接拦下
   pairing.cancel()
@@ -184,6 +190,7 @@ function onReedit(payload: Record<string, unknown>) {
       >
         <!-- 人物图 + 姿势图：两块白边浮片同排，中间切口；人物图悬停单图预览，姿势图悬停摊开 + 3 列序号面板 -->
         <PoseMaterialSlots
+          ref="slots"
           v-model:source="sourceImages"
           v-model:poses="poseImages"
           :max="MAX_POSE_IMAGES"
@@ -192,6 +199,33 @@ function onReedit(payload: Record<string, unknown>) {
           @clear-poses="clearPoses"
         />
 
+        <!-- 补充说明（全局）：框内无边 textarea；底行左计数 11px、右「默认校色」开关 -->
+        <div class="flex min-h-0 flex-1 flex-col gap-6px">
+          <label for="pose-global-prompt" class="sr-only">补充说明</label>
+          <textarea
+            id="pose-global-prompt"
+            v-model="form.global_prompt"
+            class="block w-full min-h-96px flex-1 box-border m-0 p-0 resize-none overflow-y-auto overscroll-contain border-none bg-transparent text-13px leading-20px text-ink-2 outline-none placeholder:text-placeholder"
+            :maxlength="3000"
+            :disabled="submitting"
+            aria-describedby="pose-global-prompt-count"
+            placeholder="这套姿势统一的补充要求，会加到每一张里，例如：动作幅度小一点、手里不要拿东西（选填）"
+          />
+          <div class="flex items-center justify-between gap-8px mt-2px">
+            <span
+              id="pose-global-prompt-count"
+              class="text-10px leading-14px tabular-nums select-none"
+              :class="form.global_prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
+              >{{ form.global_prompt.length }} / 3000</span
+            >
+            <ColorFixToggle v-model="colorFix" size="sm" :disabled="submitting" />
+          </div>
+        </div>
+
+        <!-- 各姿势补充：两列，每格 32 缩略图（悬停小预览 / 右上删除）+ 30 高 / 11px 单行输入（200 字） -->
+        <PoseNotesList v-model:notes="poseNotes" :items="poseImages" :disabled="submitting" @remove="removePose" />
+
+        <!-- 多人配对（付费前确认）：排在补充说明与逐张补充之后，不挤占补充说明框 -->
         <PosePairingPanel
           v-if="sourceImages.length && poseImages.length"
           :state="pairing.state.value"
@@ -208,31 +242,6 @@ function onReedit(payload: Record<string, unknown>) {
           @reset="pairing.reset"
           @set="pairing.setMapping"
         />
-
-        <!-- 补充说明（全局）：框内无边 textarea；底行左计数 11px、右「默认校色」开关 -->
-        <div class="flex min-h-0 flex-1 flex-col gap-6px">
-          <label for="pose-global-prompt" class="sr-only">补充说明</label>
-          <textarea
-            id="pose-global-prompt"
-            v-model="form.global_prompt"
-            class="block w-full min-h-96px flex-1 box-border m-0 p-0 resize-none overflow-y-auto overscroll-contain border-none bg-transparent text-13px leading-20px text-ink-2 outline-none placeholder:text-placeholder"
-            :maxlength="3000"
-            aria-describedby="pose-global-prompt-count"
-            placeholder="这套姿势统一的补充要求，会加到每一张里，例如：动作幅度小一点、手里不要拿东西（选填）"
-          />
-          <div class="flex items-center justify-between gap-8px mt-2px">
-            <span
-              id="pose-global-prompt-count"
-              class="text-11px leading-15px tabular-nums select-none"
-              :class="form.global_prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
-              >{{ form.global_prompt.length }} / 3000</span
-            >
-            <ColorFixToggle v-model="colorFix" :disabled="submitting" />
-          </div>
-        </div>
-
-        <!-- 各姿势补充：两列，每格 32 缩略图（悬停小预览 / 右上删除）+ 30 高 / 11px 单行输入（200 字） -->
-        <PoseNotesList v-model:notes="poseNotes" :items="poseImages" :disabled="submitting" @remove="removePose" />
       </div>
     </template>
 
@@ -244,6 +253,7 @@ function onReedit(payload: Record<string, unknown>) {
           v-model:resolution="form.resolution"
           v-model:aspect-ratio="form.aspect_ratio"
           auto-ratio
+          :disabled="submitting"
         />
         <StudioSubmitBar
           :label="submitText"

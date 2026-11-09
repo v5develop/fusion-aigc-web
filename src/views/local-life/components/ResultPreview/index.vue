@@ -5,9 +5,15 @@
  *
  * <p>只负责展示；选中哪条、删除、轮询都在页面。`active=false`（还没有任何记录）时显示空态。
  * 下载钮常驻（不靠悬停，规范 §10.2），压在图上用 overlay 变体，头部同排钮间距 8。
+ *
+ * <p>校色（2026-11-09）：每张成品图左上「校色调整」胶囊（常显），点开后图组上方出校色舞台（参数台 + 局部调色 +
+ * 校色对比）；校色过的图缩略图直接显示效果、下载给校色后的 PNG。键 `ll:<recordId>:<序号>`；本地生活记录不在
+ * 任务中心，只能下载、不存资产。
  */
+import { computed, watch } from 'vue'
 import { NImage, NImageGroup } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
+import { ColorFixItem, ColorFixPill, ColorFixStage, provideColorFixHost } from '@/components/ColorFix'
 import { formatTime } from '../../constants.ts'
 
 type Status = 'running' | 'success' | 'error' | 'warning'
@@ -25,6 +31,7 @@ const {
   runningText = '正在生成，完成后会自动显示在这里',
   emptyText = '还没有记录，左侧填好内容后点底部按钮开始生成',
   ratio = '',
+  recordId = '',
 } = defineProps<{
   /** 是否有选中的记录；false 显示空态 */
   active: boolean
@@ -42,9 +49,22 @@ const {
   emptyText?: string
   /** 进行中骨架的宽高比（如 3/4、9/16），不传按 3/4 */
   ratio?: string
+  /** 记录 id：校色参数按 ll:<recordId>:<序号> 持久化；不传 = 只在本次浏览有效 */
+  recordId?: string | number
 }>()
 
 defineSlots<{ meta?: () => unknown; actions?: () => unknown }>()
+
+const colorFixHost = provideColorFixHost()
+const cfKeyOf = (i: number) => (recordId !== '' && recordId != null ? `ll:${recordId}:${i}` : '')
+const fileNameOf = (i: number) => `${(title || '本地生活').slice(0, 24)}_${recordId || 'result'}_${i + 1}`
+// 换记录：舞台收起
+watch(
+  () => recordId,
+  () => colorFixHost.close(),
+)
+/** 只有一张图时舞台就是它的大图，舞台开着就不再重复显示下面的图 */
+const hideGrid = computed(() => images.length === 1 && !!colorFixHost.focused.value)
 
 const CHIP: Record<Status, string> = {
   running: 'll-chip-running',
@@ -110,29 +130,66 @@ const CHIP: Record<Status, string> = {
             preload="metadata"
             class="block w-full max-h-[calc(100vh-220px)] rounded-lg bg-black object-contain"
           />
-          <NImageGroup v-else-if="images.length">
-            <div class="grid gap-12px" :class="images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'">
-              <div
-                v-for="(url, i) in images"
-                :key="url"
-                class="relative min-w-0 overflow-hidden rounded-lg border border-solid border-line bg-surface3"
-              >
-                <NImage
+          <template v-else-if="images.length">
+            <!-- 校色舞台：点某张图的「校色调整」后出现 -->
+            <ColorFixStage
+              v-if="colorFixHost.focused.value"
+              class="mb-12px"
+              :host="colorFixHost"
+              stage-class="h-[min(60vh,600px)] min-h-280px"
+            />
+            <NImageGroup>
+              <div v-show="!hideGrid" class="grid gap-12px" :class="images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'">
+                <!-- 校色来源 = images[i]：与这里「下载」同一个地址，后端已按观看者档位下发（免费档是带水印的交付图），
+                     不要换成别的原件地址 -->
+                <ColorFixItem
+                  v-for="(url, i) in images"
+                  :key="url"
+                  v-slot="fx"
+                  :cf-key="cfKeyOf(i)"
                   :src="url"
-                  :alt="`${title} 第 ${i + 1} 张`"
-                  class="block w-full"
-                  :img-props="{ class: 'block w-full h-auto', alt: `${title} 第 ${i + 1} 张` }"
-                />
-                <span class="absolute top-8px right-8px">
-                  <IconButton :label="`下载第 ${i + 1} 张`" variant="overlay" :href="url" target="_blank" download>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
-                    </svg>
-                  </IconButton>
-                </span>
+                  :index="i"
+                  :name="fileNameOf(i)"
+                >
+                  <div
+                    class="relative min-w-0 overflow-hidden rounded-lg border border-solid bg-surface3"
+                    :class="fx.focused ? 'border-violet' : 'border-line'"
+                  >
+                    <NImage
+                      :src="fx.displaySrc"
+                      :alt="`${title} 第 ${i + 1} 张`"
+                      class="block w-full"
+                      :img-props="{
+                        class: 'block w-full h-auto',
+                        alt: `${title} 第 ${i + 1} 张`,
+                        crossorigin: fx.cors,
+                        style: fx.previewStyle,
+                        onError: fx.onImgError,
+                      }"
+                    />
+                    <!-- 校色入口常显（成品图就是要交付的图，偏色常见） -->
+                    <ColorFixPill
+                      class="absolute top-8px left-8px z-1"
+                      :label="fx.touched ? '已校色' : '校色调整'"
+                      :pressed="fx.focused"
+                      @click="fx.openFix()"
+                    />
+                    <span class="absolute top-8px right-8px">
+                      <IconButton
+                        :label="fx.active ? `下载第 ${i + 1} 张（校色后）` : `下载第 ${i + 1} 张`"
+                        variant="overlay"
+                        @click="fx.download()"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+                        </svg>
+                      </IconButton>
+                    </span>
+                  </div>
+                </ColorFixItem>
               </div>
-            </div>
-          </NImageGroup>
+            </NImageGroup>
+          </template>
           <p v-else class="m-0 ll-empty py-24px">任务已完成，但没有返回产物地址</p>
         </template>
       </div>

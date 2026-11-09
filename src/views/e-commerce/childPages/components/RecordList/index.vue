@@ -1,9 +1,19 @@
 <script setup lang="ts">
-import { computed, inject, ref, unref, useId, type Ref } from 'vue'
+import { computed, inject, ref, unref, useId, watch, type Ref } from 'vue'
 import Card from '../Card/index.vue'
 import { EC_SELECTED_TASK_KEY, selectedGroupOf } from '../HistoryColumn/selection'
 import { getDownloadableUrls, downloadImagesAsZip, zipNameOf } from '@/utils/download'
 import { mediaAspectRatio } from '@/utils/ratio'
+import { useMessage } from 'naive-ui'
+import JSZip from 'jszip'
+import {
+  ColorFixStage,
+  bakeStoredColorFix,
+  hasStoredColorFix,
+  provideColorFixHost,
+  saveColorFixToTaskAsset,
+  triggerDownload,
+} from '@/components/ColorFix'
 
 // 页面 provide 的是 computed（taskList），这里统一解包成数组
 const recordsData = inject<Ref<any[] | undefined> | any[] | undefined>('recordsData')
@@ -23,15 +33,107 @@ const cardAspectRatio = (content: any, group: any) =>
     ? '16 / 9'
     : mediaAspectRatio(content, mediaAspectRatio(group?.inputParams?.params, '1 / 1'))
 
+const message = useMessage()
+
+// ---------------- 校色（components/ColorFix 套件）：每张图各自一份状态，结果列上方的舞台调当前那张 ----------------
+// 键 ecom:<批次 taskId>:<序号>；存资产按批次 taskId 查任务中心详情对上素材库资产，对不上只能下载
+// 免费档水印：每张图的校色来源 = contents[i].resultUrl，与本页普通「下载」（getDownloadableUrls / downloadImage）
+// 同一个地址——前端口径「下载走 resultUrl」，观看者能拿到什么由后端决定（免费档私有原件在 resultUrl 里已换成占位，
+// 见后端 CreationTaskViewAssembler.clientResultUrl）。校色 / 打包不另取原件，也不取展示用的 withWatermark 变体。
+const colorFixKey = (group: any, index: number) => (group?.taskId ? `ecom:${group.taskId}:${index}` : '')
+const fileNameOf = (group: any, index: number) => `${zipNameOf(group)}_${index + 1}`
+const colorFixHost = provideColorFixHost({
+  save: async (entry) => {
+    const group = current.value
+    if (!group?.taskId) return message.warning('这批结果没有任务号，暂不能存为资产')
+    const images = (group.contents ?? []).filter((c: any) => c?.resultUrl && c?.status === 2)
+    const result = await saveColorFixToTaskAsset({
+      taskUid: group.taskId,
+      cf: entry.cf,
+      src: entry.src,
+      index: images.findIndex((c: any) => c.resultUrl === entry.src),
+      total: images.length,
+      fileName: `${entry.name}-校色后.png`,
+    })
+    if (result === 'saved') message.success('已存为资产：原图 + 校色后两版')
+    else if (result === 'duplicate') message.info('这组校色参数已经存过了')
+    else if (result === 'no-asset') message.warning('这张结果还没有进入素材库，可先下载校色后的图片')
+  },
+})
+// 切批次：舞台收起（那批的图已不在列表里）
+watch(
+  () => current.value?.taskId,
+  () => colorFixHost.close(),
+)
+
 // 正在打包下载的分组 taskId 集合（用于按钮 loading/禁用）
 const downloadingIds = ref<Set<string>>(new Set())
 
-// 整组下载：打包该组全部生成成功的图片
+/** 一组里可下载的图（与 getDownloadableUrls 同口径），带它在 contents 里的序号（校色键按这个序号） */
+function downloadableOf(item: any): { url: string; key: string }[] {
+  return ((item?.contents ?? []) as any[]).flatMap((c: any, i: number) =>
+    c?.resultUrl && c?.status === 2 ? [{ url: c.resultUrl as string, key: groupMediaType === 'image' ? colorFixKey(item, i) : '' }] : [],
+  )
+}
+
+/** 这张有没有校色：当前批次看舞台上那份状态，其它批次看本机存的参数 */
+function hasFix(url: string, key: string): boolean {
+  const entry = colorFixHost.entries.get(url)
+  return entry ? entry.cf.active.value : hasStoredColorFix(key)
+}
+
+/**
+ * 整组里校色过的图烘成 PNG 一起打包（烘失败 / 本机选区丢了的那张退回原图）。逐张来，不并发——
+ * 4096 的烘图一张就占几十 MB 画布内存，并发几张 Safari 会直接崩页。
+ */
+async function downloadGroupWithColorFix(items: { url: string; key: string }[], zipName: string) {
+  const files: { blob: Blob; ext: string; baked: boolean }[] = []
+  let fellBack = 0
+  for (const { url, key } of items) {
+    const entry = colorFixHost.entries.get(url)
+    let baked: Blob | null = null
+    try {
+      if (entry) baked = entry.cf.active.value ? await entry.cf.bakeToBlob() : null
+      else if (key) baked = await bakeStoredColorFix(key, url)
+    } catch {
+      baked = null
+    }
+    if (baked) {
+      files.push({ blob: baked, ext: 'png', baked: true })
+      continue
+    }
+    if (hasFix(url, key)) fellBack += 1
+    const res = await fetch(url, { mode: 'cors' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const ext = new URL(url).pathname.match(/\.(png|jpe?g|webp|gif|bmp)$/i)?.[1]?.toLowerCase() ?? 'jpg'
+    files.push({ blob: await res.blob(), ext, baked: false })
+  }
+  if (fellBack) message.warning(`有 ${fellBack} 张校色效果未能写入（本机选区丢失或烘图失败），已用原图`)
+  if (files.length === 1) {
+    triggerDownload(files[0]!.blob, `${zipName}.${files[0]!.ext}`)
+    return
+  }
+  const zip = new JSZip()
+  files.forEach((f, i) => zip.file(`${zipName}_${i + 1}${f.baked ? '-校色后' : ''}.${f.ext}`, f.blob))
+  triggerDownload(await zip.generateAsync({ type: 'blob' }), `${zipName}.zip`)
+}
+
+// 整组下载：打包该组全部生成成功的图片；校色过的那几张给校色后的图（不在当前批次的按本机存的参数烘）
 const onGroupDownload = async (item: any) => {
   if (downloadingIds.value.has(item.taskId)) return
   downloadingIds.value.add(item.taskId)
   try {
-    await downloadImagesAsZip(getDownloadableUrls(item), zipNameOf(item))
+    const items = downloadableOf(item)
+    const urls = items.map((x) => x.url)
+    if (items.some((x) => hasFix(x.url, x.key))) {
+      try {
+        await downloadGroupWithColorFix(items, zipNameOf(item))
+        return
+      } catch {
+        message.warning('校色效果未能写入，已改为下载原图')
+      }
+    }
+    await downloadImagesAsZip(urls, zipNameOf(item))
   } finally {
     downloadingIds.value.delete(item.taskId)
   }
@@ -108,16 +210,22 @@ const getGroupSelectState = (group: any) => {
       </button>
     </div>
 
+    <!-- 校色舞台：点某张图的「校色调整」后出现，调当前那张（参数台、局部调色、校色对比、下载 / 存资产） -->
+    <ColorFixStage v-if="colorFixHost.focused.value" :host="colorFixHost" />
+
     <!-- 各卡片按素材真实比例（内联 aspect-ratio）撑高，顶对齐避免被行高拉伸变形 -->
     <div
       class="grid gap-8px items-start"
       :class="groupMediaType === 'video' ? 'grid-cols-[repeat(auto-fill,minmax(0,480px))]' : 'grid-cols-5'"
     >
       <Card
-        v-for="jtem in current.contents"
+        v-for="(jtem, ji) in (current.contents as any[])"
         :key="jtem.taskId"
         class="w-full"
         :data="jtem"
+        :cf-key="groupMediaType === 'image' ? colorFixKey(current, ji) : ''"
+        :index="ji"
+        :name="fileNameOf(current, ji)"
         :style="{ aspectRatio: cardAspectRatio(jtem, current) }"
       />
     </div>

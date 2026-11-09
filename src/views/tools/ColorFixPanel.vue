@@ -12,10 +12,27 @@
  * 底行虚线 #ece7f0 分隔、脚注 11px、「恢复默认 / 完成」视觉 24 高 r12（命中区外扩到 32），完成 #8b64a0 描边 + #966baa→#83598f。
  *
  * <p>参数 v-model 双向；「恢复默认」把参数改回 defaults 并发 reset（与默认相同时禁用）；「完成」与 × 都发 done。
+ *
+ * <p>局部调色（可选，2026-11-09）：绑定 `v-model:region` 才出「选区」区块——整图 / 自动识别（服装 · 商品 · 人物 · 背景）/
+ * 手动涂抹，非整图时多出「反选」与「边缘柔化 0–20」。不绑 region 时与旧版完全一致（商拍工作室现有调用不受影响）。
+ * 选区状态与蒙版由调用方（components/ColorFix useResultColorFix）负责，本组件只发 paint（打开涂抹）。
+ *
+ * <p>服装细分部位（2026-11-09）：「自动识别 · 服装」下再出一排多选：全部服装 / 上衣 / 外套 / 下装 / 裙装 / 鞋 / 包 / 帽，
+ * 写进 region.parts（空 = 全部服装）。只在传了 `garment-parts`（服务端支持的部位，调用方探测）时出现。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ColorFixSlider from '@/views/studio/colorfix/ColorFixSlider.vue'
 import { COLORFIX_DEFAULT, COLORFIX_RANGES, colorFixEquals, type ColorFixParams } from '@/utils/colorfix.ts'
+import {
+  COLORFIX_PART_LABELS,
+  COLORFIX_REGION_LABELS,
+  COLORFIX_TARGET_LABELS,
+  colorFixPartsSanitize,
+  type ColorFixAutoTarget,
+  type ColorFixGarmentPart,
+  type ColorFixRegion,
+  type ColorFixRegionMode,
+} from '@/components/ColorFix/types.ts'
 
 const props = withDefaults(
   defineProps<{
@@ -23,17 +40,53 @@ const props = withDefaults(
     open?: boolean
     /** 「恢复默认」恢复到的那组值 */
     defaults?: ColorFixParams
+    /** 标题（商拍默认「服装校色」，工具页等通用场景传「图片校色」） */
+    title?: string
+    /** 选区区块可选的方式（只在绑定 v-model:region 时有用） */
+    regionModes?: ColorFixRegionMode[]
+    /** 自动识别可选的目标 */
+    autoTargets?: ColorFixAutoTarget[]
+    /** 正在识别 / 准备蒙版 */
+    maskBusy?: boolean
+    /** 选区下方的一行提示（识别失败 / 还没涂抹 / 蒙版只在内存等） */
+    maskHint?: string
+    /** 已有涂抹选区（按钮写「重新涂抹」） */
+    hasPainted?: boolean
+    /** 已有点选选区（按钮写「重新点选」） */
+    hasPoint?: boolean
+    /** 「点选」不可用的原因（如「当前浏览器不支持点选」）：按钮置灰、悬停看原因；'' = 可用 */
+    pointBlocked?: string
+    /** 「自动识别 · 服装」可细分的部位（服务端支持的）；空 = 不出部位选择 */
+    garmentParts?: ColorFixGarmentPart[]
   }>(),
-  { open: true, defaults: () => ({ ...COLORFIX_DEFAULT }) },
+  {
+    open: true,
+    defaults: () => ({ ...COLORFIX_DEFAULT }),
+    title: '服装校色',
+    regionModes: () => ['whole', 'auto', 'paint'],
+    autoTargets: () => ['garment', 'product', 'person', 'background'],
+    maskBusy: false,
+    maskHint: '',
+    hasPainted: false,
+    hasPoint: false,
+    pointBlocked: '',
+    garmentParts: () => [],
+  },
 )
 
 const params = defineModel<ColorFixParams>({ required: true })
+/** 局部调色选区；不绑定 = 不出选区区块 */
+const region = defineModel<ColorFixRegion | undefined>('region')
 
 const emit = defineEmits<{
   /** 点了「完成」或 × */
   done: []
   /** 点了「恢复默认」（参数已改回 defaults） */
   reset: []
+  /** 点了「涂抹选区 / 重新涂抹」 */
+  paint: []
+  /** 点了「点选区域 / 重新点选」（本机分割弹窗） */
+  point: []
 }>()
 
 const R = COLORFIX_RANGES
@@ -153,6 +206,33 @@ function reset() {
   emit('reset')
 }
 
+function setRegion(patch: Partial<ColorFixRegion>) {
+  if (region.value) region.value = { ...region.value, ...patch }
+}
+
+/** 当前选中的部位（只留服务端支持的）；空 = 全部服装 */
+const pickedParts = computed(() => {
+  const allowed = new Set(props.garmentParts)
+  return colorFixPartsSanitize(region.value?.parts).filter((p) => allowed.has(p))
+})
+const showParts = computed(() => region.value?.mode === 'auto' && region.value.target === 'garment' && props.garmentParts.length > 0)
+
+/** 部位多选：点「全部服装」清空；点某件切换，全取消 = 回到全部服装 */
+function togglePart(part: ColorFixGarmentPart | null) {
+  if (!part) return setRegion({ parts: [] })
+  const cur = pickedParts.value
+  setRegion({ parts: colorFixPartsSanitize(cur.includes(part) ? cur.filter((p) => p !== part) : [...cur, part]) })
+}
+
+function pickMode(mode: ColorFixRegionMode) {
+  if (mode === 'point' && props.pointBlocked && region.value?.mode !== 'point') return
+  setRegion({ mode })
+  // 选「点选」还没有点过：直接打开点选
+  if (mode === 'point' && !props.hasPoint && !props.pointBlocked) emit('point')
+  // 选「手动涂抹」还没有涂过：直接打开涂抹
+  if (mode === 'paint' && !props.hasPainted) emit('paint')
+}
+
 const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   { key: 'hue', label: '色相' },
   { key: 'sat', label: '饱和度' },
@@ -170,17 +250,122 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
       class="cfp"
       :class="{ 'is-dragging': dragging, 'is-placed': placed }"
       :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
-      aria-label="服装校色参数"
+      :aria-label="`${title}参数`"
     >
       <header class="cfp__head" title="拖动调整面板" @pointerdown="onPointerDown">
         <span class="cfp__grip" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
-        <b class="cfp__title">服装校色</b>
+        <b class="cfp__title">{{ title }}</b>
         <button type="button" class="cfp__close sx-hit" aria-label="收起校色参数" title="收起校色参数" @click="emit('done')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
             <path d="m7 7 10 10M17 7 7 17" />
           </svg>
         </button>
       </header>
+
+      <div v-if="region" class="cfp__region" role="group" aria-label="调色选区">
+        <div class="cfp__row">
+          <span class="cfp__label">选区</span>
+          <span class="cfp__seg" role="radiogroup" aria-label="选区方式">
+            <button
+              v-for="m in regionModes"
+              :key="m"
+              type="button"
+              role="radio"
+              class="cfp__seg-btn sx-hit"
+              :class="{ 'is-on': region.mode === m }"
+              :aria-checked="region.mode === m"
+              :aria-disabled="m === 'point' && !!pointBlocked ? 'true' : undefined"
+              :title="m === 'point' && pointBlocked ? pointBlocked : undefined"
+              @click="pickMode(m)"
+            >
+              {{ COLORFIX_REGION_LABELS[m] }}
+            </button>
+          </span>
+        </div>
+        <div v-if="region.mode === 'auto'" class="cfp__row">
+          <span class="cfp__label" />
+          <span class="cfp__chips" role="radiogroup" aria-label="识别目标">
+            <button
+              v-for="t in autoTargets"
+              :key="t"
+              type="button"
+              role="radio"
+              class="cfp__chip sx-hit"
+              :class="{ 'is-on': region.target === t }"
+              :aria-checked="region.target === t"
+              @click="setRegion({ target: t })"
+            >
+              {{ COLORFIX_TARGET_LABELS[t] }}
+            </button>
+          </span>
+        </div>
+        <div v-if="showParts" class="cfp__row cfp__row--top">
+          <span class="cfp__label" />
+          <span class="cfp__parts" role="group" aria-label="服装部位（可多选）">
+            <button
+              type="button"
+              class="cfp__part sx-hit"
+              :class="{ 'is-on': pickedParts.length === 0 }"
+              :aria-pressed="pickedParts.length === 0"
+              @click="togglePart(null)"
+            >
+              全部服装
+            </button>
+            <button
+              v-for="p in garmentParts"
+              :key="p"
+              type="button"
+              class="cfp__part sx-hit"
+              :class="{ 'is-on': pickedParts.includes(p) }"
+              :aria-pressed="pickedParts.includes(p)"
+              @click="togglePart(p)"
+            >
+              {{ COLORFIX_PART_LABELS[p] }}
+            </button>
+          </span>
+        </div>
+        <div v-if="region.mode === 'paint'" class="cfp__row">
+          <span class="cfp__label" />
+          <button type="button" class="cfp__btn sx-hit" @click="emit('paint')">{{ hasPainted ? '重新涂抹' : '涂抹选区' }}</button>
+        </div>
+        <div v-if="region.mode === 'point'" class="cfp__row">
+          <span class="cfp__label" />
+          <button type="button" class="cfp__btn sx-hit" :disabled="!!pointBlocked" :title="pointBlocked || undefined" @click="emit('point')">
+            {{ hasPoint ? '重新点选' : '点选区域' }}
+          </button>
+        </div>
+        <template v-if="region.mode !== 'whole'">
+          <div class="cfp__row">
+            <span class="cfp__label">反选</span>
+            <button
+              type="button"
+              role="switch"
+              class="cfp__switch sx-hit"
+              :class="{ 'is-on': region.invert }"
+              :aria-checked="region.invert"
+              aria-label="反选：调整选区以外"
+              @click="setRegion({ invert: !region.invert })"
+            >
+              <i aria-hidden="true" />
+            </button>
+            <span class="cfp__label cfp__label--soft">柔化</span>
+            <input
+              class="cfp__range"
+              type="range"
+              min="0"
+              max="20"
+              step="1"
+              :value="region.feather"
+              aria-label="边缘柔化"
+              @input="setRegion({ feather: Number(($event.target as HTMLInputElement).value) })"
+            />
+            <b class="cfp__num" aria-hidden="true">{{ region.feather }}</b>
+          </div>
+        </template>
+        <p v-if="maskBusy || maskHint" class="cfp__note" role="status" aria-live="polite">
+          {{ maskBusy ? '正在识别选区…' : maskHint }}
+        </p>
+      </div>
 
       <div class="cfp__sliders">
         <ColorFixSlider
@@ -318,6 +503,183 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   outline-offset: 2px;
 }
 
+.cfp__region {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 12px;
+  padding: 9px 0 8px;
+  border-bottom: 1px dashed #ece7f0;
+  cursor: default;
+}
+.cfp__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+.cfp__label {
+  width: 30px;
+  flex: 0 0 30px;
+  color: #4a5059;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.cfp__label--soft {
+  width: auto;
+  flex: 0 0 auto;
+  margin-left: 6px;
+}
+/* 选区分段 / 识别目标：视觉 28 高、12px 字（§10 交互控件下限），按钮间距 8；
+   命中区只外扩 2 → 32，相邻两颗之间各占一半间距，不会互相盖住（触屏也不再加大外扩） */
+.cfp__seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #f5f6f7;
+}
+.cfp__seg-btn,
+.cfp__chip {
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #6b7280;
+  font: inherit;
+  font-size: 12px;
+  line-height: 26px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cfp__seg-btn[aria-disabled='true'] {
+  color: #b8bdc4;
+  cursor: not-allowed;
+}
+.cfp__seg-btn.is-on {
+  border-color: #d9c8e4;
+  background: linear-gradient(180deg, #fff, #f8f3fc);
+  color: #6b487c;
+  font-weight: 600;
+}
+.cfp__seg .cfp__seg-btn::after,
+.cfp__chips .cfp__chip::after {
+  inset: -2px;
+}
+.cfp__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cfp__chip {
+  border-color: #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+}
+.cfp__chip.is-on {
+  border-color: #8b64a0;
+  background: #f4eef8;
+  color: #6b487c;
+  font-weight: 600;
+}
+.cfp__row--top {
+  align-items: flex-start;
+}
+/* 部位多选：视觉 24 高，sx-hit 外扩 4 → 命中 32；行 / 列间距 8（外扩不超过间距一半） */
+.cfp__parts {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cfp__part {
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  color: #5f6673;
+  font: inherit;
+  font-size: 12px;
+  line-height: 22px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+.cfp__part:hover:not(.is-on) {
+  border-color: #c9cfd6;
+}
+.cfp__part.is-on {
+  border-color: #8b64a0;
+  background: #f4eef8;
+  color: #6b487c;
+  font-weight: 600;
+}
+.cfp__part:focus-visible {
+  outline: 2px solid #875f9a;
+  outline-offset: 2px;
+}
+.cfp__switch {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  flex: 0 0 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: #d5d9de;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.cfp__switch i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.12s ease;
+}
+.cfp__switch.is-on {
+  background: #875f9a;
+}
+.cfp__switch.is-on i {
+  transform: translateX(12px);
+}
+.cfp__range {
+  min-width: 0;
+  flex: 1;
+  accent-color: #875f9a;
+}
+.cfp__num {
+  width: 18px;
+  color: #6b487c;
+  font-size: 11px;
+  text-align: right;
+}
+.cfp__note {
+  margin: 0;
+  color: #9aa1aa;
+  font-size: 11px;
+  line-height: 16px;
+}
+.cfp__seg-btn:focus-visible,
+.cfp__chip:focus-visible,
+.cfp__switch:focus-visible {
+  outline: 2px solid #875f9a;
+  outline-offset: 2px;
+}
+
 .cfp__sliders {
   display: flex;
   flex-direction: column;
@@ -375,6 +737,9 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
 @media (prefers-reduced-motion: reduce) {
   .cfp,
   .cfp__close,
+  .cfp__switch,
+  .cfp__switch i,
+  .cfp__part,
   .cfp-enter-active,
   .cfp-leave-active {
     transition: none;

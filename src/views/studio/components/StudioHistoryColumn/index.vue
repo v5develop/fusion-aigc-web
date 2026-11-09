@@ -19,7 +19,9 @@ import { studioCancelBatch, studioDeleteBatch } from '@/api/studio.ts'
 import type { StudioBatchDetail } from '@/api/studioTypes.ts'
 import { downloadImagesAsZip } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
-import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal, shortTime } from '../../constants.ts'
+import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal } from '../../constants.ts'
+import HistoryActionRow from '@/components/HistoryActionRow/index.vue'
+import { formatFullTime, formatShortTime } from '@/utils/time.ts'
 
 const props = defineProps<{
   /** useStudioHistory 实例（游标分页 + 在跑批次轮询） */
@@ -389,13 +391,25 @@ function prevPage() {
                 <span v-if="d.batch.error_reason" class="min-w-0 truncate text-danger">{{ d.batch.error_reason }}</span>
               </div>
               <!-- 操作行：时间左、三颗按钮右（间距 8，sm 视觉 24 / 命中 32） -->
-              <div class="flex min-w-0 min-h-24px items-center gap-6px" @click.stop>
-                <span
-                  class="flex-none text-11px leading-16px text-muted tabular-nums whitespace-nowrap"
-                  :title="formatTime(d.batch.created_at)"
-                  >{{ shortTime(d.batch.created_at) }}</span
-                >
-                <span class="ml-auto flex items-center gap-8px">
+              <HistoryActionRow
+                class="min-h-24px"
+                :more-items="[
+                  { key: 'delete', label: '删除', danger: true, confirm: '删除这条记录？' },
+                  { key: 'reedit', label: '重新编辑' },
+                ]"
+                @more="(k) => (k === 'delete' ? removeBatch(d) : reedit(d))"
+                @lead-click="emit('select', d)"
+                @click.stop
+              >
+                <template #lead>
+                  <span
+                    class="flex-none text-11px leading-16px text-muted tabular-nums whitespace-nowrap"
+                    :title="formatFullTime(d.batch.created_at)"
+                    :aria-label="formatFullTime(d.batch.created_at)"
+                    >{{ formatShortTime(d.batch.created_at) }}</span
+                  >
+                </template>
+                <template #primary>
                   <IconButton
                     :label="resultsOf(d).length > 1 ? `下载 ${resultsOf(d).length} 张（打包）` : '下载'"
                     size="sm"
@@ -415,6 +429,8 @@ function prevPage() {
                       <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />
                     </svg>
                   </IconButton>
+                </template>
+                <template #secondary>
                   <n-popconfirm positive-text="删除" negative-text="取消" @positive-click="removeBatch(d)">
                     <template #trigger>
                       <IconButton label="删除" size="sm" variant="danger">
@@ -447,8 +463,8 @@ function prevPage() {
                       <path d="M13.5 6.5l4 4" />
                     </svg>
                   </IconButton>
-                </span>
-              </div>
+                </template>
+              </HistoryActionRow>
             </div>
           </template>
         </div>
@@ -479,8 +495,8 @@ function prevPage() {
             <b class="text-13px font-600 leading-18px text-ink-2">还没有生成记录</b>
             <span
               class="overflow-hidden text-11px leading-15px text-muted whitespace-nowrap text-ellipsis"
-              title="左边传好素材、点底部按钮提交，每次生成都会在这一列留一条"
-              >左边传好素材、点底部按钮提交，每次生成都会在这一列留一条</span
+              title="左边传好素材、点底部按钮提交，每次生成都会在这一列留一条；点一条就能在右边看它的产物"
+              >左边传好素材、点底部按钮提交，每次生成都会在这一列留一条；点一条就能在右边看它的产物</span
             >
           </span>
         </div>

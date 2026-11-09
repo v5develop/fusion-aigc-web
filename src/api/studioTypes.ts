@@ -246,8 +246,16 @@ export interface StudioTask {
   asset_id?: number
   /** 已保存的校色参数；没保存过为 null。老网关不下发 */
   color_fix_params?: StudioColorFixParams | null
-  /** 服装蒙版（软 alpha PNG，校色只作用于蒙版内）；网关暂未下发，预留 */
+  /**
+   * 服装蒙版（白色 + 软 alpha 的 PNG，公开地址，校色只作用于蒙版内）：商拍换装 / 姿态复刻成品成功后服务端异步补，
+   * 通常晚于 status=2 几秒；空 = 还没有 / 没识别到服装。老网关不下发
+   */
   mask_url?: string
+  /**
+   * 商拍换装按所选单品分割时的逐件蒙版（mask_url 是它们的合并）；没有为空数组。
+   * 新网关总下发这个字段（老网关没有）——前端据此判断服务端支持「服装细分部位」
+   */
+  mask_parts?: StudioMaskPart[]
 }
 
 /**
@@ -302,3 +310,38 @@ export interface StudioCancelResp {
 export type StudioTryonPayload = Partial<StudioTryonSubmitReq>
 export type StudioPosePayload = Partial<StudioPoseSubmitReq>
 export type StudioImageGenPayload = Partial<StudioImageGenSubmitReq>
+
+/** 区域蒙版目标：服装 / 商品主体 / 人物 / 背景（主体之外） */
+export type StudioMaskTarget = 'garment' | 'product' | 'person' | 'background'
+
+/** 服装细分部位：上衣 / 外套 / 下装 / 裙装 / 鞋 / 包 / 帽 */
+export type StudioMaskGarmentPart = 'tops' | 'coat' | 'pants' | 'skirt' | 'shoes' | 'bag' | 'hat'
+
+/** 一个部位的蒙版 */
+export interface StudioMaskPart {
+  part: StudioMaskGarmentPart
+  /** 该部位的白色 + 软 alpha PNG，与原图同尺寸 */
+  mask_url: string
+}
+
+/** POST /api/v1/studio/masks 的请求体 */
+export interface StudioMaskReq {
+  /** 本服务存储签发 / 素材库域名的 http(s) 地址（如任务 result_url）；第三方地址 1003 */
+  image_url: string
+  target: StudioMaskTarget
+  /** 仅 garment：只要这些部位（多选）；不传 / 空 = 全部服装。老网关不认（会忽略） */
+  parts?: StudioMaskGarmentPart[]
+}
+
+/** POST /api/v1/studio/masks 的响应 */
+export interface StudioMaskResp {
+  /** 白色 + 软 alpha 的 PNG（区域内不透明），与原图同尺寸；canvas 读像素需 crossOrigin；带 parts 时 = 这些部位的合并蒙版 */
+  mask_url: string
+  target: StudioMaskTarget
+  /** 命中服务端缓存（同一张图同一区域只识别一次） */
+  cached: boolean
+  /** 带 parts 时的逐件蒙版（固定顺序，图里没有的部位缺省）；老网关没有 */
+  parts?: StudioMaskPart[]
+  /** 该区域支持的细分部位（garment 才有）；老网关没有这个字段 = 不支持细分 */
+  available_parts?: StudioMaskGarmentPart[]
+}

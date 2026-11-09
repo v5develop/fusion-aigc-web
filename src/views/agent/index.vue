@@ -68,13 +68,23 @@ import type {
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { useStudioUploader } from '@/views/studio/components/StudioImageUpload/useStudioUploader.ts'
 import { PromptWriteButton } from '@/components/prompt-write'
-import { canvasCreate } from '@/api/canvasHome.ts'
+import { canvasCreate, canvasUploadMedia } from '@/api/canvasHome.ts'
 import { stashCanvasImport } from '@/utils/canvasImportHandoff.ts'
 import { createSafeUuid } from '@/utils/utils.ts'
 import BatchHostingModal from './BatchHostingModal.vue'
 import TemplateBrowser from './TemplateBrowser.vue'
 import IconButton from '@/components/IconButton/index.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
+import {
+  ColorFixDialog,
+  bakeForUpload,
+  bakeStoredColorFix,
+  hasStoredColorFix,
+  triggerDownload,
+  type ResultColorFix,
+} from '@/components/ColorFix'
+import { loadRegion } from '@/components/ColorFix/maskStore.ts'
+import { colorFixFailureText, colorFixFilter, loadColorFix } from '@/utils/colorfix.ts'
 import { downloadImage, downloadImagesAsZip } from '@/utils/download.ts'
 import { getPointsBalance } from '@/api/points.ts'
 import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billingGuide'
@@ -1724,27 +1734,184 @@ function openLightbox(urls: string[], index: number) {
   lightboxShow.value = true
 }
 
-/** 引用编辑：把结果图放进输入框的参考图（与「添加图片」同一套上限与去重） */
-function quoteImage(url: string) {
+/** 引用前的检查：回复中 / 已在参考图里 / 没余量（与「添加图片」同一套上限与去重） */
+function canQuote(url?: string): boolean {
   if (streaming.value) {
     message.info('回复生成中，稍后再引用')
-    return
+    return false
   }
-  if (attachments.value.includes(url)) {
+  if (url && attachments.value.includes(url)) {
     message.info('这张已经在参考图里了')
-    return
+    return false
   }
   if (imageRoom.value <= 0) {
     message.warning(`参考图${LIMIT_TEXT}，先移除一张`)
-    return
+    return false
   }
+  return true
+}
+
+/** 引用编辑：把结果图放进输入框的参考图 */
+function quoteImage(url: string) {
+  if (!canQuote(url)) return
   addImages([url])
   message.success('已放进参考图')
   void nextTick(() => textareaEl.value?.focus({ preventScroll: true }))
 }
 
+/** 引用编辑（校色后）：烘好的 PNG 先走参考图同一个上传口（≤10M），再放进参考图 */
+async function quoteFile(file: File) {
+  if (!canQuote()) return
+  let added = false
+  await uploadFiles([file], imageRoom.value, MAX_IMAGES, (url) => {
+    addImages([url])
+    added = true
+  })
+  if (!added) return
+  message.success('已把校色后的图放进参考图')
+  void nextTick(() => textareaEl.value?.focus({ preventScroll: true }))
+}
+
 async function downloadOne(url: string) {
   await downloadImage(url)
+}
+
+// ---------------- 结果图校色（components/ColorFixDialog；键 agent:<taskId>:<index>，参数 / 选区存本机） ----------------
+
+/** 走 10M 上传口（参考图）时导出长边上限：4096 的无损 PNG 容易超 10M */
+const QUOTE_MAX_SIDE = 2048
+
+const fixKeyOf = (tile: IResultTile) => `agent:${tile.key}`
+const fixShow = ref(false)
+const fixTarget = ref<{ key: string; url: string; index: number }>({ key: '', url: '', index: 0 })
+/** 弹窗关掉后 +1：结果格重读本机存的校色（整图校色用 CSS filter 即时显示，局部校色只打「已校色」标） */
+const fixVersion = ref(0)
+const fixWorking = ref(false)
+
+// 免费档水印：校色来源（弹窗 src / 按存的参数烘图）一律 = tile.url，与结果格「下载」（downloadOne）同一个地址——
+// 智能体结果图由后端按观看者档位下发，不另取原件
+function openColorFix(tile: IResultTile, index: number) {
+  if (!tile.url) return
+  fixTarget.value = { key: fixKeyOf(tile), url: tile.url, index }
+  fixShow.value = true
+}
+
+/** 这格存过的校色：null = 没校色；filter 有值 = 整图校色可直接挂 CSS filter 预览 */
+function tileFix(tile: IResultTile): { filter?: string } | null {
+  void fixVersion.value
+  const key = fixKeyOf(tile)
+  const params = loadColorFix(key)
+  if (!params) return null
+  const region = loadRegion(key)
+  return !region || region.mode === 'whole' ? { filter: colorFixFilter(params) } : {}
+}
+
+/**
+ * 这格校色过就烘出 PNG；没校色返回 null，烘失败提示后也返回 null（调用方退回原图）。
+ * fallback = 退回原图时提示里的后半句（下载是「已下载原图」）。
+ */
+async function bakedTileFile(tile: IResultTile, maxSide?: number, fallback = '已改用原图'): Promise<File | null> {
+  if (!tile.url) return null
+  const key = fixKeyOf(tile)
+  try {
+    const file = await bakeStoredColorFix(key, tile.url, { name: '校色图', maxSide })
+    // 存过校色却烘不出来：涂抹 / 点选的蒙版只在本机（换设备 / 清了站点数据 / 被淘汰），或自动识别这次没成功
+    if (!file && hasStoredColorFix(key)) {
+      const mode = loadRegion(key)?.mode
+      message.warning(mode === 'paint' || mode === 'point' ? `本机选区已丢失，${fallback}` : `选区识别失败，${fallback}`)
+    }
+    return file
+  } catch (err) {
+    message.warning(`${colorFixFailureText(err, '校色效果未能写入')}，${fallback}`)
+    return null
+  }
+}
+
+async function downloadTile(tile: IResultTile) {
+  if (!tile.url || fixWorking.value) return
+  fixWorking.value = true
+  try {
+    const file = await bakedTileFile(tile, undefined, '已下载原图')
+    if (file) triggerDownload(file, file.name)
+    else await downloadOne(tile.url)
+  } finally {
+    fixWorking.value = false
+  }
+}
+
+async function quoteTile(tile: IResultTile) {
+  if (!tile.url || fixWorking.value) return
+  if (!hasStoredColorFix(fixKeyOf(tile))) return quoteImage(tile.url)
+  if (!canQuote()) return
+  fixWorking.value = true
+  try {
+    const file = await bakedTileFile(tile, QUOTE_MAX_SIDE)
+    if (file) await quoteFile(file)
+    else quoteImage(tile.url)
+  } finally {
+    fixWorking.value = false
+  }
+}
+
+/** 校色后的图先传到画布素材口（与画布节点上传同一通道），再按地址交接给新画布 */
+async function openFileInCanvas(file: File) {
+  try {
+    await openInCanvas([await canvasUploadMedia(file)])
+  } catch (err) {
+    reportError(err, '校色图上传失败，请稍后重试')
+  }
+}
+
+async function openTileInCanvas(tile: IResultTile) {
+  if (!tile.url || fixWorking.value || openingCanvas.value) return
+  if (!hasStoredColorFix(fixKeyOf(tile))) return openInCanvas([tile.url])
+  fixWorking.value = true
+  try {
+    const file = await bakeForUpload((side) => bakedTileFile(tile, side))
+    if (file) await openFileInCanvas(file)
+    else await openInCanvas([tile.url])
+  } finally {
+    fixWorking.value = false
+  }
+}
+
+/** 弹窗底栏：校色开着用烘好的图，没校色就用原图 */
+async function fixDialogQuote(cf: ResultColorFix, bakeFile: (name?: string, maxSide?: number) => Promise<File | null>) {
+  const url = fixTarget.value.url
+  if (fixWorking.value) return
+  if (!cf.active.value) {
+    quoteImage(url)
+    fixShow.value = false
+    return
+  }
+  if (!canQuote()) return
+  fixWorking.value = true
+  try {
+    const file = await bakeFile('校色图', QUOTE_MAX_SIDE)
+    if (!file) return
+    await quoteFile(file)
+    fixShow.value = false
+  } finally {
+    fixWorking.value = false
+  }
+}
+
+async function fixDialogCanvas(cf: ResultColorFix, bakeFile: (name?: string, maxSide?: number) => Promise<File | null>) {
+  if (fixWorking.value || openingCanvas.value) return
+  if (!cf.active.value) {
+    fixShow.value = false
+    await openInCanvas([fixTarget.value.url])
+    return
+  }
+  fixWorking.value = true
+  try {
+    const file = await bakeForUpload((side) => bakeFile('校色图', side))
+    if (!file) return
+    fixShow.value = false
+    await openFileInCanvas(file)
+  } finally {
+    fixWorking.value = false
+  }
 }
 
 /** 复制图片：优先把图片本身写进剪贴板（PNG）；跨域拿不到图或浏览器不支持时退回复制地址 */
@@ -3125,8 +3292,19 @@ onUnmounted(() => {
                                 ]"
                                 @click="onTileClick(card.key, card.urls, tile.url)"
                               >
-                                <img :src="tile.url" alt="" loading="lazy" class="block h-full w-full object-cover" />
+                                <img
+                                  :src="tile.url"
+                                  alt=""
+                                  loading="lazy"
+                                  class="block h-full w-full object-cover"
+                                  :style="tileFix(tile)?.filter ? { filter: tileFix(tile)?.filter } : undefined"
+                                />
                               </button>
+                              <span
+                                v-if="tileFix(tile)"
+                                class="pointer-events-none absolute left-8px top-8px z-2 rounded-9px bg-white/84 px-6px py-2px text-11px leading-14px text-violet-ink shadow-[0_1px_3px_rgba(0,0,0,0.14)] backdrop-blur-4px"
+                                >已校色</span
+                              >
                               <template v-if="multiCard === card.key">
                                 <span
                                   v-if="multiPicks.includes(tile.url)"
@@ -3151,8 +3329,23 @@ onUnmounted(() => {
                                 v-else
                                 class="absolute inset-x-0 bottom-0 z-2 flex flex-wrap items-center justify-end gap-10px bg-[linear-gradient(transparent,rgba(15,20,25,0.5))] px-6px pb-6px pt-14px opacity-0 [transition:opacity_.12s] group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none"
                               >
-                                <button type="button" :class="[SHOT_OP, 'px-9px']" @click="quoteImage(tile.url)">引用编辑</button>
-                                <button type="button" title="下载" aria-label="下载" :class="[SHOT_OP, 'w-22px']" @click="downloadOne(tile.url)">
+                                <button
+                                  type="button"
+                                  :class="[SHOT_OP, 'px-9px']"
+                                  :aria-label="`校色：第 ${k + 1} 张`"
+                                  @click="openColorFix(tile, k)"
+                                >
+                                  校色
+                                </button>
+                                <button type="button" :disabled="fixWorking" :class="[SHOT_OP, 'px-9px']" @click="quoteTile(tile)">引用编辑</button>
+                                <button
+                                  type="button"
+                                  :title="tileFix(tile) ? '下载（校色后）' : '下载'"
+                                  :aria-label="tileFix(tile) ? '下载校色后的图' : '下载'"
+                                  :disabled="fixWorking"
+                                  :class="[SHOT_OP, 'w-22px']"
+                                  @click="downloadTile(tile)"
+                                >
                                   <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                     <path :d="ICON.download" />
                                   </svg>
@@ -3166,9 +3359,9 @@ onUnmounted(() => {
                                   type="button"
                                   title="在画布中打开"
                                   aria-label="在画布中打开"
-                                  :disabled="openingCanvas"
+                                  :disabled="openingCanvas || fixWorking"
                                   :class="[SHOT_OP, 'w-22px']"
-                                  @click="openInCanvas([tile.url])"
+                                  @click="openTileInCanvas(tile)"
                                 >
                                   <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                     <path :d="ICON.expand" />
@@ -4122,6 +4315,30 @@ onUnmounted(() => {
     <AssetPickerModal v-model:show="assetPickerShow" :limit="Math.max(imageRoom, 1)" @select="onAssetSelect" />
 
     <MediaLightbox v-model:show="lightboxShow" v-model:index="lightboxIndex" :items="lightboxItems" />
+    <!-- 结果图校色：参数 + 局部选区 + 对比；引用编辑 / 在画布中打开 用烘好的图 -->
+    <ColorFixDialog
+      v-model:show="fixShow"
+      :src="fixTarget.url"
+      :color-key="fixTarget.key"
+      :title="`图片校色 · 第 ${fixTarget.index + 1} 张`"
+      file-name="生成图-校色"
+      @closed="fixVersion += 1"
+    >
+      <template #actions="{ cf, bakeFile }">
+        <button type="button" class="sx-btn" :disabled="fixWorking || uploading" @click="fixDialogQuote(cf, bakeFile)">
+          引用编辑
+        </button>
+        <button
+          type="button"
+          class="sx-btn-primary"
+          :disabled="fixWorking || openingCanvas"
+          :aria-busy="fixWorking || openingCanvas"
+          @click="fixDialogCanvas(cf, bakeFile)"
+        >
+          在画布中打开
+        </button>
+      </template>
+    </ColorFixDialog>
   </n-config-provider>
 </template>
 
