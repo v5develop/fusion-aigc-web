@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelOf, normalizeModelTier } from '@/utils/modelLabel'
+import { modelLabelOf, normalizeModelTier } from '@/utils/model-label'
 /**
  * 节点控制台（原型 CanvasConsolePanel + canvas-v31 §3）：约 520×360 的浮层，由画布页定位在选中节点下方（放不下翻到上方）。
  * 头部：类型 + 标题 + 执行钮；主体按节点类型 / catalog 能力出表单；底部：说明 + 「完成」。
@@ -12,8 +12,8 @@ import EditorIcon from './EditorIcon.vue'
 import RunErrorNotice from './RunErrorNotice.vue'
 import { compareRefOrder, normalizeHandle, toolLabel } from './graph.ts'
 import { editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
-import { canvasUploadMedia } from '@/api/canvasHome.ts'
-import type { ICanvasCatalogTool } from '@/api/canvasHome.ts'
+import { canvasUploadMedia } from '@/api/canvas-home.ts'
+import type { ICanvasCatalogTool } from '@/api/canvas-home.ts'
 import type { CanvasEditorNode, CanvasToolKind, CanvasNodeData } from './types.ts'
 import { FOCUS_RING, NODE_NOTICE, NODE_RUN_BTN, POP_SURFACE } from './ui.ts'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
@@ -60,17 +60,17 @@ const textValue = computed({
 const modelNode = computed(() => (props.node.type === 'model' ? (props.node.data as CanvasNodeData) : null))
 const isVideoModel = computed(() => modelNode.value?.kind === 'video')
 const modelOptions = computed(() => {
-  const list = isVideoModel.value ? catalog.value?.video_models : catalog.value?.image_models
+  const list = isVideoModel.value ? catalog.value?.video_models : catalog.value?.imageModels
   return (list ?? []).map((item) => ({
     label: item.ready ? modelLabelOf(item.model) : `${modelLabelOf(item.model)}（不可用）`,
-    value: item.model_id,
+    value: item.modelId,
     disabled: !item.ready,
   }))
 })
 const currentModel = computed(() => {
-  const list = isVideoModel.value ? catalog.value?.video_models : catalog.value?.image_models
+  const list = isVideoModel.value ? catalog.value?.video_models : catalog.value?.imageModels
   return (
-    list?.find((item) => item.model_id === modelNode.value?.modelId) ??
+    list?.find((item) => item.modelId === modelNode.value?.modelId) ??
     list?.find((item) => item.model === modelNode.value?.model)
   )
 })
@@ -91,7 +91,7 @@ const qualityOptions = computed(() => {
 const durationOptions = computed(() =>
   (currentModel.value?.durations ?? ['4s', '6s', '8s']).map((value) => ({ label: value, value })),
 )
-const countMax = computed(() => currentModel.value?.count_max ?? (isVideoModel.value ? 1 : 4))
+const countMax = computed(() => currentModel.value?.countMax ?? (isVideoModel.value ? 1 : 4))
 const priceHint = computed(() => {
   const size = modelNode.value?.size
   const duration = modelNode.value?.duration
@@ -105,7 +105,8 @@ const estimatePoints = computed(() => {
   const size = modelNode.value?.size
   const duration = modelNode.value?.duration
   const hit = currentModel.value?.prices?.find(
-    (price) => (size ? price.size === size : true) && (isVideoModel.value && duration ? price.duration === duration : true),
+    (price) =>
+      (size ? price.size === size : true) && (isVideoModel.value && duration ? price.duration === duration : true),
   )
   if (!hit) return null
   const count = isVideoModel.value ? 1 : Math.max(1, Math.round(Number(modelNode.value?.count) || 1))
@@ -115,8 +116,8 @@ const estimatePoints = computed(() => {
 const controlCols = computed(() => (isVideoModel.value ? 'grid-cols-4' : 'grid-cols-3'))
 
 function onModelChange(modelId: string) {
-  const list = isVideoModel.value ? catalog.value?.video_models : catalog.value?.image_models
-  const model = list?.find((item) => item.model_id === modelId)
+  const list = isVideoModel.value ? catalog.value?.video_models : catalog.value?.imageModels
+  const model = list?.find((item) => item.modelId === modelId)
   if (model) store.changeModel(props.node.id, model)
 }
 
@@ -138,38 +139,40 @@ const references = computed(() => {
     .map((edge) => ({ edge, source: store.findNode(edge.source) }))
     .filter((item): item is { edge: (typeof item)['edge']; source: CanvasEditorNode } => Boolean(item.source))
   const seq: Record<string, number> = {}
-  return incoming
-    // 与 run 请求同一排序（首尾帧在前、普通参考按 order）：「图N」= 提交时 references[].index
-    .sort((a, b) =>
-      compareRefOrder(
-        { handle: a.edge.targetHandle, order: a.edge.data?.order },
-        { handle: b.edge.targetHandle, order: b.edge.data?.order },
-      ),
-    )
-    .map(({ edge, source }) => {
-      const handle = edge.targetHandle ?? ''
-      const group = normalizeHandle(handle) ?? handle
-      seq[group] = (seq[group] ?? 0) + 1
-      const n = seq[group]
-      const label =
-        handle === 'image1'
-          ? '首帧'
-          : handle === 'image2'
-            ? '尾帧'
-            : group === 'video'
-              ? `视频${n}`
-              : group === 'garment'
-                ? '服装'
-                : group === 'models'
-                  ? `模特${n}`
-                  : `图${n}`
-      const data = source.data
-      const thumb = data.resultImage ?? data.candidates?.[data.selectedCandidate ?? 0] ?? data.image ?? ''
-      const badge = handle === 'image1' ? '首' : handle === 'image2' ? '尾' : group === 'garment' ? '衣' : String(n)
-      // 首尾帧各占一个固定口、服装只有 1 条：不参与拖拽排序
-      const sortable = handle !== 'image1' && handle !== 'image2' && group !== 'garment'
-      return { id: edge.id, sourceId: source.id, name: data.title || source.id, label, badge, thumb, group, sortable }
-    })
+  return (
+    incoming
+      // 与 run 请求同一排序（首尾帧在前、普通参考按 order）：「图N」= 提交时 references[].index
+      .sort((a, b) =>
+        compareRefOrder(
+          { handle: a.edge.targetHandle, order: a.edge.data?.order },
+          { handle: b.edge.targetHandle, order: b.edge.data?.order },
+        ),
+      )
+      .map(({ edge, source }) => {
+        const handle = edge.targetHandle ?? ''
+        const group = normalizeHandle(handle) ?? handle
+        seq[group] = (seq[group] ?? 0) + 1
+        const n = seq[group]
+        const label =
+          handle === 'image1'
+            ? '首帧'
+            : handle === 'image2'
+              ? '尾帧'
+              : group === 'video'
+                ? `视频${n}`
+                : group === 'garment'
+                  ? '服装'
+                  : group === 'models'
+                    ? `模特${n}`
+                    : `图${n}`
+        const data = source.data
+        const thumb = data.resultImage ?? data.candidates?.[data.selectedCandidate ?? 0] ?? data.image ?? ''
+        const badge = handle === 'image1' ? '首' : handle === 'image2' ? '尾' : group === 'garment' ? '衣' : String(n)
+        // 首尾帧各占一个固定口、服装只有 1 条：不参与拖拽排序
+        const sortable = handle !== 'image1' && handle !== 'image2' && group !== 'garment'
+        return { id: edge.id, sourceId: source.id, name: data.title || source.id, label, badge, thumb, group, sortable }
+      })
+  )
 })
 
 // ---- 参考排序（拖动缩略图，同口内重排 → 写回连线 data.order）----
@@ -195,14 +198,20 @@ function onRefDragOver(event: DragEvent, item: { id: string; group: string; sort
 function onRefDrop(item: { id: string; group: string; sortable: boolean }) {
   if (canDropOn(item)) {
     const sameGroup = references.value.filter((ref) => ref.group === item.group && ref.sortable)
-    store.reorderReference(props.node.id, dragRefId.value, sameGroup.findIndex((ref) => ref.id === item.id))
+    store.reorderReference(
+      props.node.id,
+      dragRefId.value,
+      sameGroup.findIndex((ref) => ref.id === item.id),
+    )
   }
   dragRefId.value = ''
 }
 
 /** 提示词下的引用片：「图1 / 视频1」，点一下插到光标处（提示词里按序号指代参考） */
 const refTokens = computed(() =>
-  references.value.filter((item) => /^(图|视频)\d+$/.test(item.label)).map((item) => ({ id: item.id, token: item.label })),
+  references.value
+    .filter((item) => /^(图|视频)\d+$/.test(item.label))
+    .map((item) => ({ id: item.id, token: item.label })),
 )
 const promptInputRef = ref<{ textareaElRef?: HTMLTextAreaElement | null } | null>(null)
 function insertToken(token: string) {
@@ -221,9 +230,7 @@ function insertToken(token: string) {
 
 /** 「+」从画布选参考：可以喂图的节点（不含自身、分组框、文字、已连上的） */
 const pickableRefs = computed(() => {
-  const linked = new Set(
-    store.edges.value.filter((edge) => edge.target === props.node.id).map((edge) => edge.source),
-  )
+  const linked = new Set(store.edges.value.filter((edge) => edge.target === props.node.id).map((edge) => edge.source))
   return store.nodes.value
     .filter(
       (item) =>
@@ -510,7 +517,7 @@ function cancel() {
 /** 底部说明：生成节点给参考图上限 + 单价；其余节点给操作提示 */
 const footHint = computed(() => {
   if (modelNode.value) {
-    const refs = `参考图上限 ${modelNode.value.maxImageRefs ?? 5} 张 · 参考视频 ${currentModel.value?.max_reference_videos ?? 0} 个`
+    const refs = `参考图上限 ${modelNode.value.maxImageRefs ?? 5} 张 · 参考视频 ${currentModel.value?.maxReferenceVideos ?? 0} 个`
     return priceHint.value && estimatePoints.value === null ? `${refs} · ${priceHint.value}` : refs
   }
   if (toolNode.value) return '工具产出可继续连到生成节点'
@@ -611,7 +618,11 @@ const footHint = computed(() => {
       <!-- 生成节点 -->
       <template v-else-if="modelNode">
         <!-- 上游参考（原型 .wf-console__assets）：44px 缩略图 + 藤紫序号；点击定位、× 断开（视觉 16、::after 外扩 8 → 命中 32；间距 14 / 上内边距 14 免得命中区被裁或压到邻居）-->
-        <div class="flex items-start gap-14px mb-8px pt-14px pl-5px pr-14px overflow-x-auto" role="list" aria-label="上游参考">
+        <div
+          class="flex items-start gap-14px mb-8px pt-14px pl-5px pr-14px overflow-x-auto"
+          role="list"
+          aria-label="上游参考"
+        >
           <div
             v-for="item in references"
             :key="item.id"
@@ -689,7 +700,9 @@ const footHint = computed(() => {
           <span v-if="!references.length" class="self-center text-muted text-11px leading-[1.5]"
             >还没有上游参考：把图片 / 生成节点连到左侧参考口，点「+」从画布选，或直接写提示词</span
           >
-          <span v-else-if="references.some((item) => item.sortable)" class="self-center text-muted text-11px leading-[1.5]"
+          <span
+            v-else-if="references.some((item) => item.sortable)"
+            class="self-center text-muted text-11px leading-[1.5]"
             >拖动缩略图可调整序号</span
           >
         </div>
@@ -711,13 +724,7 @@ const footHint = computed(() => {
             </n-button>
             <n-button size="small" :disabled="uploading" @click="openAssets('video')">从资产库添加</n-button>
           </div>
-          <input
-            ref="fileRef"
-            type="file"
-            accept=".mp4,.mov,video/mp4,video/quicktime"
-            hidden
-            @change="onFile"
-          />
+          <input ref="fileRef" type="file" accept=".mp4,.mov,video/mp4,video/quicktime" hidden @change="onFile" />
         </div>
 
         <label :class="LABEL" for="canvas-console-prompt">提示词</label>

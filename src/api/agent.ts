@@ -10,7 +10,7 @@
  * 保留同一个 requestId，用户手动重发同一条内容才沿用它。
  */
 import { ApiError, authorizedFetch, del, get, patch, post } from './index.ts'
-import type { IBatchSubmitReq } from './batchHosting.ts'
+import type { IBatchSubmitReq } from './batch-hosting.ts'
 
 const PREFIX = '/api/v1/agent'
 

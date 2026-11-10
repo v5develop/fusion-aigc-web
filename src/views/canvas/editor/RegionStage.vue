@@ -6,8 +6,8 @@
  * 点选 = 单击；框选 = 拖拽。键盘：方向键移动十字准星（Shift 大步），回车 / 空格确认，框选需确认两次（起点、终点）。
  */
 import { computed, ref } from 'vue'
-import type { IActionRegion, RatioPoint } from './imageActions.ts'
-import { REGION_BADGE } from './actionUi.ts'
+import type { IActionRegion, RatioPoint } from './image-actions.ts'
+import { REGION_BADGE } from './action-ui.ts'
 
 const props = defineProps<{
   url: string

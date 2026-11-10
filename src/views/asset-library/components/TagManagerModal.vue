@@ -4,100 +4,95 @@
  * 重命名后资产上的标签名随之变化；删除会解除与所有资产的关联（popconfirm 确认）。
  * 变更通过 changed 事件抛给页面刷新列表；删除时带上标签名，便于页面清掉同名筛选。
  */
-import { ref, watch } from "vue";
-import { NButton, NInput, NModal, NPopconfirm, useMessage } from "naive-ui";
-import {
-  assetLibTagCreate,
-  assetLibTagDelete,
-  assetLibTagRename,
-  assetLibTags,
-} from "@/api/assetLibrary.ts";
-import type { IAssetLibTag } from "@/api/assetLibrary.ts";
-import { formatTime } from "@/views/local-life/constants.ts";
+import { ref, watch } from 'vue'
+import { NButton, NInput, NModal, NPopconfirm, useMessage } from 'naive-ui'
+import { assetLibTagCreate, assetLibTagDelete, assetLibTagRename, assetLibTags } from '@/api/asset-library.ts'
+import type { IAssetLibTag } from '@/api/asset-library.ts'
+import { formatTime } from '@/views/local-life/constants.ts'
 
-const show = defineModel<boolean>("show", { required: true });
+const show = defineModel<boolean>('show', { required: true })
 
-const emit = defineEmits<{ changed: [deletedName?: string] }>();
+const emit = defineEmits<{ changed: [deletedName?: string] }>()
 
-const message = useMessage();
+const message = useMessage()
 
-const tags = ref<IAssetLibTag[]>([]);
-const loading = ref(false);
-const newName = ref("");
-const creating = ref(false);
+const tags = ref<IAssetLibTag[]>([])
+const loading = ref(false)
+const newName = ref('')
+const creating = ref(false)
 
-const renamingId = ref<number | null>(null);
-const renameDraft = ref("");
+const renamingId = ref<number | null>(null)
+const renameDraft = ref('')
 
 async function loadTags() {
-  loading.value = true;
+  loading.value = true
   try {
-    const res = await assetLibTags();
-    tags.value = res.data?.items ?? [];
+    const res = await assetLibTags()
+    tags.value = res.data?.items ?? []
   } finally {
-    loading.value = false;
+    loading.value = false
   }
 }
 
 watch(show, (v) => {
   if (v) {
-    newName.value = "";
-    renamingId.value = null;
-    void loadTags();
+    newName.value = ''
+    renamingId.value = null
+    void loadTags()
   }
-});
+})
 
 async function createTag() {
-  const name = newName.value.trim();
-  if (!name) return;
+  const name = newName.value.trim()
+  if (!name) return
   if (name.length > 20) {
-    message.warning("标签名最多 20 字");
-    return;
+    message.warning('标签名最多 20 字')
+    return
   }
-  creating.value = true;
+  creating.value = true
   try {
-    await assetLibTagCreate(name);
-    newName.value = "";
+    await assetLibTagCreate(name)
+    newName.value = ''
     // 服务端按名字排序，重拉保持有序（重名 4002 由请求层 toast）
-    await loadTags();
+    await loadTags()
   } finally {
-    creating.value = false;
+    creating.value = false
   }
 }
 
 function startRename(t: IAssetLibTag) {
-  renamingId.value = t.id;
-  renameDraft.value = t.name;
+  renamingId.value = t.id
+  renameDraft.value = t.name
 }
 
 async function saveRename() {
-  const id = renamingId.value;
-  const name = renameDraft.value.trim();
-  if (!id) return;
+  const id = renamingId.value
+  const name = renameDraft.value.trim()
+  if (!id) return
   if (!name) {
-    message.warning("标签名不能为空");
-    return;
+    message.warning('标签名不能为空')
+    return
   }
   if (name.length > 20) {
-    message.warning("标签名最多 20 字");
-    return;
+    message.warning('标签名最多 20 字')
+    return
   }
   try {
-    await assetLibTagRename(id, name);
-    const item = tags.value.find((t) => t.id === id);
-    if (item) item.name = name;
-    renamingId.value = null;
-    emit("changed");
+    await assetLibTagRename(id, name)
+    const item = tags.value.find((t) => t.id === id)
+    if (item) item.name = name
+    renamingId.value = null
+    emit('changed')
   } catch {
     // 失败（重名等）toast 已由请求层弹出，行内编辑留着供修改重试
   }
 }
 
 async function removeTag(t: IAssetLibTag) {
-  await assetLibTagDelete(t.id);
-  tags.value = tags.value.filter((x) => x.id !== t.id);
-  message.success(`已删除标签「${t.name}」`);
-  emit("changed", t.name);
+  await assetLibTagDelete(t.id)
+  tags.value = tags.value.filter((x) => x.id !== t.id)
+  message.success(`已删除标签「${t.name}」`)
+  emit('changed', t.name)
 }
 </script>
 
@@ -142,11 +137,10 @@ async function removeTag(t: IAssetLibTag) {
               :title="t.name"
               >{{ t.name }}</span
             >
-            <span
-              class="shrink-0 text-12px text-violet-ink bg-violet-soft rounded-4px px-8px py-2px"
-              >{{ t.asset_count }} 个资产</span
+            <span class="shrink-0 text-12px text-violet-ink bg-violet-soft rounded-4px px-8px py-2px"
+              >{{ t.assetCount }} 个资产</span
             >
-            <span class="shrink-0 text-12px text-placeholder">{{ formatTime(t.created_at) }}</span>
+            <span class="shrink-0 text-12px text-placeholder">{{ formatTime(t.createdAt) }}</span>
             <span class="shrink-0 flex items-center gap-12px">
               <span class="ll-link" @click="startRename(t)">重命名</span>
               <n-popconfirm @positive-click="removeTag(t)">

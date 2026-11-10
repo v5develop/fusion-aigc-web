@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelOf } from '@/utils/modelLabel'
+import { modelLabelOf } from '@/utils/model-label'
 /**
  * 工具箱共用工具页 /tools/:toolId（各工具按 schemas.ts 渲染）。
  *
@@ -13,7 +13,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useId, w
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useDialog, useMessage } from 'naive-ui'
 import { toApiError } from '@/api/index.ts'
-import { upload } from '@/api/ossUpload.ts'
+import { upload } from '@/api/oss-upload.ts'
 import {
   bizPoints,
   imageModelConfigs,
@@ -26,7 +26,7 @@ import {
   type ToolHistoryItem,
   type VoiceItem,
 } from '@/api/tools.ts'
-import { useUserInfoStore } from '@/stores/userInfo'
+import { useUserInfoStore } from '@/stores/user-info'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import HistoryActionRow from '@/components/HistoryActionRow/index.vue'
@@ -50,7 +50,7 @@ import {
 } from './schemas'
 import { catalogFor, catalogKindOf, catalogKinds } from './catalog'
 import { isTerminal, useToolHistory } from './useToolHistory'
-import { takeRefill } from '@/utils/refillHandoff'
+import { takeRefill } from '@/utils/refill-handoff'
 import { downloadImage } from '@/utils/download'
 import ToolUploadSlot from './ToolUploadSlot.vue'
 import ToolTryonMaterials from './ToolTryonMaterials.vue'
@@ -60,22 +60,22 @@ import { inpaintImages, inpaintMissingReason, type InpaintBoxes } from './inpain
 import PollingOfflineBanner from './PollingOfflineBanner.vue'
 import ToolImageCompare from './ToolImageCompare.vue'
 import ToolMediaPreview, { type PreviewItem } from './ToolMediaPreview.vue'
-import CreationSettingsRow from '@/components/creation/CreationSettingsRow.vue'
+import CreationSettingsRow from '@/components/Creation/CreationSettingsRow.vue'
 import ToolChoiceField, { type ToolChoiceOption } from './ToolChoiceField.vue'
 import ToolPipeLinks from './ToolPipeLinks.vue'
-import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
-import BarSlider from '@/components/creation/BarSlider.vue'
-import CreationModelPicker from '@/components/creation/CreationModelPicker.vue'
-import CreationOptionPills from '@/components/creation/CreationOptionPills.vue'
-import NumberStepper from '@/components/creation/NumberStepper.vue'
+import CreationPromptInput from '@/components/Creation/CreationPromptInput.vue'
+import BarSlider from '@/components/Creation/BarSlider.vue'
+import CreationModelPicker from '@/components/Creation/CreationModelPicker.vue'
+import CreationOptionPills from '@/components/Creation/CreationOptionPills.vue'
+import NumberStepper from '@/components/Creation/NumberStepper.vue'
 import MediaLightbox, { type LightboxItem } from '@/components/MediaLightbox/index.vue'
-import type { PromptWriteBizType } from '@/api/promptWrite.ts'
-import type { CreationOption, CreationSettingsRowItem } from '@/components/creation/types'
-import VideoClonePanel from './videoClone/VideoClonePanel.vue'
-import { useVideoCloneState } from './videoClone/useVideoClone'
-import { VC_MAX_REFS } from './videoClone/constants'
-import { useWorkflowVideoQuote } from './videoClone/useWorkflowVideoQuote'
-import type { VideoCloneAnnotations } from '@/api/videoClone'
+import type { PromptWriteBizType } from '@/api/prompt-write.ts'
+import type { CreationOption, CreationSettingsRowItem } from '@/components/Creation/types'
+import VideoClonePanel from './video-clone/VideoClonePanel.vue'
+import { useVideoCloneState } from './video-clone/useVideoClone'
+import { VC_MAX_REFS } from './video-clone/constants'
+import { useWorkflowVideoQuote } from './video-clone/useWorkflowVideoQuote'
+import type { VideoCloneAnnotations } from '@/api/video-clone'
 
 /** Java 同步抠图「等不及」的专用码（ErrorCode.TASK_PROCESSING） */
 const TASK_PROCESSING_CODE = 3010
@@ -406,7 +406,9 @@ const imageModelChoices = computed<ModelConfigExt[]>(() =>
   (imageModels.value ?? []).filter((m) => m && typeof m.model === 'string' && m.model),
 )
 /** 多于一个模型才让用户选；只有一个时照旧按它报价、不传 model */
-const imageModelSelectable = computed(() => schema.value?.price === 'image-model-configs' && imageModelChoices.value.length > 1)
+const imageModelSelectable = computed(
+  () => schema.value?.price === 'image-model-configs' && imageModelChoices.value.length > 1,
+)
 /** 默认模型：运营标了 default=true 的那项，没标取第一项 */
 const defaultImageModel = computed<ModelConfigExt | undefined>(
   () => imageModelChoices.value.find((m) => m.default === true) ?? imageModelChoices.value[0],
@@ -427,7 +429,9 @@ const imageRefCap = computed<number | null>(() => {
 const isImageRefSlot = (u: ToolUpload) =>
   schema.value?.price === 'image-model-configs' && u.kind === 'image' && u.javaKey === 'imageUrls'
 /** 图片生成工具且模型表已到：分辨率 / 比例按所选（默认第一项）模型的 size[] 出 */
-const imageModelDriven = computed(() => schema.value?.price === 'image-model-configs' && !!currentImageModel.value?.size?.length)
+const imageModelDriven = computed(
+  () => schema.value?.price === 'image-model-configs' && !!currentImageModel.value?.size?.length,
+)
 /** 所选图片模型的分辨率档（原样大小写）；没建模返回 null = 用 schema 选项 */
 const imageModelResolutions = computed<string[] | null>(() => {
   if (!imageModelDriven.value) return null
@@ -524,7 +528,9 @@ const refLimitText = computed(() => {
   if (!r || !schema.value?.uploads.some((u) => u.needsMode)) return ''
   if (refImageBlocked.value) {
     if (r.maxVideos === 0) return '当前模型不支持参考图和参考视频'
-    return typeof r.maxVideos === 'number' ? `当前模型不支持参考图，最多 ${r.maxVideos} 段参考视频` : '当前模型不支持参考图'
+    return typeof r.maxVideos === 'number'
+      ? `当前模型不支持参考图，最多 ${r.maxVideos} 段参考视频`
+      : '当前模型不支持参考图'
   }
   const images = `${refImageCap.value} 张参考图`
   if (r.maxVideos === 0) return `当前模型最多 ${images}，不支持参考视频`
@@ -576,8 +582,12 @@ const VIDEO_CLONE_ID = 'ai-video-clone'
 /** 用户选了「不解析，直接写描述出片」（或回填了没有标注的老记录） */
 const cloneSimple = ref(false)
 const cloneMode = computed(() => schema.value?.homeId === VIDEO_CLONE_ID && !cloneSimple.value)
-const cloneVideoSlot = computed(() => (cloneMode.value ? schema.value?.uploads.find((u) => u.javaKey === 'videoUrl') : undefined))
-const cloneRefSlot = computed(() => (cloneMode.value ? schema.value?.uploads.find((u) => u.javaKey === 'imageUrls') : undefined))
+const cloneVideoSlot = computed(() =>
+  cloneMode.value ? schema.value?.uploads.find((u) => u.javaKey === 'videoUrl') : undefined,
+)
+const cloneRefSlot = computed(() =>
+  cloneMode.value ? schema.value?.uploads.find((u) => u.javaKey === 'imageUrls') : undefined,
+)
 /** 参考图上限：@1–@9，再按当前模型 refs.maxImages 收紧 */
 const cloneRefMax = computed(() => Math.min(VC_MAX_REFS, refImageCap.value))
 const cloneModelMaxSeconds = computed(() => {
@@ -585,7 +595,9 @@ const cloneModelMaxSeconds = computed(() => {
   return Number.isInteger(max) && max! > 0 ? max! : null
 })
 const cloneModelResolutions = computed(() => {
-  const list = (currentVideoModel.value?.size ?? []).map((x) => x.resolution?.toLowerCase()).filter((r): r is string => !!r)
+  const list = (currentVideoModel.value?.size ?? [])
+    .map((x) => x.resolution?.toLowerCase())
+    .filter((r): r is string => !!r)
   return list.length ? list : null
 })
 const vc = useVideoCloneState({
@@ -659,7 +671,6 @@ const visibleFields = computed(() =>
   ),
 )
 
-
 /**
  * 服务端下发的选项：模型表到了、换了模型 / 清晰度后，不再合法的取值落到第一档（按 schema 顺序逐个对齐，
  * 先模型、再清晰度、再比例与时长）；不支持的参考素材清空。
@@ -712,7 +723,10 @@ watch(
  * 上限 0 = 该模型不支持参考图：清空并提示。
  */
 watch(
-  () => [imageRefCap.value, ...(schema.value?.uploads ?? []).filter(isImageRefSlot).map((u) => uploads[u.slot]?.length ?? 0)],
+  () => [
+    imageRefCap.value,
+    ...(schema.value?.uploads ?? []).filter(isImageRefSlot).map((u) => uploads[u.slot]?.length ?? 0),
+  ],
   () => {
     const cap = imageRefCap.value
     if (cap === null) return
@@ -764,9 +778,7 @@ const mlPrompt = computed(() => mlPromptUploads.value.length > 0)
  */
 const promptStripOwned = computed(() => mlPromptUploads.value.some((u) => u.strip === 'prototype'))
 /** 画框顶计数行的那个槽：第一个可用的原型图条；模型不支持参考图时没有，退回一体框自己的顶行（只剩书本钮） */
-const stripHeadSlot = computed(() =>
-  mlPromptUploads.value.find((u) => u.strip === 'prototype' && uploadEnabled(u)),
-)
+const stripHeadSlot = computed(() => mlPromptUploads.value.find((u) => u.strip === 'prototype' && uploadEnabled(u)))
 /** 商拍换装素材板的两个槽位：服装图（clothImageUrl）/ 模特图（modelImageUrl）；缺一个就退回通用槽位 */
 const tryonSlots = computed(() => {
   const list = schema.value?.uploads ?? []
@@ -835,9 +847,7 @@ function sizeValid(f: ToolField) {
   return Number.isInteger(n) && n >= (f.min ?? 64) && n <= (f.max ?? 8192)
 }
 /** 设置弹层里逐个渲染的字段（宽高合成一行，由 sizePair 单独渲染） */
-const popoverRows = computed(() =>
-  settingFields.value.filter((f) => !(sizePair.value && SIZE_KEYS.includes(f.key))),
-)
+const popoverRows = computed(() => settingFields.value.filter((f) => !(sizePair.value && SIZE_KEYS.includes(f.key))))
 
 /** 设置摘要的一段：选项写显示名，张数加「张」，时长加「秒」，开关只在开着时写名字 */
 function summaryPart(f: ToolField): string {
@@ -875,7 +885,10 @@ const settingsSummary = computed(() => {
  * ←/→ 循环切换，焦点跟到新选中的那一片（原型 move）。
  */
 const inlineSetting = computed(() => {
-  const only = settingFields.value.length === 1 && !modelField.value && !imageModelSelectable.value ? settingFields.value[0] : undefined
+  const only =
+    settingFields.value.length === 1 && !modelField.value && !imageModelSelectable.value
+      ? settingFields.value[0]
+      : undefined
   return only && only.type === 'chips' && fieldOptions(only).length <= 4 ? only : undefined
 })
 const inlineOptions = computed(() => (inlineSetting.value ? fieldOptions(inlineSetting.value) : []))
@@ -1142,7 +1155,9 @@ const localDisabledReason = computed(() => {
   if (cloneMode.value) {
     const refCount = cloneRefSlot.value ? (uploads[cloneRefSlot.value.slot]?.length ?? 0) : 0
     if (refCount > cloneRefMax.value) {
-      return cloneRefMax.value ? `当前模型最多 ${cloneRefMax.value} 张参考图，请先移除多出的` : '当前模型不支持参考图，请先移除参考图'
+      return cloneRefMax.value
+        ? `当前模型最多 ${cloneRefMax.value} 张参考图，请先移除多出的`
+        : '当前模型不支持参考图，请先移除参考图'
     }
     if (vc.blockReason) return vc.blockReason
   }
@@ -1163,11 +1178,7 @@ const fanOutCount = computed(() => {
  */
 function fanSlot(s: ToolSchema) {
   return s.uploads.find(
-    (u) =>
-      u.javaKey !== 'images' &&
-      (u.javaKey !== 'imageUrls' || !!s.perItemSubmit) &&
-      u.max > 1 &&
-      uploadEnabled(u),
+    (u) => u.javaKey !== 'images' && (u.javaKey !== 'imageUrls' || !!s.perItemSubmit) && u.max > 1 && uploadEnabled(u),
   )
 }
 
@@ -1328,7 +1339,11 @@ const costLine = computed<{ num: string; suffix: string; note?: string } | { tex
   }
   const e = estimate.value
   if (!e || fanOutCount.value > 1) return { text: costText.value }
-  return { num: String(e.points), suffix: e.unit ? ` 点/${e.unit}` : ' 点', note: secondsEstimateText.value || undefined }
+  return {
+    num: String(e.points),
+    suffix: e.unit ? ` 点/${e.unit}` : ' 点',
+    note: secondsEstimateText.value || undefined,
+  }
 })
 
 // ---------------- 组装请求体 ----------------
@@ -1363,7 +1378,10 @@ function fieldEntries(f: ToolField): [string, unknown][] {
  * 表单 → 请求体里同步可得的部分（字段、上传地址、视频复刻标注、图片模型）；fan = 要逐张拆开提交的槽。
  * 蒙版要先导出上传，留给 {@link buildBodies}。视频复刻页的提交前报价用同一份（报价 = 提交时冻结的点数）。
  */
-function formBase(s: ToolSchema): { base: Record<string, unknown>; fan: { key: string; urls: string[]; asArray: boolean } | null } {
+function formBase(s: ToolSchema): {
+  base: Record<string, unknown>
+  fan: { key: string; urls: string[]; asArray: boolean } | null
+} {
   const base: Record<string, unknown> = { ...s.constants }
   for (const f of visibleFields.value) for (const [k, v] of fieldEntries(f)) base[k] = v
 
@@ -1385,7 +1403,11 @@ function formBase(s: ToolSchema): { base: Record<string, unknown>; fan: { key: s
     Object.assign(base, vc.buildPayload(refs))
   }
   // 图片生成多模型：只有让用户选了模型时才传 model（CoreToolSubmissionRequest.model）
-  if (imageModelSelectable.value && currentImageModel.value && currentImageModel.value.model !== defaultImageModel.value?.model)
+  if (
+    imageModelSelectable.value &&
+    currentImageModel.value &&
+    currentImageModel.value.model !== defaultImageModel.value?.model
+  )
     base.model = currentImageModel.value.model
   return { base, fan }
 }
@@ -1457,7 +1479,13 @@ async function onSubmit() {
     submitting.value = false
     progressText.value = ''
     if (done > 0) {
-      message.success(done === total ? (total === 1 ? '已提交，可在历史记录查看进度' : `已提交 ${done} 个${s.title}任务`) : `已提交 ${done} / ${total} 个任务，其余未提交`)
+      message.success(
+        done === total
+          ? total === 1
+            ? '已提交，可在历史记录查看进度'
+            : `已提交 ${done} 个${s.title}任务`
+          : `已提交 ${done} / ${total} 个任务，其余未提交`,
+      )
     }
     if (!s.sync) {
       // 失败也刷新一次：超时 / 断网时任务可能已在服务端创建
@@ -1550,7 +1578,11 @@ async function restoreFrom(item: ToolHistoryItem) {
     const ann = params.videoClone as VideoCloneAnnotations | undefined
     if (ann && typeof ann === 'object' && typeof ann.analysisId === 'string') {
       const refSlot = s.uploads.find((u) => u.javaKey === 'imageUrls')
-      vc.queueRestore(ann, refSlot ? (uploads[refSlot.slot] ?? []) : [], typeof params.content === 'string' ? params.content : '')
+      vc.queueRestore(
+        ann,
+        refSlot ? (uploads[refSlot.slot] ?? []) : [],
+        typeof params.content === 'string' ? params.content : '',
+      )
     } else {
       cloneSimple.value = true
     }
@@ -1832,7 +1864,7 @@ function openLightbox() {
 // 下载 / 存资产都用烘好的图；整图校色烘好之前 CSS filter 只做即时预览。参数按任务号存 localStorage，
 // 切回记录自动还原；资产侧原图 + 校色后两版。选区：整图 / 自动识别 / 手动涂抹（局部调色）。
 const colorFixSaving = ref(false)
-const colorFixTaskUid = computed(() => (showSync.value ? '' : current.value?.taskUid ?? ''))
+const colorFixTaskUid = computed(() => (showSync.value ? '' : (current.value?.taskUid ?? '')))
 
 const cf = useResultColorFix({
   key: colorFixTaskUid,
@@ -1908,7 +1940,8 @@ async function downloadSelected() {
   if (!product) return
   if (product.type === 'image' && canColorCompare.value) {
     // 烘图要跨域读像素（依赖 OSS CORS），失败时套件已退回原地址下载，别让用户拿不到图
-    if (!(await cf.downloadBaked(`${product.name || 'result'}-校色后.png`))) message.warning('校色效果未能写入，已下载原图')
+    if (!(await cf.downloadBaked(`${product.name || 'result'}-校色后.png`)))
+      message.warning('校色效果未能写入，已下载原图')
     return
   }
   if (product.type === 'video') window.open(product.src, '_blank', 'noopener')
@@ -1922,10 +1955,18 @@ function downloadBeforeColorFix() {
 }
 
 // ---------------- 灯箱（历史缩略图 / 抠图结果卡）：共用 MediaLightbox ----------------
-const thumbLightbox = reactive<{ show: boolean; index: number; items: LightboxItem[] }>({ show: false, index: 0, items: [] })
+const thumbLightbox = reactive<{ show: boolean; index: number; items: LightboxItem[] }>({
+  show: false,
+  index: 0,
+  items: [],
+})
 function openThumbs(urls: string[], index = 0, name = '') {
   if (!urls.length) return
-  thumbLightbox.items = urls.map((url, i) => ({ url, type: isVideoUrl(url) ? 'video' : 'image', name: urls.length > 1 ? `${name} · ${i + 1}` : name }))
+  thumbLightbox.items = urls.map((url, i) => ({
+    url,
+    type: isVideoUrl(url) ? 'video' : 'image',
+    name: urls.length > 1 ? `${name} · ${i + 1}` : name,
+  }))
   thumbLightbox.index = index
   thumbLightbox.show = true
 }
@@ -2007,179 +2048,189 @@ const plateBtnCls =
     <nav
       ref="catalogNav"
       class="relative z-34 flex-none w-44px basis-44px"
-      :class="wideViewport ? (catalogCollapsed ? '' : '!w-160px !basis-160px [transition:width_0.2s_ease,flex-basis_0.2s_ease] motion-reduce:transition-none') : ''"
+      :class="
+        wideViewport
+          ? catalogCollapsed
+            ? ''
+            : '!w-160px !basis-160px [transition:width_0.2s_ease,flex-basis_0.2s_ease] motion-reduce:transition-none'
+          : ''
+      "
       aria-labelledby="tool-catalog-title"
     >
-     <div
-      class="flex min-h-0 flex-col box-border overflow-hidden bg-white"
-      :class="
-        catalogOverlay
-          ? 'absolute left-0 top-0 z-40 h-full w-160px border border-solid border-#e2e2e2 rounded-10px shadow-[0_12px_32px_rgba(31,35,41,0.18)]'
-          : 'h-full w-full border-l border-solid border-shell-line shadow-[10px_0_16px_-12px_rgba(31,35,41,0.22)]'
-      "
-     >
       <div
-        class="flex-none flex items-center gap-8px h-48px"
-        :class="catalogCollapsed ? 'justify-center' : 'justify-between pl-14px pr-8px'"
+        class="flex min-h-0 flex-col box-border overflow-hidden bg-white"
+        :class="
+          catalogOverlay
+            ? 'absolute left-0 top-0 z-40 h-full w-160px border border-solid border-#e2e2e2 rounded-10px shadow-[0_12px_32px_rgba(31,35,41,0.18)]'
+            : 'h-full w-full border-l border-solid border-shell-line shadow-[10px_0_16px_-12px_rgba(31,35,41,0.22)]'
+        "
       >
-        <h2
-          id="tool-catalog-title"
-          class="m-0 min-w-0 flex-1 truncate text-16px font-600 leading-[1.55] text-ink"
-          :class="catalogCollapsed ? 'sr-only' : ''"
+        <div
+          class="flex-none flex items-center gap-8px h-48px"
+          :class="catalogCollapsed ? 'justify-center' : 'justify-between pl-14px pr-8px'"
         >
-          {{ catalog.title }}
-        </h2>
-        <!-- 原型 .v3-iconbtn：28 / r4、muted，悬停 #f3f4f5 + ink（无过渡）；展开态是菜单图标、收起态是右箭头 -->
-        <IconButton
-          id="tool-catalog-toggle"
-          variant="quiet"
-          :label="catalogCollapsed ? '展开目录' : '收起目录'"
-          :aria-expanded="!catalogCollapsed"
-          aria-controls="tool-catalog-list"
-          @click="toggleCatalog"
-        >
-          <svg
-            viewBox="0 0 512 512"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="32"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
+          <h2
+            id="tool-catalog-title"
+            class="m-0 min-w-0 flex-1 truncate text-16px font-600 leading-[1.55] text-ink"
+            :class="catalogCollapsed ? 'sr-only' : ''"
           >
-            <path v-if="catalogCollapsed" stroke-width="48" d="M184 112l144 144-144 144" />
-            <path v-else stroke-miterlimit="10" d="M80 160h352M80 256h352M80 352h352" />
-          </svg>
-        </IconButton>
-      </div>
-      <div class="relative flex-1 min-h-0">
-        <!-- 上下渐隐：只在还能往那个方向滚时出现（opacity 160ms） -->
-        <span
-          class="pointer-events-none absolute inset-x-0 top-0 z-1 h-16px bg-[linear-gradient(#fff,rgba(255,255,255,0))] [transition:opacity_0.16s_ease]"
-          :class="fadeTop ? 'opacity-100' : 'opacity-0'"
-          aria-hidden="true"
-        />
-        <!--
+            {{ catalog.title }}
+          </h2>
+          <!-- 原型 .v3-iconbtn：28 / r4、muted，悬停 #f3f4f5 + ink（无过渡）；展开态是菜单图标、收起态是右箭头 -->
+          <IconButton
+            id="tool-catalog-toggle"
+            variant="quiet"
+            :label="catalogCollapsed ? '展开目录' : '收起目录'"
+            :aria-expanded="!catalogCollapsed"
+            aria-controls="tool-catalog-list"
+            @click="toggleCatalog"
+          >
+            <svg
+              viewBox="0 0 512 512"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="32"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path v-if="catalogCollapsed" stroke-width="48" d="M184 112l144 144-144 144" />
+              <path v-else stroke-miterlimit="10" d="M80 160h352M80 256h352M80 352h352" />
+            </svg>
+          </IconButton>
+        </div>
+        <div class="relative flex-1 min-h-0">
+          <!-- 上下渐隐：只在还能往那个方向滚时出现（opacity 160ms） -->
+          <span
+            class="pointer-events-none absolute inset-x-0 top-0 z-1 h-16px bg-[linear-gradient(#fff,rgba(255,255,255,0))] [transition:opacity_0.16s_ease]"
+            :class="fadeTop ? 'opacity-100' : 'opacity-0'"
+            aria-hidden="true"
+          />
+          <!--
           展开（原型 .v3-dir__body）：内边距 0 6 10、滚动条隐藏；组距上 16 / 下 10，组线 0.8px #efefef + 2px 淡影；
           条目 48、r6，图标 + 56 定宽文字列整簇居中，悬停 #f3f4f5（无过渡）。
           收起（原型 .v3-dir__rail）：内边距 2 0 2 3、gap 2；图标钮 36 / r6、muted，悬停 110ms；组间 11 高分隔线。
         -->
-        <div
-          id="tool-catalog-list"
-          ref="catalogScroll"
-          class="h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          :class="catalogCollapsed ? 'flex flex-col items-start gap-2px pt-2px pr-0 pb-2px pl-3px' : 'px-6px pb-10px'"
-          @scroll="onCatalogScroll"
-          @mouseenter="catalogCollapsed && scheduleRailTips()"
-          @mouseleave="catalogCollapsed && scheduleHideRailTips()"
-        >
-          <template v-for="(g, gi) in catalog.groups" :key="g.label">
-            <div
-              v-if="catalogCollapsed && gi"
-              class="flex self-stretch items-center flex-[0_0_11px] h-11px mt-1px mr-0 mb-1px ml-[-3px] before:(content-[''] w-full h-[0.8px] bg-shell-line shadow-[0_1px_2px_rgba(31,35,41,0.07)])"
-              aria-hidden="true"
-            />
-            <section
-              :class="
-                catalogCollapsed
-                  ? 'contents'
-                  : gi
-                    ? 'mt-16px pt-10px shadow-[inset_0_0.8px_0_#efefef,inset_0_2px_3px_-2px_rgba(31,35,41,0.1)]'
-                    : ''
-              "
-              :aria-labelledby="`tool-catalog-group-${gi}`"
-            >
-              <h3
-                :id="`tool-catalog-group-${gi}`"
-                class="m-0 flex items-center h-28px px-8px text-12px font-600 tracking-[0.02em] whitespace-nowrap text-muted"
-                :class="catalogCollapsed ? 'sr-only' : ''"
+          <div
+            id="tool-catalog-list"
+            ref="catalogScroll"
+            class="h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            :class="catalogCollapsed ? 'flex flex-col items-start gap-2px pt-2px pr-0 pb-2px pl-3px' : 'px-6px pb-10px'"
+            @scroll="onCatalogScroll"
+            @mouseenter="catalogCollapsed && scheduleRailTips()"
+            @mouseleave="catalogCollapsed && scheduleHideRailTips()"
+          >
+            <template v-for="(g, gi) in catalog.groups" :key="g.label">
+              <div
+                v-if="catalogCollapsed && gi"
+                class="flex self-stretch items-center flex-[0_0_11px] h-11px mt-1px mr-0 mb-1px ml-[-3px] before:(content-[''] w-full h-[0.8px] bg-shell-line shadow-[0_1px_2px_rgba(31,35,41,0.07)])"
+                aria-hidden="true"
+              />
+              <section
+                :class="
+                  catalogCollapsed
+                    ? 'contents'
+                    : gi
+                      ? 'mt-16px pt-10px shadow-[inset_0_0.8px_0_#efefef,inset_0_2px_3px_-2px_rgba(31,35,41,0.1)]'
+                      : ''
+                "
+                :aria-labelledby="`tool-catalog-group-${gi}`"
               >
-                {{ g.label }}
-              </h3>
-              <ul class="m-0 p-0 list-none flex flex-col" :class="catalogCollapsed ? 'contents' : ''">
-                <li v-for="e in g.entries" :key="e.id" :class="catalogCollapsed ? 'contents' : ''">
-                  <component
-                    :is="e.route ? RouterLink : 'div'"
-                    v-bind="
-                      e.route
-                        ? { to: e.route, 'aria-current': e.id === toolId ? 'page' : undefined }
-                        : { 'aria-disabled': 'true' }
-                    "
-                    :data-rail-id="e.id"
-                    :aria-label="e.route ? `${e.name}，${e.tagline}` : `${e.name}（即将开放）`"
-                    :title="catalogCollapsed ? undefined : e.route ? e.tagline : '即将开放'"
-                    class="flex items-center box-border rounded-6px border border-solid no-underline"
-                    :class="[
-                      catalogCollapsed
-                        ? 'flex-[0_0_36px] justify-center w-36px h-36px p-0 [transition:background_110ms,color_110ms] motion-reduce:transition-none'
-                        : 'justify-start gap-10px w-full h-48px px-8px',
-                      e.route ? focusRing : 'cursor-not-allowed',
-                      e.id === toolId
-                        ? [
-                            'border-line bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_3px_rgba(31,35,41,0.1),inset_0_-1px_0_#fff]',
-                            catalogCollapsed ? 'text-ink' : '',
-                          ]
-                        : [
-                            'border-transparent',
-                            e.route ? 'hover:bg-surface3' : '',
-                            catalogCollapsed ? (e.route ? 'text-muted hover:text-ink' : 'text-muted opacity-60') : '',
-                          ],
-                    ]"
-                    @mouseenter="hoveredRail = e.id"
-                    @click="e.route && onCatalogItemClick()"
-                    @focus="catalogCollapsed && (showRailTips(), (hoveredRail = e.id))"
-                    @blur="catalogCollapsed && hideRailTips()"
-                  >
-                    <svg
-                      v-if="catalogCollapsed && e.icon"
-                      class="w-18px h-18px"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.6"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                      :innerHTML="e.icon"
-                    />
-                    <template v-else-if="!catalogCollapsed">
-                      <span
-                        :class="[tileCls, 'flex-none w-36px h-36px', e.route ? 'text-violet' : 'text-muted opacity-60']"
+                <h3
+                  :id="`tool-catalog-group-${gi}`"
+                  class="m-0 flex items-center h-28px px-8px text-12px font-600 tracking-[0.02em] whitespace-nowrap text-muted"
+                  :class="catalogCollapsed ? 'sr-only' : ''"
+                >
+                  {{ g.label }}
+                </h3>
+                <ul class="m-0 p-0 list-none flex flex-col" :class="catalogCollapsed ? 'contents' : ''">
+                  <li v-for="e in g.entries" :key="e.id" :class="catalogCollapsed ? 'contents' : ''">
+                    <component
+                      :is="e.route ? RouterLink : 'div'"
+                      v-bind="
+                        e.route
+                          ? { to: e.route, 'aria-current': e.id === toolId ? 'page' : undefined }
+                          : { 'aria-disabled': 'true' }
+                      "
+                      :data-rail-id="e.id"
+                      :aria-label="e.route ? `${e.name}，${e.tagline}` : `${e.name}（即将开放）`"
+                      :title="catalogCollapsed ? undefined : e.route ? e.tagline : '即将开放'"
+                      class="flex items-center box-border rounded-6px border border-solid no-underline"
+                      :class="[
+                        catalogCollapsed
+                          ? 'flex-[0_0_36px] justify-center w-36px h-36px p-0 [transition:background_110ms,color_110ms] motion-reduce:transition-none'
+                          : 'justify-start gap-10px w-full h-48px px-8px',
+                        e.route ? focusRing : 'cursor-not-allowed',
+                        e.id === toolId
+                          ? [
+                              'border-line bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_3px_rgba(31,35,41,0.1),inset_0_-1px_0_#fff]',
+                              catalogCollapsed ? 'text-ink' : '',
+                            ]
+                          : [
+                              'border-transparent',
+                              e.route ? 'hover:bg-surface3' : '',
+                              catalogCollapsed ? (e.route ? 'text-muted hover:text-ink' : 'text-muted opacity-60') : '',
+                            ],
+                      ]"
+                      @mouseenter="hoveredRail = e.id"
+                      @click="e.route && onCatalogItemClick()"
+                      @focus="catalogCollapsed && (showRailTips(), (hoveredRail = e.id))"
+                      @blur="catalogCollapsed && hideRailTips()"
+                    >
+                      <svg
+                        v-if="catalogCollapsed && e.icon"
+                        class="w-18px h-18px"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.6"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
                         aria-hidden="true"
-                      >
-                        <svg
-                          v-if="e.icon"
-                          class="w-18px h-18px"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="1.6"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          :innerHTML="e.icon"
-                        />
-                      </span>
-                      <!-- 单行：名称 14/500/20，说明移到 title 悬停提示 -->
-                      <span
-                        class="flex-1 min-w-0 truncate text-14px font-500 leading-20px"
-                        :class="e.route ? 'text-ink' : 'text-muted'"
-                      >
-                        {{ e.name }}
-                      </span>
-                    </template>
-                  </component>
-                </li>
-              </ul>
-            </section>
-          </template>
+                        :innerHTML="e.icon"
+                      />
+                      <template v-else-if="!catalogCollapsed">
+                        <span
+                          :class="[
+                            tileCls,
+                            'flex-none w-36px h-36px',
+                            e.route ? 'text-violet' : 'text-muted opacity-60',
+                          ]"
+                          aria-hidden="true"
+                        >
+                          <svg
+                            v-if="e.icon"
+                            class="w-18px h-18px"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.6"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            :innerHTML="e.icon"
+                          />
+                        </span>
+                        <!-- 单行：名称 14/500/20，说明移到 title 悬停提示 -->
+                        <span
+                          class="flex-1 min-w-0 truncate text-14px font-500 leading-20px"
+                          :class="e.route ? 'text-ink' : 'text-muted'"
+                        >
+                          {{ e.name }}
+                        </span>
+                      </template>
+                    </component>
+                  </li>
+                </ul>
+              </section>
+            </template>
+          </div>
+          <span
+            class="pointer-events-none absolute inset-x-0 bottom-0 z-1 h-16px bg-[linear-gradient(to_top,#fff,rgba(255,255,255,0))] [transition:opacity_0.16s_ease]"
+            :class="fadeBottom ? 'opacity-100' : 'opacity-0'"
+            aria-hidden="true"
+          />
         </div>
-        <span
-          class="pointer-events-none absolute inset-x-0 bottom-0 z-1 h-16px bg-[linear-gradient(to_top,#fff,rgba(255,255,255,0))] [transition:opacity_0.16s_ease]"
-          :class="fadeBottom ? 'opacity-100' : 'opacity-0'"
-          aria-hidden="true"
-        />
       </div>
-     </div>
     </nav>
 
     <!--
@@ -2304,106 +2355,104 @@ const plateBtnCls =
             <div
               v-if="switcherOpen"
               :id="switcherId"
-                  :ref="setSwitcherPop"
-                  role="dialog"
-                  aria-label="切换功能"
-                  class="fixed z-[6000] flex flex-col box-border overflow-hidden rounded-10px border border-solid border-line bg-white shadow-[0_12px_24px_rgba(31,35,41,0.14),0_2px_6px_rgba(31,35,41,0.06)]"
-                  :style="switcherStyle"
+              :ref="setSwitcherPop"
+              role="dialog"
+              aria-label="切换功能"
+              class="fixed z-[6000] flex flex-col box-border overflow-hidden rounded-10px border border-solid border-line bg-white shadow-[0_12px_24px_rgba(31,35,41,0.14),0_2px_6px_rgba(31,35,41,0.06)]"
+              :style="switcherStyle"
+            >
+              <div class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_#e5e7eb]">
+                <b class="min-w-0 flex-1 text-13px font-600 text-muted">切换功能</b>
+                <div
+                  class="inline-flex flex-none gap-2px p-2px box-border rounded-6px border border-solid border-line bg-surface3"
+                  role="tablist"
+                  aria-label="功能大类"
                 >
-                  <div
-                    class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_#e5e7eb]"
+                  <button
+                    v-for="k in catalogKinds"
+                    :key="k.key"
+                    type="button"
+                    role="tab"
+                    class="h-28px box-border px-12px rounded-4px border border-solid text-13px cursor-pointer"
+                    :class="[
+                      focusRing,
+                      switcherKind === k.key
+                        ? 'border-line bg-[linear-gradient(#fff,#f7f8f9)] shadow-[0_1px_2px_rgba(31,35,41,0.07),inset_0_1px_0_#fff] text-ink font-600'
+                        : 'border-transparent bg-transparent text-muted hover:text-ink',
+                    ]"
+                    :aria-selected="switcherKind === k.key"
+                    @click="switcherKind = k.key"
                   >
-                    <b class="min-w-0 flex-1 text-13px font-600 text-muted">切换功能</b>
-                    <div
-                      class="inline-flex flex-none gap-2px p-2px box-border rounded-6px border border-solid border-line bg-surface3"
-                      role="tablist"
-                      aria-label="功能大类"
-                    >
-                      <button
-                        v-for="k in catalogKinds"
-                        :key="k.key"
-                        type="button"
-                        role="tab"
-                        class="h-28px box-border px-12px rounded-4px border border-solid text-13px cursor-pointer"
-                        :class="[
-                          focusRing,
-                          switcherKind === k.key
-                            ? 'border-line bg-[linear-gradient(#fff,#f7f8f9)] shadow-[0_1px_2px_rgba(31,35,41,0.07),inset_0_1px_0_#fff] text-ink font-600'
-                            : 'border-transparent bg-transparent text-muted hover:text-ink',
-                        ]"
-                        :aria-selected="switcherKind === k.key"
-                        @click="switcherKind = k.key"
-                      >
-                        {{ k.catalog.title }}
-                      </button>
-                    </div>
-                    <IconButton label="关闭" variant="quiet" @click="switcherOpen = false">
-                      <svg
-                        viewBox="0 0 512 512"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="32"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M368 368L144 144M368 144L144 368" />
-                      </svg>
-                    </IconButton>
-                  </div>
-                  <div class="flex-1 min-h-0 overflow-y-auto pt-4px pb-10px [scrollbar-width:thin]">
-                    <section
-                      v-for="(g, gi) in switcherCatalog.groups"
-                      :key="g.label"
-                      :class="gi ? 'mt-2px shadow-[inset_0_0.8px_0_#eff1f3]' : ''"
-                      :aria-labelledby="`${switcherId}-g${gi}`"
-                    >
-                      <p :id="`${switcherId}-g${gi}`" class="m-0 pt-2px px-14px pb-4px text-11px font-500 text-muted">
-                        {{ g.label }}
-                      </p>
-                      <ul class="m-0 p-0 px-8px pb-6px list-none grid grid-cols-3 gap-2px">
-                        <li v-for="e in g.entries" :key="e.id" class="min-w-0">
-                          <component
-                            :is="e.route ? RouterLink : 'div'"
-                            v-bind="
-                              e.route
-                                ? { to: e.route, 'aria-current': e.id === toolId ? 'page' : undefined }
-                                : { 'aria-disabled': 'true' }
-                            "
-                            :title="e.route ? e.tagline : `${e.tagline}（即将开放）`"
-                            :aria-label="e.route ? `${e.name}，${e.tagline}` : `${e.name}（即将开放）`"
-                            class="flex min-w-0 items-center gap-6px h-30px box-border px-6px rounded-6px border border-solid no-underline"
-                            :class="[
-                              e.route ? focusRing : 'cursor-not-allowed opacity-60',
-                              e.id === toolId
-                                ? 'border-violet-line bg-[linear-gradient(#fff,#f3edf8)] text-violet-ink'
-                                : ['border-transparent text-ink-2', e.route ? 'hover:bg-surface3' : ''],
-                            ]"
-                            @click="e.route && (switcherOpen = false)"
-                          >
-                            <span
-                              class="grid flex-[0_0_22px] w-22px h-22px place-items-center box-border rounded-5px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff] text-violet"
-                              aria-hidden="true"
-                            >
-                              <svg
-                                v-if="e.icon"
-                                class="w-13px h-13px"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="1.8"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                :innerHTML="e.icon"
-                              />
-                            </span>
-                            <span class="min-w-0 truncate text-12px font-500">{{ e.name }}</span>
-                          </component>
-                        </li>
-                      </ul>
-                    </section>
-                  </div>
+                    {{ k.catalog.title }}
+                  </button>
                 </div>
+                <IconButton label="关闭" variant="quiet" @click="switcherOpen = false">
+                  <svg
+                    viewBox="0 0 512 512"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="32"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M368 368L144 144M368 144L144 368" />
+                  </svg>
+                </IconButton>
+              </div>
+              <div class="flex-1 min-h-0 overflow-y-auto pt-4px pb-10px [scrollbar-width:thin]">
+                <section
+                  v-for="(g, gi) in switcherCatalog.groups"
+                  :key="g.label"
+                  :class="gi ? 'mt-2px shadow-[inset_0_0.8px_0_#eff1f3]' : ''"
+                  :aria-labelledby="`${switcherId}-g${gi}`"
+                >
+                  <p :id="`${switcherId}-g${gi}`" class="m-0 pt-2px px-14px pb-4px text-11px font-500 text-muted">
+                    {{ g.label }}
+                  </p>
+                  <ul class="m-0 p-0 px-8px pb-6px list-none grid grid-cols-3 gap-2px">
+                    <li v-for="e in g.entries" :key="e.id" class="min-w-0">
+                      <component
+                        :is="e.route ? RouterLink : 'div'"
+                        v-bind="
+                          e.route
+                            ? { to: e.route, 'aria-current': e.id === toolId ? 'page' : undefined }
+                            : { 'aria-disabled': 'true' }
+                        "
+                        :title="e.route ? e.tagline : `${e.tagline}（即将开放）`"
+                        :aria-label="e.route ? `${e.name}，${e.tagline}` : `${e.name}（即将开放）`"
+                        class="flex min-w-0 items-center gap-6px h-30px box-border px-6px rounded-6px border border-solid no-underline"
+                        :class="[
+                          e.route ? focusRing : 'cursor-not-allowed opacity-60',
+                          e.id === toolId
+                            ? 'border-violet-line bg-[linear-gradient(#fff,#f3edf8)] text-violet-ink'
+                            : ['border-transparent text-ink-2', e.route ? 'hover:bg-surface3' : ''],
+                        ]"
+                        @click="e.route && (switcherOpen = false)"
+                      >
+                        <span
+                          class="grid flex-[0_0_22px] w-22px h-22px place-items-center box-border rounded-5px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff] text-violet"
+                          aria-hidden="true"
+                        >
+                          <svg
+                            v-if="e.icon"
+                            class="w-13px h-13px"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            :innerHTML="e.icon"
+                          />
+                        </span>
+                        <span class="min-w-0 truncate text-12px font-500">{{ e.name }}</span>
+                      </component>
+                    </li>
+                  </ul>
+                </section>
+              </div>
+            </div>
           </Transition>
         </Teleport>
 
@@ -2551,7 +2600,12 @@ const plateBtnCls =
                   aria-label="放大查看抠图结果"
                   @click="openThumbs([syncResultUrl], 0, '抠图结果')"
                 >
-                  <img :src="syncResultUrl" alt="抠图结果" class="block w-full h-full object-contain" draggable="false" />
+                  <img
+                    :src="syncResultUrl"
+                    alt="抠图结果"
+                    class="block w-full h-full object-contain"
+                    draggable="false"
+                  />
                 </button>
                 <IconButton
                   class="!absolute top-8px right-8px z-2"
@@ -2559,12 +2613,22 @@ const plateBtnCls =
                   variant="overlay"
                   @click="downloadImage(syncResultUrl, `${schema.title}-抠图结果`)"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
                     <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
                   </svg>
                 </IconButton>
               </template>
-              <p v-else class="absolute inset-0 m-0 flex items-center justify-center px-18px text-center text-12px leading-18px text-muted">
+              <p
+                v-else
+                class="absolute inset-0 m-0 flex items-center justify-center px-18px text-center text-12px leading-18px text-muted"
+              >
                 点下方「{{ submitLabel }}」，透明底结果会显示在这里
               </p>
             </div>
@@ -2627,7 +2691,9 @@ const plateBtnCls =
                 />
               </ul>
               <p v-else-if="!regions.length" class="m-0 ll-empty py-12px">
-                {{ singleImage ? '没有识别到可替换的文字，可点「重新识别」再试' : '上传后自动识别；结果出来后逐条改写。' }}
+                {{
+                  singleImage ? '没有识别到可替换的文字，可点「重新识别」再试' : '上传后自动识别；结果出来后逐条改写。'
+                }}
               </p>
               <template v-else>
                 <p class="m-0 text-12px leading-18px text-muted" aria-live="polite">
@@ -2738,7 +2804,9 @@ const plateBtnCls =
           >
             本次将替换 {{ changedRegions.length }} 处文字
           </p>
-          <p v-if="refLimitText && !promptStripOwned" class="m-0 text-12px leading-18px text-muted">{{ refLimitText }}</p>
+          <p v-if="refLimitText && !promptStripOwned" class="m-0 text-12px leading-18px text-muted">
+            {{ refLimitText }}
+          </p>
           <div
             v-if="inlineSetting"
             class="sx-squircle flex items-center gap-6px w-full h-44px box-border pl-11px pr-3px rounded-14px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]"
@@ -2818,7 +2886,9 @@ const plateBtnCls =
                 <template v-for="f in popoverRows" :key="`${schema.homeId}-set-${f.key}`">
                   <!-- 时长：原型 WakeSlider 浮层档（20 柱、柱高 14、值带「秒」写在右侧、无端点刻度）；区间随模型 -->
                   <div v-if="f.dynamic === 'videoDuration'" :class="setRowCls">
-                    <span :id="`tool-set-${f.key}-label`" class="text-12px font-500 leading-18px text-ink-2">{{ f.label }}</span>
+                    <span :id="`tool-set-${f.key}-label`" class="text-12px font-500 leading-18px text-ink-2">{{
+                      f.label
+                    }}</span>
                     <BarSlider
                       v-if="videoDurationRange"
                       :model-value="Number(values[f.key] ?? videoDurationRange[0])"
@@ -2833,7 +2903,10 @@ const plateBtnCls =
                   </div>
 
                   <!-- 数字 / 张数：共用 NumberStepper（值 | − | +） -->
-                  <div v-else-if="f.type === 'number' || f.type === 'stepper'" :class="[setRowCls, '!flex-row items-center justify-between !gap-12px']">
+                  <div
+                    v-else-if="f.type === 'number' || f.type === 'stepper'"
+                    :class="[setRowCls, '!flex-row items-center justify-between !gap-12px']"
+                  >
                     <span :id="`tool-set-${f.key}-label`" class="text-12px font-500 leading-18px text-ink-2">
                       {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
                     </span>
@@ -2851,8 +2924,12 @@ const plateBtnCls =
                   <div v-else-if="f.type === 'switch'" :class="[setRowCls, '!flex-row items-center justify-between']">
                     <!-- 原型 SettingsPopover：开关行不写说明句，说明收进悬停提示（读屏仍读） -->
                     <span class="flex min-w-0 flex-col" :title="f.description || undefined">
-                      <span :id="`tool-set-${f.key}-label`" class="text-12px font-500 leading-18px text-ink-2">{{ f.label }}</span>
-                      <span v-if="f.description" :id="`tool-set-${f.key}-desc`" class="sr-only">{{ f.description }}</span>
+                      <span :id="`tool-set-${f.key}-label`" class="text-12px font-500 leading-18px text-ink-2">{{
+                        f.label
+                      }}</span>
+                      <span v-if="f.description" :id="`tool-set-${f.key}-desc`" class="sr-only">{{
+                        f.description
+                      }}</span>
                     </span>
                     <button
                       type="button"
@@ -2884,7 +2961,9 @@ const plateBtnCls =
                       {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
                     </label>
                     <select :id="`tool-set-${f.key}`" v-model="values[f.key]" :class="inputCls" :disabled="submitting">
-                      <option v-for="opt in fieldOptions(f)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                      <option v-for="opt in fieldOptions(f)" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                      </option>
                     </select>
                   </div>
 
@@ -2898,7 +2977,12 @@ const plateBtnCls =
                     :disabled="submitting"
                     @update:model-value="values[f.key] = $event"
                   />
-                  <p v-if="f.description && f.type !== 'switch'" class="m-0 -mt-4px pb-6px text-12px leading-18px text-muted">{{ f.description }}</p>
+                  <p
+                    v-if="f.description && f.type !== 'switch'"
+                    class="m-0 -mt-4px pb-6px text-12px leading-18px text-muted"
+                  >
+                    {{ f.description }}
+                  </p>
                 </template>
 
                 <!-- 比例转换「自定义尺寸」：宽 / 高合成一行 -->
@@ -2992,7 +3076,9 @@ const plateBtnCls =
             :disabled="!!disabledReason || submitting"
             :title="disabledReason || schema.hint || undefined"
             :aria-busy="submitting || undefined"
-            :aria-describedby="[disabledReason ? reasonId : '', schema.hint ? hintId : ''].filter(Boolean).join(' ') || undefined"
+            :aria-describedby="
+              [disabledReason ? reasonId : '', schema.hint ? hintId : ''].filter(Boolean).join(' ') || undefined
+            "
           >
             <!-- 加载环（原型 .sx-btn__spinner）：12 / 1.5px，绝对定位在左 14，不参与排版 -->
             <span
@@ -3147,7 +3233,10 @@ const plateBtnCls =
                     :is="stackOf(item)[0] ? 'button' : 'span'"
                     v-bind="
                       stackOf(item)[0]
-                        ? { type: 'button', 'aria-label': `放大查看${stackOf(item).length > 1 ? `（共 ${stackOf(item).length} 张）` : ''}` }
+                        ? {
+                            type: 'button',
+                            'aria-label': `放大查看${stackOf(item).length > 1 ? `（共 ${stackOf(item).length} 张）` : ''}`,
+                          }
                         : { 'aria-hidden': 'true' }
                     "
                     class="sx-squircle relative z-1 flex-none grid place-items-center w-44px h-44px self-center box-border p-0 rounded-14px border border-solid border-line bg-surface3 text-placeholder"
@@ -3210,7 +3299,11 @@ const plateBtnCls =
                           class="flex-none inline-flex items-center h-18px px-7px rounded-full text-11px leading-none whitespace-nowrap"
                           :class="statusChipCls(item.status)"
                         >
-                          <i class="w-5px h-5px rounded-full mr-4px" :class="statusDotCls(item.status)" aria-hidden="true"></i>
+                          <i
+                            class="w-5px h-5px rounded-full mr-4px"
+                            :class="statusDotCls(item.status)"
+                            aria-hidden="true"
+                          ></i>
                           {{ statusOf(item.status).text }}
                         </span>
                       </template>
@@ -3224,14 +3317,28 @@ const plateBtnCls =
                           target="_blank"
                           download
                         >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
                             <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
                           </svg>
                         </IconButton>
                       </template>
                       <template #secondary>
                         <IconButton label="删除" size="sm" variant="danger" @click="confirmDelete(item)">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
                             <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
                           </svg>
                         </IconButton>
@@ -3242,7 +3349,14 @@ const plateBtnCls =
                           :disabled="!item.requestParams || submitting"
                           @click="restoreFrom(item)"
                         >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
                             <path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
                           </svg>
                         </IconButton>
@@ -3418,16 +3532,37 @@ const plateBtnCls =
                   <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.5" />
                   <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
                 </svg>
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <svg
+                  v-else
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
                   <rect x="4" y="7" width="16" height="13" rx="2.5" />
                   <path d="M7 4h10M12 10.5v6M9 13.5h6" />
                 </svg>
               </IconButton>
               <IconButton
-                :label="selectedProduct.type === 'video' ? '下载视频' : colorFixEnabled && colorFixTouched && selectedProduct.type === 'image' ? '下载（含校色效果）' : '下载结果'"
+                :label="
+                  selectedProduct.type === 'video'
+                    ? '下载视频'
+                    : colorFixEnabled && colorFixTouched && selectedProduct.type === 'image'
+                      ? '下载（含校色效果）'
+                      : '下载结果'
+                "
                 @click="downloadSelected"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
                   <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
                 </svg>
               </IconButton>
@@ -3576,49 +3711,49 @@ const plateBtnCls =
           <!-- 候选 4 列、gap 6，方形 r4；选中 1px violet 描边 + 1px 光晕 -->
           <div v-if="products.length > 1" class="flex-none grid gap-6px grid-cols-4" role="group" aria-label="候选结果">
             <div v-for="(item, i) in products" :key="`${item.src}-${i}`" class="group relative min-w-0">
-            <button
-              type="button"
-              class="relative block w-full overflow-hidden aspect-square box-border p-0 rounded-4px border border-solid bg-surface3 cursor-pointer"
-              :class="[
-                focusRing,
-                selectedIndex === i ? 'border-violet shadow-[0_0_0_1px_#875f9a]' : 'border-line hover:border-#c9cfd6',
-              ]"
-              :aria-label="`候选 ${i + 1}`"
-              :aria-pressed="selectedIndex === i"
-              @click="selectedIndex = i"
-            >
-              <img
-                v-if="item.type === 'image'"
-                :src="item.src"
-                :crossorigin="colorFixEnabled ? corsAttr(item.src) : undefined"
-                :alt="`候选 ${i + 1}`"
-                class="block w-full h-full object-cover"
-                draggable="false"
-                @error="colorFixEnabled && markCorsBlocked(item.src)"
-              />
-              <video
-                v-else
-                :src="item.src"
-                muted
-                playsinline
-                preload="metadata"
-                class="block w-full h-full object-cover"
-              />
-            </button>
-            <!--
+              <button
+                type="button"
+                class="relative block w-full overflow-hidden aspect-square box-border p-0 rounded-4px border border-solid bg-surface3 cursor-pointer"
+                :class="[
+                  focusRing,
+                  selectedIndex === i ? 'border-violet shadow-[0_0_0_1px_#875f9a]' : 'border-line hover:border-#c9cfd6',
+                ]"
+                :aria-label="`候选 ${i + 1}`"
+                :aria-pressed="selectedIndex === i"
+                @click="selectedIndex = i"
+              >
+                <img
+                  v-if="item.type === 'image'"
+                  :src="item.src"
+                  :crossorigin="colorFixEnabled ? corsAttr(item.src) : undefined"
+                  :alt="`候选 ${i + 1}`"
+                  class="block w-full h-full object-cover"
+                  draggable="false"
+                  @error="colorFixEnabled && markCorsBlocked(item.src)"
+                />
+                <video
+                  v-else
+                  :src="item.src"
+                  muted
+                  playsinline
+                  preload="metadata"
+                  class="block w-full h-full object-cover"
+                />
+              </button>
+              <!--
               悬停看大图（原型 ToolPreviewPanel v-hover-preview，与 ToolUploadSlot 同一套）：媒体 240 宽、卡内边距 4、r8、最大高 312；
               延迟 320ms、入场 120ms + 4px 上浮；只在能悬停的指针上出现（触屏 / 键盘不出，点选照旧），纯看不挡点击；往上展开，后两列靠右
             -->
-            <div
-              v-if="item.type === 'image'"
-              class="hidden [@media(hover:hover)]:group-hover:block absolute bottom-[calc(100%+8px)] z-30 w-248px box-border p-4px rounded-8px border border-solid border-line bg-white shadow-[0_12px_28px_rgba(31,35,41,0.16),0_2px_6px_rgba(31,35,41,0.06)] pointer-events-none animate-[tus-preview-in_120ms_ease_320ms_both] motion-reduce:animate-none"
-              :class="i % 4 >= 2 ? 'right-0' : 'left-0'"
-              aria-hidden="true"
-            >
-              <div class="grid place-items-center w-240px max-h-[312px] overflow-hidden rounded-6px bg-surface2">
-                <img :src="item.src" alt="" class="block max-w-full max-h-[312px] object-contain" />
+              <div
+                v-if="item.type === 'image'"
+                class="hidden [@media(hover:hover)]:group-hover:block absolute bottom-[calc(100%+8px)] z-30 w-248px box-border p-4px rounded-8px border border-solid border-line bg-white shadow-[0_12px_28px_rgba(31,35,41,0.16),0_2px_6px_rgba(31,35,41,0.06)] pointer-events-none animate-[tus-preview-in_120ms_ease_320ms_both] motion-reduce:animate-none"
+                :class="i % 4 >= 2 ? 'right-0' : 'left-0'"
+                aria-hidden="true"
+              >
+                <div class="grid place-items-center w-240px max-h-[312px] overflow-hidden rounded-6px bg-surface2">
+                  <img :src="item.src" alt="" class="block max-w-full max-h-[312px] object-contain" />
+                </div>
               </div>
-            </div>
             </div>
           </div>
 
@@ -3632,7 +3767,6 @@ const plateBtnCls =
           <!-- 校色参数台（与商拍工作室共用 ColorFixPanel，含选区 / 涂抹弹窗）：相对结果卡定位、贴右缘垂直居中、可拖并夹在卡内 -->
           <ColorFixResultPanel :cf="cf" />
         </section>
-
 
         <!--
           功能介绍（原型 ToolIntroPanel fill）：内边距 18、gap 14；标题 14/600，正文 13/1.65 ink-2；
@@ -3675,11 +3809,7 @@ const plateBtnCls =
 
     <ToolMediaPreview v-model:open="lightboxOpen" v-model:index="lightboxIndex" :items="lightboxItems" />
     <!-- 历史缩略图 / 抠图结果卡的放大：共用 MediaLightbox -->
-    <MediaLightbox
-      v-model:show="thumbLightbox.show"
-      v-model:index="thumbLightbox.index"
-      :items="thumbLightbox.items"
-    />
+    <MediaLightbox v-model:show="thumbLightbox.show" v-model:index="thumbLightbox.index" :items="thumbLightbox.items" />
   </div>
 </template>
 

@@ -2,8 +2,8 @@
 
 import { computed, onUnmounted, ref } from 'vue'
 import { createDiscreteApi } from 'naive-ui'
-import { llAcceptAgreement, llGetAgreement } from '@/api/localLife.ts'
-import { useUserInfoStore } from '@/stores/userInfo.ts'
+import { llAcceptAgreement, llGetAgreement } from '@/api/local-life.ts'
+import { useUserInfoStore } from '@/stores/user-info.ts'
 
 // ---------------- 使用约定 ----------------
 

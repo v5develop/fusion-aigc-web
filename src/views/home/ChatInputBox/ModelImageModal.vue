@@ -2,7 +2,7 @@
 import { ref, watch, nextTick } from 'vue'
 import { publicTemplate } from '@/api/methods.ts'
 import type { FileItem } from './types'
-import { upload } from '@/api/ossUpload'
+import { upload } from '@/api/oss-upload'
 import { useMessage } from 'naive-ui'
 import { ossThumbnail } from '@/utils/oss.ts'
 import { ACCEPT_IMAGE } from '@/utils/utils'

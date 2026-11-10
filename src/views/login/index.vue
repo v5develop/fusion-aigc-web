@@ -29,7 +29,7 @@ const CAPABILITIES = [
   },
 ]
 import { sendSms, smsLogin, reportDevice, getAuthToken } from '@/api/union'
-import { adoptSession } from '@/utils/authSession'
+import { adoptSession } from '@/utils/auth-session'
 
 const router = useRouter()
 

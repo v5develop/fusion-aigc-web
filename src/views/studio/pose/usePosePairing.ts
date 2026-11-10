@@ -7,7 +7,7 @@
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import { studioPosePreview } from '@/api/studio.ts'
 import { toApiError } from '@/api/index.ts'
-import type { StudioPosePayload, StudioPosePeople, StudioPosePerson, StudioPoseMapping } from '@/api/studioTypes.ts'
+import type { StudioPosePayload, StudioPosePeople, StudioPosePerson, StudioPoseMapping } from '@/api/studio-types.ts'
 
 export interface PairPose {
   poseIndex: number
@@ -144,16 +144,16 @@ export function usePosePairing(source: Ref<string[]>, poses: Ref<string[]>) {
 
   function toPairPose(
     idx: number,
-    item: { pose: StudioPosePeople | null; default_mapping: number[]; error: string },
+    item: { pose: StudioPosePeople | null; defaultMapping: number[]; error: string },
   ): PairPose {
     return {
       poseIndex: idx,
-      poseCount: item.pose?.person_count ?? 0,
+      poseCount: item.pose?.personCount ?? 0,
       people: item.pose?.people ?? [],
-      truncated: !!item.pose?.people_truncated,
+      truncated: !!item.pose?.peopleTruncated,
       error: item.error ? friendlyPreviewError(item.error, 'pose') : item.pose ? '' : '没有读到这张姿势图的人物',
-      defaultMapping: [...(item.default_mapping ?? [])],
-      mapping: [...(item.default_mapping ?? [])],
+      defaultMapping: [...(item.defaultMapping ?? [])],
+      mapping: [...(item.defaultMapping ?? [])],
     }
   }
 
@@ -168,28 +168,28 @@ export function usePosePairing(source: Ref<string[]>, poses: Ref<string[]>) {
     stopTimer()
     timer = setInterval(() => (elapsed.value += 1), 1000)
     try {
-      const res = await studioPosePreview({ source_image_url: source.value[0]!, pose_image_urls: [...poses.value] })
+      const res = await studioPosePreview({ sourceImageUrl: source.value[0]!, poseImageUrls: [...poses.value] })
       if (my !== seq) return
       const d = res.data
       if (!d?.source) throw new Error('empty')
-      const mappingEnabled = !!d.mapping_enabled && d.source.person_count >= 2
+      const mappingEnabled = !!d.mappingEnabled && d.source.personCount >= 2
       state.value = {
         sig: mySig,
-        sourceCount: d.source.person_count,
+        sourceCount: d.source.personCount,
         sourcePeople: d.source.people ?? [],
-        sourceTruncated: !!d.source.people_truncated,
+        sourceTruncated: !!d.source.peopleTruncated,
         group: d.source.group ?? '',
         interaction: d.source.interaction ?? '',
         // 开放配对：每张姿势图都要有一项（缺的按读图失败）；没开放：服务端给了几张的人数就展示几张（旧版服务端为 []）
         poses: mappingEnabled
           ? poses.value.map((_, i) => {
-              const it = d.poses?.find((x) => x.pose_index === i)
-              return toPairPose(i, it ?? { pose: null, default_mapping: [], error: '没有读到这张姿势图的人物' })
+              const it = d.poses?.find((x) => x.poseIndex === i)
+              return toPairPose(i, it ?? { pose: null, defaultMapping: [], error: '没有读到这张姿势图的人物' })
             })
           : (d.poses ?? [])
-              .filter((x) => x.pose_index >= 0 && x.pose_index < poses.value.length)
-              .sort((a, b) => a.pose_index - b.pose_index)
-              .map((x) => toPairPose(x.pose_index, x)),
+              .filter((x) => x.poseIndex >= 0 && x.poseIndex < poses.value.length)
+              .sort((a, b) => a.poseIndex - b.poseIndex)
+              .map((x) => toPairPose(x.poseIndex, x)),
         restored: false,
         mappingEnabled,
       }
@@ -243,7 +243,7 @@ export function usePosePairing(source: Ref<string[]>, poses: Ref<string[]>) {
       if (p.error || p.poseCount < 1) continue
       const msg = validateMapping(p.mapping, s.sourceCount, p.poseCount)
       if (msg) return { error: `姿势图${p.poseIndex + 1}的人物配对有误：${msg}` }
-      list.push({ pose_index: p.poseIndex, mapping: [...p.mapping], pose_person_count: p.poseCount })
+      list.push({ poseIndex: p.poseIndex, mapping: [...p.mapping], posePersonCount: p.poseCount })
     }
     if (!list.length) return null
     return { sourcePersonCount: s.sourceCount, mappings: list }
@@ -254,16 +254,16 @@ export function usePosePairing(source: Ref<string[]>, poses: Ref<string[]>) {
     cancel()
     errorText.value = ''
     state.value = null
-    const n = payload.source_person_count
+    const n = payload.sourcePersonCount
     const ms = Array.isArray(payload.mappings) ? payload.mappings : []
     if (!n || n < 2 || !ms.length) return
     const poseList: PairPose[] = []
     for (const m of ms) {
-      if (!m || !Array.isArray(m.mapping) || m.pose_index < 0 || m.pose_index >= poseUrls.length) continue
+      if (!m || !Array.isArray(m.mapping) || m.poseIndex < 0 || m.poseIndex >= poseUrls.length) continue
       const mapping = m.mapping.map(Number)
       poseList.push({
-        poseIndex: m.pose_index,
-        poseCount: m.pose_person_count,
+        poseIndex: m.poseIndex,
+        poseCount: m.posePersonCount,
         people: [],
         truncated: false,
         error: '',

@@ -1,6 +1,6 @@
 /** 商拍工作室套件共享常量与展示辅助 */
 
-import type { StudioBatch, StudioKind, StudioPosePayload, StudioTask } from '@/api/studioTypes.ts'
+import type { StudioBatch, StudioKind, StudioPosePayload, StudioTask } from '@/api/studio-types.ts'
 
 // ---------------- 选项 ----------------
 
@@ -16,7 +16,7 @@ export const MODEL_OPTIONS = [
   { label: 'Seedream 5.5', value: 'Seedream', description: '质感更强，适合成片与详情页' },
 ]
 
-export { displayModelLabel } from '@/utils/modelLabel'
+export { displayModelLabel } from '@/utils/model-label'
 
 export const RESOLUTION_OPTIONS = [
   { label: '1K', value: '1k' },
@@ -163,9 +163,9 @@ export function taskChip(status: number) {
 }
 
 /** 批次进度 = (task_done + task_failed) / task_total，0–100 */
-export function batchProgress(batch: { task_total: number; task_done: number; task_failed: number }) {
-  if (!batch.task_total) return 0
-  return Math.round(((batch.task_done + batch.task_failed) / batch.task_total) * 100)
+export function batchProgress(batch: { taskTotal: number; taskDone: number; taskFailed: number }) {
+  if (!batch.taskTotal) return 0
+  return Math.round(((batch.taskDone + batch.taskFailed) / batch.taskTotal) * 100)
 }
 
 export const KIND_LABEL: Record<StudioKind, string> = {
@@ -174,12 +174,12 @@ export const KIND_LABEL: Record<StudioKind, string> = {
   imagegen: '图片生成',
 }
 
-/** 多人姿态：该姿势配对的人数 > 1 时追加「 · N 人」（取自 batch.payload.mappings[].pose_person_count；没有 / 解析失败不加） */
+/** 多人姿态：该姿势配对的人数 > 1 时追加「 · N 人」（取自 batch.payload.mappings[].posePersonCount；没有 / 解析失败不加） */
 function poseCountSuffix(task: StudioTask, batch?: Pick<StudioBatch, 'payload'>) {
   if (!batch?.payload) return ''
   try {
     const p = JSON.parse(batch.payload) as StudioPosePayload
-    const n = p.mappings?.find((m) => m.pose_index === task.pose_index)?.pose_person_count ?? 0
+    const n = p.mappings?.find((m) => m.poseIndex === task.poseIndex)?.posePersonCount ?? 0
     return n > 1 ? ` · ${n} 人` : ''
   } catch {
     return ''
@@ -188,9 +188,9 @@ function poseCountSuffix(task: StudioTask, batch?: Pick<StudioBatch, 'payload'>)
 
 /** 任务备注行：商拍=模特 N · 第 M 张；姿态=「姿态复刻 · 姿势 N」（s1.1 E6）；图片生成=第 N 张 */
 export function taskCaption(task: StudioTask, batch?: Pick<StudioBatch, 'payload'>) {
-  if (task.kind === 'tryon') return `模特${task.model_index + 1} · 第${task.shot_index + 1}张`
-  if (task.kind === 'pose') return `姿态复刻 · 姿势 ${task.pose_index + 1}${poseCountSuffix(task, batch)}`
-  return `第${task.shot_index + 1}张`
+  if (task.kind === 'tryon') return `模特${task.modelIndex + 1} · 第${task.shotIndex + 1}张`
+  if (task.kind === 'pose') return `姿态复刻 · 姿势 ${task.poseIndex + 1}${poseCountSuffix(task, batch)}`
+  return `第${task.shotIndex + 1}张`
 }
 
 export function formatTime(ms?: number) {

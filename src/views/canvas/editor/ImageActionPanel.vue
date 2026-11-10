@@ -11,9 +11,15 @@ import EditPanel from './EditPanel.vue'
 import MultiviewPanel from './MultiviewPanel.vue'
 import LayerPanel from './LayerPanel.vue'
 import { useCanvasEditor } from './useCanvasEditor.ts'
-import type { ImageActionKind } from './imageActions.ts'
-import { IMAGE_ACTIONS, actionLabel, activeImageAction, closeImageAction, collectImageSources } from './imageActions.ts'
-import { ACTION_LABEL, ACTION_RING } from './actionUi.ts'
+import type { ImageActionKind } from './image-actions.ts'
+import {
+  IMAGE_ACTIONS,
+  actionLabel,
+  activeImageAction,
+  closeImageAction,
+  collectImageSources,
+} from './image-actions.ts'
+import { ACTION_LABEL, ACTION_RING } from './action-ui.ts'
 import { POP_FADE } from './ui.ts'
 
 const store = useCanvasEditor()

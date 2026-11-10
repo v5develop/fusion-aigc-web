@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelOf } from '@/utils/modelLabel'
+import { modelLabelOf } from '@/utils/model-label'
 /**
  * 画布节点编辑器（对齐原型 CanvasView + canvas-v31 皮肤）：
  * 顶栏（返回 / 标题✎ / 保存状态 / 运行数 / 模板 · 保存 · 另存为 · 执行模型）
@@ -12,10 +12,10 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ConnectionMode, VueFlow, useVueFlow, type EdgeMouseEvent, type NodeMouseEvent } from '@vue-flow/core'
 import { MiniMap } from '@vue-flow/minimap'
 import '@vue-flow/minimap/dist/style.css'
-import PointsBalanceChip from '@/components/points/PointsBalanceChip.vue'
+import PointsBalanceChip from '@/components/Points/PointsBalanceChip.vue'
 import IconButton from '@/components/IconButton/index.vue'
-import { useUserInfoStore } from '@/stores/userInfo'
-import PromptLibraryFlyout from '@/components/creation/PromptLibraryFlyout.vue'
+import { useUserInfoStore } from '@/stores/user-info'
+import PromptLibraryFlyout from '@/components/Creation/PromptLibraryFlyout.vue'
 import { getPointsBalance } from '@/api/points.ts'
 import { Background } from '@vue-flow/background'
 // Vue Flow 必需的基础样式：节点绝对定位、变换原点、连线 SVG overflow:visible、Handle 贴边定位。
@@ -34,17 +34,22 @@ import EditorModuleNode from './nodes/EditorModuleNode.vue'
 import NodeParamsPanel from './NodeParamsPanel.vue'
 import NodeAddPanel from './NodeAddPanel.vue'
 import ImageActionPanel from './ImageActionPanel.vue'
-import { IMAGE_ACTIONS, activeImageAction, collectImageSources, openImageAction } from './imageActions.ts'
+import { IMAGE_ACTIONS, activeImageAction, collectImageSources, openImageAction } from './image-actions.ts'
 import CanvasColorFixDialog from './CanvasColorFixDialog.vue'
-import { activeColorFix, colorFixSources, openColorFix } from './colorFixAction.ts'
+import { activeColorFix, colorFixSources, openColorFix } from './color-fix-action.ts'
 import EditorAssetPanel from './EditorAssetPanel.vue'
 import TitleModal from '../TitleModal.vue'
 import TemplateInsertDialog from './TemplateInsertDialog.vue'
-import { buildTemplateClipboard } from './templateInsert.ts'
+import { buildTemplateClipboard } from './template-insert.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
-import { canvasSaveAs, canvasUploadMedia, type ICanvasCatalogModel, type ICanvasTemplateDetail } from '@/api/canvasHome.ts'
+import {
+  canvasSaveAs,
+  canvasUploadMedia,
+  type ICanvasCatalogModel,
+  type ICanvasTemplateDetail,
+} from '@/api/canvas-home.ts'
 import { downloadImage } from '@/utils/download.ts'
-import { takeCanvasImport } from '@/utils/canvasImportHandoff.ts'
+import { takeCanvasImport } from '@/utils/canvas-import-handoff.ts'
 import { isGroupPlate, normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
 import { viewportKeepingCenter, type ICanvasClipboard } from './clipboard.ts'
 import { editorDialog, editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
@@ -279,7 +284,13 @@ function onConnectStart(payload: {
 }) {
   const ev = payload.event
   const p = ev && 'touches' in ev ? ev.touches[0] : (ev as MouseEvent | undefined)
-  connectStart = { nodeId: payload.nodeId, handleId: payload.handleId, handleType: payload.handleType, x: p?.clientX, y: p?.clientY }
+  connectStart = {
+    nodeId: payload.nodeId,
+    handleId: payload.handleId,
+    handleType: payload.handleType,
+    x: p?.clientX,
+    y: p?.clientY,
+  }
   connectedThisDrag = false
 }
 
@@ -340,7 +351,14 @@ function onConnectEnd(event?: MouseEvent | TouchEvent) {
     // 只是点了一下端口（没拖开）：不当成「拖到空白」
     if (start.x != null && start.y != null && Math.hypot(point.clientX - start.x, point.clientY - start.y) < 12) return
     const stage = stageRef.value?.getBoundingClientRect()
-    if (!stage || point.clientX < stage.left || point.clientX > stage.right || point.clientY < stage.top || point.clientY > stage.bottom) return
+    if (
+      !stage ||
+      point.clientX < stage.left ||
+      point.clientX > stage.right ||
+      point.clientY < stage.top ||
+      point.clientY > stage.bottom
+    )
+      return
     const source = store.findNode(start.nodeId)
     if (!source || loading.value || !store.ready.value) return
     openQuickAdd(
@@ -674,9 +692,7 @@ const runScope = computed<'selection' | 'single' | 'all'>(() => {
   return 'all'
 })
 
-const runDisabled = computed(
-  () => batchRunning.value || (runScope.value === 'all' && !runnableAll.value.length),
-)
+const runDisabled = computed(() => batchRunning.value || (runScope.value === 'all' && !runnableAll.value.length))
 
 const runHint = computed(() => {
   if (runScope.value === 'selection') return `按上下游顺序执行选中的 ${selectedFlowNodes.value.length} 个节点`
@@ -725,8 +741,8 @@ onMounted(() => void refreshBalance())
 function estimateNodeCredits(nodeId: string): number {
   const node = store.findNode(nodeId)
   if (!node || node.type !== 'model') return 0
-  const list = node.data.kind === 'video' ? store.catalog.value?.video_models : store.catalog.value?.image_models
-  const model = list?.find((m) => m.model_id === (node.data.modelId || m.model_id))
+  const list = node.data.kind === 'video' ? store.catalog.value?.video_models : store.catalog.value?.imageModels
+  const model = list?.find((m) => m.modelId === (node.data.modelId || m.modelId))
   const prices = model?.prices ?? []
   if (!prices.length) return 0
   const size = node.data.size
@@ -769,14 +785,18 @@ async function confirmAndRun(ids: string[], scope: 'pick' | 'all' = 'pick'): Pro
       ids.map((id) => store.findNode(id)).filter((node): node is CanvasEditorNode => Boolean(node)),
     )
     if (!executable.length) {
-      editorMessage.warning(scope === 'all' ? '画布上还没有可执行的生成或工具节点' : '选中的节点里没有可执行的生成或工具节点')
+      editorMessage.warning(
+        scope === 'all' ? '画布上还没有可执行的生成或工具节点' : '选中的节点里没有可执行的生成或工具节点',
+      )
       return
     }
     const running = executable.filter((id) => store.isNodeBusy(id))
     const toRun = executable.filter((id) => !store.isNodeBusy(id))
     if (!toRun.length) {
       editorMessage.info(
-        running.length === 1 ? `「${store.findNode(running[0]!)?.data.title ?? '节点'}」已在运行` : `这 ${running.length} 个节点都已在运行`,
+        running.length === 1
+          ? `「${store.findNode(running[0]!)?.data.title ?? '节点'}」已在运行`
+          : `这 ${running.length} 个节点都已在运行`,
       )
       return
     }
@@ -806,10 +826,11 @@ async function confirmAndRun(ids: string[], scope: 'pick' | 'all' = 'pick'): Pro
         [h('b', { class: 'text-[#333] text-16px font-600 tabular-nums leading-22px' }, value), label],
       )
     const countLabel = hasTool ? '个待执行节点' : '个模型节点'
-    const title =
-      scope === 'all' ? '执行全部模型节点' : toRun.length > 1 ? `执行 ${toRun.length} 个节点` : '执行前确认'
+    const title = scope === 'all' ? '执行全部模型节点' : toRun.length > 1 ? `执行 ${toRun.length} 个节点` : '执行前确认'
     const lead =
-      toRun.length > 1 ? '按依赖顺序执行，上游完成后才提交下游。' : `执行「${store.findNode(toRun[0]!)?.data.title ?? '节点'}」。`
+      toRun.length > 1
+        ? '按依赖顺序执行，上游完成后才提交下游。'
+        : `执行「${store.findNode(toRun[0]!)?.data.title ?? '节点'}」。`
     await new Promise<void>((resolve) => {
       editorDialog.info({
         title,
@@ -894,9 +915,7 @@ async function runBatch(order: string[], running: string[], token: number) {
     const failedIds = order.filter((_, index) => states[index] === 'error')
     const unknown = states.filter((state) => state === 'unknown').length
     const skipped = states.filter((state) => state === 'skipped').length
-    const refunded = failedIds
-      .filter((id) => submittedIds.has(id))
-      .reduce((sum, id) => sum + store.runChargeOf(id), 0)
+    const refunded = failedIds.filter((id) => submittedIds.has(id)).reduce((sum, id) => sum + store.runChargeOf(id), 0)
     const parts = [`成功 ${done}`]
     if (failedIds.length) parts.push(`失败 ${failedIds.length}`)
     if (skipped) parts.push(`跳过 ${skipped}（上游未成功）`)
@@ -1106,7 +1125,9 @@ function addQuickText() {
   closeAddPanel()
   if (!panel?.anchorId) return
   const created =
-    panel.dropped && panel.spawnAt ? store.addNode('text', undefined, panel.spawnAt) : store.addTextNodeNear(panel.anchorId)
+    panel.dropped && panel.spawnAt
+      ? store.addNode('text', undefined, panel.spawnAt)
+      : store.addTextNodeNear(panel.anchorId)
   if (created) store.selectNode(created.id)
 }
 
@@ -1178,7 +1199,6 @@ function confirmDeleteNodes() {
   })
 }
 
-
 // ---------------- 剪贴板（2026-11-06 二轮：Ctrl+C/V/X/D，带组内连线，新 id、偏移 48、清运行态） ----------------
 
 /**
@@ -1219,7 +1239,8 @@ function cutSelection() {
   pasteTimes = -1
   const removed = store.removeNodes(snap.nodes.map((node) => node.id))
   clearFlowSelection()
-  if (removed) editorMessage.success(`已剪切 ${countMembers(snap.nodes.map((node) => node.id)) || removed} 个节点，Ctrl+V 粘贴`)
+  if (removed)
+    editorMessage.success(`已剪切 ${countMembers(snap.nodes.map((node) => node.id)) || removed} 个节点，Ctrl+V 粘贴`)
 }
 
 function pasteClipboard() {
@@ -1375,7 +1396,9 @@ function onNodeDragStart(payload: { node: { id: string; position: { x: number; y
     id: payload.node.id,
     baseX: payload.node.position.x,
     baseY: payload.node.position.y,
-    members: store.moduleChildren(payload.node.id).map((child) => ({ node: child, x: child.position.x, y: child.position.y })),
+    members: store
+      .moduleChildren(payload.node.id)
+      .map((child) => ({ node: child, x: child.position.x, y: child.position.y })),
   }
 }
 
@@ -1428,7 +1451,9 @@ function settleCtxMenu() {
     if (!el || !rect || !menu) return
     const maxY = Math.max(8, rect.height - el.offsetHeight - 8)
     if (menu.y > maxY) ctxMenu.value = { ...menu, y: maxY }
-    el.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled):not([aria-disabled="true"]), [role="menuitemradio"]:not(:disabled)')?.focus({ preventScroll: true })
+    el.querySelector<HTMLElement>(
+      '[role="menuitem"]:not(:disabled):not([aria-disabled="true"]), [role="menuitemradio"]:not(:disabled)',
+    )?.focus({ preventScroll: true })
   })
 }
 
@@ -1510,7 +1535,9 @@ function onCtxMenuKeydown(event: KeyboardEvent) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
   event.preventDefault()
   const items = Array.from(
-    ctxMenuEl.value?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled):not([aria-disabled="true"]), [role="menuitemradio"]:not(:disabled)') ?? [],
+    ctxMenuEl.value?.querySelectorAll<HTMLElement>(
+      '[role="menuitem"]:not(:disabled):not([aria-disabled="true"]), [role="menuitemradio"]:not(:disabled)',
+    ) ?? [],
   )
   if (!items.length) return
   const at = items.indexOf(document.activeElement as HTMLElement)
@@ -1630,26 +1657,55 @@ const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
     return [
       [
         { key: 'rename', label: '编辑名称', icon: 'rename', run: menuAction(openRename) },
-        { key: 'copy', label: '复制（连成员）', icon: 'copy', kbd: `${MOD_KEY} D`, run: menuAction((n) => duplicateSelection([n.id])) },
+        {
+          key: 'copy',
+          label: '复制（连成员）',
+          icon: 'copy',
+          kbd: `${MOD_KEY} D`,
+          run: menuAction((n) => duplicateSelection([n.id])),
+        },
         {
           key: 'lock',
           label: locked ? '解锁' : '锁定',
           icon: locked ? 'unlock' : 'lock',
           run: menuAction((n) => editorMessage.success(store.toggleLock(n.id) ? '已锁定' : '已解锁')),
         },
-        { key: 'focus', label: '聚焦', icon: 'target', run: menuAction((n) => zoomToSelection([n.id, ...store.moduleChildren(n.id).map((c) => c.id)])) },
+        {
+          key: 'focus',
+          label: '聚焦',
+          icon: 'target',
+          run: menuAction((n) => zoomToSelection([n.id, ...store.moduleChildren(n.id).map((c) => c.id)])),
+        },
       ],
       [
         ...(plate
-          ? [{ key: 'ungroup', label: '解组', icon: 'folderOpen', run: menuAction((n) => store.ungroup(n.id) && editorMessage.success('已解组，成员原位保留')) }]
+          ? [
+              {
+                key: 'ungroup',
+                label: '解组',
+                icon: 'folderOpen',
+                run: menuAction((n) => store.ungroup(n.id) && editorMessage.success('已解组，成员原位保留')),
+              },
+            ]
           : []),
-        { key: 'delete-group', label: plate ? '删除分组（含成员）' : '删除模块（含成员）', icon: 'trash', danger: true, run: menuAction((n) => confirmRemoveModule(n.id)) },
+        {
+          key: 'delete-group',
+          label: plate ? '删除分组（含成员）' : '删除模块（含成员）',
+          icon: 'trash',
+          danger: true,
+          run: menuAction((n) => confirmRemoveModule(n.id)),
+        },
       ],
     ]
   }
   const media: INodeMenuItem[] = []
   if (node.data.video || node.data.image) {
-    media.push({ key: 'download', label: node.data.video ? '下载视频' : '下载原图', icon: 'download', run: menuAction(downloadNodeOutput) })
+    media.push({
+      key: 'download',
+      label: node.data.video ? '下载视频' : '下载原图',
+      icon: 'download',
+      run: menuAction(downloadNodeOutput),
+    })
   }
   if (node.type === 'image') {
     const isResult = node.data.kind === 'result'
@@ -1670,7 +1726,12 @@ const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
   const locked = store.isLocked(node.id)
   const edit: INodeMenuItem[] = [
     { key: 'rename', label: '编辑名称', icon: 'rename', run: menuAction(openRename) },
-    { key: 'lock', label: locked ? '解锁节点' : '锁定节点', icon: locked ? 'unlock' : 'lock', run: menuAction((n) => editorMessage.success(store.toggleLock(n.id) ? '已锁定节点' : '已解锁节点')) },
+    {
+      key: 'lock',
+      label: locked ? '解锁节点' : '锁定节点',
+      icon: locked ? 'unlock' : 'lock',
+      run: menuAction((n) => editorMessage.success(store.toggleLock(n.id) ? '已锁定节点' : '已解锁节点')),
+    },
   ]
   if (node.type === 'model' && !node.data.inputOnly) {
     edit.push({
@@ -1685,7 +1746,13 @@ const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
       },
     })
   }
-  edit.push({ key: 'copy', label: '复制', icon: 'copy', kbd: `${MOD_KEY} D`, run: menuAction((n) => duplicateSelection([n.id])) })
+  edit.push({
+    key: 'copy',
+    label: '复制',
+    icon: 'copy',
+    kbd: `${MOD_KEY} D`,
+    run: menuAction((n) => duplicateSelection([n.id])),
+  })
 
   const act: INodeMenuItem[] = []
   if (hasImageActions(node)) {
@@ -1711,7 +1778,13 @@ const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
     })
   }
   if ((node.type === 'model' && !node.data.inputOnly) || node.type === 'tool') {
-    act.push({ key: 'run', label: '执行节点', icon: 'play', disabled: batchRunning.value, run: menuAction((n) => void confirmAndRun([n.id])) })
+    act.push({
+      key: 'run',
+      label: '执行节点',
+      icon: 'play',
+      disabled: batchRunning.value,
+      run: menuAction((n) => void confirmAndRun([n.id])),
+    })
   }
   act.push({ key: 'focus', label: '聚焦', icon: 'target', run: menuAction((n) => zoomToSelection([n.id])) })
 
@@ -1784,7 +1857,7 @@ function confirmRename(value: string) {
 // ---------- 模型替换（节点菜单二级视图） ----------
 
 function modelOptionsOf(node: CanvasEditorNode): ICanvasCatalogModel[] {
-  const list = node.data.kind === 'video' ? store.catalog.value?.video_models : store.catalog.value?.image_models
+  const list = node.data.kind === 'video' ? store.catalog.value?.video_models : store.catalog.value?.imageModels
   return list ?? []
 }
 
@@ -1861,7 +1934,10 @@ function exportWorkflowJson() {
 const exportingPng = ref(false)
 
 function escapeXml(text: string): string {
-  return text.replace(/[<>&'"]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[ch] ?? ch)
+  return text.replace(
+    /[<>&'"]/g,
+    (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[ch] ?? ch,
+  )
 }
 
 /** 按像素宽度折行（中文逐字、英文按词），用 2D 画布量字宽 */
@@ -1998,7 +2074,11 @@ async function exportCanvasPng() {
             )
             .join('')
         } else {
-          const label = node.data.model ? `模型 · ${modelLabelOf(node.data.model)}` : node.type === 'model' ? '生成结果' : '空节点'
+          const label = node.data.model
+            ? `模型 · ${modelLabelOf(node.data.model)}`
+            : node.type === 'model'
+              ? '生成结果'
+              : '空节点'
           body =
             `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="6" fill="#f3f4f5" stroke="#e5e1e4" stroke-dasharray="5 5"/>` +
             `<text x="${bx + bw / 2}" y="${by + bh / 2 + 4}" text-anchor="middle" font-family="${font}" font-size="12" fill="#8a9099">${escapeXml(label)}</text>`
@@ -2220,7 +2300,10 @@ function openHelp() {
       h('div', [
         h(
           'div',
-          { class: 'grid grid-cols-[auto_1fr] items-center gap-x-20px gap-y-8px mt-4px mb-14px text-[#4b454a] text-13px' },
+          {
+            class:
+              'grid grid-cols-[auto_1fr] items-center gap-x-20px gap-y-8px mt-4px mb-14px text-[#4b454a] text-13px',
+          },
           rows.flatMap(([label, parts]) => [
             h('span', { class: 'text-[#7d767b] text-12px' }, label),
             h(
@@ -2380,12 +2463,7 @@ async function onStageDrop(event: DragEvent) {
         >
 
         <div class="flex items-center gap-6px ml-auto">
-          <button
-            type="button"
-            :class="TOP_BTN"
-            title="模板库：套用现成画布结构"
-            @click="showTemplates = true"
-          >
+          <button type="button" :class="TOP_BTN" title="模板库：套用现成画布结构" @click="showTemplates = true">
             <EditorIcon name="card" :size="16" /> 模板
           </button>
           <button
@@ -2434,7 +2512,13 @@ async function onStageDrop(event: DragEvent) {
               <button type="button" class="export-item" role="menuitem" @click="exportWorkflowJson">
                 <EditorIcon name="doc" :size="14" /> 导出工程 JSON
               </button>
-              <button type="button" class="export-item" role="menuitem" :disabled="exportingPng" @click="exportCanvasPng">
+              <button
+                type="button"
+                class="export-item"
+                role="menuitem"
+                :disabled="exportingPng"
+                @click="exportCanvasPng"
+              >
                 <EditorIcon name="image" :size="14" /> {{ exportingPng ? '正在导出…' : '导出画布 PNG' }}
               </button>
             </div>
@@ -2447,7 +2531,13 @@ async function onStageDrop(event: DragEvent) {
             @click="runSelected"
           >
             <EditorIcon name="play" :size="14" />
-            {{ batchActive ? '批量执行中…' : runScope === 'selection' ? `执行选中 ${selectedFlowNodes.length} 个` : '执行模型' }}
+            {{
+              batchActive
+                ? '批量执行中…'
+                : runScope === 'selection'
+                  ? `执行选中 ${selectedFlowNodes.length} 个`
+                  : '执行模型'
+            }}
           </button>
         </div>
       </header>
@@ -2565,7 +2655,13 @@ async function onStageDrop(event: DragEvent) {
             :role="loading ? 'status' : undefined"
           >
             <strong class="text-ink text-14px">{{
-              loading ? '正在加载画布…' : loadError ? '画布加载失败' : stageDropActive ? '松手放入图片' : '这是一张新画布'
+              loading
+                ? '正在加载画布…'
+                : loadError
+                  ? '画布加载失败'
+                  : stageDropActive
+                    ? '松手放入图片'
+                    : '这是一张新画布'
             }}</strong>
             <template v-if="!loading">
               <p v-if="loadError" class="m-0 text-13px">{{ loadError }}</p>
@@ -2580,8 +2676,12 @@ async function onStageDrop(event: DragEvent) {
                 重试
               </button>
               <div v-else class="flex items-center gap-8px mt-4px">
-                <button type="button" class="empty-btn" :class="FOCUS_RING" @click="showTemplates = true">从模板开始</button>
-                <button type="button" class="empty-btn" :class="FOCUS_RING" @click="showAssetPicker = true">从资产导入</button>
+                <button type="button" class="empty-btn" :class="FOCUS_RING" @click="showTemplates = true">
+                  从模板开始
+                </button>
+                <button type="button" class="empty-btn" :class="FOCUS_RING" @click="showAssetPicker = true">
+                  从资产导入
+                </button>
               </div>
             </template>
           </div>
@@ -2606,7 +2706,15 @@ async function onStageDrop(event: DragEvent) {
               断开
             </button>
             <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
-            <IconButton label="取消选中" no-title data-tip="取消选中" data-tip-key="Esc" size="sm" variant="quiet" @click="selectedEdgeId = ''">
+            <IconButton
+              label="取消选中"
+              no-title
+              data-tip="取消选中"
+              data-tip-key="Esc"
+              size="sm"
+              variant="quiet"
+              @click="selectedEdgeId = ''"
+            >
               <EditorIcon name="close" :size="14" />
             </IconButton>
           </div>
@@ -2694,7 +2802,15 @@ async function onStageDrop(event: DragEvent) {
               <EditorIcon name="trash" :size="12" /> 删除
             </button>
             <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
-            <IconButton label="取消选择" no-title data-tip="取消选择" data-tip-key="Esc" size="sm" variant="quiet" @click="clearFlowSelection">
+            <IconButton
+              label="取消选择"
+              no-title
+              data-tip="取消选择"
+              data-tip-key="Esc"
+              size="sm"
+              variant="quiet"
+              @click="clearFlowSelection"
+            >
               <EditorIcon name="close" :size="14" />
             </IconButton>
 
@@ -2710,14 +2826,22 @@ async function onStageDrop(event: DragEvent) {
             >
               <span class="align-label">对齐</span>
               <button type="button" class="align-item" role="menuitem" @click="alignSelection('left')">左对齐</button>
-              <button type="button" class="align-item" role="menuitem" @click="alignSelection('hcenter')">水平居中</button>
+              <button type="button" class="align-item" role="menuitem" @click="alignSelection('hcenter')">
+                水平居中
+              </button>
               <button type="button" class="align-item" role="menuitem" @click="alignSelection('right')">右对齐</button>
               <button type="button" class="align-item" role="menuitem" @click="alignSelection('top')">顶对齐</button>
-              <button type="button" class="align-item" role="menuitem" @click="alignSelection('vcenter')">垂直居中</button>
+              <button type="button" class="align-item" role="menuitem" @click="alignSelection('vcenter')">
+                垂直居中
+              </button>
               <button type="button" class="align-item" role="menuitem" @click="alignSelection('bottom')">底对齐</button>
               <span class="align-label">分布</span>
-              <button type="button" class="align-item" role="menuitem" @click="distributeSelection('h')">水平等距</button>
-              <button type="button" class="align-item" role="menuitem" @click="distributeSelection('v')">垂直等距</button>
+              <button type="button" class="align-item" role="menuitem" @click="distributeSelection('h')">
+                水平等距
+              </button>
+              <button type="button" class="align-item" role="menuitem" @click="distributeSelection('v')">
+                垂直等距
+              </button>
             </div>
           </div>
 
@@ -2764,7 +2888,13 @@ async function onStageDrop(event: DragEvent) {
               <EditorIcon name="plus" :size="20" />
             </IconButton>
             <span class="h-1px mx-6px my-2px bg-line" aria-hidden="true" />
-            <IconButton label="从资产导入" no-title data-tip="从资产导入（也可把图片拖到画布）" variant="quiet" @click="showAssetPicker = true">
+            <IconButton
+              label="从资产导入"
+              no-title
+              data-tip="从资产导入（也可把图片拖到画布）"
+              variant="quiet"
+              @click="showAssetPicker = true"
+            >
               <EditorIcon name="albums" :size="18" />
             </IconButton>
             <span ref="promptAnchorEl" class="inline-flex">
@@ -2794,7 +2924,13 @@ async function onStageDrop(event: DragEvent) {
             <IconButton
               :label="runHint"
               no-title
-              :data-tip="runScope === 'selection' ? `执行选中的 ${selectedFlowNodes.length} 个节点` : runScope === 'single' ? '执行选中节点' : '执行全部模型节点'"
+              :data-tip="
+                runScope === 'selection'
+                  ? `执行选中的 ${selectedFlowNodes.length} 个节点`
+                  : runScope === 'single'
+                    ? '执行选中节点'
+                    : '执行全部模型节点'
+              "
               variant="quiet"
               :disabled="runDisabled"
               :loading="batchActive"
@@ -2830,7 +2966,13 @@ async function onStageDrop(event: DragEvent) {
             <IconButton label="放大" no-title data-tip="放大" variant="quiet" @click="zoomIn()">
               <EditorIcon name="plus" :size="16" />
             </IconButton>
-            <IconButton label="适应画布" no-title data-tip="适应画布" variant="quiet" @click="fitView({ padding: 0.18, duration: 200 })">
+            <IconButton
+              label="适应画布"
+              no-title
+              data-tip="适应画布"
+              variant="quiet"
+              @click="fitView({ padding: 0.18, duration: 200 })"
+            >
               <EditorIcon name="fit" :size="16" />
             </IconButton>
             <span class="w-1px h-18px mx-2px bg-[#ececef]" aria-hidden="true" />
@@ -2868,7 +3010,15 @@ async function onStageDrop(event: DragEvent) {
             >
               <EditorIcon name="download" :size="16" />
             </IconButton>
-            <IconButton label="快捷键与画布操作" no-title data-tip="快捷键与画布操作" data-tip-key="?" aria-keyshortcuts="?" variant="quiet" @click="openHelp">
+            <IconButton
+              label="快捷键与画布操作"
+              no-title
+              data-tip="快捷键与画布操作"
+              data-tip-key="?"
+              aria-keyshortcuts="?"
+              variant="quiet"
+              @click="openHelp"
+            >
               <EditorIcon name="help" :size="16" />
             </IconButton>
           </div>
@@ -2935,10 +3085,22 @@ async function onStageDrop(event: DragEvent) {
                 <button type="button" class="ctx-item" role="menuitem" @click="ctxMenuFit">
                   <EditorIcon name="fit" :size="14" /> 适应画布
                 </button>
-                <button type="button" class="ctx-item" role="menuitem" :aria-disabled="!canUndo || undefined" @click="canUndo && ctxMenuUndo()">
+                <button
+                  type="button"
+                  class="ctx-item"
+                  role="menuitem"
+                  :aria-disabled="!canUndo || undefined"
+                  @click="canUndo && ctxMenuUndo()"
+                >
                   <EditorIcon name="undo" :size="14" /> 撤销<span class="ctx-kbd">{{ MOD_KEY }} Z</span>
                 </button>
-                <button type="button" class="ctx-item" role="menuitem" :aria-disabled="!canRedo || undefined" @click="canRedo && ctxMenuRedo()">
+                <button
+                  type="button"
+                  class="ctx-item"
+                  role="menuitem"
+                  :aria-disabled="!canRedo || undefined"
+                  @click="canRedo && ctxMenuRedo()"
+                >
                   <EditorIcon name="redo" :size="14" /> 重做<span class="ctx-kbd">{{ MOD_KEY }} Y</span>
                 </button>
               </div>
@@ -2946,7 +3108,9 @@ async function onStageDrop(event: DragEvent) {
             <template v-else-if="ctxNode && ctxMenu.view === 'models'">
               <header class="ctx-head">
                 <b class="truncate text-13px font-600 leading-18px text-ink">模型替换</b>
-                <small class="truncate text-10.5px leading-14px text-muted">{{ ctxNode.data.kind === 'video' ? '视频模型' : '图片模型' }}</small>
+                <small class="truncate text-10.5px leading-14px text-muted">{{
+                  ctxNode.data.kind === 'video' ? '视频模型' : '图片模型'
+                }}</small>
               </header>
               <div class="ctx-group">
                 <button type="button" class="ctx-item" role="menuitem" @click="ctxMenuBack">
@@ -2957,17 +3121,17 @@ async function onStageDrop(event: DragEvent) {
               <div class="ctx-group max-h-320px overflow-y-auto [scrollbar-width:thin]">
                 <button
                   v-for="option in ctxModelOptions"
-                  :key="option.model_id"
+                  :key="option.modelId"
                   type="button"
                   class="ctx-item"
-                  :class="ctxNode.data.modelId === option.model_id && '!bg-violet-soft !text-violet-ink'"
+                  :class="ctxNode.data.modelId === option.modelId && '!bg-violet-soft !text-violet-ink'"
                   role="menuitemradio"
-                  :aria-checked="ctxNode.data.modelId === option.model_id"
+                  :aria-checked="ctxNode.data.modelId === option.modelId"
                   :disabled="!option.ready"
                   :title="option.ready ? undefined : '该模型暂不可用'"
                   @click="applyModelPick(option)"
                 >
-                  <EditorIcon :name="ctxNode.data.modelId === option.model_id ? 'check' : 'model'" :size="14" />
+                  <EditorIcon :name="ctxNode.data.modelId === option.modelId ? 'check' : 'model'" :size="14" />
                   <span class="min-w-0 flex-1 truncate">{{ modelLabelOf(option.model) }}</span>
                   <small v-if="option.badge" class="shrink-0 text-11px text-muted">{{ option.badge }}</small>
                 </button>
@@ -2977,7 +3141,11 @@ async function onStageDrop(event: DragEvent) {
               <header class="ctx-head">
                 <b class="truncate text-13px font-600 leading-18px text-ink">{{ ctxNode.data.title || '节点' }}</b>
                 <small class="truncate text-10.5px leading-14px text-muted">{{
-                  ctxNode.type === 'module' ? (isGroupPlate(ctxNode) ? '分组' : '模块') : ctxNode.data.subtitle || '节点'
+                  ctxNode.type === 'module'
+                    ? isGroupPlate(ctxNode)
+                      ? '分组'
+                      : '模块'
+                    : ctxNode.data.subtitle || '节点'
                 }}</small>
               </header>
               <template v-for="(group, gi) in nodeMenuGroups" :key="gi">
@@ -3232,7 +3400,7 @@ async function onStageDrop(event: DragEvent) {
   border: 1px solid #e5e1e4;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.10);
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.1);
   overflow: hidden;
 }
 

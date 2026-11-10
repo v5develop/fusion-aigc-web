@@ -153,13 +153,25 @@ const iconAttrs = {
             >
               <svg class="w-16px h-16px" v-bind="iconAttrs"><path d="M12 5v14M5 12h14" /></svg>
             </button>
-            <button type="button" :class="toolCls" aria-label="左转 90 度" title="左转 90 度（Shift+R）" @click="rotate -= 90">
+            <button
+              type="button"
+              :class="toolCls"
+              aria-label="左转 90 度"
+              title="左转 90 度（Shift+R）"
+              @click="rotate -= 90"
+            >
               <svg class="w-16px h-16px -scale-x-100" v-bind="iconAttrs">
                 <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
                 <path d="M21 3v5h-5" />
               </svg>
             </button>
-            <button type="button" :class="toolCls" aria-label="右转 90 度" title="右转 90 度（R）" @click="rotate += 90">
+            <button
+              type="button"
+              :class="toolCls"
+              aria-label="右转 90 度"
+              title="右转 90 度（R）"
+              @click="rotate += 90"
+            >
               <svg class="w-16px h-16px" v-bind="iconAttrs">
                 <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
                 <path d="M21 3v5h-5" />

@@ -9,7 +9,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import PageEmpty from '@/components/PageEmpty/index.vue'
-import { toolCover } from '@/views/image/toolCovers.ts'
+import { toolCover } from '@/views/image/tool-covers.ts'
 import { TAGLINES } from '../taglines'
 import { isWorkflowListed, workflowRouteOf, workflowSchemas, workflowTree, type WorkflowSchema } from '../schemas'
 
@@ -27,13 +27,17 @@ const coverOf = (name: string) => TEMPLATE_COVERS[name] ?? toolCover(name)
 
 /** 没有封面的模板：每个模板一枚区分度够的图标（24×24、单色 currentColor） */
 const TEMPLATE_ICONS: Record<string, string> = {
-  模特替换: '<circle cx="9" cy="8" r="3"/><path d="M3.6 20c0-3.2 2.4-5.4 5.4-5.4s5.4 2.2 5.4 5.4"/><path d="M17 5l3 3-3 3"/><path d="M20 8h-5"/>',
+  模特替换:
+    '<circle cx="9" cy="8" r="3"/><path d="M3.6 20c0-3.2 2.4-5.4 5.4-5.4s5.4 2.2 5.4 5.4"/><path d="M17 5l3 3-3 3"/><path d="M20 8h-5"/>',
   模特换脸: '<circle cx="12" cy="12" r="8"/><path d="M9 10.4h.01M15 10.4h.01"/><path d="M9 15c1.6 1.4 4.4 1.4 6 0"/>',
-  背景替换: '<rect x="3.4" y="4.4" width="17.2" height="15.2" rx="2"/><path d="M3.4 15l5-4.4 4.2 3.6 3-2.4 5 4.4"/><circle cx="16.4" cy="8.8" r="1.4"/>',
-  模特换脸换背景: '<circle cx="9" cy="10" r="3"/><path d="M3.6 20c0-3 2.4-5 5.4-5"/><rect x="12" y="6" width="8.4" height="8.4" rx="1.6"/><path d="M12 12.4l2.6-2.2 2 1.6 1.6-1.2 2.2 2"/>',
+  背景替换:
+    '<rect x="3.4" y="4.4" width="17.2" height="15.2" rx="2"/><path d="M3.4 15l5-4.4 4.2 3.6 3-2.4 5 4.4"/><circle cx="16.4" cy="8.8" r="1.4"/>',
+  模特换脸换背景:
+    '<circle cx="9" cy="10" r="3"/><path d="M3.6 20c0-3 2.4-5 5.4-5"/><rect x="12" y="6" width="8.4" height="8.4" rx="1.6"/><path d="M12 12.4l2.6-2.2 2 1.6 1.6-1.2 2.2 2"/>',
   模特试穿: '<path d="M9 4.2 4 6.6l1.8 4 1.8-.8V20h8.8V9.8l1.8.8 1.8-4L15 4.2a3 3 0 0 1-6 0z"/>',
   服装上身: '<path d="M8 4l-4.4 2.4 1.6 3.4 2-.8V20h9.6V9l2 .8 1.6-3.4L16 4a4 4 0 0 1-8 0z"/><path d="M12 11v6"/>',
-  双人换衣: '<circle cx="8" cy="7.4" r="2.6"/><circle cx="16.4" cy="7.4" r="2.6"/><path d="M3.4 19c0-3 2.2-5 4.6-5s4.6 2 4.6 5"/><path d="M12 19c0-3 2-5 4.4-5s4.2 2 4.2 5"/>',
+  双人换衣:
+    '<circle cx="8" cy="7.4" r="2.6"/><circle cx="16.4" cy="7.4" r="2.6"/><path d="M3.4 19c0-3 2.2-5 4.6-5s4.6 2 4.6 5"/><path d="M12 19c0-3 2-5 4.4-5s4.2 2 4.2 5"/>',
   鞋子上脚: '<path d="M3.4 15.6V9l4 1.4 2.2 2.8 6.2 1.4c2.8.6 4.8 1.2 4.8 2.6v.8H3.4z"/><path d="M3.4 18.4h17.2"/>',
   配饰穿戴: '<circle cx="12" cy="14.4" r="5"/><path d="M12 9.4V4.2M9.4 4.2h5.2"/><path d="M12 12v2.4l1.6 1"/>',
 }

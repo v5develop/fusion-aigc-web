@@ -29,8 +29,8 @@ import {
   llNoteRemove,
   llNoteReplan,
   llNoteUpdate,
-} from '@/api/localLife.ts'
-import type { ILNote, ILNoteOptions } from '@/api/localLifeTypes.ts'
+} from '@/api/local-life.ts'
+import type { ILNote, ILNoteOptions } from '@/api/local-life-types.ts'
 import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
@@ -49,19 +49,19 @@ const { ensureAgreed } = useAgreement()
 
 const noteOptions = ref<ILNoteOptions | null>(null)
 const form = reactive({
-  note_type: '',
+  noteType: '',
   topic: '',
   materials: [] as string[],
-  digital_human_id: undefined as number | undefined,
-  shop_profile_id: undefined as number | undefined,
-  image_count: undefined as number | undefined,
-  copywriting_id: undefined as number | undefined,
+  digitalHumanId: undefined as number | undefined,
+  shopProfileId: undefined as number | undefined,
+  imageCount: undefined as number | undefined,
+  copywritingId: undefined as number | undefined,
 })
 
 const typeOptions = computed(() => (noteOptions.value?.types ?? []).map((t) => ({ label: t.label, value: t.code })))
-const activeType = computed(() => noteOptions.value?.types?.find((t) => t.code === form.note_type))
+const activeType = computed(() => noteOptions.value?.types?.find((t) => t.code === form.noteType))
 const imageCountOptions = computed(() => {
-  const max = noteOptions.value?.default_images ?? 4
+  const max = noteOptions.value?.defaultImages ?? 4
   return Array.from({ length: Math.max(1, max) }, (_, i) => ({ label: `${i + 1}张`, value: i + 1 }))
 })
 const showCopyPicker = ref(false)
@@ -70,8 +70,8 @@ onMounted(async () => {
   const res = await llNoteOptions()
   const data = res.data ?? null
   noteOptions.value = data
-  if (data?.types?.length) form.note_type = data.types[0]?.code ?? ''
-  if (data?.default_images) form.image_count = data.default_images
+  if (data?.types?.length) form.noteType = data.types[0]?.code ?? ''
+  if (data?.defaultImages) form.imageCount = data.defaultImages
 })
 
 const aiWriting = ref(false)
@@ -80,7 +80,7 @@ async function aiWriteTopic() {
   try {
     const res = await llCopywritingAiWrite({
       scene: 'note_topic',
-      note_type: form.note_type || undefined,
+      noteType: form.noteType || undefined,
       context: form.topic.trim() || undefined,
     })
     form.topic = res.data?.text ?? ''
@@ -90,8 +90,8 @@ async function aiWriteTopic() {
 }
 
 function pickCopy(c: { id: number; body: string }) {
-  form.topic = c.body.slice(0, noteOptions.value?.max_topic_len ?? 200)
-  form.copywriting_id = c.id
+  form.topic = c.body.slice(0, noteOptions.value?.maxTopicLen ?? 200)
+  form.copywritingId = c.id
   showCopyPicker.value = false
 }
 
@@ -145,7 +145,7 @@ function fillEditForm(note: ILNote) {
 // 生成套图数量（规划页）：只能改少
 const genCount = ref<number | null>(null)
 const genCountOptions = computed(() => {
-  const planned = activeNote.value?.image_count ?? 1
+  const planned = activeNote.value?.imageCount ?? 1
   return Array.from({ length: planned }, (_, i) => ({ label: `${i + 1}张`, value: i + 1 }))
 })
 
@@ -160,7 +160,7 @@ const { start: startNotePoll, stop: stopNotePoll } = usePollingWhile(
     void listCtl.refresh()
     if (data.status === 1) {
       fillEditForm(data)
-      genCount.value = data.image_count
+      genCount.value = data.imageCount
       message.success('构思完成，请确认内容')
     } else if (data.status === 4) {
       message.success('笔记已生成')
@@ -193,7 +193,7 @@ async function openDetail(id: number, opts: { silent?: boolean } = {}) {
     activeNote.value = res.data
     if (res.data?.status === 1) {
       fillEditForm(res.data)
-      genCount.value = res.data.image_count
+      genCount.value = res.data.imageCount
     } else {
       genCount.value = null // 别带着上一条笔记的张数去重试生成 / 报价：不传即按这条记录的张数
     }
@@ -245,7 +245,7 @@ function onSelectItem(item: ILNote) {
 
 // 提交前报价：构思不收费，确认配图时按张冻结——按钮上写「配图消耗」，数字与配图冻结同一套算价
 const { estimate } = useLLQuote(
-  () => ({ tool: 'imageTextNote', image_count: form.image_count }),
+  () => ({ tool: 'imageTextNote', imageCount: form.imageCount }),
   () => '配图消耗',
 )
 
@@ -255,7 +255,7 @@ const { quote: planQuote, estimate: planEstimate } = useLLQuote(
   () => {
     const note = activeNote.value
     if (!note || (note.status !== 1 && note.status !== 5)) return null
-    return { tool: 'imageTextNote', id: note.id, image_count: genCount.value ?? undefined }
+    return { tool: 'imageTextNote', id: note.id, imageCount: genCount.value ?? undefined }
   },
   () => '配图消耗',
 )
@@ -272,10 +272,10 @@ const submitting = ref(false)
 
 async function submit() {
   if (submitting.value) return
-  if (!form.note_type) return message.warning('请选择笔记类型')
+  if (!form.noteType) return message.warning('请选择笔记类型')
   if (!form.topic.trim()) return message.warning('请先填写笔记主题')
-  if (form.materials.length && form.materials.length > (noteOptions.value?.max_materials ?? 3)) {
-    return message.warning(`素材最多 ${noteOptions.value?.max_materials} 张`)
+  if (form.materials.length && form.materials.length > (noteOptions.value?.maxMaterials ?? 3)) {
+    return message.warning(`素材最多 ${noteOptions.value?.maxMaterials} 张`)
   }
 
   if (!(await ensureAgreed())) return
@@ -284,20 +284,20 @@ async function submit() {
   try {
     const res = await llNotePlan(
       {
-        note_type: form.note_type,
+        noteType: form.noteType,
         topic: form.topic.trim(),
-        material_urls: form.materials.length ? form.materials : undefined,
-        digital_human_id: form.digital_human_id,
-        shop_profile_id: form.shop_profile_id,
-        image_count: form.image_count,
-        copywriting_id: form.copywriting_id,
+        materialUrls: form.materials.length ? form.materials : undefined,
+        digitalHumanId: form.digitalHumanId,
+        shopProfileId: form.shopProfileId,
+        imageCount: form.imageCount,
+        copywritingId: form.copywritingId,
       },
       llIdempotencyHeaders(),
     )
     message.success('开始构思')
     form.topic = ''
     form.materials = []
-    form.copywriting_id = undefined
+    form.copywritingId = undefined
     // 明确选中接口返回的新笔记（不依赖「新记录排第一」）；选中项变化由上面的 watch 载入详情，
     // 新记录万一还没进列表（刷新失败），直接载入它的详情，等下一轮列表对上
     await listCtl.refresh()
@@ -344,7 +344,7 @@ async function confirmGenerate() {
         title: editForm.title.trim() || undefined,
         content: editForm.content.trim() || undefined,
         tags: editForm.tags.trim() ? editForm.tags.trim().split(/\s+/) : undefined,
-        image_count: genCount.value ?? undefined,
+        imageCount: genCount.value ?? undefined,
       },
       llIdempotencyHeaders(),
     )
@@ -374,7 +374,7 @@ async function saveResult() {
       title: editForm.title.trim(),
       content: editForm.content.trim(),
       tags: editForm.tags.trim() ? editForm.tags.trim().split(/\s+/) : [],
-      image_urls: activeNote.value.image_urls ?? [],
+      imageUrls: activeNote.value.imageUrls ?? [],
     })
     // 保存期间切到了别的笔记：不把这条写回右栏
     if (detailId === id) {
@@ -391,7 +391,7 @@ async function saveResult() {
 // 我的数字人（选填关联）：取已完成的
 const myDhOptions = ref<{ label: string; value: number }[]>([])
 onMounted(async () => {
-  const res = await llDigitalHumanList({ page_size: 50 })
+  const res = await llDigitalHumanList({ pageSize: 50 })
   myDhOptions.value = (res.data?.list ?? [])
     .filter((d) => d.status === 2)
     .map((d) => ({ label: d.name || `数字人#${d.id}`, value: d.id }))
@@ -419,11 +419,19 @@ watch(
 </script>
 
 <template>
-  <Workbench title="图文笔记" :submit="submit" :loading="submitting" submit-text="开始构思" submit-hint="先出文案；确认后再按文案配图" :estimate="estimate" :history-count="listCtl.total.value">
+  <Workbench
+    title="图文笔记"
+    :submit="submit"
+    :loading="submitting"
+    submit-text="开始构思"
+    submit-hint="先出文案；确认后再按文案配图"
+    :estimate="estimate"
+    :history-count="listCtl.total.value"
+  >
     <template #default>
       <FormCard title="笔记类型">
         <ChipGroup
-          v-model="form.note_type"
+          v-model="form.noteType"
           :options="typeOptions"
           label="笔记类型"
           @update:model-value="form.materials = []"
@@ -435,7 +443,7 @@ watch(
           v-model="form.topic"
           label="主题"
           size="lg"
-          :max-length="noteOptions?.max_topic_len || 500"
+          :max-length="noteOptions?.maxTopicLen || 500"
           placeholder="这条笔记想写什么：地点、品类、人均、体验感受"
         >
           <template #actions>
@@ -445,8 +453,8 @@ watch(
       </FormCard>
 
       <FormCard
-        :title="activeType?.material_label ?? '素材图'"
-        :hint="`选填 · 最多 ${noteOptions?.max_materials ?? 3} 张`"
+        :title="activeType?.materialLabel ?? '素材图'"
+        :hint="`选填 · 最多 ${noteOptions?.maxMaterials ?? 3} 张`"
       >
         <ImageUpload
           fromAsset
@@ -454,17 +462,17 @@ watch(
           btnName="上传素材"
           :topRightTips="false"
           multiple
-          :limitNumber="noteOptions?.max_materials ?? 3"
+          :limitNumber="noteOptions?.maxMaterials ?? 3"
         />
-        <p v-if="activeType?.material_hint" class="m-0 -mt-4px text-11px leading-16px text-muted">
-          {{ activeType.material_hint }}
+        <p v-if="activeType?.materialHint" class="m-0 -mt-4px text-11px leading-16px text-muted">
+          {{ activeType.materialHint }}
         </p>
       </FormCard>
 
       <FormCard title="参数">
         <Field label="出镜数字人">
           <n-select
-            v-model:value="form.digital_human_id"
+            v-model:value="form.digitalHumanId"
             size="small"
             clearable
             :options="myDhOptions"
@@ -479,7 +487,7 @@ watch(
           </n-select>
         </Field>
         <Field label="关联店铺档案">
-          <ShopProfileSelect v-model:value="form.shop_profile_id" />
+          <ShopProfileSelect v-model:value="form.shopProfileId" />
         </Field>
       </FormCard>
     </template>
@@ -510,11 +518,15 @@ watch(
           :summary="item.title ? item.content || item.topic : ''"
           :status="NOTE_STATUS_MAP[item.status]?.type ?? 'running'"
           :status-label="NOTE_STATUS_MAP[item.status]?.label ?? ''"
-          :time="item.create_time"
-          :thumb="item.image_urls?.[0]"
-          :count="item.image_urls?.length ?? 0"
+          :time="item.createTime"
+          :thumb="item.imageUrls?.[0]"
+          :count="item.imageUrls?.length ?? 0"
           placeholder="笔记"
-          :fail-reason="item.status === 2 || item.status === 5 ? item.fail_reason || (item.status === 2 ? '构思失败' : '生成失败') : ''"
+          :fail-reason="
+            item.status === 2 || item.status === 5
+              ? item.failReason || (item.status === 2 ? '构思失败' : '生成失败')
+              : ''
+          "
           :eta-sec="90"
           :selected="current?.id === item.id"
           @select="onSelectItem(item)"
@@ -523,7 +535,17 @@ watch(
             <n-popconfirm @positive-click="removeItem(item)">
               <template #trigger>
                 <IconButton label="删除笔记" size="sm" variant="danger">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" /></svg>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
+                  </svg>
                 </IconButton>
               </template>
               确定删除这条笔记？
@@ -547,15 +569,25 @@ watch(
           <n-popconfirm @positive-click="removeItem(activeNote!)">
             <template #trigger>
               <IconButton label="删除笔记" variant="danger" class="flex-none">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" /></svg>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
+                </svg>
               </IconButton>
             </template>
             确定删除这条笔记？
           </n-popconfirm>
         </div>
         <div class="mt-8px mb-14px text-11px leading-16px text-muted tabular-nums">
-          {{ activeNote.note_type_label }} · 套图 {{ activeNote.image_count }}张 ·
-          {{ formatTime(activeNote.create_time) }}
+          {{ activeNote.noteTypeLabel }} · 套图 {{ activeNote.imageCount }}张 ·
+          {{ formatTime(activeNote.createTime) }}
         </div>
 
         <!-- 两步进度：构思 → 确认 → 出图 -->
@@ -591,7 +623,7 @@ watch(
           class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex flex-col items-center justify-center gap-12px p-40px text-13px text-ink-2"
         >
           <p class="m-0 text-danger">
-            {{ activeNote.fail_reason || (activeNote.status === 2 ? '构思失败' : '生成失败') }}
+            {{ activeNote.failReason || (activeNote.status === 2 ? '构思失败' : '生成失败') }}
           </p>
           <n-button
             size="medium"
@@ -611,17 +643,9 @@ watch(
           >
             以下是 AI 构思的内容，可以修改后确认生成；也可以换个思路重新构思。
           </div>
-          <div
-            class="flex flex-col gap-12px p-16px rounded-lg border border-solid border-line bg-white shadow-card-v3"
-          >
+          <div class="flex flex-col gap-12px p-16px rounded-lg border border-solid border-line bg-white shadow-card-v3">
             <Field label="标题">
-              <n-input
-                v-model:value="editForm.title"
-                size="small"
-                maxlength="30"
-                show-count
-                placeholder="笔记标题"
-              />
+              <n-input v-model:value="editForm.title" size="small" maxlength="30" show-count placeholder="笔记标题" />
             </Field>
             <Field label="正文">
               <n-input
@@ -633,19 +657,15 @@ watch(
               />
             </Field>
             <Field label="话题">
-              <n-input
-                v-model:value="editForm.tags"
-                size="small"
-                placeholder="用空格分隔，如：探店 咖啡 周末去哪儿"
-              />
+              <n-input v-model:value="editForm.tags" size="small" placeholder="用空格分隔，如：探店 咖啡 周末去哪儿" />
             </Field>
-            <Field :label="`套图数量（最多 ${activeNote.image_count} 张，只能改少）`">
+            <Field :label="`套图数量（最多 ${activeNote.imageCount} 张，只能改少）`">
               <ChipGroup v-model="genCount" :options="genCountOptions" label="套图数量" />
             </Field>
-            <Field v-if="activeNote.material_urls?.length" label="参考素材">
+            <Field v-if="activeNote.materialUrls?.length" label="参考素材">
               <div class="flex flex-wrap gap-8px">
                 <img
-                  v-for="url in activeNote.material_urls"
+                  v-for="url in activeNote.materialUrls"
                   :key="url"
                   :src="url"
                   alt=""
@@ -675,13 +695,7 @@ watch(
             </template>
             <div v-else class="flex flex-col gap-12px">
               <Field label="标题">
-                <n-input
-                  v-model:value="editForm.title"
-                  size="small"
-                  maxlength="30"
-                  show-count
-                  placeholder="笔记标题"
-                />
+                <n-input v-model:value="editForm.title" size="small" maxlength="30" show-count placeholder="笔记标题" />
               </Field>
               <Field label="正文">
                 <n-input v-model:value="editForm.content" type="textarea" :rows="8" placeholder="笔记正文" />
@@ -701,7 +715,7 @@ watch(
             <div class="grid grid-cols-3 gap-10px mt-14px">
               <!-- 校色来源 = image_urls[i]：与「下载配图」同一个地址，后端已按观看者档位下发（免费档是带水印的交付图） -->
               <ColorFixItem
-                v-for="(url, i) in activeNote.image_urls"
+                v-for="(url, i) in activeNote.imageUrls"
                 :key="url"
                 v-slot="fx"
                 :cf-key="noteCfKey(i)"
@@ -727,7 +741,17 @@ watch(
                     class="!absolute bottom-6px right-6px"
                     @click.stop="fx.download()"
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14" /></svg>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14" />
+                    </svg>
                   </IconButton>
                   <span
                     class="absolute top-6px left-6px w-20px h-20px flex items-center justify-center rounded-full bg-black/50 text-11px text-white"

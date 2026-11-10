@@ -14,7 +14,7 @@ import {
   colorFixImage,
   loadColorFix,
 } from '@/utils/colorfix.ts'
-import { deletePaintedMasksOf, deleteRegion, loadPaintedMask, loadRegion } from './maskStore.ts'
+import { deletePaintedMasksOf, deleteRegion, loadPaintedMask, loadRegion } from './mask-store.ts'
 import {
   colorFixPresetFor,
   colorFixRequestParts,
@@ -75,7 +75,8 @@ export async function bakeStoredColorFix(key: string, src: string, opts: BakeSto
   } else if (region.mode === 'auto') {
     const target = region.target
     const parts = colorFixRequestParts(target, region.parts)
-    const preset = target === (opts.maskTarget ?? 'garment') ? colorFixPresetFor(parts, opts.maskUrl ?? '', opts.maskParts) : ''
+    const preset =
+      target === (opts.maskTarget ?? 'garment') ? colorFixPresetFor(parts, opts.maskUrl ?? '', opts.maskParts) : ''
     if (preset) mask = preset
     else {
       const seg = opts.segmenter === undefined ? defaultColorFixSegmenter : opts.segmenter

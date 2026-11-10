@@ -7,10 +7,10 @@
  * （CreationOptionPills）。只改展示：字段名与取值原样写回页面的 data，传参、默认值、联动都留在页面。
  */
 import { computed } from 'vue'
-import CreationSettingsRow from '@/components/creation/CreationSettingsRow.vue'
-import CreationOptionPills from '@/components/creation/CreationOptionPills.vue'
-import CreationModelPicker from '@/components/creation/CreationModelPicker.vue'
-import type { CreationOption, CreationOptionValue, CreationSettingsRowItem } from '@/components/creation/types'
+import CreationSettingsRow from '@/components/Creation/CreationSettingsRow.vue'
+import CreationOptionPills from '@/components/Creation/CreationOptionPills.vue'
+import CreationModelPicker from '@/components/Creation/CreationModelPicker.vue'
+import type { CreationOption, CreationOptionValue, CreationSettingsRowItem } from '@/components/Creation/types'
 
 type Opt = { label: string; value: CreationOptionValue }
 

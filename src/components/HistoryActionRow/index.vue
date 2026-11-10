@@ -70,7 +70,9 @@ const MoreIcon = () =>
     <!-- 前导区铺满剩余宽度、超出裁掉；前导内容（固有宽度，供 useFitActions 量）压在整卡按钮之上（relative z-1），
          这样时间上的 title 悬停提示能出来；点它仍算点卡片（lead-click，由宿主接到选中） -->
     <span data-fit-lead class="min-w-0 flex-1 flex items-center overflow-hidden">
-      <span data-fit-lead-content class="relative z-1 flex-none inline-flex items-center" @click="emit('lead-click')"><slot name="lead" /></span>
+      <span data-fit-lead-content class="relative z-1 flex-none inline-flex items-center" @click="emit('lead-click')"
+        ><slot name="lead"
+      /></span>
     </span>
     <span data-fit-actions class="relative z-1 ml-auto flex flex-none items-center gap-8px">
       <slot name="primary" />

@@ -6,9 +6,9 @@
  */
 import { computed, ref, watch } from 'vue'
 import { bakeForUpload, ColorFixDialog, type ResultColorFix } from '@/components/ColorFix'
-import { canvasUploadMedia } from '@/api/canvasHome.ts'
-import { addResultNodes, type IImageSource } from './imageActions.ts'
-import { activeColorFix, closeColorFix, colorFixKey, colorFixSources } from './colorFixAction.ts'
+import { canvasUploadMedia } from '@/api/canvas-home.ts'
+import { addResultNodes, type IImageSource } from './image-actions.ts'
+import { activeColorFix, closeColorFix, colorFixKey, colorFixSources } from './color-fix-action.ts'
 import { editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
 import { FOCUS_RING } from './ui.ts'
 
@@ -32,7 +32,9 @@ watch(
 
 // 免费档水印：校色来源 = 节点自身的图地址（collectImageSources 取节点 data.image / 候选 / 产物），与节点上
 // 「下载」/ 引用同一个地址，画布结果由后端按观看者档位下发；不取上游、不另换原件
-const source = computed<IImageSource | undefined>(() => sources.value.find((s) => s.url === pickedUrl.value) ?? sources.value[0])
+const source = computed<IImageSource | undefined>(
+  () => sources.value.find((s) => s.url === pickedUrl.value) ?? sources.value[0],
+)
 const show = computed({
   get: () => !!activeColorFix.value && !!node.value && !!source.value,
   set: (v) => {
@@ -107,7 +109,12 @@ const CHIP = `relative inline-flex items-center gap-6px h-32px pl-4px pr-10px ro
           role="radio"
           :aria-checked="item.url === source?.url"
           :disabled="creating"
-          :class="[CHIP, item.url === source?.url ? 'border-violet-line bg-violet-soft text-violet-ink font-600' : 'border-line text-ink-2 hover:border-control-hover']"
+          :class="[
+            CHIP,
+            item.url === source?.url
+              ? 'border-violet-line bg-violet-soft text-violet-ink font-600'
+              : 'border-line text-ink-2 hover:border-control-hover',
+          ]"
           @click="pickedUrl = item.url"
         >
           <img :src="item.url" alt="" class="w-24px h-24px rounded-5px object-cover" />

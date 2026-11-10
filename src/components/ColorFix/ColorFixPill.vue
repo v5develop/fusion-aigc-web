@@ -4,7 +4,12 @@
  * violet-ink 11px；命中区 sx-hit 外扩 4px（34 高，触屏 38）。定位交给父级（class 透传，如 absolute top-10px right-10px）。
  * `variant="muted"` 是「下载校色前」那种次要胶囊（白 72%、ink-2 字）。
  */
-const { label = '校色调整', pressed, icon = true, variant = 'primary' } = defineProps<{
+const {
+  label = '校色调整',
+  pressed,
+  icon = true,
+  variant = 'primary',
+} = defineProps<{
   label?: string
   /** aria-pressed（参数台开着） */
   pressed?: boolean

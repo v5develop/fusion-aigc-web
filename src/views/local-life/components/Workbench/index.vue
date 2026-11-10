@@ -32,7 +32,7 @@ import { llFormSkin, llTheme } from '../../theme.ts'
 import { LL_WORKBENCH_KEY } from './context.ts'
 import { LL_INTRO } from './introData.ts'
 import type { LLEstimate } from './useLLQuote.ts'
-import { provideUploadBusy } from '@/components/uploadBusy'
+import { provideUploadBusy } from '@/components/upload-busy'
 
 const {
   title,
@@ -84,11 +84,15 @@ const PANES = ['preview', 'history'] as const
 const onTabKeydown = (e: KeyboardEvent) => {
   const i = PANES.indexOf(pane.value)
   const next =
-    e.key === 'ArrowRight' ? PANES[(i + 1) % PANES.length]
-    : e.key === 'ArrowLeft' ? PANES[(i + PANES.length - 1) % PANES.length]
-    : e.key === 'Home' ? PANES[0]
-    : e.key === 'End' ? PANES[PANES.length - 1]
-    : undefined
+    e.key === 'ArrowRight'
+      ? PANES[(i + 1) % PANES.length]
+      : e.key === 'ArrowLeft'
+        ? PANES[(i + PANES.length - 1) % PANES.length]
+        : e.key === 'Home'
+          ? PANES[0]
+          : e.key === 'End'
+            ? PANES[PANES.length - 1]
+            : undefined
   if (!next) return
   e.preventDefault()
   pane.value = next
@@ -167,7 +171,12 @@ provide(LL_WORKBENCH_KEY, {
       </section>
       <!-- 三栏：DOM 顺序 分段 → 历史 → 预览；≥1440 横排（历史 224 居中、预览吃剩余），<1440 竖排只显示选中的一段 -->
       <div v-else class="flex-1 min-w-0 min-h-0 flex flex-col gap-12px wide:(flex-row gap-16px)">
-        <div class="wide:hidden flex-none self-start sx-seg" role="tablist" aria-label="结果与历史" @keydown="onTabKeydown">
+        <div
+          class="wide:hidden flex-none self-start sx-seg"
+          role="tablist"
+          aria-label="结果与历史"
+          @keydown="onTabKeydown"
+        >
           <button
             :id="`${paneId}-tab-preview`"
             type="button"

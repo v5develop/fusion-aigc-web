@@ -1,5 +1,5 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { llQuote, type LLQuoteReq, type LLQuoteResp } from '@/api/localLifeQuote.ts'
+import { llQuote, type LLQuoteReq, type LLQuoteResp } from '@/api/local-life-quote.ts'
 
 /**
  * Workbench 提交按钮里那一行「消耗 N 点」（原型 ToolSubmitBar ml .v3-submitbar__ml-cost）。
@@ -78,8 +78,8 @@ export function useLLQuote(
     if (pending.value || !q || !q.available) return out
     if (!q.charged) return { ...out, points: 0 }
     if (q.exact) return { ...out, points: q.points }
-    if (q.points_max > 0) return { ...out, points: q.points, suffix: '点起' }
-    if (q.price_unit === 'PER_SECOND') return { ...out, points: q.points, suffix: '点/秒' }
+    if (q.pointsMax > 0) return { ...out, points: q.points, suffix: '点起' }
+    if (q.priceUnit === 'PER_SECOND') return { ...out, points: q.points, suffix: '点/秒' }
     return out
   })
 

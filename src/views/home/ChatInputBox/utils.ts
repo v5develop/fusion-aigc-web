@@ -1,7 +1,7 @@
 import type { PromptSlot, FileItem } from './types.ts'
 import { DEFAULT_UPLOAD_LIMIT, ROUTE_TO_MODULE_CODE } from './types.ts'
 import type { IPromptSlotDef } from '@/api/types'
-import { sceneOps } from '@/views/e-commerce/childPages/constants.ts'
+import { sceneOps } from '@/views/e-commerce/child-pages/constants.ts'
 
 /** 将 slots 数组拼接为纯文本 prompt */
 export function slotsToPrompt(slots: PromptSlot[]): {

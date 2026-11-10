@@ -253,14 +253,34 @@ const ICONS = {
           <span v-if="total > 1" class="mlb-count" role="status">{{ at + 1 }} / {{ total }}</span>
         </div>
         <template v-if="!isVideo">
-          <button type="button" class="mlb-tool" aria-label="缩小" title="缩小" :disabled="scale <= MIN" @click="zoom(-STEP)">
+          <button
+            type="button"
+            class="mlb-tool"
+            aria-label="缩小"
+            title="缩小"
+            :disabled="scale <= MIN"
+            @click="zoom(-STEP)"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="ICONS.minus" /></svg>
           </button>
           <span class="mlb-scale" aria-live="polite">{{ Math.round(scale * 100) }}%</span>
-          <button type="button" class="mlb-tool" aria-label="放大" title="放大" :disabled="scale >= MAX" @click="zoom(STEP)">
+          <button
+            type="button"
+            class="mlb-tool"
+            aria-label="放大"
+            title="放大"
+            :disabled="scale >= MAX"
+            @click="zoom(STEP)"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="ICONS.plus" /></svg>
           </button>
-          <button type="button" class="mlb-tool" aria-label="左转 90 度" title="左转 90 度（Shift+R）" @click="rotateBy(-90)">
+          <button
+            type="button"
+            class="mlb-tool"
+            aria-label="左转 90 度"
+            title="左转 90 度（Shift+R）"
+            @click="rotateBy(-90)"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true" style="transform: scaleX(-1)"><path :d="ICONS.rotate" /></svg>
           </button>
           <button type="button" class="mlb-tool" aria-label="右转 90 度" title="右转 90 度（R）" @click="rotateBy(90)">
@@ -432,7 +452,9 @@ const ICONS = {
   max-height: 100%;
   object-fit: contain;
   user-select: none;
-  transition: transform 0.16s ease-out, border-radius 0.16s;
+  transition:
+    transform 0.16s ease-out,
+    border-radius 0.16s;
   will-change: transform;
 }
 .mlb-img-round {

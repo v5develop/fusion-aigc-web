@@ -30,7 +30,7 @@ import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
 import { ColorFixPill } from '@/components/ColorFix'
-import { openColorFix } from '../colorFixAction.ts'
+import { openColorFix } from '../color-fix-action.ts'
 
 const props = defineProps<{
   id: string
@@ -179,7 +179,12 @@ function onCropMove(event: PointerEvent) {
     if (drag.handle.includes('e')) right = Math.max(p.x, left + CROP_MIN)
     if (drag.handle.includes('n')) top = Math.min(p.y, bottom - CROP_MIN)
     if (drag.handle.includes('s')) bottom = Math.max(p.y, top + CROP_MIN)
-    draft.value = { x: clamp01(left), y: clamp01(top), w: clamp01(right) - clamp01(left), h: clamp01(bottom) - clamp01(top) }
+    draft.value = {
+      x: clamp01(left),
+      y: clamp01(top),
+      w: clamp01(right) - clamp01(left),
+      h: clamp01(bottom) - clamp01(top),
+    }
   }
 }
 function onCropUp() {
@@ -191,7 +196,13 @@ function onCropUp() {
   if (!box || box.w < CROP_MIN || box.h < CROP_MIN) return
   const round = (v: number) => Math.round(v * 1000) / 1000
   store.updateNodeData(props.id, {
-    crop: { shape: props.data.crop?.shape ?? 'rect', x: round(box.x), y: round(box.y), w: round(box.w), h: round(box.h) },
+    crop: {
+      shape: props.data.crop?.shape ?? 'rect',
+      x: round(box.x),
+      y: round(box.y),
+      w: round(box.w),
+      h: round(box.h),
+    },
   })
 }
 </script>
@@ -310,7 +321,12 @@ function onCropUp() {
             label="校色"
             :aria-label="`校色：${data.title || '工具结果'}`"
             class="absolute top-8px right-8px z-3 nodrag opacity-0 [.canvas-media:hover_&]:opacity-100 [.is-selected_&]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-            @click="(e: MouseEvent) => { e.stopPropagation(); openColorFix(id, resultImage) }"
+            @click="
+              (e: MouseEvent) => {
+                e.stopPropagation()
+                openColorFix(id, resultImage)
+              }
+            "
           />
         </div>
         <div

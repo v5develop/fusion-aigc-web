@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { modelLabelOf } from '@/utils/modelLabel'
+import { modelLabelOf } from '@/utils/model-label'
 /**
  * 新建 / 编辑我的提示词弹窗。
  * 校验口径按契约：title ≤100 字、prompt ≤3000 字、models ≤10（缺省 ["通用"]）、tags ≤10。
  */
 import { reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
-import { promptLibCreate, promptLibUpdate } from '@/api/promptLibrary.ts'
-import type { IPromptLibItem } from '@/api/promptLibrary.ts'
+import { promptLibCreate, promptLibUpdate } from '@/api/prompt-library.ts'
+import type { IPromptLibItem } from '@/api/prompt-library.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 

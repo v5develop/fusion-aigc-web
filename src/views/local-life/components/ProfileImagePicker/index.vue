@@ -8,7 +8,7 @@
  */
 import { ref, watch } from 'vue'
 import { NModal, useMessage } from 'naive-ui'
-import type { BrandProfileImage } from '@/api/localLifeFull.ts'
+import type { BrandProfileImage } from '@/api/local-life-full.ts'
 
 const props = defineProps<{
   images: BrandProfileImage[]

@@ -40,11 +40,11 @@ import {
   type LLProfileItem,
   type LocalLifeHistory,
   type LocalLifeSubmitBody,
-} from '@/api/localLifeFull.ts'
+} from '@/api/local-life-full.ts'
 import { useIdempotentSubmit, useStudioPolling, type PollRoundResult } from '@/views/studio/hooks.ts'
 import { usePollingWhile } from './hooks.ts'
-import { useUserInfoStore } from '@/stores/userInfo.ts'
-import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billingGuide'
+import { useUserInfoStore } from '@/stores/user-info.ts'
+import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billing-guide'
 
 export interface SectionDef {
   key: LLKindKey

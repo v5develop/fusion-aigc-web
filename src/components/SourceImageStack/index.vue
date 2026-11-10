@@ -59,7 +59,9 @@ const containerStyle = computed(() => {
     flex-shrink: 0;
     overflow: hidden;
     position: relative;
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease;
     cursor: pointer;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 

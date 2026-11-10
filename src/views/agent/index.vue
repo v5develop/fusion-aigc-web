@@ -67,11 +67,11 @@ import type {
 } from '@/api/agent.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { useStudioUploader } from '@/views/studio/components/StudioImageUpload/useStudioUploader.ts'
-import { PromptWriteButton } from '@/components/prompt-write'
-import { canvasCreate, canvasUploadMedia } from '@/api/canvasHome.ts'
-import { stashCanvasImport } from '@/utils/canvasImportHandoff.ts'
+import { PromptWriteButton } from '@/components/PromptWrite'
+import { canvasCreate, canvasUploadMedia } from '@/api/canvas-home.ts'
+import { stashCanvasImport } from '@/utils/canvas-import-handoff.ts'
 import { createSafeUuid } from '@/utils/utils.ts'
-import { renderMiniMarkdown } from '@/utils/miniMarkdown.ts'
+import { renderMiniMarkdown } from '@/utils/mini-markdown.ts'
 
 /** 已定稿消息的 Markdown 渲染缓存（按原文）：流式每个 delta 只重解析正在生成的那条，不重扫全部历史 */
 const mdCache = new Map<string, string>()
@@ -97,11 +97,11 @@ import {
   triggerDownload,
   type ResultColorFix,
 } from '@/components/ColorFix'
-import { loadRegion } from '@/components/ColorFix/maskStore.ts'
+import { loadRegion } from '@/components/ColorFix/mask-store.ts'
 import { colorFixFailureText, colorFixFilter, loadColorFix } from '@/utils/colorfix.ts'
 import { downloadImage, downloadImagesAsZip } from '@/utils/download.ts'
 import { getPointsBalance } from '@/api/points.ts'
-import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billingGuide'
+import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billing-guide'
 import { findPlazaTemplate } from '@/api/plaza.ts'
 import type { IPlazaTemplate } from '@/api/plaza.ts'
 
@@ -124,7 +124,8 @@ const BTN_DANGER = 'sx-soft-btn sx-soft-btn-danger'
 const MODAL =
   'agent-modal sx-squircle flex max-h-[calc(100vh-48px)] max-w-[calc(100vw-48px)] flex-col overflow-hidden rounded-18px border border-solid border-line bg-white shadow-pop'
 /** 弹窗头：52 高、内边距 0 10 0 18 */
-const MODAL_HEAD = 'relative flex h-52px flex-none items-center gap-8px border-b border-solid border-line pl-18px pr-10px'
+const MODAL_HEAD =
+  'relative flex h-52px flex-none items-center gap-8px border-b border-solid border-line pl-18px pr-10px'
 /** 关闭钮：与全局 Naive 关闭钮同档——视觉 28、命中 32（触屏 40） */
 const MODAL_X =
   'relative ml-auto grid h-28px w-28px flex-none place-items-center rounded-full border-none bg-transparent p-0 text-#8a919c cursor-pointer hover:(bg-surface3 text-ink) after:(content-empty absolute -inset-2px rounded-full) [@media(pointer:coarse)]:after:-inset-6px'
@@ -136,7 +137,8 @@ const QUICK = '!h-32px !rounded-16px !px-14px !text-13px'
 /** 会话卡（原型 .conv-card :1543-1546）：白瓷面、内边距 10 14 10 10；悬停加深描边 + 浮起；选中藤紫细线 + 白 → #faf4fd */
 const CONV_CARD =
   'sx-squircle group relative flex items-center gap-10px rounded-18px border border-solid py-10px pl-10px pr-14px [transition:border-color_.11s,background_.11s,box-shadow_.11s] motion-reduce:transition-none'
-const CONV_ON = 'border-#dcc9e9 bg-[linear-gradient(#fff,#faf4fd)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
+const CONV_ON =
+  'border-#dcc9e9 bg-[linear-gradient(#fff,#faf4fd)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
 const CONV_OFF =
   'sx-soft hover:(border-#aeb4b9 shadow-[0_8px_18px_rgba(31,35,41,0.09),inset_0_1px_0_#fff,inset_0_-3px_6px_rgba(31,35,41,0.04)])'
 /** 会话卡里的改名 / 删除：视觉 20 r4，命中外扩到 32（两颗之间 12，外扩 6 不互相覆盖） */
@@ -1350,11 +1352,7 @@ async function send(
             // 受理才移除本轮真正发出的图片与模板；失败时留着，便于改后重发。
             // 只摘掉发出的那几张：重试 / 生成中新加的附图不能被一并清掉
             attachments.value = attachments.value.filter((u) => !imageUrls.includes(u))
-            if (
-              opts.fromDraft &&
-              template &&
-              selectedTemplate.value?.plazaTemplateId === template.plazaTemplateId
-            ) {
+            if (opts.fromDraft && template && selectedTemplate.value?.plazaTemplateId === template.plazaTemplateId) {
               selectedTemplate.value = null
               templateFill = ''
             }
@@ -1832,7 +1830,9 @@ async function bakedTileFile(tile: IResultTile, maxSide?: number, fallback = '�
     // 存过校色却烘不出来：涂抹 / 点选的蒙版只在本机（换设备 / 清了站点数据 / 被淘汰），或自动识别这次没成功
     if (!file && hasStoredColorFix(key)) {
       const mode = loadRegion(key)?.mode
-      message.warning(mode === 'paint' || mode === 'point' ? `本机选区已丢失，${fallback}` : `选区识别失败，${fallback}`)
+      message.warning(
+        mode === 'paint' || mode === 'point' ? `本机选区已丢失，${fallback}` : `选区识别失败，${fallback}`,
+      )
     }
     return file
   } catch (err) {
@@ -1910,7 +1910,10 @@ async function fixDialogQuote(cf: ResultColorFix, bakeFile: (name?: string, maxS
   }
 }
 
-async function fixDialogCanvas(cf: ResultColorFix, bakeFile: (name?: string, maxSide?: number) => Promise<File | null>) {
+async function fixDialogCanvas(
+  cf: ResultColorFix,
+  bakeFile: (name?: string, maxSide?: number) => Promise<File | null>,
+) {
   if (fixWorking.value || openingCanvas.value) return
   if (!cf.active.value) {
     fixShow.value = false
@@ -2081,7 +2084,11 @@ async function retryFailed(card: IResultCard) {
     positiveText: '确认重试',
     negativeText: '取消',
     onPositiveClick: () => {
-      void doRetry(card, conversationId, picked.map((k) => k.taskId))
+      void doRetry(
+        card,
+        conversationId,
+        picked.map((k) => k.taskId),
+      )
     },
   })
 }
@@ -2735,7 +2742,9 @@ onUnmounted(() => {
                     <p v-else class="m-0 truncate text-13px font-500 leading-18px text-ink" aria-hidden="true">
                       {{ c.title }}
                     </p>
-                    <p v-if="c.lastMessage" class="m-0 truncate text-11px leading-16px text-muted">{{ c.lastMessage }}</p>
+                    <p v-if="c.lastMessage" class="m-0 truncate text-11px leading-16px text-muted">
+                      {{ c.lastMessage }}
+                    </p>
                     <div class="flex min-h-16px items-center gap-6px">
                       <span class="whitespace-nowrap text-11px leading-16px text-placeholder tabular-nums"
                         >{{ dayLabel(c.updatedAt || c.createdAt) }} · {{ roundsOf(c) }} 轮</span
@@ -2835,7 +2844,13 @@ onUnmounted(() => {
           <!-- 悬浮条：左上「展开历史」，右上一组磨砂圆钮（悬停 / 键盘聚焦展开成带名字的胶囊） -->
           <div class="pointer-events-none absolute inset-x-20px top-14px z-7 flex items-start gap-8px">
             <span v-if="!dirShown" class="agent-tip-wrap pointer-events-auto agent-fade-in">
-              <button ref="expandBtnEl" type="button" aria-label="展开历史" class="glass-ic sx-focus" @click="setDir(true)">
+              <button
+                ref="expandBtnEl"
+                type="button"
+                aria-label="展开历史"
+                class="glass-ic sx-focus"
+                @click="setDir(true)"
+              >
                 <svg
                   class="h-14px w-14px"
                   viewBox="0 0 24 24"
@@ -3139,7 +3154,11 @@ onUnmounted(() => {
                   </button>
                   <template v-for="item in turn" :key="item.key">
                     <!-- 用户气泡：白瓷、右下收一角 -->
-                    <div v-if="item.role === 'user'" v-show="item.text || item.images?.length" class="msg-wrap relative flex flex-col">
+                    <div
+                      v-if="item.role === 'user'"
+                      v-show="item.text || item.images?.length"
+                      class="msg-wrap relative flex flex-col"
+                    >
                       <div
                         class="sx-squircle max-w-460px self-end rounded-[18px_18px_6px_18px] border border-solid border-soft-line sx-soft-bg px-20px py-14px text-13px leading-20px text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
                       >
@@ -3166,7 +3185,14 @@ onUnmounted(() => {
                           :class="MSG_TOOL"
                           @click="copyMessage(item)"
                         >
-                          <svg class="h-11px w-11px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <svg
+                            class="h-11px w-11px"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            aria-hidden="true"
+                          >
                             <path :d="ICON.copy" />
                           </svg>
                         </button>
@@ -3178,7 +3204,14 @@ onUnmounted(() => {
                           :class="MSG_TOOL"
                           @click="startShare(turns.length - ti)"
                         >
-                          <svg class="h-11px w-11px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <svg
+                            class="h-11px w-11px"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            aria-hidden="true"
+                          >
                             <path :d="ICON.share" />
                           </svg>
                         </button>
@@ -3196,12 +3229,23 @@ onUnmounted(() => {
                           class="-ml-8px inline-flex h-28px items-center gap-5px rounded-14px border-none bg-transparent px-8px text-12px text-muted cursor-pointer hover:(bg-surface3 text-ink) sx-focus"
                           @click="item.thinkOpen = !thinkingOpen(item)"
                         >
-                          <svg class="h-12px w-12px text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+                          <svg
+                            class="h-12px w-12px text-violet"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
                             <path :d="ICON.sparkle" />
                           </svg>
                           {{ item.live ? '思考中' : '思考过程' }}
                           <svg
-                            :class="['h-10px w-10px [transition:transform_.18s] motion-reduce:transition-none', thinkingOpen(item) ? 'rotate-180' : '']"
+                            :class="[
+                              'h-10px w-10px [transition:transform_.18s] motion-reduce:transition-none',
+                              thinkingOpen(item) ? 'rotate-180' : '',
+                            ]"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
@@ -3214,7 +3258,9 @@ onUnmounted(() => {
                         <p
                           v-show="thinkingOpen(item)"
                           class="m-0 mt-4px whitespace-pre-wrap break-words border-l-2 border-l-solid border-l-line pl-10px text-12px leading-18px text-placeholder"
-                        >{{ item.reply.thinking }}</p>
+                        >
+                          {{ item.reply.thinking }}
+                        </p>
                       </div>
                       <!-- 生成中：思考胶囊（虚线圆 1.4s 一圈） -->
                       <div
@@ -3222,7 +3268,15 @@ onUnmounted(() => {
                         role="status"
                         class="inline-flex h-26px items-center gap-6px self-start rounded-13px sx-soft px-12px text-11px text-muted"
                       >
-                        <svg class="think-spin h-12px w-12px flex-none" viewBox="0 0 24 24" fill="none" stroke="#6b487c" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <svg
+                          class="think-spin h-12px w-12px flex-none"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="#6b487c"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          aria-hidden="true"
+                        >
                           <circle cx="12" cy="12" r="9" stroke-dasharray="6 6" />
                         </svg>
                         正在思考
@@ -3241,8 +3295,18 @@ onUnmounted(() => {
                         v-if="item.reply.tools.length"
                         class="agent-tail sx-squircle relative max-w-480px rounded-18px sx-soft px-18px py-14px"
                       >
-                        <div class="mb-3px flex min-h-23px items-center gap-8px text-13px font-600 leading-23px text-ink">
-                          <svg class="h-14px w-14px flex-none text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+                        <div
+                          class="mb-3px flex min-h-23px items-center gap-8px text-13px font-600 leading-23px text-ink"
+                        >
+                          <svg
+                            class="h-14px w-14px flex-none text-violet"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
                             <path :d="ICON.doc" />
                           </svg>
                           执行清单
@@ -3258,19 +3322,53 @@ onUnmounted(() => {
                             :title="t.message || undefined"
                             class="flex h-23px items-center gap-8px text-12px text-ink-2"
                           >
-                            <span :class="['st-ic grid h-14px w-14px flex-none place-items-center', `is-${toolState(t.status, item)}`]" aria-hidden="true">
-                              <svg class="h-14px w-14px" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle v-if="toolState(t.status, item) === 'run'" class="st-track" cx="12" cy="12" r="9" />
+                            <span
+                              :class="[
+                                'st-ic grid h-14px w-14px flex-none place-items-center',
+                                `is-${toolState(t.status, item)}`,
+                              ]"
+                              aria-hidden="true"
+                            >
+                              <svg
+                                class="h-14px w-14px"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                              >
+                                <circle
+                                  v-if="toolState(t.status, item) === 'run'"
+                                  class="st-track"
+                                  cx="12"
+                                  cy="12"
+                                  r="9"
+                                />
                                 <circle class="st-r" cx="12" cy="12" r="9" stroke="currentColor" />
-                                <path v-if="toolState(t.status, item) === 'ok'" d="M8 12.4l2.6 2.6L16 9.6" stroke="currentColor" />
-                                <path v-else-if="toolState(t.status, item) === 'fail'" d="M9 9l6 6M15 9l-6 6" stroke="currentColor" />
+                                <path
+                                  v-if="toolState(t.status, item) === 'ok'"
+                                  d="M8 12.4l2.6 2.6L16 9.6"
+                                  stroke="currentColor"
+                                />
+                                <path
+                                  v-else-if="toolState(t.status, item) === 'fail'"
+                                  d="M9 9l6 6M15 9l-6 6"
+                                  stroke="currentColor"
+                                />
                               </svg>
                             </span>
-                            <span :class="['min-w-0 flex-1 truncate', toolState(t.status, item) === 'ok' ? 'text-#8a919c' : '']">{{ t.name }}</span>
+                            <span
+                              :class="[
+                                'min-w-0 flex-1 truncate',
+                                toolState(t.status, item) === 'ok' ? 'text-#8a919c' : '',
+                              ]"
+                              >{{ t.name }}</span
+                            >
                             <span
                               v-if="toolState(t.status, item) === 'fail'"
                               class="max-w-[50%] flex-none truncate text-11px leading-16px text-#c24545"
-                            >{{ t.message || '失败' }}</span>
+                              >{{ t.message || '失败' }}</span
+                            >
                             <span v-else class="flex-none text-11px leading-16px text-#a3a9b2 tabular-nums">{{
                               TOOL_STATE_TEXT[toolState(t.status, item)]
                             }}</span>
@@ -3289,12 +3387,23 @@ onUnmounted(() => {
                       >
                         <template v-if="item.form.done && item.form.superseded">
                           <!-- 没作答就被后面的消息取代：只读「已失效」，不把服务端默认值当答案展示 -->
-                          <div class="flex items-center gap-8px border-b border-solid border-line bg-#f3f4f6 px-18px py-12px text-13px font-600 leading-20px text-ink-2">
-                            <svg class="h-14px w-14px flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+                          <div
+                            class="flex items-center gap-8px border-b border-solid border-line bg-#f3f4f6 px-18px py-12px text-13px font-600 leading-20px text-ink-2"
+                          >
+                            <svg
+                              class="h-14px w-14px flex-none"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linejoin="round"
+                              aria-hidden="true"
+                            >
                               <path :d="ICON.doc" />
                             </svg>
                             <span class="min-w-0 truncate">{{ item.reply.form.title || '参数确认' }}</span>
-                            <span class="inline-flex h-18px flex-none items-center rounded-3px bg-#e5e7eb px-6px text-11px font-500 leading-18px text-muted"
+                            <span
+                              class="inline-flex h-18px flex-none items-center rounded-3px bg-#e5e7eb px-6px text-11px font-500 leading-18px text-muted"
                               >已失效</span
                             >
                           </div>
@@ -3303,28 +3412,53 @@ onUnmounted(() => {
                           </p>
                         </template>
                         <template v-else-if="item.form.done">
-                          <div class="flex items-center gap-8px border-b border-solid border-#5d3d6e bg-[linear-gradient(#815c97,#6b487c)] px-18px py-12px text-13px font-600 leading-20px text-white">
-                            <svg class="h-14px w-14px flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <div
+                            class="flex items-center gap-8px border-b border-solid border-#5d3d6e bg-[linear-gradient(#815c97,#6b487c)] px-18px py-12px text-13px font-600 leading-20px text-white"
+                          >
+                            <svg
+                              class="h-14px w-14px flex-none"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              aria-hidden="true"
+                            >
                               <path :d="ICON.checkCircle" />
                             </svg>
                             设置已确认
-                            <span class="inline-flex h-18px flex-none items-center rounded-3px bg-white/20 px-6px text-11px font-500 leading-18px"
+                            <span
+                              class="inline-flex h-18px flex-none items-center rounded-3px bg-white/20 px-6px text-11px font-500 leading-18px"
                               >{{ answeredCount(item) }} 题已答</span
                             >
                           </div>
-                          <div class="form-sub flex flex-col gap-2px px-18px py-10px text-12px leading-18px text-placeholder">
+                          <div
+                            class="form-sub flex flex-col gap-2px px-18px py-10px text-12px leading-18px text-placeholder"
+                          >
                             <div v-for="q in item.reply.form.questions" :key="q.id" class="break-words">
-                              {{ q.title }}：<b class="font-500 text-ink-2">{{ answerText(q, item.form.answers[q.id]) || '已跳过' }}</b>
+                              {{ q.title }}：<b class="font-500 text-ink-2">{{
+                                answerText(q, item.form.answers[q.id]) || '已跳过'
+                              }}</b>
                             </div>
                           </div>
                         </template>
                         <template v-else>
-                          <div class="flex items-center gap-8px border-b border-solid border-#5d3d6e bg-[linear-gradient(#815c97,#6b487c)] px-18px py-12px text-13px font-600 leading-20px text-white">
-                            <svg class="h-14px w-14px flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+                          <div
+                            class="flex items-center gap-8px border-b border-solid border-#5d3d6e bg-[linear-gradient(#815c97,#6b487c)] px-18px py-12px text-13px font-600 leading-20px text-white"
+                          >
+                            <svg
+                              class="h-14px w-14px flex-none"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linejoin="round"
+                              aria-hidden="true"
+                            >
                               <path :d="ICON.doc" />
                             </svg>
                             <span class="min-w-0 truncate">{{ item.reply.form.title || '请确认这次的设置' }}</span>
-                            <span class="inline-flex h-18px flex-none items-center rounded-3px bg-white/20 px-6px text-11px font-500 leading-18px"
+                            <span
+                              class="inline-flex h-18px flex-none items-center rounded-3px bg-white/20 px-6px text-11px font-500 leading-18px"
                               >{{ item.reply.form.questions.length }} 题表单</span
                             >
                           </div>
@@ -3342,7 +3476,10 @@ onUnmounted(() => {
                           >
                             <legend class="sr-only">{{ q.title }}</legend>
                             <div class="mb-9px flex items-center justify-between gap-10px">
-                              <div class="flex min-w-0 flex-wrap items-center gap-5px text-13px font-600 leading-20px text-ink" aria-hidden="true">
+                              <div
+                                class="flex min-w-0 flex-wrap items-center gap-5px text-13px font-600 leading-20px text-ink"
+                                aria-hidden="true"
+                              >
                                 {{ q.title }}<i v-if="q.required" class="ml-4px not-italic font-600 text-#c24545">*</i>
                               </div>
                               <span class="flex-none text-11px leading-16px text-#a3a9b2 tabular-nums"
@@ -3371,11 +3508,20 @@ onUnmounted(() => {
                                   v-if="q.type === 'multi_select'"
                                   :class="[
                                     'grid h-13px w-13px flex-none place-items-center rounded-3px border border-solid',
-                                    optionPicked(item, q, o) ? 'border-violet bg-violet text-white' : 'border-control bg-white',
+                                    optionPicked(item, q, o)
+                                      ? 'border-violet bg-violet text-white'
+                                      : 'border-control bg-white',
                                   ]"
                                   aria-hidden="true"
                                 >
-                                  <svg v-if="optionPicked(item, q, o)" class="h-9px w-9px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                  <svg
+                                    v-if="optionPicked(item, q, o)"
+                                    class="h-9px w-9px"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="3"
+                                  >
                                     <path :d="ICON.check" />
                                   </svg>
                                 </span>
@@ -3383,15 +3529,19 @@ onUnmounted(() => {
                                   v-else
                                   :class="[
                                     'h-13px w-13px flex-none rounded-full border border-solid',
-                                    optionPicked(item, q, o) ? 'border-violet bg-violet shadow-[inset_0_0_0_2px_#fff]' : 'border-control bg-white',
+                                    optionPicked(item, q, o)
+                                      ? 'border-violet bg-violet shadow-[inset_0_0_0_2px_#fff]'
+                                      : 'border-control bg-white',
                                   ]"
                                   aria-hidden="true"
                                 />
                                 <span class="min-w-0">
                                   <span class="block truncate">{{ o.label }}</span>
-                                  <span v-if="o.description && o.description !== o.label" class="block text-11px leading-16px text-placeholder">{{
-                                    o.description
-                                  }}</span>
+                                  <span
+                                    v-if="o.description && o.description !== o.label"
+                                    class="block text-11px leading-16px text-placeholder"
+                                    >{{ o.description }}</span
+                                  >
                                 </span>
                               </button>
                             </div>
@@ -3413,15 +3563,19 @@ onUnmounted(() => {
                                 <span
                                   :class="[
                                     'h-13px w-13px flex-none rounded-full border border-solid',
-                                    optionPicked(item, q, c) ? 'border-violet bg-violet shadow-[inset_0_0_0_2px_#fff]' : 'border-control bg-white',
+                                    optionPicked(item, q, c)
+                                      ? 'border-violet bg-violet shadow-[inset_0_0_0_2px_#fff]'
+                                      : 'border-control bg-white',
                                   ]"
                                   aria-hidden="true"
                                 />
                                 <span class="min-w-0">
                                   <span class="block truncate">{{ c.label }}</span>
-                                  <span v-if="c.description && c.description !== c.label" class="block text-11px leading-16px text-placeholder">{{
-                                    c.description
-                                  }}</span>
+                                  <span
+                                    v-if="c.description && c.description !== c.label"
+                                    class="block text-11px leading-16px text-placeholder"
+                                    >{{ c.description }}</span
+                                  >
                                 </span>
                               </button>
                             </div>
@@ -3443,7 +3597,9 @@ onUnmounted(() => {
                                   :key="k"
                                   :class="[
                                     'block h-5px [transition:width_.18s] motion-reduce:transition-none',
-                                    k === item.form.step ? 'w-12px rounded-2px bg-ink' : 'w-5px rounded-full bg-#e0e2e6',
+                                    k === item.form.step
+                                      ? 'w-12px rounded-2px bg-ink'
+                                      : 'w-5px rounded-full bg-#e0e2e6',
                                   ]"
                                 />
                               </span>
@@ -3475,13 +3631,22 @@ onUnmounted(() => {
                             class="mx-18px mt-8px flex flex-wrap items-center justify-end gap-8px text-12px leading-18px text-muted tabular-nums"
                           >
                             <template v-if="quoteFor(item)!.sufficient">
-                              <span>本次约 {{ quoteFor(item)!.totalPoints }} 点数 · 余额 {{ quoteFor(item)!.balance }} 点数</span>
+                              <span
+                                >本次约 {{ quoteFor(item)!.totalPoints }} 点数 · 余额
+                                {{ quoteFor(item)!.balance }} 点数</span
+                              >
                             </template>
                             <template v-else>
                               <span class="text-#c24545">点数不足</span>
-                              <span>本次约 {{ quoteFor(item)!.totalPoints }} 点数 · 余额 {{ quoteFor(item)!.balance }} 点数</span>
+                              <span
+                                >本次约 {{ quoteFor(item)!.totalPoints }} 点数 · 余额
+                                {{ quoteFor(item)!.balance }} 点数</span
+                              >
                               <button
-                                v-if="quoteFor(item)!.cheaperOption && canApplyCheaper(item, quoteFor(item)!.cheaperOption!.resolution)"
+                                v-if="
+                                  quoteFor(item)!.cheaperOption &&
+                                  canApplyCheaper(item, quoteFor(item)!.cheaperOption!.resolution)
+                                "
                                 type="button"
                                 :class="BTN"
                                 @click="applyCheaper(item, quoteFor(item)!.cheaperOption!.resolution)"
@@ -3501,7 +3666,14 @@ onUnmounted(() => {
                         class="agent-tail sx-squircle relative max-w-800px rounded-18px sx-soft px-16px py-14px"
                       >
                         <div class="flex items-center gap-8px text-13px font-600 leading-20px text-ink">
-                          <svg class="h-14px w-14px flex-none text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <svg
+                            class="h-14px w-14px flex-none text-violet"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            aria-hidden="true"
+                          >
                             <path :d="ICON.image" />
                           </svg>
                           生成图片
@@ -3509,7 +3681,10 @@ onUnmounted(() => {
                             >{{ card.done }} / {{ card.tiles.length }} 张</span
                           >
                         </div>
-                        <div :class="['mt-10px grid gap-8px', resultCols(card.tiles.length)]" :aria-busy="card.pending > 0">
+                        <div
+                          :class="['mt-10px grid gap-8px', resultCols(card.tiles.length)]"
+                          :aria-busy="card.pending > 0"
+                        >
                           <div
                             v-for="(tile, k) in card.tiles"
                             :key="tile.key"
@@ -3561,7 +3736,13 @@ onUnmounted(() => {
                                   ]"
                                   aria-hidden="true"
                                 >
-                                  <svg class="h-11px w-11px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                  <svg
+                                    class="h-11px w-11px"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="3"
+                                  >
                                     <path :d="ICON.check" />
                                   </svg>
                                 </span>
@@ -3578,7 +3759,14 @@ onUnmounted(() => {
                                 >
                                   校色
                                 </button>
-                                <button type="button" :disabled="fixWorking" :class="[SHOT_OP, 'px-9px']" @click="quoteTile(tile)">引用编辑</button>
+                                <button
+                                  type="button"
+                                  :disabled="fixWorking"
+                                  :class="[SHOT_OP, 'px-9px']"
+                                  @click="quoteTile(tile)"
+                                >
+                                  引用编辑
+                                </button>
                                 <IconButton
                                   size="sm"
                                   variant="overlay"
@@ -3609,12 +3797,21 @@ onUnmounted(() => {
                               </div>
                             </template>
                             <template v-else-if="tile.state === 'pending'">
-                              <span class="w-spin box-border h-16px w-16px rounded-full border-2 border-solid border-#e0d3ea border-t-violet-ink" aria-hidden="true" />
+                              <span
+                                class="w-spin box-border h-16px w-16px rounded-full border-2 border-solid border-#e0d3ea border-t-violet-ink"
+                                aria-hidden="true"
+                              />
                               <span class="text-11px leading-16px">生成中</span>
                             </template>
                             <template v-else>
-                              <span class="grid h-18px w-18px place-items-center rounded-full bg-#f3dede text-11px font-700" aria-hidden="true">!</span>
-                              <span class="max-w-full px-8px text-center text-11px leading-16px" :title="tile.reason || undefined"
+                              <span
+                                class="grid h-18px w-18px place-items-center rounded-full bg-#f3dede text-11px font-700"
+                                aria-hidden="true"
+                                >!</span
+                              >
+                              <span
+                                class="max-w-full px-8px text-center text-11px leading-16px"
+                                :title="tile.reason || undefined"
                                 >生成失败<span v-if="tile.reason" class="sr-only">：{{ tile.reason }}</span></span
                               >
                             </template>
@@ -3626,7 +3823,9 @@ onUnmounted(() => {
                           role="status"
                           :class="[
                             'mt-10px flex items-center gap-8px rounded-10px border border-solid px-10px py-8px text-12px leading-18px',
-                            card.done ? 'border-#ecdfc8 bg-#fdf9f1 text-#8a6a2f' : 'border-#ecd9d9 bg-#fdf6f6 text-#a24a4a',
+                            card.done
+                              ? 'border-#ecdfc8 bg-#fdf9f1 text-#8a6a2f'
+                              : 'border-#ecd9d9 bg-#fdf6f6 text-#a24a4a',
                           ]"
                         >
                           <span
@@ -3646,20 +3845,36 @@ onUnmounted(() => {
                             :class="BTN"
                             @click="retryFailed(card)"
                           >
-                            {{ retryingCard === card.key ? '提交中…' : `重试这 ${Math.min(card.retryable.length, 50)} 张` }}
+                            {{
+                              retryingCard === card.key ? '提交中…' : `重试这 ${Math.min(card.retryable.length, 50)} 张`
+                            }}
                           </button>
                         </div>
                         <div v-if="card.urls.length > 1" class="mt-10px flex items-center gap-8px">
-                          <span class="text-11px leading-16px text-#a3a9b2 tabular-nums">{{ card.urls.length }} 张</span>
+                          <span class="text-11px leading-16px text-#a3a9b2 tabular-nums"
+                            >{{ card.urls.length }} 张</span
+                          >
                           <span class="flex-1" />
                           <template v-if="multiCard === card.key">
                             <button type="button" :class="BTN" @click="toggleMulti(card.key)">取消</button>
-                            <button type="button" :disabled="!multiPicks.length" :class="BTN_PRIMARY" @click="downloadPicked">
+                            <button
+                              type="button"
+                              :disabled="!multiPicks.length"
+                              :class="BTN_PRIMARY"
+                              @click="downloadPicked"
+                            >
                               下载所选 {{ multiPicks.length }}
                             </button>
                           </template>
                           <button v-else type="button" :class="BTN" @click="toggleMulti(card.key)">
-                            <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <svg
+                              class="h-12px w-12px"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              aria-hidden="true"
+                            >
                               <path :d="ICON.download" />
                             </svg>
                             多选下载
@@ -3668,10 +3883,13 @@ onUnmounted(() => {
                       </div>
                       <div v-if="item.stopped" class="text-12px leading-18px text-placeholder">已停止</div>
                       <div v-if="item.reply.error" role="alert" class="flex flex-wrap items-center gap-8px">
-                        <span class="sx-squircle inline-flex items-center rounded-10px border border-solid border-#ecd9d9 bg-#fdf6f6 px-10px py-6px text-12px leading-18px text-#a24a4a">{{
-                          item.reply.error
-                        }}</span>
-                        <button v-if="item.retryContent && !streaming" type="button" :class="BTN" @click="retry(item)">重试</button>
+                        <span
+                          class="sx-squircle inline-flex items-center rounded-10px border border-solid border-#ecd9d9 bg-#fdf6f6 px-10px py-6px text-12px leading-18px text-#a24a4a"
+                          >{{ item.reply.error }}</span
+                        >
+                        <button v-if="item.retryContent && !streaming" type="button" :class="BTN" @click="retry(item)">
+                          重试
+                        </button>
                       </div>
                       <div v-if="!item.live" class="msg-tools absolute right-[-26px] top-2px flex flex-col gap-10px">
                         <button
@@ -3682,7 +3900,14 @@ onUnmounted(() => {
                           :class="MSG_TOOL"
                           @click="copyMessage(item)"
                         >
-                          <svg class="h-11px w-11px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <svg
+                            class="h-11px w-11px"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            aria-hidden="true"
+                          >
                             <path :d="ICON.copy" />
                           </svg>
                         </button>
@@ -3694,7 +3919,14 @@ onUnmounted(() => {
                           :class="MSG_TOOL"
                           @click="startShare(turns.length - ti)"
                         >
-                          <svg class="h-11px w-11px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <svg
+                            class="h-11px w-11px"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            aria-hidden="true"
+                          >
                             <path :d="ICON.share" />
                           </svg>
                         </button>
@@ -3716,7 +3948,14 @@ onUnmounted(() => {
             :style="{ bottom: `${composerAreaH - 40 + (shareMode ? 56 : 0)}px` }"
             @click="scrollToBottom"
           >
-            <svg class="h-14px w-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <svg
+              class="h-14px w-14px"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
               <path :d="ICON.arrowDown" />
             </svg>
           </button>
@@ -3734,7 +3973,10 @@ onUnmounted(() => {
             <span class="flex-1" />
             <label class="inline-flex items-center gap-6px text-12px text-violet-ink">
               有效期
-              <select v-model.number="shareExpireDays" class="sx-soft-input !h-28px !rounded-14px !px-10px cursor-pointer sx-focus">
+              <select
+                v-model.number="shareExpireDays"
+                class="sx-soft-input !h-28px !rounded-14px !px-10px cursor-pointer sx-focus"
+              >
                 <option v-for="o in SHARE_EXPIRE_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
             </label>
@@ -3767,7 +4009,15 @@ onUnmounted(() => {
                     <span
                       class="inline-flex h-24px max-w-full items-center gap-5px whitespace-nowrap rounded-12px border border-solid border-#e3d3ee bg-[linear-gradient(#fff,#fbf8fd)] pl-9px pr-4px text-12px text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
                     >
-                      <svg class="h-11px w-11px flex-none text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+                      <svg
+                        class="h-11px w-11px flex-none text-violet"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
                         <path :d="ICON.layers" />
                       </svg>
                       <span class="max-w-240px truncate">模板：{{ selectedTemplate.title }}</span>
@@ -3779,13 +4029,24 @@ onUnmounted(() => {
                         class="relative grid h-16px w-16px flex-none place-items-center rounded-full border-none bg-transparent p-0 text-#a3a9b2 cursor-pointer hover:(bg-[rgba(107,72,124,0.10)] text-violet-ink) after:(content-empty absolute -inset-8px rounded-full) disabled:(cursor-not-allowed opacity-50) sx-focus"
                         @click="clearTemplate"
                       >
-                        <svg class="h-10px w-10px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true">
+                        <svg
+                          class="h-10px w-10px"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2.6"
+                          aria-hidden="true"
+                        >
                           <path :d="ICON.x" />
                         </svg>
                       </button>
                     </span>
                   </div>
-                  <ul v-if="attachments.length" class="m-0 mb-8px flex list-none gap-8px self-start p-0" aria-label="已添加的图片">
+                  <ul
+                    v-if="attachments.length"
+                    class="m-0 mb-8px flex list-none gap-8px self-start p-0"
+                    aria-label="已添加的图片"
+                  >
                     <li v-for="(url, i) in attachments" :key="url" class="relative h-53px w-40px flex-none">
                       <img
                         :src="url"
@@ -3809,7 +4070,11 @@ onUnmounted(() => {
                     :value="draft"
                     rows="1"
                     :maxlength="12000"
-                    :placeholder="isHome ? '也可以直接描述你要做什么，智能体会先拆步骤、再跟你确认设置' : '描述你的创作目标、风格方向或产品卖点'"
+                    :placeholder="
+                      isHome
+                        ? '也可以直接描述你要做什么，智能体会先拆步骤、再跟你确认设置'
+                        : '描述你的创作目标、风格方向或产品卖点'
+                    "
                     aria-label="输入消息"
                     class="box-border block min-h-78px w-full flex-1 resize-none border-none bg-transparent p-0 font-sans text-13px leading-21px text-ink outline-none placeholder:text-placeholder"
                     :style="{ maxHeight: `${DRAFT_MAX_H}px` }"
@@ -3828,7 +4093,15 @@ onUnmounted(() => {
                       @click="openImageDialog"
                     >
                       <n-spin v-if="uploading" :size="12" />
-                      <svg v-else class="h-14px w-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                      <svg
+                        v-else
+                        class="h-14px w-14px"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        aria-hidden="true"
+                      >
                         <path :d="ICON.image" />
                       </svg>
                       图片 {{ attachments.length }}/{{ MAX_IMAGES }}
@@ -3841,10 +4114,22 @@ onUnmounted(() => {
                       :aria-label="selectedSkill ? `技能：${selectedSkill.title}，点击更换` : '选择技能'"
                       :title="selectedSkill?.description"
                       :disabled="streaming"
-                      :class="[BTN, '!px-11px max-w-[260px]', selectedSkill ? '' : '!border-warning-line !text-warning']"
+                      :class="[
+                        BTN,
+                        '!px-11px max-w-[260px]',
+                        selectedSkill ? '' : '!border-warning-line !text-warning',
+                      ]"
                       @click="openSkillDialog"
                     >
-                      <svg class="h-14px w-14px flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+                      <svg
+                        class="h-14px w-14px flex-none"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
                         <path :d="ICON.sparkle" />
                       </svg>
                       <span class="truncate">{{ selectedSkill ? selectedSkill.title : '选择技能' }}</span>
@@ -3853,7 +4138,14 @@ onUnmounted(() => {
                         class="flex-none rounded-3px bg-violet-soft px-3px text-10px leading-14px text-violet-ink"
                         >{{ versionLabel(selectedSkill) }}</span
                       >
-                      <svg class="h-10px w-10px flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <svg
+                        class="h-10px w-10px flex-none"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        aria-hidden="true"
+                      >
                         <path :d="ICON.chevronDown" />
                       </svg>
                     </button>
@@ -3877,7 +4169,14 @@ onUnmounted(() => {
                           :class="[BTN, '!px-11px']"
                         >
                           {{ languageLabel }}
-                          <svg class="h-10px w-10px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <svg
+                            class="h-10px w-10px"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            aria-hidden="true"
+                          >
                             <path :d="ICON.chevronDown" />
                           </svg>
                         </button>
@@ -3948,13 +4247,22 @@ onUnmounted(() => {
                       class="ml-2px grid h-36px w-36px flex-none place-items-center rounded-full border border-solid border-violet-border bg-[linear-gradient(#8a639f,#7a548c)] p-0 text-white shadow-btn cursor-pointer [transition:background_.12s,box-shadow_.12s] enabled:hover:bg-[linear-gradient(#9a6fae,#875c9a)] disabled:(border-violet-line bg-none bg-#e2d7ea shadow-none cursor-not-allowed) sx-focus"
                       @click="send(draft, attachments, selectedTemplate, { fromDraft: true })"
                     >
-                      <svg class="h-16px w-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                      <svg
+                        class="h-16px w-16px"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        aria-hidden="true"
+                      >
                         <path :d="ICON.arrowUp" />
                       </svg>
                     </button>
                   </div>
                 </div>
-                <p v-if="!isHome" class="m-0 mt-6px text-center text-11px leading-16px text-#a3a9b2">AI 生成内容仅供参考，请仔细甄别</p>
+                <p v-if="!isHome" class="m-0 mt-6px text-center text-11px leading-16px text-#a3a9b2">
+                  AI 生成内容仅供参考，请仔细甄别
+                </p>
               </div>
             </Teleport>
           </div>
@@ -3971,7 +4279,9 @@ onUnmounted(() => {
         :class="[MODAL, 'skill-modal relative w-780px max-h-[min(640px,calc(100vh-48px))]']"
       >
         <div :class="MODAL_HEAD">
-          <strong id="agent-skill-dialog-title" class="flex-none whitespace-nowrap text-15px font-600 leading-20px text-ink"
+          <strong
+            id="agent-skill-dialog-title"
+            class="flex-none whitespace-nowrap text-15px font-600 leading-20px text-ink"
             >选择技能</strong
           >
           <span v-if="skillForm" class="flex-none rounded-3px bg-surface3 px-5px py-1px text-11px text-#a3a9b2">{{
@@ -4019,7 +4329,14 @@ onUnmounted(() => {
             :class="[MODAL_X, skillForm ? '' : '!ml-0']"
             @click="skillDialogShow = false"
           >
-            <svg class="h-16px w-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <svg
+              class="h-16px w-16px"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
               <path :d="ICON.x" />
             </svg>
           </button>
@@ -4031,7 +4348,9 @@ onUnmounted(() => {
           @submit.prevent="saveSkillForm"
         >
           <label for="agent-user-skill-title" class="mt-10px flex justify-between text-12px leading-16px text-muted">
-            技能标题<span class="text-placeholder tabular-nums">{{ skillForm.title.length }} / {{ USER_SKILL_TITLE_MAX }}</span>
+            技能标题<span class="text-placeholder tabular-nums"
+              >{{ skillForm.title.length }} / {{ USER_SKILL_TITLE_MAX }}</span
+            >
           </label>
           <input
             id="agent-user-skill-title"
@@ -4071,16 +4390,28 @@ onUnmounted(() => {
           </div>
         </form>
         <div v-else class="relative z-1 flex min-h-0 flex-1 flex-col px-16px pb-4px pt-12px">
-          <div class="grid min-h-0 flex-1 grid-cols-2 content-start gap-8px overflow-y-auto pb-18px pt-2px max-sm:grid-cols-1">
+          <div
+            class="grid min-h-0 flex-1 grid-cols-2 content-start gap-8px overflow-y-auto pb-18px pt-2px max-sm:grid-cols-1"
+          >
             <button
               v-if="skillTab === MY_SKILL_GROUP"
               type="button"
-              :class="[SKILL_CARD, 'cursor-pointer border-dashed border-soft-line bg-transparent hover:(border-violet-line bg-#fcfafd) sx-focus']"
+              :class="[
+                SKILL_CARD,
+                'cursor-pointer border-dashed border-soft-line bg-transparent hover:(border-violet-line bg-#fcfafd) sx-focus',
+              ]"
               @click="openSkillCreate"
             >
               <span class="flex min-w-0 flex-1 flex-col gap-2px">
                 <span class="flex items-center gap-6px text-13px font-500 leading-18px text-ink">
-                  <svg class="h-12px w-12px flex-none text-violet-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <svg
+                    class="h-12px w-12px flex-none text-violet-ink"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
+                  >
                     <path :d="ICON.plus" />
                   </svg>
                   新建技能
@@ -4145,7 +4476,9 @@ onUnmounted(() => {
                 <span class="flex min-w-0 flex-1 flex-col gap-2px">
                   <span class="truncate text-13px font-500 leading-18px text-ink">{{ u.title }}</span>
                   <span class="truncate text-11px leading-16px text-muted">{{
-                    skillDeleteId === u.userSkillId ? '确认删除？删除后不可恢复' : dayLabel(u.updatedAt || u.createdAt) || '自建技能'
+                    skillDeleteId === u.userSkillId
+                      ? '确认删除？删除后不可恢复'
+                      : dayLabel(u.updatedAt || u.createdAt) || '自建技能'
                   }}</span>
                 </span>
                 <template v-if="skillDeleteId === u.userSkillId">
@@ -4168,25 +4501,44 @@ onUnmounted(() => {
                     :loading="skillFormLoading"
                     @click="openSkillEdit(u)"
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path :d="ICON.edit" /></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path :d="ICON.edit" />
+                    </svg>
                   </IconButton>
-                  <IconButton size="sm" variant="danger" :label="`删除技能：${u.title}`" @click="skillDeleteId = u.userSkillId">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path :d="ICON.trash" /></svg>
+                  <IconButton
+                    size="sm"
+                    variant="danger"
+                    :label="`删除技能：${u.title}`"
+                    @click="skillDeleteId = u.userSkillId"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path :d="ICON.trash" />
+                    </svg>
                   </IconButton>
                 </span>
               </div>
               <div v-if="userSkillPage < userSkillPages" class="col-span-full py-4px text-center">
-                <button type="button" :disabled="userSkillLoading" :class="LINK_BTN" @click="loadUserSkills()">加载更多</button>
+                <button type="button" :disabled="userSkillLoading" :class="LINK_BTN" @click="loadUserSkills()">
+                  加载更多
+                </button>
               </div>
               <div v-if="userSkillLoading && !userSkills.length" class="col-span-full flex justify-center py-26px">
                 <n-spin size="small" />
               </div>
             </template>
             <div
-              v-if="!tabSkills.length && (skillTab !== MY_SKILL_GROUP || (!visibleUserSkills.length && !userSkillLoading))"
+              v-if="
+                !tabSkills.length && (skillTab !== MY_SKILL_GROUP || (!visibleUserSkills.length && !userSkillLoading))
+              "
               class="col-span-full px-12px py-26px text-center text-12px leading-18px text-placeholder"
             >
-              {{ skillQuery.trim() ? '没有匹配的技能，换个词试试' : skillTab === MY_SKILL_GROUP ? '暂无自建技能' : '暂无技能' }}
+              {{
+                skillQuery.trim()
+                  ? '没有匹配的技能，换个词试试'
+                  : skillTab === MY_SKILL_GROUP
+                    ? '暂无自建技能'
+                    : '暂无技能'
+              }}
             </div>
           </div>
           <span
@@ -4210,13 +4562,22 @@ onUnmounted(() => {
         <div :class="MODAL_HEAD">
           <strong id="agent-share-dialog-title" class="text-15px font-600 leading-20px text-ink">分享链接</strong>
           <button type="button" aria-label="关闭" :class="MODAL_X" @click="shareLinkShow = false">
-            <svg class="h-16px w-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <svg
+              class="h-16px w-16px"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
               <path :d="ICON.x" />
             </svg>
           </button>
         </div>
         <div class="flex flex-col gap-8px px-18px py-16px">
-          <label for="agent-share-link" class="text-12px leading-16px text-muted">拿到链接的人无需登录即可查看所选轮次</label>
+          <label for="agent-share-link" class="text-12px leading-16px text-muted"
+            >拿到链接的人无需登录即可查看所选轮次</label
+          >
           <input
             id="agent-share-link"
             ref="shareLinkInputEl"
@@ -4245,7 +4606,14 @@ onUnmounted(() => {
           <strong id="agent-image-dialog-title" class="text-15px font-600 leading-20px text-ink">上传素材</strong>
           <span class="rounded-3px bg-surface3 px-5px py-1px text-11px text-#a3a9b2">Ctrl + V 粘贴图片</span>
           <button type="button" aria-label="关闭" :class="MODAL_X" @click="imageDialogShow = false">
-            <svg class="h-16px w-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <svg
+              class="h-16px w-16px"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
               <path :d="ICON.x" />
             </svg>
           </button>
@@ -4278,9 +4646,20 @@ onUnmounted(() => {
             @dragleave.prevent="dragging = false"
             @drop.prevent="onDrop"
           >
-            <span class="grid h-44px w-44px place-items-center rounded-12px bg-surface3 text-#b3b9c2" aria-hidden="true">
+            <span
+              class="grid h-44px w-44px place-items-center rounded-12px bg-surface3 text-#b3b9c2"
+              aria-hidden="true"
+            >
               <n-spin v-if="uploading" size="small" />
-              <svg v-else class="h-22px w-22px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+              <svg
+                v-else
+                class="h-22px w-22px"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linejoin="round"
+              >
                 <path :d="ICON.image" />
               </svg>
             </span>
@@ -4416,7 +4795,9 @@ onUnmounted(() => {
   }
 }
 .agent-dir.is-drawer .dir-card {
-  box-shadow: 0 12px 24px rgba(31, 35, 41, 0.14), 0 2px 6px rgba(31, 35, 41, 0.06);
+  box-shadow:
+    0 12px 24px rgba(31, 35, 41, 0.14),
+    0 2px 6px rgba(31, 35, 41, 0.06);
 }
 .agent-mask-enter-active,
 .agent-mask-leave-active {
@@ -4558,7 +4939,12 @@ onUnmounted(() => {
   background-image: radial-gradient(circle, #dadce0 1px, transparent 1px);
   background-size: 28px 28px;
   background-position: 50% 100%;
-  -webkit-mask-image: radial-gradient(ellipse 96% 92% at 50% 100%, #000 10%, rgba(0, 0, 0, 0.62) 52%, rgba(0, 0, 0, 0) 88%);
+  -webkit-mask-image: radial-gradient(
+    ellipse 96% 92% at 50% 100%,
+    #000 10%,
+    rgba(0, 0, 0, 0.62) 52%,
+    rgba(0, 0, 0, 0) 88%
+  );
   mask-image: radial-gradient(ellipse 96% 92% at 50% 100%, #000 10%, rgba(0, 0, 0, 0.62) 52%, rgba(0, 0, 0, 0) 88%);
 }
 .stream-fade {

@@ -9,7 +9,7 @@
  * 幂等重试态（useIdempotentSubmit.retrying）按钮文案换成「重试生成」，并在按钮上方给出重试提示。
  */
 import { computed } from 'vue'
-import CreationActionBar from '@/components/creation/CreationActionBar.vue'
+import CreationActionBar from '@/components/Creation/CreationActionBar.vue'
 
 const props = withDefaults(
   defineProps<{

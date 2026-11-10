@@ -15,7 +15,11 @@ defineEmits<{ retry: [] }>()
 </script>
 
 <template>
-  <div class="flex h-full flex-col items-center justify-center text-center" :class="compact ? 'py-16px' : 'py-32px'" role="alert">
+  <div
+    class="flex h-full flex-col items-center justify-center text-center"
+    :class="compact ? 'py-16px' : 'py-32px'"
+    role="alert"
+  >
     <div
       class="grid place-items-center w-48px h-48px rounded-full border-2 border-solid border-warning text-warning text-24px font-600 leading-none"
       aria-hidden="true"

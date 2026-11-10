@@ -8,7 +8,7 @@
 import { computed, ref } from 'vue'
 import { NCheckbox } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
-import type { IAssetLibAsset } from '@/api/assetLibrary.ts'
+import type { IAssetLibAsset } from '@/api/asset-library.ts'
 import { downloadName } from '../ui.ts'
 
 const props = defineProps<{
@@ -30,7 +30,7 @@ const emit = defineEmits<{
 }>()
 
 const isVideoAsset = computed(() => props.asset.media === 'video')
-const isVideo = computed(() => isVideoAsset.value && !!props.asset.video_url)
+const isVideo = computed(() => isVideoAsset.value && !!props.asset.videoUrl)
 
 // 封面加载失败降级：video 播不了先退回封面图，图也裂了才上占位
 const videoFailed = ref(false)
@@ -49,7 +49,7 @@ const loaded = ref(false)
 const SOURCE_LABELS: Record<string, string> = { official: '官方', upload: '上传', generated: 'AI 生成' }
 const sourceLabel = computed(() => SOURCE_LABELS[props.asset.source] ?? '')
 const dateText = computed(() => {
-  const ms = props.asset.created_at
+  const ms = props.asset.createdAt
   if (!ms) return ''
   const d = new Date(ms)
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
@@ -59,7 +59,7 @@ const dateText = computed(() => {
  * 每张卡等高，网格一行齐平。原来按原图比例撑高，横竖图混排时一行高高低低。
  */
 const COVER_RATIO = '4 / 3'
-const downloadHref = computed(() => (isVideoAsset.value ? props.asset.video_url : props.asset.image) || '')
+const downloadHref = computed(() => (isVideoAsset.value ? props.asset.videoUrl : props.asset.image) || '')
 const title = computed(() => props.asset.title || '未命名资产')
 
 function onCard() {
@@ -84,7 +84,7 @@ function onCard() {
     <div class="relative overflow-hidden bg-surface3" :style="{ aspectRatio: COVER_RATIO }">
       <video
         v-if="isVideo && !videoFailed"
-        :src="asset.video_url"
+        :src="asset.videoUrl"
         :poster="asset.image || undefined"
         class="block w-full h-full object-contain"
         muted
@@ -182,14 +182,24 @@ function onCard() {
         class="absolute right-4px bottom-4px"
         @click.stop
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.9"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
         </svg>
       </IconButton>
     </div>
 
     <div class="flex flex-col min-w-0 px-8px pt-6px pb-4px">
-      <strong class="block text-12px font-500 leading-18px text-ink-2 whitespace-nowrap overflow-hidden text-ellipsis" :title="title">
+      <strong
+        class="block text-12px font-500 leading-18px text-ink-2 whitespace-nowrap overflow-hidden text-ellipsis"
+        :title="title"
+      >
         {{ title }}
       </strong>
       <small class="block text-11px leading-16px text-placeholder whitespace-nowrap overflow-hidden text-ellipsis">
@@ -206,7 +216,9 @@ function onCard() {
           <span class="overflow-hidden text-ellipsis">{{ asset.tags[0] }}</span>
         </button>
         <span v-else class="text-12px leading-28px text-placeholder">未打标签</span>
-        <span v-if="asset.tags.length > 1" class="shrink-0 text-11px text-placeholder">+{{ asset.tags.length - 1 }}</span>
+        <span v-if="asset.tags.length > 1" class="shrink-0 text-11px text-placeholder"
+          >+{{ asset.tags.length - 1 }}</span
+        >
         <IconButton
           data-tag-trigger
           variant="quiet"

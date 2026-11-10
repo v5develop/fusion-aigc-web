@@ -24,7 +24,7 @@ import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
 import NodeLightbox from './NodeLightbox.vue'
-import { openColorFix } from '../colorFixAction.ts'
+import { openColorFix } from '../color-fix-action.ts'
 import { useNodeUpload } from './useNodeUpload.ts'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
@@ -133,10 +133,7 @@ const { dragging } = useFileDropPaste(dropRef, {
       />
     </header>
     <div class="p-12px rounded-b-8px bg-surface3">
-      <div
-        class="relative grid w-full place-items-center overflow-hidden"
-        :style="{ height: `${mediaHeight}px` }"
-      >
+      <div class="relative grid w-full place-items-center overflow-hidden" :style="{ height: `${mediaHeight}px` }">
         <img
           v-if="data.image"
           :src="data.image"
@@ -211,7 +208,13 @@ const { dragging } = useFileDropPaste(dropRef, {
           role="toolbar"
           :aria-label="`${data.title || '图片'} 操作`"
         >
-          <button type="button" :class="BAR_BTN" title="裁剪" aria-label="裁剪：新建裁剪工具节点" @click.stop="makeTool('crop')">
+          <button
+            type="button"
+            :class="BAR_BTN"
+            title="裁剪"
+            aria-label="裁剪：新建裁剪工具节点"
+            @click.stop="makeTool('crop')"
+          >
             <EditorIcon name="crop" :size="14" />
           </button>
           <button

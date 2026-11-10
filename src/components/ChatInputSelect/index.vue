@@ -36,9 +36,7 @@ const PANEL_WIDTH: Record<IconCategory, number> = {
   model: 260,
 }
 
-const menuProps = computed(() =>
-  dropdownMenuProps(panelWidth ?? (iconCategory ? PANEL_WIDTH[iconCategory] : 194)),
-)
+const menuProps = computed(() => dropdownMenuProps(panelWidth ?? (iconCategory ? PANEL_WIDTH[iconCategory] : 194)))
 const nodeProps = dropdownNodeProps(() => value.value)
 
 const dropdownOptions = computed<DropdownOption[]>(() => {
@@ -94,14 +92,7 @@ function renderLabel(option: DropdownOption) {
     <div class="chat-select">
       <div class="trigger">
         <span class="label">{{ currentOption?.label || '请选择' }}</span>
-        <svg
-          class="arrow"
-          width="16"
-          height="16"
-          viewBox="0 0 12 12"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
+        <svg class="arrow" width="16" height="16" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
             d="M3 4.5L6 7.5L9 4.5"
             stroke="rgba(0,0,0,0.25)"

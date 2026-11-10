@@ -15,7 +15,11 @@ import { post, toApiError } from '@/api/index.ts'
 import { colorFixPartsSanitize, type ColorFixAutoTarget, type ColorFixGarmentPart } from './types.ts'
 
 /** 识别函数：返回蒙版地址（白 / 不透明 = 要调整），失败抛错；parts 只对 garment 有效，空 = 全部服装 */
-export type ColorFixSegmenter = (imageUrl: string, target: ColorFixAutoTarget, parts?: readonly ColorFixGarmentPart[]) => Promise<string>
+export type ColorFixSegmenter = (
+  imageUrl: string,
+  target: ColorFixAutoTarget,
+  parts?: readonly ColorFixGarmentPart[],
+) => Promise<string>
 
 /** 自动识别接口是否可用；探到 404 后本会话为 false */
 export const colorFixSegmentSupported = ref(true)
@@ -30,18 +34,21 @@ export function noteColorFixGarmentParts(list: unknown) {
 }
 
 /** 当前请求实际要发的部位：服务端不支持 / 非服装 → 空（全部服装） */
-export function colorFixRequestParts(target: ColorFixAutoTarget, parts: readonly ColorFixGarmentPart[] | undefined): ColorFixGarmentPart[] {
+export function colorFixRequestParts(
+  target: ColorFixAutoTarget,
+  parts: readonly ColorFixGarmentPart[] | undefined,
+): ColorFixGarmentPart[] {
   if (target !== 'garment' || !parts?.length || !colorFixGarmentParts.value.length) return []
   const allowed = new Set(colorFixGarmentParts.value)
   return colorFixPartsSanitize(parts).filter((p) => allowed.has(p))
 }
 
 interface SegmentResp {
-  mask_url?: string
+  maskUrl?: string
   target?: string
   cached?: boolean
-  parts?: { part: string; mask_url: string }[]
-  available_parts?: string[]
+  parts?: { part: string; maskUrl: string }[]
+  availableParts?: string[]
 }
 
 type SegmentFn = (imageUrl: string, target: ColorFixAutoTarget, parts?: ColorFixGarmentPart[]) => Promise<unknown>
@@ -63,7 +70,7 @@ export const defaultColorFixSegmenter: ColorFixSegmenter = (imageUrl, target, pa
   if (hit) return hit
   // 动态键取：导出还没合入时打包器不报「导入恒为 undefined」，合入后自动改走它
   const native = (studioApi as unknown as Record<string, unknown>)[NATIVE_NAME] as SegmentFn | undefined
-  const reqBody: Record<string, unknown> = { image_url: imageUrl, target }
+  const reqBody: Record<string, unknown> = { imageUrl: imageUrl, target }
   if (sendParts.length) reqBody.parts = sendParts
   const call = native
     ? native(imageUrl, target, sendParts.length ? sendParts : undefined)
@@ -71,16 +78,16 @@ export const defaultColorFixSegmenter: ColorFixSegmenter = (imageUrl, target, pa
   const task = Promise.resolve(call)
     .then((resp) => {
       const body = pickBody(resp)
-      if (target === 'garment') noteColorFixGarmentParts(body.available_parts)
-      if (!body.mask_url) throw new Error('识别结果缺少蒙版地址')
+      if (target === 'garment') noteColorFixGarmentParts(body.availableParts)
+      if (!body.maskUrl) throw new Error('识别结果缺少蒙版地址')
       // 逐件蒙版顺手进缓存：之后单选其中一件不再请求
       for (const p of body.parts ?? []) {
-        if (p?.mask_url && sendParts.length > 1 && colorFixPartsSanitize([p.part]).length) {
+        if (p?.maskUrl && sendParts.length > 1 && colorFixPartsSanitize([p.part]).length) {
           const k = `${target}|${p.part}|${imageUrl}`
-          if (!cache.has(k)) cache.set(k, Promise.resolve(p.mask_url))
+          if (!cache.has(k)) cache.set(k, Promise.resolve(p.maskUrl))
         }
       }
-      return body.mask_url
+      return body.maskUrl
     })
     .catch((err: unknown) => {
       cache.delete(key)
@@ -96,7 +103,7 @@ export const defaultColorFixSegmenter: ColorFixSegmenter = (imageUrl, target, pa
 /** 现成的逐件蒙版（如商拍任务的 mask_parts） */
 export interface ColorFixPresetPart {
   part: string
-  mask_url: string
+  maskUrl: string
 }
 
 /**
@@ -112,6 +119,6 @@ export function colorFixPresetFor(
   const list = presetParts ?? []
   const labels = colorFixPartsSanitize(list.map((p) => p.part))
   if (labels.length === parts.length && labels.every((p, i) => p === parts[i])) return presetUrl
-  if (parts.length === 1) return list.find((p) => p.part === parts[0] && p.mask_url)?.mask_url ?? ''
+  if (parts.length === 1) return list.find((p) => p.part === parts[0] && p.maskUrl)?.maskUrl ?? ''
   return ''
 }

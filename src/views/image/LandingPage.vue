@@ -13,7 +13,7 @@ import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { plazaTemplateList, stashPlazaTemplate, type IPlazaTemplate } from '@/api/plaza.ts'
 import { useTilt } from '@/utils/composables/useTilt.ts'
-import { toolCover } from './toolCovers.ts'
+import { toolCover } from './tool-covers.ts'
 import type { LandingBanner, LandingPageData } from './landing'
 
 const props = defineProps<{ data: LandingPageData }>()
@@ -73,8 +73,7 @@ const tilt = useTilt({ prefix: 'hero', rotateX: 8, rotateY: 10, lift: '-2px', im
 const heroTransform =
   '[transform:perspective(800px)_rotateX(var(--hero-rx,0deg))_rotateY(var(--hero-ry,0deg))_translateY(var(--hero-lift,0px))] [transform-style:preserve-3d] will-change-transform motion-reduce:!transform-none'
 const imgBase = '[transform:translate3d(var(--hero-img-x,0px),var(--hero-img-y,0px),0)_scale(1.02)]'
-const imgHover =
-  'group-hover:[transform:translate3d(var(--hero-img-x,0px),var(--hero-img-y,0px),0)_scale(1.04)]'
+const imgHover = 'group-hover:[transform:translate3d(var(--hero-img-x,0px),var(--hero-img-y,0px),0)_scale(1.04)]'
 
 /**
  * 底部爆款货架：创意广场模板里取前 4 条**能一键复刻**（有 agentSkillId）的；

@@ -131,8 +131,6 @@
     white-space: nowrap;
   }
 
-
-
   // 图片网格 - 4 列
   &__images {
     display: grid;
@@ -151,17 +149,17 @@
     position: relative;
     // 作为容器查询上下文，使单资源操作条可按卡片宽度(cqw)等比缩放
     container-type: inline-size;
-    :deep(.n-image){
+    :deep(.n-image) {
       width: 100%;
       height: 100%;
     }
-    .video{
+    .video {
       width: 100%;
       height: 100%;
       object-fit: cover;
-      background: #E5E2ED;
+      background: #e5e2ed;
     }
-    .pending{
+    .pending {
       width: 100%;
       height: 100%;
       border-radius: 4px;
@@ -192,7 +190,9 @@
       opacity: 0;
       pointer-events: none;
       z-index: 3;
-      transition: opacity 0.2s ease, transform 0.2s ease;
+      transition:
+        opacity 0.2s ease,
+        transform 0.2s ease;
     }
 
     .single-action-btn {
@@ -253,7 +253,6 @@
         white-space: nowrap;
       }
     }
-
   }
 
   &__image-wrap:hover .single-actions {

@@ -3,7 +3,7 @@ import { VirtualWaterfall } from '@lhlyu/vue-virtual-waterfall'
 import { useRouter } from 'vue-router'
 import useWaterfall from './index.ts'
 import type { IFeedRoute } from '@/api/types'
-import { canMakeSameStyle, createRouteOf } from '@/utils/sameStyle'
+import { canMakeSameStyle, createRouteOf } from '@/utils/same-style'
 
 interface IFeedCard {
   /** 已是水印图（推荐流对外只出水印图），不要再叠一次 withWatermark */
@@ -80,7 +80,7 @@ const { waterfallOption, calcItemHeight } = useWaterfall()
   >
     <template #default="{ item }">
       <div class="card">
-<!--        <img v-if="item.mediaType === 'image'" class="img" :src="item.url" alt="" />-->
+        <!--        <img v-if="item.mediaType === 'image'" class="img" :src="item.url" alt="" />-->
         <!--
           两种形态都按图渲染：视频条目的 url 是后端抽好的封面帧，不是 mp4，
           塞进 <video> 放不出来。列表位也不该加载 mp4——一屏几十条会把带宽吃光，

@@ -6,8 +6,8 @@
  */
 import { shallowRef, type ShallowRef } from 'vue'
 import { studioModels } from '@/api/studio.ts'
-import type { StudioKind, StudioModelCapability } from '@/api/studioTypes.ts'
-import { normalizeModelTier } from '@/utils/modelLabel'
+import type { StudioKind, StudioModelCapability } from '@/api/studio-types.ts'
+import { normalizeModelTier } from '@/utils/model-label'
 
 const cache = new Map<StudioKind, ShallowRef<StudioModelCapability[] | null>>()
 const inflight = new Map<StudioKind, Promise<void>>()

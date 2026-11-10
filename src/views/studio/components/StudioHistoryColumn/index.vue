@@ -14,9 +14,9 @@ import { computed, ref, watch } from 'vue'
 import { NPopover, useMessage } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
-import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
+import CreationHistoryHeader from '@/components/Creation/CreationHistoryHeader.vue'
 import { studioCancelBatch, studioDeleteBatch } from '@/api/studio.ts'
-import type { StudioBatchDetail } from '@/api/studioTypes.ts'
+import type { StudioBatchDetail } from '@/api/studio-types.ts'
 import { downloadImagesAsZip } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
 import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal } from '../../constants.ts'
@@ -42,7 +42,6 @@ const ctl = props.history
 /** 头部「N 个进行中」 */
 const runningCount = computed(() => ctl.items.value.filter((d) => !isBatchTerminal(d.batch.status)).length)
 
-
 // ---------------- 操作 ----------------
 
 const acting = ref(false)
@@ -52,7 +51,7 @@ async function cancelBatch(d: StudioBatchDetail) {
   acting.value = true
   try {
     const res = await studioCancelBatch(d.batch.id)
-    message.success(`已取消 ${res.data?.canceled_tasks ?? 0} 个未开始任务，点数原路退回`)
+    message.success(`已取消 ${res.data?.canceledTasks ?? 0} 个未开始任务，点数原路退回`)
     await ctl.refresh()
   } finally {
     acting.value = false
@@ -73,7 +72,7 @@ async function download(d: StudioBatchDetail) {
   if (!urls.length || downloading.value !== null) return
   downloading.value = d.batch.id
   try {
-    const t = formatTime(d.batch.created_at).replace(/[\s:]/g, '-')
+    const t = formatTime(d.batch.createdAt).replace(/[\s:]/g, '-')
     await downloadImagesAsZip(urls, `${KIND_LABEL[d.batch.kind] ?? '商拍'}_${t || d.batch.id}`)
   } finally {
     downloading.value = null
@@ -98,16 +97,16 @@ const strList = (v: unknown) =>
 function inputsOf(d: StudioBatchDetail): string[] {
   const p = payloadOf(d)
   if (d.batch.kind === 'tryon') {
-    const garments = (Array.isArray(p.garment_images) ? p.garment_images : []).map(
+    const garments = (Array.isArray(p.garmentImages) ? p.garmentImages : []).map(
       (g) => (g as { url?: unknown } | null)?.url,
     )
-    return [...strList(garments), ...strList(p.model_image_urls)]
+    return [...strList(garments), ...strList(p.modelImageUrls)]
   }
-  if (d.batch.kind === 'pose') return [...strList([p.source_image_url]), ...strList(p.pose_image_urls)]
-  return strList(p.image_urls)
+  if (d.batch.kind === 'pose') return [...strList([p.sourceImageUrl]), ...strList(p.poseImageUrls)]
+  return strList(p.imageUrls)
 }
 /** 已出的结果图（成功任务，按任务顺序） */
-const resultsOf = (d: StudioBatchDetail) => d.tasks.filter((t) => t.status === 2 && t.result_url).map((t) => t.result_url)
+const resultsOf = (d: StudioBatchDetail) => d.tasks.filter((t) => t.status === 2 && t.resultUrl).map((t) => t.resultUrl)
 
 /** 左侧叠放图：优先输入图（用户传的），没有再看结果图 / 封面；最多 3 张 */
 function stackOf(d: StudioBatchDetail) {
@@ -115,22 +114,22 @@ function stackOf(d: StudioBatchDetail) {
   if (inputs.length) return inputs.slice(0, 3)
   const results = resultsOf(d)
   if (results.length) return results.slice(0, 3)
-  return d.batch.cover_url ? [d.batch.cover_url] : []
+  return d.batch.coverUrl ? [d.batch.coverUrl] : []
 }
 function stackCount(d: StudioBatchDetail) {
-  return inputsOf(d).length || resultsOf(d).length || (d.batch.cover_url ? 1 : 0)
+  return inputsOf(d).length || resultsOf(d).length || (d.batch.coverUrl ? 1 : 0)
 }
 
 /** 卡片第一行：提示词（换装 prompt / 姿态 global_prompt / 图片生成 prompt），没有就用「功能 · N 张」 */
 function promptOf(d: StudioBatchDetail) {
   const p = payloadOf(d)
-  const text = [p.prompt, p.global_prompt].find((v) => typeof v === 'string' && v.trim())
-  return typeof text === 'string' ? text.trim() : `${KIND_LABEL[d.batch.kind] ?? '批次'} · ${d.batch.task_total} 张`
+  const text = [p.prompt, p.globalPrompt].find((v) => typeof v === 'string' && v.trim())
+  return typeof text === 'string' ? text.trim() : `${KIND_LABEL[d.batch.kind] ?? '批次'} · ${d.batch.taskTotal} 张`
 }
 /** 悬停提示：完整提示词 + 统计 */
 function statsOf(d: StudioBatchDetail) {
   const b = d.batch
-  return `${KIND_LABEL[b.kind] ?? b.kind} · ${b.task_total} 张 · 成功 ${b.task_done} · 失败 ${b.task_failed} · ${b.estimated_points} 点`
+  return `${KIND_LABEL[b.kind] ?? b.kind} · ${b.taskTotal} 张 · 成功 ${b.taskDone} · 失败 ${b.taskFailed} · ${b.estimatedPoints} 点`
 }
 
 /** 进行中进度：任务 progress 均值（成功 / 失败 / 取消按 100）；没有任务明细时按完成数估 */
@@ -152,7 +151,11 @@ function openLightbox(d: StudioBatchDetail) {
   const urls = results.length ? results : inputsOf(d)
   if (!urls.length) return
   const word = results.length ? '结果' : '输入图'
-  lightboxItems.value = urls.map((url, i) => ({ url, type: 'image', name: `${KIND_LABEL[d.batch.kind] ?? ''}${word}-${i + 1}` }))
+  lightboxItems.value = urls.map((url, i) => ({
+    url,
+    type: 'image',
+    name: `${KIND_LABEL[d.batch.kind] ?? ''}${word}-${i + 1}`,
+  }))
   lightboxIndex.value = 0
   lightboxShow.value = true
 }
@@ -183,16 +186,16 @@ function promptTextOf(d: StudioBatchDetail): string {
   try {
     const p = JSON.parse(d.batch.payload || '{}') as Record<string, unknown>
     if (typeof p.prompt === 'string') parts.push(p.prompt)
-    if (typeof p.global_prompt === 'string') parts.push(p.global_prompt)
-    if (p.pose_prompts && typeof p.pose_prompts === 'object') {
-      for (const v of Object.values(p.pose_prompts as Record<string, unknown>)) {
+    if (typeof p.globalPrompt === 'string') parts.push(p.globalPrompt)
+    if (p.posePrompts && typeof p.posePrompts === 'object') {
+      for (const v of Object.values(p.posePrompts as Record<string, unknown>)) {
         if (typeof v === 'string') parts.push(v)
       }
     }
   } catch {
     // payload 不是合法 JSON：只按任务摘要搜
   }
-  for (const t of d.tasks) if (t.prompt_summary) parts.push(t.prompt_summary)
+  for (const t of d.tasks) if (t.promptSummary) parts.push(t.promptSummary)
   return parts.join('\n').toLowerCase()
 }
 
@@ -378,17 +381,22 @@ function prevPage() {
             </NPopover>
 
             <div class="flex flex-1 min-w-0 min-h-52px flex-col justify-center gap-6px">
-              <p class="m-0 min-w-0 line-clamp-1 text-12px leading-18px text-ink" :title="`${promptOf(d)}\n${statsOf(d)}`">
+              <p
+                class="m-0 min-w-0 line-clamp-1 text-12px leading-18px text-ink"
+                :title="`${promptOf(d)}\n${statsOf(d)}`"
+              >
                 {{ promptOf(d) }}
               </p>
               <!-- 非全部成功：状态 + 原因（全部成功不出这一行，状态只显示一次） -->
               <div
                 v-if="d.batch.status !== 4"
                 class="flex min-w-0 items-center gap-6px text-11px leading-16px"
-                :title="d.batch.error_reason || statsOf(d)"
+                :title="d.batch.errorReason || statsOf(d)"
               >
-                <span class="ll-chip" :class="batchChip(d.batch.status).cls">{{ batchChip(d.batch.status).label }}</span>
-                <span v-if="d.batch.error_reason" class="min-w-0 truncate text-danger">{{ d.batch.error_reason }}</span>
+                <span class="ll-chip" :class="batchChip(d.batch.status).cls">{{
+                  batchChip(d.batch.status).label
+                }}</span>
+                <span v-if="d.batch.errorReason" class="min-w-0 truncate text-danger">{{ d.batch.errorReason }}</span>
               </div>
               <!-- 操作行：时间左、三颗按钮右（间距 8，sm 视觉 24 / 命中 32） -->
               <HistoryActionRow
@@ -404,9 +412,9 @@ function prevPage() {
                 <template #lead>
                   <span
                     class="flex-none text-11px leading-16px text-muted tabular-nums whitespace-nowrap"
-                    :title="formatFullTime(d.batch.created_at)"
-                    :aria-label="formatFullTime(d.batch.created_at)"
-                    >{{ formatShortTime(d.batch.created_at) }}</span
+                    :title="formatFullTime(d.batch.createdAt)"
+                    :aria-label="formatFullTime(d.batch.createdAt)"
+                    >{{ formatShortTime(d.batch.createdAt) }}</span
                   >
                 </template>
                 <template #primary>
@@ -513,11 +521,7 @@ function prevPage() {
              已加载列表；下方翻页只在已加载的记录上切片。只在最后一页（列表真正的末尾）出现。 -->
         <template v-if="ctl.items.value.length && page >= pages">
           <div v-if="ctl.loadingMore.value" class="pt-8px pb-2px text-11px text-center">加载中…</div>
-          <div
-            v-else-if="ctl.hasMore.value"
-            class="ll-link py-8px !text-13px text-center"
-            @click="ctl.loadMore()"
-          >
+          <div v-else-if="ctl.hasMore.value" class="ll-link py-8px !text-13px text-center" @click="ctl.loadMore()">
             加载更多
           </div>
           <div v-else class="pt-8px pb-2px text-11px text-center text-placeholder">没有更多了</div>
@@ -532,7 +536,7 @@ function prevPage() {
     >
       <IconButton label="上一页" :disabled="page <= 1" @click="prevPage">
         <svg
-                    viewBox="0 0 24 24"
+          viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
           stroke-width="2"
@@ -544,9 +548,13 @@ function prevPage() {
         </svg>
       </IconButton>
       <span class="text-12px leading-16px text-muted tabular-nums" aria-live="polite">{{ page }} / {{ pages }}</span>
-      <IconButton label="下一页" :disabled="(page >= pages && !canFetchMore) || ctl.loadingMore.value" @click="nextPage">
+      <IconButton
+        label="下一页"
+        :disabled="(page >= pages && !canFetchMore) || ctl.loadingMore.value"
+        @click="nextPage"
+      >
         <svg
-                    viewBox="0 0 24 24"
+          viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
           stroke-width="2"

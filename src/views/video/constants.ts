@@ -1,8 +1,8 @@
 import { getMap } from '@/views/image/constants.ts'
-import { videoModelOpsFor } from '@/utils/modelCatalog'
+import { videoModelOpsFor } from '@/utils/model-catalog'
 
 // 生视频模型下拉（含各模型自己的分辨率档）：与生图同源，由服务端下发，后台停用即不出现。
-export { videoModelOps as modelOps } from '@/utils/modelCatalog'
+export { videoModelOps as modelOps } from '@/utils/model-catalog'
 
 /**
  * 各场景可选模型按 <b>服务端下发的 entry_codes</b> 过滤，前端不维护「哪个场景支持哪些模型」的名单。
@@ -88,7 +88,7 @@ export const config: Record<string, any> = {
 export const entryCodeVal2Label: Record<string, any> = getMap(entryCodeOps)
 
 // 与生图同一份 code → name 映射（模型表异步加载，静态快照会永远为空）
-export { modelCodeToLabel as modelVal2Label } from '@/utils/modelCatalog'
+export { modelCodeToLabel as modelVal2Label } from '@/utils/model-catalog'
 
 export const ratioVal2Label: Record<string, any> = getMap(ratioOps)
 

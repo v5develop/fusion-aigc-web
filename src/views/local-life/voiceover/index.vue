@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelOf } from '@/utils/modelLabel'
+import { modelLabelOf } from '@/utils/model-label'
 /**
  * 数字人口播：一段文案 + 人物图 + 背景（AI智能匹配 / 预设背景 / 上传）→ 一步出片。
  * 与海报/长图共用 creations 接口，kind=voiceover；模板接口返回的是预设背景。
@@ -24,8 +24,8 @@ import {
   llCreationSubmit,
   llCreationTemplates,
   llIdempotencyHeaders,
-} from '@/api/localLife.ts'
-import type { ILCreation, ILCreationOptions } from '@/api/localLifeTypes.ts'
+} from '@/api/local-life.ts'
+import type { ILCreation, ILCreationOptions } from '@/api/local-life-types.ts'
 import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
@@ -53,14 +53,16 @@ const form = reactive({
   model: undefined as string | undefined,
   duration: undefined as number | undefined,
   size: undefined as string | undefined,
-  copywriting_id: undefined as number | undefined,
+  copywritingId: undefined as number | undefined,
 })
 
 const portraitSource = ref<'UPLOAD' | 'PUBLIC'>('UPLOAD')
 const personImage = ref('')
 const personPublicId = ref<number | undefined>(undefined)
 
-const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: modelLabelOf(o.label), value: o.code })))
+const modelOptions = computed(() =>
+  (options.value?.models ?? []).map((o) => ({ label: modelLabelOf(o.label), value: o.code })),
+)
 const sizeOptions = computed(() => (options.value?.sizes ?? []).map((o) => ({ label: o.label, value: o.code })))
 const durationOptions = computed(() => (options.value?.durations ?? []).map((d) => ({ label: `${d}秒`, value: d })))
 
@@ -103,7 +105,7 @@ async function aiWriteContent() {
 
 function pickCopy(c: { id: number; body: string }) {
   form.content = c.body
-  form.copywriting_id = c.id
+  form.copywritingId = c.id
   showCopyPicker.value = false
 }
 
@@ -130,20 +132,20 @@ async function submit() {
         kind: 'voiceover',
         content: form.content.trim(),
         portrait_source: portraitSource.value,
-        ...(portraitSource.value === 'UPLOAD' ? { image_url: personImage.value } : { public_id: personPublicId.value }),
-        background_source: bgSource.value,
-        background_id: bgSource.value === 'PRESET' ? bgId.value : undefined,
-        background_url: bgSource.value === 'UPLOAD' ? bgUrl.value : undefined,
+        ...(portraitSource.value === 'UPLOAD' ? { imageUrl: personImage.value } : { publicId: personPublicId.value }),
+        backgroundSource: bgSource.value,
+        backgroundId: bgSource.value === 'PRESET' ? bgId.value : undefined,
+        backgroundUrl: bgSource.value === 'UPLOAD' ? bgUrl.value : undefined,
         model: form.model || undefined,
         duration: form.duration,
         size: form.size || undefined,
-        copywriting_id: form.copywriting_id,
+        copywritingId: form.copywritingId,
       },
       llIdempotencyHeaders(),
     )
     message.success('已提交，口播视频生成中')
     form.content = ''
-    form.copywriting_id = undefined
+    form.copywritingId = undefined
     // 明确选中接口返回的新记录（不依赖「新记录排第一」）；先刷列表，免得新 id 还不在列表里时预览闪到旧记录
     await listCtl.refresh()
     if (res.data?.id) selectId(res.data.id)
@@ -160,8 +162,8 @@ const listCtl = useLLList<ILCreation>((params) => llCreationList('voiceover', pa
 onMounted(async () => {
   const res = await llCreationOptions('voiceover')
   options.value = res.data ?? null
-  form.model = res.data?.default_model
-  form.duration = res.data?.default_duration
+  form.model = res.data?.defaultModel
+  form.duration = res.data?.defaultDuration
   void loadBackgrounds()
   void listCtl.reload()
 })
@@ -185,7 +187,15 @@ watch(bgSource, () => {
 </script>
 
 <template>
-  <Workbench title="数字人口播" :submit="submit" :loading="submitting" submit-text="生成口播视频" submit-hint="人物形象建议用清晰的正面照，也可选一位公共数字人" :estimate="estimate" :history-count="listCtl.total.value">
+  <Workbench
+    title="数字人口播"
+    :submit="submit"
+    :loading="submitting"
+    submit-text="生成口播视频"
+    submit-hint="人物形象建议用清晰的正面照，也可选一位公共数字人"
+    :estimate="estimate"
+    :history-count="listCtl.total.value"
+  >
     <template #default>
       <FormCard title="口播文案" required>
         <PromptBox v-model="form.content" label="口播文案" size="lg" placeholder="数字人要播报的内容，字数不限">
@@ -273,31 +283,45 @@ watch(bgSource, () => {
           :title="item.content || '数字人口播'"
           :status="CREATION_STATUS_MAP[item.status]?.type ?? 'running'"
           :status-label="CREATION_STATUS_MAP[item.status]?.label ?? ''"
-          :time="item.create_time"
-          :thumb="item.input_image_url"
+          :time="item.createTime"
+          :thumb="item.inputImageUrl"
           placeholder="视频"
-          :fail-reason="item.status === 2 ? item.fail_reason || '生成失败' : ''"
+          :fail-reason="item.status === 2 ? item.failReason || '生成失败' : ''"
           :eta-sec="240"
           :selected="current?.id === item.id"
           @select="select(item)"
         >
           <template #actions>
             <IconButton
-              v-if="item.status === 1 && item.video_url"
+              v-if="item.status === 1 && item.videoUrl"
               label="下载视频"
               size="sm"
-              :href="item.video_url"
+              :href="item.videoUrl"
               target="_blank"
               download
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
               </svg>
             </IconButton>
             <n-popconfirm @positive-click="removeItem(item)">
               <template #trigger>
                 <IconButton label="删除记录" size="sm" variant="danger">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
                     <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
                   </svg>
                 </IconButton>
@@ -315,14 +339,18 @@ watch(bgSource, () => {
         :title="current ? current.content || '数字人口播' : ''"
         :status="current ? (CREATION_STATUS_MAP[current.status]?.type ?? 'running') : 'running'"
         :status-label="current ? (CREATION_STATUS_MAP[current.status]?.label ?? '') : ''"
-        :time="current?.create_time"
-        :video="current?.video_url"
-        :poster="current?.input_image_url"
-        :fail-reason="current?.fail_reason"
+        :time="current?.createTime"
+        :video="current?.videoUrl"
+        :poster="current?.inputImageUrl"
+        :fail-reason="current?.failReason"
         ratio="9 / 16"
       >
         <template v-if="current" #meta>
-          <span class="truncate text-ink-2">{{ [modelLabelOf(current.model), current.duration ? current.duration + 's' : '', current.size].filter(Boolean).join(' · ') }}</span>
+          <span class="truncate text-ink-2">{{
+            [modelLabelOf(current.model), current.duration ? current.duration + 's' : '', current.size]
+              .filter(Boolean)
+              .join(' · ')
+          }}</span>
         </template>
       </ResultPreview>
     </template>

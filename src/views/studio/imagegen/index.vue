@@ -9,18 +9,18 @@
 import { computed, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
-import BookOutlineIcon from '@/components/icons/BookOutlineIcon.vue'
+import BookOutlineIcon from '@/components/Icons/BookOutlineIcon.vue'
 import { studioSubmitImageGen } from '@/api/studio.ts'
-import type { StudioImageGenPayload, StudioImageGenSubmitReq } from '@/api/studioTypes.ts'
+import type { StudioImageGenPayload, StudioImageGenSubmitReq } from '@/api/studio-types.ts'
 import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.vue'
 import StudioImageUpload from '../components/StudioImageUpload/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ModelSettings from '../components/ModelSettings/index.vue'
-import PromptLibraryFlyout from '@/components/creation/PromptLibraryFlyout.vue'
-import { PromptWriteButton } from '@/components/prompt-write'
+import PromptLibraryFlyout from '@/components/Creation/PromptLibraryFlyout.vue'
+import { PromptWriteButton } from '@/components/PromptWrite'
 import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import { MAX_REF_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
-import { normalizeModelTier } from '@/utils/modelLabel'
+import { normalizeModelTier } from '@/utils/model-label'
 
 defineOptions({ name: 'studio-imagegen' })
 
@@ -32,9 +32,9 @@ const form = reactive({
   prompt: '',
   model: '通用',
   resolution: '1k',
-  aspect_ratio: '3:4',
+  aspectRatio: '3:4',
   count: 1,
-  rewrite_prompt: false,
+  rewritePrompt: false,
 })
 const refImages = ref<string[]>([])
 
@@ -61,7 +61,7 @@ const { points: costPoints } = useStudioCost('imagegen', () => ({
   count: form.count,
   model: form.model || undefined,
   resolution: form.resolution || undefined,
-  aspect_ratio: form.aspect_ratio || undefined,
+  aspectRatio: form.aspectRatio || undefined,
 }))
 idem.bindForm(form, refImages)
 
@@ -80,12 +80,12 @@ async function submit() {
 
   const body: StudioImageGenSubmitReq = {
     prompt: form.prompt.trim(),
-    ...(refImages.value.length ? { image_urls: [...refImages.value] } : {}),
+    ...(refImages.value.length ? { imageUrls: [...refImages.value] } : {}),
     model: form.model || undefined,
     resolution: form.resolution || undefined,
-    aspect_ratio: form.aspect_ratio || undefined,
+    aspectRatio: form.aspectRatio || undefined,
     count: form.count,
-    rewrite_prompt: form.rewrite_prompt,
+    rewritePrompt: form.rewritePrompt,
   }
 
   submitting.value = true
@@ -95,13 +95,13 @@ async function submit() {
     idem.settle()
     const d = res.data
     message.success(
-      `已提交 ${d?.task_total ?? form.count} 张，预估消耗 ${d?.estimated_points ?? 0} 点${
+      `已提交 ${d?.taskTotal ?? form.count} 张，预估消耗 ${d?.estimatedPoints ?? 0} 点${
         d?.replayed ? '（幂等重放，返回原批次）' : ''
       }`,
     )
     for (const w of d?.warnings ?? []) message.warning(w)
     await shell.value?.refresh()
-    if (d?.batch_id) shell.value?.openBatch(d.batch_id)
+    if (d?.batchId) shell.value?.openBatch(d.batchId)
   } catch (err) {
     // 拦截器已 toast（3003 走引导购买弹框）；结果未知（网络 / 超时 / 5001）保留 key 进「重试生成」态，
     // 确定失败（参数错、点数不足等）清掉 key，充值或改参后再提交换新 key
@@ -116,14 +116,14 @@ async function submit() {
 function onReedit(payload: Record<string, unknown>) {
   const p = payload as unknown as StudioImageGenPayload
 
-  refImages.value = (Array.isArray(p.image_urls) ? p.image_urls : []).filter((u): u is string => !!u)
+  refImages.value = (Array.isArray(p.imageUrls) ? p.imageUrls : []).filter((u): u is string => !!u)
 
   form.prompt = typeof p.prompt === 'string' ? p.prompt : ''
   form.model = MODEL_OPTIONS.find((o) => o.value === normalizeModelTier(p.model))?.value ?? '通用'
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
-  form.aspect_ratio = typeof p.aspect_ratio === 'string' && p.aspect_ratio ? p.aspect_ratio : '1:1'
+  form.aspectRatio = typeof p.aspectRatio === 'string' && p.aspectRatio ? p.aspectRatio : '1:1'
   form.count = Math.min(9, Math.max(1, Math.round(Number(p.count) || 1)))
-  form.rewrite_prompt = p.rewrite_prompt === true
+  form.rewritePrompt = p.rewritePrompt === true
   // 回填是一次全新的提交：bindForm 的深度 watch 会作废旧 key，这里再兜一道
   idem.invalidate()
 }
@@ -192,19 +192,19 @@ function onReedit(payload: Record<string, unknown>) {
             <button
               type="button"
               role="switch"
-              :aria-checked="form.rewrite_prompt"
+              :aria-checked="form.rewritePrompt"
               aria-labelledby="imagegen-rewrite-label"
               class="relative after:(content-empty absolute -inset-x-4px -inset-y-6px rounded-[inherit]) [@media(pointer:coarse)]:after:-inset-y-10px flex-none w-34px h-20px box-border p-0 rounded-full border border-solid cursor-pointer [transition:background_180ms_cubic-bezier(0.2,0.7,0.2,1),border-color_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
               :class="
-                form.rewrite_prompt
+                form.rewritePrompt
                   ? 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)]'
                   : 'border-#c9cfd6 bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]'
               "
-              @click="form.rewrite_prompt = !form.rewrite_prompt"
+              @click="form.rewritePrompt = !form.rewritePrompt"
             >
               <span
                 class="absolute top-2px w-14px h-14px rounded-full bg-white shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
-                :class="form.rewrite_prompt ? 'left-16px' : 'left-2px'"
+                :class="form.rewritePrompt ? 'left-16px' : 'left-2px'"
                 aria-hidden="true"
               />
             </button>
@@ -222,7 +222,7 @@ function onReedit(payload: Record<string, unknown>) {
         <ModelSettings
           v-model:model="form.model"
           v-model:resolution="form.resolution"
-          v-model:aspect-ratio="form.aspect_ratio"
+          v-model:aspect-ratio="form.aspectRatio"
           v-model:count="form.count"
         />
         <p class="m-0 text-11px leading-16px text-placeholder">不传参考图即纯文字生成；结果按所选张数回到历史记录</p>

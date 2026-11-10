@@ -7,10 +7,10 @@
  */
 import { ref } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
-import { assetLibBatchDelete, assetLibDelete } from '@/api/assetLibrary.ts'
+import { assetLibBatchDelete, assetLibDelete } from '@/api/asset-library.ts'
 import { toApiError } from '@/api/index.ts'
-import type { IAssetLibAsset } from '@/api/assetLibrary.ts'
-import { removeRecentAssets } from '@/utils/assetRecent.ts'
+import type { IAssetLibAsset } from '@/api/asset-library.ts'
+import { removeRecentAssets } from '@/utils/asset-recent.ts'
 
 /** 标签筛选里「未分类」的哨兵值（filters.tag 取它时列表改发 untagged=true） */
 export const UNTAGGED_TAG = '__uncat__'
@@ -66,7 +66,7 @@ export function useAssetDelete(opts: {
     if (!ids.length) return
     const urls = ids.flatMap((id) => {
       const a = opts.resolve(id)
-      return a ? [a.image, a.video_url] : []
+      return a ? [a.image, a.videoUrl] : []
     })
     removeRecentAssets(ids, urls)
     opts.onDeleted(ids)
@@ -76,8 +76,8 @@ export function useAssetDelete(opts: {
   async function runBatch(ids: number[], deleted: number[], skip: { official: number; missing: number }) {
     for (let i = 0; i < ids.length; i += BATCH_MAX) {
       const res = await assetLibBatchDelete(ids.slice(i, i + BATCH_MAX))
-      deleted.push(...(res.data?.deleted_ids ?? []))
-      skip.official += res.data?.official_skipped ?? 0
+      deleted.push(...(res.data?.deletedIds ?? []))
+      skip.official += res.data?.officialSkipped ?? 0
       skip.missing += res.data?.missing ?? 0
     }
   }

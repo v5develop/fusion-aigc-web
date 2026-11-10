@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /** 计费动作的进度 / 失败 / 完成提示条（编辑、多视图、图层共用） */
 import type { ActionPhase } from './useActionRun.ts'
-import { formatElapsed } from './imageActions.ts'
-import { ACTION_BTN, SPINNER, STATUS_ERR, STATUS_INFO, STATUS_OK } from './actionUi.ts'
+import { formatElapsed } from './image-actions.ts'
+import { ACTION_BTN, SPINNER, STATUS_ERR, STATUS_INFO, STATUS_OK } from './action-ui.ts'
 
 defineProps<{
   phase: ActionPhase

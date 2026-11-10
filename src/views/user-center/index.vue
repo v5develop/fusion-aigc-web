@@ -6,7 +6,7 @@
 import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getUserInfo } from '@/api/methods.ts'
-import { useUserInfoStore } from '@/stores/userInfo.ts'
+import { useUserInfoStore } from '@/stores/user-info.ts'
 import ProfileSection from './ProfileSection.vue'
 import SecuritySection from './SecuritySection.vue'
 import AccountSection from './AccountSection.vue'

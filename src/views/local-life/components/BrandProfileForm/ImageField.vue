@@ -7,7 +7,7 @@
  */
 import { onBeforeUnmount, ref } from 'vue'
 import { useMessage } from 'naive-ui'
-import { goUploadImage } from '@/api/goUpload.ts'
+import { goUploadImage } from '@/api/go-upload.ts'
 import { ACCEPT_IMAGE } from '@/utils/utils.ts'
 import IconButton from '@/components/IconButton/index.vue'
 
@@ -79,7 +79,9 @@ function removeAt(i: number) {
         :disabled="disabled"
         @click="removeAt(i)"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
       </IconButton>
     </div>
     <button
@@ -90,16 +92,11 @@ function removeAt(i: number) {
       class="h-64px w-64px flex cursor-pointer flex-col items-center justify-center gap-2px rounded-md border border-dashed border-line bg-white text-11px text-muted [font-family:inherit] hover:(border-violet-line text-violet-ink) disabled:cursor-not-allowed disabled:opacity-60 focus-visible:(outline outline-2 outline-offset-2 outline-violet)"
       @click="input?.click()"
     >
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
       {{ uploading ? '上传中' : '上传' }}
     </button>
-    <input
-      ref="input"
-      type="file"
-      class="hidden"
-      :accept="ACCEPT_IMAGE"
-      :multiple="max > 1"
-      @change="onPick"
-    />
+    <input ref="input" type="file" class="hidden" :accept="ACCEPT_IMAGE" :multiple="max > 1" @change="onPick" />
   </div>
 </template>

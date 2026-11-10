@@ -6,8 +6,8 @@
  */
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { llShopProfileList } from '@/api/localLife.ts'
-import type { ILShopProfile } from '@/api/localLifeTypes.ts'
+import { llShopProfileList } from '@/api/local-life.ts'
+import type { ILShopProfile } from '@/api/local-life-types.ts'
 
 const shopProfileId = defineModel<number | undefined>('value', { default: undefined })
 

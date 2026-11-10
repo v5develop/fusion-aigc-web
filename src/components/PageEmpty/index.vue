@@ -19,9 +19,15 @@ withDefaults(defineProps<{ text?: string; description?: string; compact?: boolea
 </script>
 
 <template>
-  <div class="flex h-full flex-col items-center justify-center text-center" :class="compact ? 'py-16px' : 'py-32px'" role="status">
+  <div
+    class="flex h-full flex-col items-center justify-center text-center"
+    :class="compact ? 'py-16px' : 'py-32px'"
+    role="status"
+  >
     <EmptyIllustration :class="compact ? 'w-137px h-73px' : 'w-274px h-146px max-w-full'" />
-    <p class="m-0 text-ink-2" :class="compact ? 'mt-10px text-13px leading-20px' : 'mt-16px text-15px leading-22px'">{{ text }}</p>
+    <p class="m-0 text-ink-2" :class="compact ? 'mt-10px text-13px leading-20px' : 'mt-16px text-15px leading-22px'">
+      {{ text }}
+    </p>
     <p v-if="description" class="m-0 mt-4px max-w-360px text-12px leading-18px text-muted">{{ description }}</p>
     <div v-if="$slots.default" class="mt-14px flex items-center gap-8px">
       <slot />

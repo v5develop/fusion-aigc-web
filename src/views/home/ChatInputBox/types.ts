@@ -43,7 +43,7 @@ export const ROUTE_TO_MODULE_CODE: Record<string, string> = {
 export interface SlotOption {
   label: string
   value: string
-  icon?: string   // 图标图片 URL（出于 XSS 考虑不支持内联 SVG 字符串）
+  icon?: string // 图标图片 URL（出于 XSS 考虑不支持内联 SVG 字符串）
 }
 
 /** 下拉选择 */

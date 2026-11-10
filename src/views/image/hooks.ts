@@ -1,6 +1,6 @@
 import { onScopeDispose, type Ref } from 'vue'
 import { useSessionIdStore } from '@/stores/e-commerce'
-import { useUserInfoStore } from '@/stores/userInfo'
+import { useUserInfoStore } from '@/stores/user-info'
 import { usePolling } from '@/utils/hooks/usePolling.ts'
 import { pollingTask } from '@/api/methods.ts'
 import { creationSubmit } from '@/api/methods.ts'

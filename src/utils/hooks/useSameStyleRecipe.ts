@@ -3,7 +3,7 @@ import { useRoute } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { sameStyleRecipe } from '@/api/methods'
 import type { ISameStyleRecipe } from '@/api/types'
-import { SAME_STYLE_SUBMIT_PATH } from '@/utils/sameStyle'
+import { SAME_STYLE_SUBMIT_PATH } from '@/utils/same-style'
 
 const first = (v: unknown): string => {
   const raw = Array.isArray(v) ? v[0] : v

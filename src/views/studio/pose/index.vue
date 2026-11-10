@@ -11,7 +11,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { studioSubmitPose } from '@/api/studio.ts'
-import type { StudioPosePayload, StudioPoseSubmitReq } from '@/api/studioTypes.ts'
+import type { StudioPosePayload, StudioPoseSubmitReq } from '@/api/studio-types.ts'
 import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.vue'
 import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ColorFixToggle from '../components/StudioSubmitBar/ColorFixToggle.vue'
@@ -23,7 +23,7 @@ import PosePairingPanel from './PosePairingPanel.vue'
 import { usePosePairing } from './usePosePairing.ts'
 import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import { MAX_POSE_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
-import { normalizeModelTier } from '@/utils/modelLabel'
+import { normalizeModelTier } from '@/utils/model-label'
 
 defineOptions({ name: 'studio-pose' })
 
@@ -36,10 +36,10 @@ const poseImages = ref<string[]>([])
 /** 逐张「动作补充」按 url 记：删掉中间一张姿势图，其余说明不会串位 */
 const poseNotes = reactive<Record<string, string>>({})
 const form = reactive({
-  global_prompt: '',
+  globalPrompt: '',
   model: '通用',
   resolution: '1k',
-  aspect_ratio: '3:4',
+  aspectRatio: '3:4',
 })
 
 /** 组装 pose_prompts：键为姿势下标字符串（从 0 起），空说明不下发 */
@@ -82,10 +82,10 @@ const { enabled: colorFix } = useColorFix()
 
 /** 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例）原样发给报价接口，拿不到价就不显示 */
 const { points: costPoints } = useStudioCost('pose', () => ({
-  pose_image_urls: poseImages.value,
+  poseImageUrls: poseImages.value,
   model: form.model || undefined,
   resolution: form.resolution || undefined,
-  aspect_ratio: form.aspect_ratio || undefined,
+  aspectRatio: form.aspectRatio || undefined,
 }))
 idem.bindForm(form, sourceImages, poseImages, poseNotes, pairing.state, colorFix)
 
@@ -116,15 +116,15 @@ async function submit() {
 
   const prompts = posePrompts.value
   const body: StudioPoseSubmitReq = {
-    source_image_url: sourceImages.value[0] ?? '',
-    pose_image_urls: [...poseImages.value],
-    global_prompt: form.global_prompt.trim() || undefined,
-    ...(Object.keys(prompts).length ? { pose_prompts: prompts } : {}),
+    sourceImageUrl: sourceImages.value[0] ?? '',
+    poseImageUrls: [...poseImages.value],
+    globalPrompt: form.globalPrompt.trim() || undefined,
+    ...(Object.keys(prompts).length ? { posePrompts: prompts } : {}),
     model: form.model || undefined,
     resolution: form.resolution || undefined,
-    aspect_ratio: form.aspect_ratio || undefined,
-    ...(pair ? { source_person_count: pair.sourcePersonCount, mappings: pair.mappings } : {}),
-    color_fix: colorFix.value,
+    aspectRatio: form.aspectRatio || undefined,
+    ...(pair ? { sourcePersonCount: pair.sourcePersonCount, mappings: pair.mappings } : {}),
+    colorFix: colorFix.value,
   }
 
   submitting.value = true
@@ -133,15 +133,15 @@ async function submit() {
     const res = await studioSubmitPose(body, { 'Idempotency-Key': idem.take() })
     idem.settle()
     const d = res.data
-    const points = d?.estimated_points
+    const points = d?.estimatedPoints
     message.success(
-      `已提交 ${d?.task_total ?? poseImages.value.length} 个复刻任务${points ? `，预估消耗 ${points} 点` : ''}${
+      `已提交 ${d?.taskTotal ?? poseImages.value.length} 个复刻任务${points ? `，预估消耗 ${points} 点` : ''}${
         d?.replayed ? '（幂等重放，返回原批次）' : ''
       }`,
     )
     for (const w of d?.warnings ?? []) message.warning(w)
     await shell.value?.refresh()
-    if (d?.batch_id) shell.value?.openBatch(d.batch_id)
+    if (d?.batchId) shell.value?.openBatch(d.batchId)
   } catch (err) {
     // 拦截器已 toast（3003 走引导购买弹框）；结果未知（网络 / 超时 / 5001）保留 key 进「重试生成」态，
     // 确定失败（参数错、点数不足等）清掉 key，充值或改参后再提交换新 key
@@ -160,22 +160,22 @@ function onReedit(payload: Record<string, unknown>) {
   poseImages.value = []
   Object.keys(poseNotes).forEach((k) => delete poseNotes[k])
 
-  sourceImages.value = p.source_image_url ? [p.source_image_url] : []
-  const poses = (Array.isArray(p.pose_image_urls) ? p.pose_image_urls : []).filter((u): u is string => !!u)
+  sourceImages.value = p.sourceImageUrl ? [p.sourceImageUrl] : []
+  const poses = (Array.isArray(p.poseImageUrls) ? p.poseImageUrls : []).filter((u): u is string => !!u)
   poseImages.value = poses
   // 快照里的单张说明按下标找回姿势图（按 url 记，避免后续删图串位）
-  for (const [k, v] of Object.entries(p.pose_prompts ?? {})) {
+  for (const [k, v] of Object.entries(p.posePrompts ?? {})) {
     const url = poses[Number(k)]
     if (url && typeof v === 'string') poseNotes[url] = v
   }
 
-  form.global_prompt = typeof p.global_prompt === 'string' ? p.global_prompt : ''
+  form.globalPrompt = typeof p.globalPrompt === 'string' ? p.globalPrompt : ''
   form.model = MODEL_OPTIONS.find((o) => o.value === normalizeModelTier(p.model))?.value ?? '通用'
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
-  form.aspect_ratio = typeof p.aspect_ratio === 'string' ? p.aspect_ratio : ''
+  form.aspectRatio = typeof p.aspectRatio === 'string' ? p.aspectRatio : ''
   pairing.restore(p, sourceImages.value, poseImages.value)
   // 默认校色跟着快照走（老快照没有这个字段 = 没开）
-  colorFix.value = p.color_fix === true
+  colorFix.value = p.colorFix === true
   // 回填是一次全新的提交：bindForm 的深度 watch 会作废旧 key，这里再兜一道
   idem.invalidate()
 }
@@ -205,7 +205,7 @@ function onReedit(payload: Record<string, unknown>) {
           <label for="pose-global-prompt" class="sr-only">补充说明</label>
           <textarea
             id="pose-global-prompt"
-            v-model="form.global_prompt"
+            v-model="form.globalPrompt"
             class="block w-full min-h-96px flex-1 box-border m-0 p-0 resize-none overflow-y-auto overscroll-contain border-none bg-transparent text-13px leading-20px text-ink-2 outline-none placeholder:text-placeholder"
             :maxlength="3000"
             :disabled="submitting"
@@ -216,8 +216,8 @@ function onReedit(payload: Record<string, unknown>) {
             <span
               id="pose-global-prompt-count"
               class="text-10px leading-14px tabular-nums select-none"
-              :class="form.global_prompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
-              >{{ form.global_prompt.length }} / 3000</span
+              :class="form.globalPrompt.length >= 3000 ? 'text-warning' : 'text-placeholder'"
+              >{{ form.globalPrompt.length }} / 3000</span
             >
             <ColorFixToggle v-model="colorFix" size="sm" :disabled="submitting" />
           </div>
@@ -252,7 +252,7 @@ function onReedit(payload: Record<string, unknown>) {
         <ModelSettings
           v-model:model="form.model"
           v-model:resolution="form.resolution"
-          v-model:aspect-ratio="form.aspect_ratio"
+          v-model:aspect-ratio="form.aspectRatio"
           auto-ratio
           kind="pose"
           :disabled="submitting"

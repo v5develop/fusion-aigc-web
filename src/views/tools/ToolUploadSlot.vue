@@ -15,12 +15,12 @@
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
-import { upload } from '@/api/ossUpload.ts'
+import { upload } from '@/api/oss-upload.ts'
 import { toApiError } from '@/api/index.ts'
 import StudioImageUpload from '@/views/studio/components/StudioImageUpload/index.vue'
-import AssetCornerButton from '@/components/creation/AssetCornerButton.vue'
-import ReferenceStrip from '@/components/creation/ReferenceStrip.vue'
-import ReferenceStripClassic from '@/components/creation/ReferenceStripClassic.vue'
+import AssetCornerButton from '@/components/Creation/AssetCornerButton.vue'
+import ReferenceStrip from '@/components/Creation/ReferenceStrip.vue'
+import ReferenceStripClassic from '@/components/Creation/ReferenceStripClassic.vue'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import MediaLightbox, { type LightboxItem } from '@/components/MediaLightbox/index.vue'
@@ -396,12 +396,12 @@ const seamCls = [
         : titled && mode === 'single'
           ? 'w-full flex flex-col flex-[1_1_auto]'
           : mode === 'single' || mode === 'batch'
-          ? ['w-full flex justify-center', !(urls.length && mode === 'single') && 'flex-[1_0_auto]']
-          : mode === 'video'
-            ? 'flex-1 min-h-[300px] flex'
-            : mode === 'anchor'
-              ? 'relative z-2 flex flex-col items-center gap-4px'
-              : ''
+            ? ['w-full flex justify-center', !(urls.length && mode === 'single') && 'flex-[1_0_auto]']
+            : mode === 'video'
+              ? 'flex-1 min-h-[300px] flex'
+              : mode === 'anchor'
+                ? 'relative z-2 flex flex-col items-center gap-4px'
+                : ''
     "
   >
     <div :class="showHeader ? 'll-label' : 'sr-only'">
@@ -505,75 +505,92 @@ const seamCls = [
       <p class="flex-none m-0 mx-auto text-12px font-500 leading-16px text-center text-ink-2" aria-hidden="true">
         {{ spec.label }}<span v-if="spec.required" class="text-danger"> *</span>
       </p>
-      <p v-if="unsupportedHint" class="flex-none m-0 text-center text-12px leading-18px text-muted">{{ unsupportedHint }}</p>
+      <p v-if="unsupportedHint" class="flex-none m-0 text-center text-12px leading-18px text-muted">
+        {{ unsupportedHint }}
+      </p>
       <div v-if="!urls.length" class="relative flex flex-col flex-[1_1_auto] min-h-200px">
-      <button
-        type="button"
-        class="relative flex flex-col flex-[1_1_auto] items-center justify-center gap-6px w-full min-h-200px box-border p-12px cursor-pointer motion-reduce:transition-none disabled:(cursor-not-allowed opacity-60)"
-        :class="[
-          focusRing,
-          singleZoneCls,
-          dragging
-            ? 'border-violet bg-violet-soft before:opacity-0'
-            : disabled || uploading
-              ? 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100'
-              : 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100 hover:(border-violet-line from-white to-#fbf7fd before:opacity-0)',
-        ]"
-        :disabled="disabled || uploading"
-        :aria-describedby="`${id}-hint`"
-        @click="pick"
-      >
-        <span class="relative grid flex-none w-64px h-72px place-items-center" aria-hidden="true" @pointerenter="playBall">
+        <button
+          type="button"
+          class="relative flex flex-col flex-[1_1_auto] items-center justify-center gap-6px w-full min-h-200px box-border p-12px cursor-pointer motion-reduce:transition-none disabled:(cursor-not-allowed opacity-60)"
+          :class="[
+            focusRing,
+            singleZoneCls,
+            dragging
+              ? 'border-violet bg-violet-soft before:opacity-0'
+              : disabled || uploading
+                ? 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100'
+                : 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100 hover:(border-violet-line from-white to-#fbf7fd before:opacity-0)',
+          ]"
+          :disabled="disabled || uploading"
+          :aria-describedby="`${id}-hint`"
+          @click="pick"
+        >
           <span
-            class="absolute left-1/2 bottom-2px z-1 w-[38.4px] h-[11.2px] ml-[-19.2px] rounded-full bg-[rgba(31,35,41,0.32)] blur-[7.2px] opacity-75 scale-x-85 scale-y-80 pointer-events-none motion-reduce:animate-none"
-            :class="ballPlaying ? 'animate-[tus-ball-ground_1300ms_both]' : ''"
-          />
-          <span class="relative z-2 w-48px h-48px motion-reduce:animate-none" :class="ballPlaying ? 'animate-[tus-ball-jump_1300ms_both]' : ''">
+            class="relative grid flex-none w-64px h-72px place-items-center"
+            aria-hidden="true"
+            @pointerenter="playBall"
+          >
             <span
-              class="absolute inset-0 box-border border border-solid border-[#dfe3e8] rounded-full bg-[radial-gradient(circle_at_50%_35%,#fff_0_55%,#fbfbfc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] origin-[50%_100%] motion-reduce:animate-none"
-              :class="ballPlaying ? 'animate-[tus-ball-shell_1300ms_both]' : ''"
+              class="absolute left-1/2 bottom-2px z-1 w-[38.4px] h-[11.2px] ml-[-19.2px] rounded-full bg-[rgba(31,35,41,0.32)] blur-[7.2px] opacity-75 scale-x-85 scale-y-80 pointer-events-none motion-reduce:animate-none"
+              :class="ballPlaying ? 'animate-[tus-ball-ground_1300ms_both]' : ''"
             />
-            <span class="absolute inset-0 z-1 grid place-items-center text-ink-2 pointer-events-none -translate-y-2px">
-              <svg
-                class="w-[35.2px] h-[35.2px] overflow-visible"
-                viewBox="-0.4 -0.56 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.6"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+            <span
+              class="relative z-2 w-48px h-48px motion-reduce:animate-none"
+              :class="ballPlaying ? 'animate-[tus-ball-jump_1300ms_both]' : ''"
+            >
+              <span
+                class="absolute inset-0 box-border border border-solid border-[#dfe3e8] rounded-full bg-[radial-gradient(circle_at_50%_35%,#fff_0_55%,#fbfbfc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] origin-[50%_100%] motion-reduce:animate-none"
+                :class="ballPlaying ? 'animate-[tus-ball-shell_1300ms_both]' : ''"
+              />
+              <span
+                class="absolute inset-0 z-1 grid place-items-center text-ink-2 pointer-events-none -translate-y-2px"
               >
-                <path d="M6.5 18a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.5 10.5a3.75 3.75 0 0 1 0 7.5z" />
-                <path d="M12 11v7" />
-                <path d="M9.5 13.5 12 11l2.5 2.5" />
-              </svg>
+                <svg
+                  class="w-[35.2px] h-[35.2px] overflow-visible"
+                  viewBox="-0.4 -0.56 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M6.5 18a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.5 10.5a3.75 3.75 0 0 1 0 7.5z" />
+                  <path d="M12 11v7" />
+                  <path d="M9.5 13.5 12 11l2.5 2.5" />
+                </svg>
+              </span>
             </span>
           </span>
-        </span>
-        <b class="text-13px font-600 leading-[1.4] text-ink">{{
-          uploading ? '上传中…' : (spec.title ?? `拖拽或点击上传${isVideo ? '视频' : '图片'}`)
-        }}</b>
-        <span v-if="spec.subtitle" class="text-11px leading-[1.5] text-muted">{{ spec.subtitle }}</span>
-        <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
-      </button>
-      <!-- 与投放按钮是兄弟节点（按钮里不能再套按钮）；样式与其它上传卡右上角那颗一致 -->
-      <button
-        v-if="canPickAsset"
-        type="button"
-        class="absolute right-10px top-10px z-30 h-32px box-border px-12px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
-        :class="focusRing"
-        :disabled="disabled || uploading"
-        :aria-label="`从资产库添加${spec.label}`"
-        @click="openAssetPicker"
-      >
-        从资产库添加
-      </button>
+          <b class="text-13px font-600 leading-[1.4] text-ink">{{
+            uploading ? '上传中…' : (spec.title ?? `拖拽或点击上传${isVideo ? '视频' : '图片'}`)
+          }}</b>
+          <span v-if="spec.subtitle" class="text-11px leading-[1.5] text-muted">{{ spec.subtitle }}</span>
+          <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
+        </button>
+        <!-- 与投放按钮是兄弟节点（按钮里不能再套按钮）；样式与其它上传卡右上角那颗一致 -->
+        <button
+          v-if="canPickAsset"
+          type="button"
+          class="absolute right-10px top-10px z-30 h-32px box-border px-12px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+          :class="focusRing"
+          :disabled="disabled || uploading"
+          :aria-label="`从资产库添加${spec.label}`"
+          @click="openAssetPicker"
+        >
+          从资产库添加
+        </button>
       </div>
       <div
         v-else
         class="relative grid flex-[1_1_auto] min-h-200px place-items-center overflow-hidden rounded-8px border border-solid border-line bg-surface3"
       >
-        <video v-if="isVideo" :src="urls[0]" class="block w-full h-full max-h-[340px] object-contain bg-black" controls preload="metadata" />
+        <video
+          v-if="isVideo"
+          :src="urls[0]"
+          class="block w-full h-full max-h-[340px] object-contain bg-black"
+          controls
+          preload="metadata"
+        />
         <img v-else :src="urls[0]" :alt="spec.label" class="block max-w-full max-h-[340px] object-contain" />
         <StudioMedBtn
           :label="`删除${spec.label}`"
@@ -581,18 +598,21 @@ const seamCls = [
           :disabled="disabled"
           @click="remove(0)"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
             <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
           </svg>
         </StudioMedBtn>
       </div>
       <div v-if="urls.length" class="flex-none flex flex-wrap items-center justify-center gap-8px">
-        <button
-          type="button"
-          :class="[smallBtnCls, focusRing]"
-          :disabled="disabled || uploading"
-          @click="pick"
-        >
+        <button type="button" :class="[smallBtnCls, focusRing]" :disabled="disabled || uploading" @click="pick">
           {{ uploading ? '上传中…' : isVideo ? '换一段' : '换一张' }}
         </button>
         <button
@@ -735,7 +755,11 @@ const seamCls = [
     <!-- 有图（batch / pipe）：60×100 白边浮片格；pipe 空态也走这里（4 个底图占位 + 添加格） -->
     <div
       v-else-if="mode === 'batch' || mode === 'pipe'"
-      :class="[bare && mode === 'pipe' ? 'relative w-full' : cardCls, mode === 'batch' ? 'flex-1 min-h-[640px]' : '', dragging && 'sx-drop']"
+      :class="[
+        bare && mode === 'pipe' ? 'relative w-full' : cardCls,
+        mode === 'batch' ? 'flex-1 min-h-[640px]' : '',
+        dragging && 'sx-drop',
+      ]"
     >
       <span :id="`${id}-hint`" class="sr-only">{{ hint }}</span>
       <button
@@ -893,14 +917,32 @@ const seamCls = [
           :aria-describedby="`${id}-hint`"
           @click="pick"
         >
-          <img v-if="urls[0]" :src="urls[0]" :alt="spec.label" class="block w-full h-full object-cover rounded-11px" draggable="false" />
+          <img
+            v-if="urls[0]"
+            :src="urls[0]"
+            :alt="spec.label"
+            class="block w-full h-full object-cover rounded-11px"
+            draggable="false"
+          />
           <span v-else class="flex flex-col items-center justify-center gap-4px w-full h-full">
-            <svg class="w-18px h-18px text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+            <svg
+              class="w-18px h-18px text-muted"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
               <path d="M12 5v14M5 12h14" />
             </svg>
             <span class="text-11px leading-14px">{{ uploading ? '上传中…' : `上传${spec.label}` }}</span>
           </span>
-          <span v-if="urls.length && uploading" class="absolute inset-0 grid place-items-center bg-white/60 text-11px text-ink-2">上传中…</span>
+          <span
+            v-if="urls.length && uploading"
+            class="absolute inset-0 grid place-items-center bg-white/60 text-11px text-ink-2"
+            >上传中…</span
+          >
         </button>
         <StudioMedBtn
           v-if="urls.length"
@@ -909,7 +951,15 @@ const seamCls = [
           :disabled="disabled"
           @click="remove(0)"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
             <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
           </svg>
         </StudioMedBtn>

@@ -265,7 +265,13 @@ function chipClass(on: boolean) {
       </p>
 
       <div v-if="loading" class="flex justify-center py-40px"><n-spin size="small" /></div>
-      <PageLoadError v-else-if="failed" compact :subtitle="failMsg || '模板加载失败，请稍后重试'" retryable @retry="reload" />
+      <PageLoadError
+        v-else-if="failed"
+        compact
+        :subtitle="failMsg || '模板加载失败，请稍后重试'"
+        retryable
+        @retry="reload"
+      />
       <PageEmpty
         v-else-if="!items.length"
         compact

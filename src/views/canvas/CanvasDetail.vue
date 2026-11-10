@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { modelLabelOf } from '@/utils/modelLabel'
+import { modelLabelOf } from '@/utils/model-label'
 /**
  * 画布详情侧抽屉：基础信息（title / revision / 节点数 / 封面 / 更新时间）
  * + 快照节点数 + 运行历史（最近 50 条，状态徽标）。
  * 只读展示：画布编辑器规划中，本抽屉不做节点编辑。
  */
 import { ref, watch } from 'vue'
-import { canvasGet, canvasRuns } from '@/api/canvasHome.ts'
-import type { ICanvasDetail, ICanvasRunResult } from '@/api/canvasHome.ts'
+import { canvasGet, canvasRuns } from '@/api/canvas-home.ts'
+import type { ICanvasDetail, ICanvasRunResult } from '@/api/canvas-home.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 
@@ -74,7 +74,7 @@ function formatTime(ms?: number) {
       <div class="min-h-200px" v-loading="loading">
         <template v-if="detail">
           <div class="h-180px rounded-10px overflow-hidden bg-violet-soft border border-violet-line mb-14px">
-            <img v-if="detail.cover_url" :src="detail.cover_url" alt="" class="block w-full h-full object-cover" />
+            <img v-if="detail.coverUrl" :src="detail.coverUrl" alt="" class="block w-full h-full object-cover" />
             <div v-else class="h-full flex items-center justify-center text-13px text-violet-ink">暂无封面</div>
           </div>
 
@@ -98,31 +98,31 @@ function formatTime(ms?: number) {
               class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0"
             >
               <span class="shrink-0 w-60px text-muted">节点数</span>
-              <span class="text-ink break-all">{{ detail.node_count }}（快照 {{ snapshotNodeCount() ?? '-' }}）</span>
+              <span class="text-ink break-all">{{ detail.nodeCount }}（快照 {{ snapshotNodeCount() ?? '-' }}）</span>
             </div>
             <div
               class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0"
             >
               <span class="shrink-0 w-60px text-muted">创建时间</span>
-              <span class="text-ink break-all">{{ formatTime(detail.created_at) }}</span>
+              <span class="text-ink break-all">{{ formatTime(detail.createdAt) }}</span>
             </div>
             <div
               class="flex items-baseline gap-12px py-7px border-b border-dashed border-line text-13px last:border-b-0"
             >
               <span class="shrink-0 w-60px text-muted">更新时间</span>
-              <span class="text-ink break-all">{{ formatTime(detail.updated_at) }}</span>
+              <span class="text-ink break-all">{{ formatTime(detail.updatedAt) }}</span>
             </div>
           </div>
 
           <div class="text-14px font-600 text-ink mb-10px">运行历史（最近 {{ runs.length }} 条）</div>
           <div v-if="runs.length" class="flex flex-col gap-8px">
-            <div v-for="r in runs" :key="r.run_id" class="bg-surface2 border border-line rounded-8px px-12px py-10px">
+            <div v-for="r in runs" :key="r.runId" class="bg-surface2 border border-line rounded-8px px-12px py-10px">
               <div class="flex items-center gap-10px text-12px">
                 <span class="ll-chip" :class="statusChip(r.status).cls">{{ statusChip(r.status).label }}</span>
                 <span class="text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap">{{
                   modelLabelOf(r.model) || '未指定模型'
                 }}</span>
-                <span class="ml-auto shrink-0 text-placeholder">{{ formatTime(r.created_at) }}</span>
+                <span class="ml-auto shrink-0 text-placeholder">{{ formatTime(r.createdAt) }}</span>
                 <span v-if="r.status === 'running' || r.status === 'queued'" class="shrink-0 text-violet-ink"
                   >{{ r.progress }}%</span
                 >

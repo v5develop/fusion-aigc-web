@@ -87,9 +87,14 @@ const CHIP: Record<Status, string> = {
     >
       <h2 id="ll-intro-title" class="m-0 text-14px font-600 leading-[1.55] text-ink">功能介绍</h2>
       <p class="m-0 text-13px leading-[1.65] text-ink-2">{{ intro.desc }}</p>
-      <div class="sx-squircle flex flex-col gap-[5.5px] p-10px rounded-12px border border-solid border-line-soft bg-surface2">
+      <div
+        class="sx-squircle flex flex-col gap-[5.5px] p-10px rounded-12px border border-solid border-line-soft bg-surface2"
+      >
         <h3 id="ll-intro-scenes" class="m-0 text-13px font-500 leading-[1.55] text-ink">适用场景</h3>
-        <ul class="m-0 p-0 list-none flex flex-col gap-[5.5px] text-13px leading-[1.55] text-ink-2" aria-labelledby="ll-intro-scenes">
+        <ul
+          class="m-0 p-0 list-none flex flex-col gap-[5.5px] text-13px leading-[1.55] text-ink-2"
+          aria-labelledby="ll-intro-scenes"
+        >
           <li v-for="sc in intro.scenes" :key="sc">{{ sc }}</li>
         </ul>
       </div>
@@ -103,7 +108,9 @@ const CHIP: Record<Status, string> = {
     </div>
 
     <template v-else>
-      <header class="flex-none flex items-center gap-8px min-h-56px px-16px py-12px box-border border-b border-b-solid border-b-line-soft">
+      <header
+        class="flex-none flex items-center gap-8px min-h-56px px-16px py-12px box-border border-b border-b-solid border-b-line-soft"
+      >
         <div class="min-w-0 flex-1 flex flex-col gap-2px">
           <h2 class="m-0 truncate text-14px font-600 leading-20px text-ink" :title="title">{{ title }}</h2>
           <span class="flex items-center gap-8px min-w-0 text-11px leading-16px text-muted tabular-nums">
@@ -114,7 +121,14 @@ const CHIP: Record<Status, string> = {
         </div>
         <span class="flex-none flex items-center gap-8px">
           <IconButton v-if="status === 'success' && video" label="下载视频" :href="video" target="_blank" download>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
             </svg>
           </IconButton>
@@ -199,7 +213,14 @@ const CHIP: Record<Status, string> = {
                         variant="overlay"
                         @click="fx.download()"
                       >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.8"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
                           <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
                         </svg>
                       </IconButton>

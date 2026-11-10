@@ -19,7 +19,7 @@
  */
 import { tools, type ToolItem } from '@/views/home/tools'
 import { workflowRouteOf } from '@/views/workflow/schemas'
-import { localLifeLanding, localLifeBannerTools } from '@/views/local-life/landingData'
+import { localLifeLanding, localLifeBannerTools } from '@/views/local-life/landing-data'
 
 export interface LandingTool {
   /** 注册表 id；注册表没有的条目用本地 id，仅作 key */

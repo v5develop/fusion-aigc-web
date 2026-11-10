@@ -16,7 +16,7 @@ import { useRoute, useRouter } from 'vue-router'
 import IconButton from '@/components/IconButton/index.vue'
 import { NConfigProvider, NPopover, useMessage } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
-import type { StudioBatchDetail, StudioKind } from '@/api/studioTypes.ts'
+import type { StudioBatchDetail, StudioKind } from '@/api/studio-types.ts'
 import { useStudioHistory } from '../../hooks.ts'
 import { isBatchTerminal } from '../../constants.ts'
 import StudioHistoryColumn from '../StudioHistoryColumn/index.vue'
@@ -142,7 +142,7 @@ function selectBatch(id: number) {
 watch(
   () => {
     const d = detail.value
-    return d ? { id: d.batch.id, status: d.batch.status, reason: d.batch.error_reason } : null
+    return d ? { id: d.batch.id, status: d.batch.status, reason: d.batch.errorReason } : null
   },
   (now, was) => {
     if (!now || !was || now.id !== was.id) return
@@ -211,7 +211,7 @@ defineExpose({
                 class="relative mx-12px mt-12px flex h-64px box-border flex-none items-center gap-8px rounded-10px border border-solid border-#e9dff2 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7fe_100%)] pl-8px pr-14px py-12px shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
               >
                 <IconButton label="返回 AI 图片" variant="quiet" @click="back">
-<svg
+                  <svg
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -221,7 +221,7 @@ defineExpose({
                   >
                     <path d="M19 12H5M11 18l-6-6 6-6" />
                   </svg>
-</IconButton>
+                </IconButton>
                 <button
                   type="button"
                   class="flex h-40px min-w-0 flex-1 cursor-pointer items-center gap-12px border-none bg-transparent p-0 text-left hover:opacity-82 sx-focus"
@@ -292,16 +292,10 @@ defineExpose({
                 >
                   <span class="text-13px font-600 leading-20px text-muted">切换功能</span>
                   <IconButton label="关闭" variant="quiet" @click="switchOpen = false">
-<svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                    >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                       <path d="M18 6 6 18M6 6l12 12" />
                     </svg>
-</IconButton>
+                  </IconButton>
                 </div>
                 <div class="grid grid-cols-3 gap-2px px-8px pb-16px pt-4px">
                   <button

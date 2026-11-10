@@ -7,14 +7,14 @@ export interface IVideoItem {
 </script>
 
 <script setup lang="ts">
-import { upload } from '@/api/ossUpload.ts'
+import { upload } from '@/api/oss-upload.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import { ACCEPT_VIDEO } from '@/utils/utils'
 import { useDialog, useMessage } from 'naive-ui'
 import { computed, defineAsyncComponent, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
-import { mapWithConcurrency, useUploadBusyReporter } from '@/components/uploadBusy'
+import { mapWithConcurrency, useUploadBusyReporter } from '@/components/upload-busy'
 import {
   UPLOAD_ENTRY_ASSET_LABEL,
   badgeClass,
@@ -24,7 +24,7 @@ import {
   type ResolvedUploadBadge,
   type UploadBadgeInput,
   type UploadBadgeVisibility,
-} from '../ImageUpload/uploadBadges.ts'
+} from '../ImageUpload/upload-badges.ts'
 
 // 资产库选择弹窗按需加载：只有开了 fromAsset 角标的页面才会用到
 const AssetPickerModal = defineAsyncComponent(() => import('@/views/studio/components/AssetPickerModal/index.vue'))
@@ -319,9 +319,7 @@ const openPreview = (index: number) => {
 // 资产库：index = -1 表示追加，否则替换该条
 const assetShow = ref(false)
 const assetIndex = ref(-1)
-const assetLimit = computed(() =>
-  assetIndex.value >= 0 ? 1 : Math.max(1, (limitNumber ?? 1) - occupied.value),
-)
+const assetLimit = computed(() => (assetIndex.value >= 0 ? 1 : Math.max(1, (limitNumber ?? 1) - occupied.value)))
 const openAsset = (index: number) => {
   if (busy.value) return
   if (index < 0 && occupied.value >= limit.value) return warnFull()
@@ -570,12 +568,7 @@ const MASK_BTN =
       </template>
 
       <!-- 视频上传后展示区域 -->
-      <div
-        class="mt-16px w-full gap-8px px-12px"
-        :class="listClass"
-        :style="listStyle"
-        v-if="occupied > 0"
-      >
+      <div class="mt-16px w-full gap-8px px-12px" :class="listClass" :style="listStyle" v-if="occupied > 0">
         <div :class="ROW" v-for="(item, i) in localVideoList" :key="item.url">
           <!-- #tile：已传视频；作用域 { item, index, remove, replace, preview } -->
           <slot
@@ -647,7 +640,12 @@ const MASK_BTN =
           </div>
           <div v-else :class="STATUS_MASK" role="alert">
             <span>上传失败</span>
-            <button type="button" :class="MASK_BTN" :aria-label="`重试上传 ${p.file.name}`" @click.stop="retryPending(p.id)">
+            <button
+              type="button"
+              :class="MASK_BTN"
+              :aria-label="`重试上传 ${p.file.name}`"
+              @click.stop="retryPending(p.id)"
+            >
               重试
             </button>
             <button type="button" :class="MASK_BTN" aria-label="移除上传失败的视频" @click.stop="dropPending(p.id)">

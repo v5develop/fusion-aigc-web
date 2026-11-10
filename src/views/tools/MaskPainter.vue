@@ -279,7 +279,13 @@ function onKeydown(e: KeyboardEvent) {
   if (!hasStroke.value || !rootRef.value?.offsetParent) return
   const t = e.target as HTMLElement | null
   // 文本输入里的 Ctrl+Z 归输入框自己
-  if (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'range'))) return
+  if (
+    t &&
+    (t.isContentEditable ||
+      t.tagName === 'TEXTAREA' ||
+      (t.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'range'))
+  )
+    return
   e.preventDefault()
   undo()
 }
@@ -335,11 +341,20 @@ defineExpose({ exportMask, clear, undo })
           aria-hidden="true"
           title="笔尖预览"
         >
-          <i class="block rounded-full" :style="{ width: `${tipSize}px`, height: `${tipSize}px`, background: MASK_COLOR, opacity: MASK_OPACITY }" />
+          <i
+            class="block rounded-full"
+            :style="{ width: `${tipSize}px`, height: `${tipSize}px`, background: MASK_COLOR, opacity: MASK_OPACITY }"
+          />
         </span>
-        <output class="w-28px flex-none text-right text-12px tabular-nums text-ink-3" for="mask-brush">{{ brush }}</output>
+        <output class="w-28px flex-none text-right text-12px tabular-nums text-ink-3" for="mask-brush">{{
+          brush
+        }}</output>
       </div>
-      <div class="inline-flex overflow-hidden rounded-8px border border-solid border-line" role="group" aria-label="缩放">
+      <div
+        class="inline-flex overflow-hidden rounded-8px border border-solid border-line"
+        role="group"
+        aria-label="缩放"
+      >
         <button
           v-for="o in zoomOptions"
           :key="o.value"
@@ -352,7 +367,11 @@ defineExpose({ exportMask, clear, undo })
           {{ o.label }}
         </button>
       </div>
-      <div class="inline-flex overflow-hidden rounded-8px border border-solid border-line" role="group" aria-label="工具">
+      <div
+        class="inline-flex overflow-hidden rounded-8px border border-solid border-line"
+        role="group"
+        aria-label="工具"
+      >
         <button
           type="button"
           class="inline-flex min-h-32px min-w-44px cursor-pointer items-center gap-4px border-0 px-10px text-13px focus-visible:(outline-2 outline-solid outline-violet -outline-offset-2)"
@@ -361,7 +380,20 @@ defineExpose({ exportMask, clear, undo })
           title="在图上涂抹要消除的区域"
           @click="tool = 'brush'"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L11 15.8 8 16l.2-3z" /><path d="M7 17c-2 0-3 1.5-3 3.5V21h.5C6.5 21 8 20 8 18" /></svg>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L11 15.8 8 16l.2-3z" />
+            <path d="M7 17c-2 0-3 1.5-3 3.5V21h.5C6.5 21 8 20 8 18" />
+          </svg>
           涂抹
         </button>
         <button
@@ -372,7 +404,19 @@ defineExpose({ exportMask, clear, undo })
           :title="coarse ? '滑动页面 / 拖动画面' : '拖动画面（也可按住鼠标中键拖动）'"
           @click="tool = 'move'"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20" /></svg>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20" />
+          </svg>
           移动
         </button>
       </div>
@@ -383,7 +427,20 @@ defineExpose({ exportMask, clear, undo })
         title="撤销（Ctrl/⌘+Z）"
         @click="undo"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 010 12h-3" /></svg>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M9 14L4 9l5-5" />
+          <path d="M4 9h10a6 6 0 010 12h-3" />
+        </svg>
         撤销
       </button>
       <button
@@ -392,13 +449,30 @@ defineExpose({ exportMask, clear, undo })
         :disabled="!hasStroke"
         @click="clear"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9 9l6 6M15 9l-6 6" /></svg>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M9 9l6 6M15 9l-6 6" />
+        </svg>
         清空
       </button>
     </div>
 
     <p v-if="coarse" class="m-0 text-12px leading-18px text-muted">
-      {{ tool === 'brush' ? '涂抹中：手指在图上涂；要滑动页面先切「移动」' : '先点「涂抹」再在图上涂；「移动」状态下可直接滑动页面' }}
+      {{
+        tool === 'brush'
+          ? '涂抹中：手指在图上涂；要滑动页面先切「移动」'
+          : '先点「涂抹」再在图上涂；「移动」状态下可直接滑动页面'
+      }}
     </p>
     <div class="relative mx-auto max-w-full">
       <div
@@ -451,7 +525,12 @@ defineExpose({ exportMask, clear, undo })
         <img :src="src" class="block h-auto w-full select-none" alt="整图缩略" draggable="false" />
         <span
           class="pointer-events-none absolute border border-solid border-violet-line bg-violet-soft"
-          :style="{ left: `${viewBox.left}%`, top: `${viewBox.top}%`, width: `${viewBox.width}%`, height: `${viewBox.height}%` }"
+          :style="{
+            left: `${viewBox.left}%`,
+            top: `${viewBox.top}%`,
+            width: `${viewBox.width}%`,
+            height: `${viewBox.height}%`,
+          }"
         />
       </div>
     </div>

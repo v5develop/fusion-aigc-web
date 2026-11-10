@@ -2,7 +2,7 @@
 
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { MultiWatchSources, Ref } from 'vue'
-import { useUserInfoStore } from '@/stores/userInfo.ts'
+import { useUserInfoStore } from '@/stores/user-info.ts'
 import {
   studioBatchDetail,
   studioHistory,
@@ -16,7 +16,7 @@ import type {
   StudioKind,
   StudioPoseQuoteReq,
   StudioTryonQuoteReq,
-} from '@/api/studioTypes.ts'
+} from '@/api/studio-types.ts'
 import { createSafeUuid } from '@/utils/utils.ts'
 import { isBatchTerminal } from './constants.ts'
 import { toApiError } from '@/api'
@@ -172,12 +172,12 @@ export function useStudioHistory(
 
   async function fetchPage(cursor: string): Promise<{ list: StudioBatchDetail[]; next: string }> {
     const res = await studioHistory({ kind: kind || undefined, cursor: cursor || undefined, limit })
-    return { list: res.data?.list ?? [], next: res.data?.next_cursor ?? '' }
+    return { list: res.data?.list ?? [], next: res.data?.nextCursor ?? '' }
   }
 
   /** 列表排序口径（与服务端一致：created_at DESC, id DESC）：a 是否排在 b 前面 */
   const newer = (a: StudioBatchDetail, b: StudioBatchDetail) =>
-    a.batch.created_at !== b.batch.created_at ? a.batch.created_at > b.batch.created_at : a.batch.id > b.batch.id
+    a.batch.createdAt !== b.batch.createdAt ? a.batch.createdAt > b.batch.createdAt : a.batch.id > b.batch.id
 
   /**
    * 首屏 / 手动刷新（提交成功、取消、删除、重试后调用）。

@@ -14,7 +14,11 @@ import { COLORFIX_MASK_LOAD_FAILED } from '@/utils/colorfix.ts'
 /** 点选弹窗（含本机分割模型）懒加载：选「点选」之前不下载这块代码 */
 const PointSelect = defineAsyncComponent(() => import('./PointSelect.vue'))
 
-const { cf, title = '图片校色', localAdjust = true } = defineProps<{
+const {
+  cf,
+  title = '图片校色',
+  localAdjust = true,
+} = defineProps<{
   cf: ResultColorFix
   title?: string
   /** 显示「选区」（局部调色）区块 */
@@ -30,7 +34,8 @@ const maskHint = computed(() => {
   if (r.mode === 'paint' && cf.paintedVolatile.value) return '选区较大，只在本次浏览中保留'
   if (r.mode === 'point' && !cf.pointMask.value) return cf.pointBlocked.value || '还没有点选选区，点「点选区域」开始'
   if (r.mode === 'point' && cf.pointVolatile.value) return '选区较大，只在本次浏览中保留'
-  if (r.mode !== 'whole' && cf.failed.value) return cf.maskLoadFailed.value ? COLORFIX_MASK_LOAD_FAILED : '选区校色未能生成，已显示原图'
+  if (r.mode !== 'whole' && cf.failed.value)
+    return cf.maskLoadFailed.value ? COLORFIX_MASK_LOAD_FAILED : '选区校色未能生成，已显示原图'
   return ''
 })
 

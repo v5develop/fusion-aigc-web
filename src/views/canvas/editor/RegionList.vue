@@ -4,9 +4,9 @@
  * editable = 图片编辑面板：标签可改（会拼进提示词），可把区域插入提示词。
  */
 import EditorIcon from './EditorIcon.vue'
-import type { IActionRegion } from './imageActions.ts'
-import { identifyRegion, removeRegion } from './imageActions.ts'
-import { ACTION_RING, REGION_BADGE, SPINNER } from './actionUi.ts'
+import type { IActionRegion } from './image-actions.ts'
+import { identifyRegion, removeRegion } from './image-actions.ts'
+import { ACTION_RING, REGION_BADGE, SPINNER } from './action-ui.ts'
 
 defineProps<{
   regions: IActionRegion[]

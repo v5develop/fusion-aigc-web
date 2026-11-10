@@ -3,10 +3,10 @@ import type { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axio
 import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
 import { refreshToken, getAuthToken } from '@/api/union'
-import { adoptSession, isAccountVerified, markAccountVerified, saveTokens } from '@/utils/authSession'
-import { clearRecentAssets } from '@/utils/assetRecent'
-import { resolveUnionToken } from '@/utils/unionBridge'
-import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billingGuide'
+import { adoptSession, isAccountVerified, markAccountVerified, saveTokens } from '@/utils/auth-session'
+import { clearRecentAssets } from '@/utils/asset-recent'
+import { resolveUnionToken } from '@/utils/union-bridge'
+import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billing-guide'
 
 const { message } = createDiscreteApi(['message'])
 const refreshTokenApi = '/api/v1/auth/refresh'
@@ -331,7 +331,7 @@ function logoutToLogin() {
     // hash 跳转不重载页面，内存里的用户信息得手动清，否则旧账号的积分/头像会一直挂在导航栏。
     // 用动态 import 而不是顶层 import：stores/userInfo → api/methods → api/index 是一条环，
     // 静态引入会把它闭合成循环依赖
-    void import('@/stores/userInfo').then(({ useUserInfoStore }) => useUserInfoStore().reset()).catch(() => {})
+    void import('@/stores/user-info').then(({ useUserInfoStore }) => useUserInfoStore().reset()).catch(() => {})
     window.location.hash = '#/login'
     // hash 跳转不重载页面，复位门闩以便下次会话过期仍能登出
     setTimeout(() => {

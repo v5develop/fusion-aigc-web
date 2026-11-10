@@ -9,21 +9,33 @@
  * 三页默认都从 3:4 起（原型默认「3:4 · 1K · 1 张」）；imagegen 无自动档。没绑 v-model:count 就不出张数行（姿态复刻没有张数）。
  */
 import { computed, watch } from 'vue'
-import CreationSettingsRow from '@/components/creation/CreationSettingsRow.vue'
-import CreationModelPicker from '@/components/creation/CreationModelPicker.vue'
-import CreationImageSettings from '@/components/creation/CreationImageSettings.vue'
+import CreationSettingsRow from '@/components/Creation/CreationSettingsRow.vue'
+import CreationModelPicker from '@/components/Creation/CreationModelPicker.vue'
+import CreationImageSettings from '@/components/Creation/CreationImageSettings.vue'
 import {
   creationSettingsSummary,
   type CreationSettingsConfig,
   type CreationSettingsRowItem,
   type CreationSettingsValue,
-} from '@/components/creation/types'
-import { MODEL_OPTIONS, displayModelLabel, RESOLUTION_OPTIONS, ASPECT_RATIO_OPTIONS, COUNT_OPTIONS } from '../../constants.ts'
-import type { StudioKind } from '@/api/studioTypes.ts'
+} from '@/components/Creation/types'
+import {
+  MODEL_OPTIONS,
+  displayModelLabel,
+  RESOLUTION_OPTIONS,
+  ASPECT_RATIO_OPTIONS,
+  COUNT_OPTIONS,
+} from '../../constants.ts'
+import type { StudioKind } from '@/api/studio-types.ts'
 import { useStudioModels } from './useStudioModels.ts'
-import { normalizeModelTier } from '@/utils/modelLabel'
+import { normalizeModelTier } from '@/utils/model-label'
 
-const { autoRatio = false, countLabel, countHint, disabled = false, kind } = defineProps<{
+const {
+  autoRatio = false,
+  countLabel,
+  countHint,
+  disabled = false,
+  kind,
+} = defineProps<{
   /** 取模型档能力用的 kind；不传按 autoRatio 推断（有「自动」档 = tryon / pose，否则 imagegen） */
   kind?: StudioKind
   /** 提交中锁定两枚设置钮 */
@@ -72,8 +84,8 @@ function narrow<T extends { value: string }>(all: T[], allowed: string[] | undef
 }
 const resolutionOptions = computed(() => narrow(RESOLUTION_OPTIONS, currentCap.value?.resolutions))
 const ratioOptions = computed(() => {
-  const base = narrow(ASPECT_RATIO_OPTIONS, currentCap.value?.aspect_ratios)
-  return autoRatio && (currentCap.value?.auto_aspect ?? true) ? [{ label: '自动', value: '' }, ...base] : base
+  const base = narrow(ASPECT_RATIO_OPTIONS, currentCap.value?.aspectRatios)
+  return autoRatio && (currentCap.value?.autoAspect ?? true) ? [{ label: '自动', value: '' }, ...base] : base
 })
 // 换模型（或能力刚拉到）后，当前分辨率 / 比例不在新模型的可选项里：自动落到第一个可选项
 watch(

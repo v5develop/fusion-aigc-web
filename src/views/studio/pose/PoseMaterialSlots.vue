@@ -16,7 +16,7 @@ import { useFileDropPaste } from '@/composables/useFileDropPaste'
 import AssetPickerModal from '../components/AssetPickerModal/index.vue'
 import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
 import { useStudioUploader } from '../components/StudioImageUpload/useStudioUploader.ts'
-import { MIN_SHORT_SIDE } from '../imageSize.ts'
+import { MIN_SHORT_SIDE } from '../image-size.ts'
 
 const { max = 9, disabled = false } = defineProps<{
   /** 姿势图上限 */

@@ -9,11 +9,11 @@
  * limit=1 时点一张即选中并关闭；多选时点「使用」确认。
  */
 import { computed, ref, watch } from 'vue'
-import { assetLibCategories, assetLibList } from '@/api/assetLibrary.ts'
-import type { IAssetLibAsset, IAssetLibCategory } from '@/api/assetLibrary.ts'
+import { assetLibCategories, assetLibList } from '@/api/asset-library.ts'
+import type { IAssetLibAsset, IAssetLibCategory } from '@/api/asset-library.ts'
 import { useDebounce } from '@/utils/hooks/index.ts'
-import { readRecentAssets, writeRecentAssets, RECENT_MAX } from '@/utils/assetRecent.ts'
-import type { IRecentAsset } from '@/utils/assetRecent.ts'
+import { readRecentAssets, writeRecentAssets, RECENT_MAX } from '@/utils/asset-recent.ts'
+import type { IRecentAsset } from '@/utils/asset-recent.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 
@@ -45,7 +45,13 @@ const writeRecent = writeRecentAssets
 const recentMode = ref(false)
 const recent = ref<IRecent[]>([])
 const recentShown = computed(() => recent.value.filter((r) => r.media === media))
-const toRecent = (a: IAssetLibAsset): IRecent => ({ id: String(a.id), url: pickUrl(a), media, title: a.title ?? '', ...(isHttp(a.image) ? { poster: a.image } : {}) })
+const toRecent = (a: IAssetLibAsset): IRecent => ({
+  id: String(a.id),
+  url: pickUrl(a),
+  media,
+  title: a.title ?? '',
+  ...(isHttp(a.image) ? { poster: a.image } : {}),
+})
 function pushRecent(added: IRecent[]) {
   const urls = new Set(added.map((r) => r.url))
   recent.value = [...added, ...readRecent().filter((r) => !urls.has(r.url))].slice(0, RECENT_MAX)
@@ -74,7 +80,7 @@ const hasMore = computed(() => items.value.length < total.value)
 const isVideoMode = computed(() => media === 'video')
 const mediaWord = computed(() => (isVideoMode.value ? '视频' : '图片'))
 /** 交回调用方的地址：图片取 image，视频取 video_url（image 是封面） */
-const pickUrl = (a: IAssetLibAsset) => (isVideoMode.value ? a.video_url : a.image)
+const pickUrl = (a: IAssetLibAsset) => (isVideoMode.value ? a.videoUrl : a.image)
 
 async function fetchPage(reset: boolean) {
   if (!show.value) return
@@ -94,7 +100,7 @@ async function fetchPage(reset: boolean) {
       media,
       q: keyword.value.trim().slice(0, 100) || undefined,
       page: page.value,
-      page_size: PAGE_SIZE,
+      pageSize: PAGE_SIZE,
     })
     if (my !== seq) return
     const list = (res.data?.items ?? []).filter((a) => a.media === media && isHttp(pickUrl(a)))
@@ -220,8 +226,9 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
             class="ll-pill !min-h-32px !text-13px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
             :class="{ 'll-pill-active': recentMode }"
             @click="recentMode = true"
-            >最近</button
           >
+            最近
+          </button>
           <button
             v-for="s in SOURCES"
             :key="s.key"
@@ -229,8 +236,9 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
             class="ll-pill !min-h-32px !text-13px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
             :class="{ 'll-pill-active': !recentMode && source === s.key }"
             @click="((recentMode = false), (source = s.key))"
-            >{{ s.label }}</button
           >
+            {{ s.label }}
+          </button>
         </div>
         <n-input
           v-if="!recentMode"
@@ -324,7 +332,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
             <video
               v-else
               class="block w-full h-full object-cover pointer-events-none"
-              :src="a.video_url"
+              :src="a.videoUrl"
               preload="metadata"
               muted
               playsinline

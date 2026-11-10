@@ -15,7 +15,11 @@ const BTN =
 </script>
 
 <template>
-  <nav v-if="total > 0" class="flex items-center justify-center gap-12px pt-20px pb-4px text-12px text-muted" aria-label="分页">
+  <nav
+    v-if="total > 0"
+    class="flex items-center justify-center gap-12px pt-20px pb-4px text-12px text-muted"
+    aria-label="分页"
+  >
     <template v-if="pageCount > 1">
       <button type="button" :class="BTN" :disabled="disabled || page <= 1" @click="page -= 1">上一页</button>
       <span class="tabular-nums" aria-live="polite">第 {{ page }} / {{ pageCount }} 页 · 共 {{ total }} 个</span>

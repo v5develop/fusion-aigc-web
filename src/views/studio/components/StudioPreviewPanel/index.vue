@@ -14,7 +14,7 @@
  *
  * <p>校色（商拍换装 / 姿态复刻 / 图片生成）：参数台编辑 useColorFix 单例里的 params；切任务时按任务还原参数
  * （colorfix/persist.ts），**不改**输入区的提交开关 enabled（胶囊用 openPanelOnly）——这一批结果是否校色只看它提交时的
- * `payload.color_fix`，或这张图保存过参数 / 本次调过 / 参数台开着。参数台开着时切到别的任务，新任务直接进校色态并套用
+ * `payload.colorFix`，或这张图保存过参数 / 本次调过 / 参数台开着。参数台开着时切到别的任务，新任务直接进校色态并套用
  * 它自己的参数（面板数值与舞台一致）。用户打开过参数台、调过参数或点过候选后，选中的任务就钉住，轮询带来的新成品
  * 不会把舞台切走。显示、灯箱、对比右侧、下载、存资产都用烘进像素的图（colorfix/useColorFixBake.ts），
  * CSS filter 只在烘好之前做即时预览。
@@ -48,21 +48,36 @@ import {
   type ColorFixRegion,
   type ColorFixRegionMode,
 } from '@/components/ColorFix/index.ts'
-import { loadPaintedMask, loadRegion, savePaintedMask, saveRegion } from '@/components/ColorFix/maskStore.ts'
-import { goUploadImage } from '@/api/goUpload.ts'
-import { assetLibAddVersion } from '@/api/assetLibrary.ts'
-import type { StudioBatchDetail, StudioTask } from '@/api/studioTypes.ts'
+import { loadPaintedMask, loadRegion, savePaintedMask, saveRegion } from '@/components/ColorFix/mask-store.ts'
+import { goUploadImage } from '@/api/go-upload.ts'
+import { assetLibAddVersion } from '@/api/asset-library.ts'
+import type { StudioBatchDetail, StudioTask } from '@/api/studio-types.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import type { LightboxItem } from '@/components/MediaLightbox/index.vue'
 import ToolImageCompare from '@/views/tools/ToolImageCompare.vue'
 import ColorFixPanel from '@/views/tools/ColorFixPanel.vue'
-import { COLORFIX_DEFAULT, COLORFIX_MASK_LOAD_FAILED, colorFixDataUrlToFile, colorFixEquals, corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
+import {
+  COLORFIX_DEFAULT,
+  COLORFIX_MASK_LOAD_FAILED,
+  colorFixDataUrlToFile,
+  colorFixEquals,
+  corsAttr,
+  markCorsBlocked,
+} from '@/utils/colorfix.ts'
 import { downloadImage } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
-import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal, taskCaption, taskChip } from '../../constants.ts'
+import {
+  KIND_LABEL,
+  batchChip,
+  batchProgress,
+  formatTime,
+  isBatchTerminal,
+  taskCaption,
+  taskChip,
+} from '../../constants.ts'
 import { useColorFix } from '../../colorfix/useColorFix.ts'
-import { tryonItemParts } from '../../colorfix/maskParts.ts'
+import { tryonItemParts } from '../../colorfix/mask-parts.ts'
 import { downloadDataUrl, extOf, useColorFixBake } from '../../colorfix/useColorFixBake.ts'
 import {
   lastSavedAssetColorFix,
@@ -107,7 +122,7 @@ async function cancelBatch(d: StudioBatchDetail) {
   acting.value = true
   try {
     const res = await studioCancelBatch(d.batch.id)
-    message.success(`已取消 ${res.data?.canceled_tasks ?? 0} 个未开始任务，点数原路退回`)
+    message.success(`已取消 ${res.data?.canceledTasks ?? 0} 个未开始任务，点数原路退回`)
     await ctl.refresh()
   } finally {
     acting.value = false
@@ -145,9 +160,9 @@ function retryConfirmText(d: StudioBatchDetail) {
 
 async function retryTask(task: StudioTask) {
   if (retrying.value) return
-  retrying.value = task.task_id
+  retrying.value = task.taskId
   try {
-    await studioRetryTask(task.task_id)
+    await studioRetryTask(task.taskId)
   } catch (err) {
     const e = toApiError(err)
     // 业务失败（不满足重试条件 / 点数不足等）拦截器已 toast；只补「接口不存在」与传输层失败
@@ -185,13 +200,14 @@ async function onRegenerated() {
 
 /** 任务态是否展示为进行中（0 排队 / 1 生成中 / 5 交付中） */
 const isTaskRunning = (task: StudioTask) => task.status === 0 || task.status === 1 || task.status === 5
-const isTaskSuccess = (task: StudioTask | null | undefined): boolean =>
-  !!task && task.status === 2 && !!task.result_url
+const isTaskSuccess = (task: StudioTask | null | undefined): boolean => !!task && task.status === 2 && !!task.resultUrl
 
 /** 全部在跑的任务数（各批次未结束的张数之和）：功能介绍与底部提示用 */
 const runningTotal = computed(() =>
   ctl.items.value.reduce(
-    (n, d) => n + (isBatchTerminal(d.batch.status) ? 0 : Math.max(0, d.batch.task_total - d.batch.task_done - d.batch.task_failed)),
+    (n, d) =>
+      n +
+      (isBatchTerminal(d.batch.status) ? 0 : Math.max(0, d.batch.taskTotal - d.batch.taskDone - d.batch.taskFailed)),
     0,
   ),
 )
@@ -220,15 +236,15 @@ const summary = computed(() => {
   return {
     title: `${KIND_LABEL[d.batch.kind] ?? d.batch.kind}批次 #${d.batch.id}`,
     chip,
-    done: d.batch.task_done,
-    failed: d.batch.task_failed,
-    total: d.batch.task_total,
-    points: d.batch.estimated_points,
-    time: formatTime(d.batch.created_at),
-    short: shortTime(d.batch.created_at),
+    done: d.batch.taskDone,
+    failed: d.batch.taskFailed,
+    total: d.batch.taskTotal,
+    points: d.batch.estimatedPoints,
+    time: formatTime(d.batch.createdAt),
+    short: shortTime(d.batch.createdAt),
     progress: batchProgress(d.batch),
     running: !isBatchTerminal(d.batch.status),
-    reason: d.batch.error_reason,
+    reason: d.batch.errorReason,
     // 读图 / 参考图提示（验收 F12 / B2）：新网关下发 batch.warnings；老网关没有时按任务 warnings 去重合并
     warnings: d.batch.warnings ?? [...new Set(d.tasks.flatMap((t) => t.warnings ?? []))],
   }
@@ -245,19 +261,21 @@ const selectedTaskId = ref('')
 /** 选中的任务：钉住的那张；没钉住 = 第一张成品，再没有 = 第一张 */
 const selectedTask = computed<StudioTask | null>(
   () =>
-    tasks.value.find((t) => t.task_id === selectedTaskId.value) ??
+    tasks.value.find((t) => t.taskId === selectedTaskId.value) ??
     tasks.value.find((t) => isTaskSuccess(t)) ??
     tasks.value[0] ??
     null,
 )
-const selectedSuccess = computed<StudioTask | null>(() => (isTaskSuccess(selectedTask.value) ? selectedTask.value : null))
-const selectedSrc = computed(() => selectedSuccess.value?.result_url ?? '')
+const selectedSuccess = computed<StudioTask | null>(() =>
+  isTaskSuccess(selectedTask.value) ? selectedTask.value : null,
+)
+const selectedSrc = computed(() => selectedSuccess.value?.resultUrl ?? '')
 const runningInBatch = computed(() => tasks.value.filter(isTaskRunning).length)
 
 /** 把当前看到的那张钉住（只在还没钉住时写，不改变舞台） */
 function pinSelected() {
   const t = selectedTask.value
-  if (t && selectedTaskId.value !== t.task_id) selectedTaskId.value = t.task_id
+  if (t && selectedTaskId.value !== t.taskId) selectedTaskId.value = t.taskId
 }
 
 type ViewMode = 'result' | 'compare' | 'colorfix'
@@ -309,14 +327,18 @@ const cfTitle = computed(() => (garmentKind.value ? '服装校色' : '图片校�
 // ---------------- 选区（局部调色） ----------------
 
 const region = ref<ColorFixRegion>({ ...COLORFIX_REGION_DEFAULT })
-const regionKey = (t: StudioTask) => `studio:${t.task_id}`
+const regionKey = (t: StudioTask) => `studio:${t.taskId}`
 /**
  * 商拍默认部位：任务已有蒙版时取它实际覆盖的部位（mask_parts；空 = 服务端按全部服装出的），
  * 还没有蒙版时取提交的单品；姿态 / 图片生成为空（全部服装）
  */
 function defaultParts(t: StudioTask | null) {
   if (props.detail?.batch.kind !== 'tryon') return []
-  if (t?.mask_url) return colorFixRequestParts('garment', (t.mask_parts ?? []).map((p) => p.part))
+  if (t?.maskUrl)
+    return colorFixRequestParts(
+      'garment',
+      (t.maskParts ?? []).map((p) => p.part),
+    )
   return tryonItemParts(props.detail?.batch.payload)
 }
 const regionDefault = (t: StudioTask | null = selectedTask.value): ColorFixRegion => {
@@ -328,11 +350,11 @@ const regionDefault = (t: StudioTask | null = selectedTask.value): ColorFixRegio
     ...(parts.length ? { parts } : {}),
   }
 }
-const presetMask = computed(() => selectedSuccess.value?.mask_url || '')
-const presetParts = computed(() => selectedSuccess.value?.mask_parts ?? null)
+const presetMask = computed(() => selectedSuccess.value?.maskUrl || '')
+const presetParts = computed(() => selectedSuccess.value?.maskParts ?? null)
 // 任务带 mask_parts 字段（哪怕空数组）= 新服务端，支持服装细分部位
 watch(
-  () => Array.isArray(selectedTask.value?.mask_parts),
+  () => Array.isArray(selectedTask.value?.maskParts),
   (yes) => {
     if (yes && !colorFixGarmentParts.value.length) noteColorFixGarmentParts([...COLORFIX_GARMENT_PARTS])
   },
@@ -355,7 +377,9 @@ const maskError = ref('')
 const garmentMissing = ref(false)
 const paintedMask = ref('')
 const painterShow = ref(false)
-const paintScope = computed(() => (selectedSuccess.value ? `${regionKey(selectedSuccess.value)}::${selectedSrc.value}` : ''))
+const paintScope = computed(() =>
+  selectedSuccess.value ? `${regionKey(selectedSuccess.value)}::${selectedSrc.value}` : '',
+)
 const garmentFallback = computed(
   () => region.value.mode === 'auto' && region.value.target === 'garment' && garmentMissing.value,
 )
@@ -373,7 +397,7 @@ const resultOn = ref(false)
 let syncing = false
 
 watch(
-  () => `${props.detail?.batch.id ?? ''}|${selectedTask.value?.task_id ?? ''}`,
+  () => `${props.detail?.batch.id ?? ''}|${selectedTask.value?.taskId ?? ''}`,
   async () => {
     syncing = true
     const d = props.detail
@@ -425,7 +449,15 @@ const showCfCompare = cfOn
 let segTicket = 0
 watch(
   () =>
-    [cfOn.value, region.value.mode, region.value.target, selectedSrc.value, presetMask.value, activeParts.value.join(','), presetParts.value] as const,
+    [
+      cfOn.value,
+      region.value.mode,
+      region.value.target,
+      selectedSrc.value,
+      presetMask.value,
+      activeParts.value.join(','),
+      presetParts.value,
+    ] as const,
   async ([on, mode, target, image, preset]) => {
     const my = ++segTicket
     maskError.value = ''
@@ -502,7 +534,8 @@ const maskHint = computed(() => {
   if (garmentFallback.value) return '未识别到服装区域，校色将作用于整张图'
   if (r.mode === 'auto' && maskError.value) return maskError.value
   if (r.mode === 'paint' && !paintedMask.value) return '还没有涂抹选区，点「涂抹选区」开始'
-  if (r.mode !== 'whole' && bake.failed.value) return bake.maskLoadFailed.value ? COLORFIX_MASK_LOAD_FAILED : '选区校色未能生成，已显示原图'
+  if (r.mode !== 'whole' && bake.failed.value)
+    return bake.maskLoadFailed.value ? COLORFIX_MASK_LOAD_FAILED : '选区校色未能生成，已显示原图'
   return ''
 })
 const displaySrc = bake.displaySrc
@@ -527,7 +560,7 @@ function closePanel() {
 
 /** 点候选：钉住这张 */
 function selectTask(task: StudioTask) {
-  selectedTaskId.value = task.task_id
+  selectedTaskId.value = task.taskId
 }
 
 onBeforeUnmount(() => {
@@ -554,7 +587,7 @@ async function downloadCorrected() {
   } catch {
     // 烘图要跨域读像素（依赖 OSS CORS），失败退回原图，别让用户拿不到图
     message.warning('校色效果未能写入，已下载原图')
-    void downloadImage(t.result_url, `${fileTitle.value}.${extOf(t.result_url)}`)
+    void downloadImage(t.resultUrl, `${fileTitle.value}.${extOf(t.resultUrl)}`)
   }
 }
 
@@ -563,18 +596,18 @@ function download() {
   const t = selectedSuccess.value
   if (!t) return
   if (cfOn.value) void downloadCorrected()
-  else void downloadImage(t.result_url, `${fileTitle.value}.${extOf(t.result_url)}`)
+  else void downloadImage(t.resultUrl, `${fileTitle.value}.${extOf(t.resultUrl)}`)
 }
 
 function downloadBefore() {
   const t = selectedSuccess.value
-  if (t) void downloadImage(t.result_url, `${fileTitle.value}-校色前.${extOf(t.result_url)}`)
+  if (t) void downloadImage(t.resultUrl, `${fileTitle.value}-校色前.${extOf(t.resultUrl)}`)
 }
 
 const saving = ref(false)
 /** 成品已入素材库（asset_id > 0）；asset_id = 0 时按钮仍可点，点了先重拉一次批次再判断（入库可能刚完成） */
-const canSaveAsset = computed(() => (selectedSuccess.value?.asset_id ?? 0) > 0)
-const showSaveAsset = computed(() => typeof selectedSuccess.value?.asset_id === 'number')
+const canSaveAsset = computed(() => (selectedSuccess.value?.assetId ?? 0) > 0)
+const showSaveAsset = computed(() => typeof selectedSuccess.value?.assetId === 'number')
 
 /** asset_id 还是 0：重拉一次批次详情（顺手更新列表里的这条），返回最新的 asset_id */
 async function refetchAssetId(t: StudioTask): Promise<number> {
@@ -585,7 +618,7 @@ async function refetchAssetId(t: StudioTask): Promise<number> {
     if (!fresh) return 0
     const at = ctl.items.value.findIndex((d) => d.batch.id === batchId)
     if (at >= 0) ctl.items.value[at] = fresh
-    return fresh.tasks.find((x) => x.task_id === t.task_id)?.asset_id ?? 0
+    return fresh.tasks.find((x) => x.taskId === t.taskId)?.assetId ?? 0
   } catch {
     return 0
   }
@@ -600,7 +633,7 @@ async function saveAsAsset() {
   if (!t || saving.value) return
   saving.value = true
   try {
-    let assetId = t.asset_id ?? 0
+    let assetId = t.assetId ?? 0
     if (!assetId) assetId = await refetchAssetId(t)
     if (!assetId) {
       message.warning('这张结果还没进素材库（入库中或已删除），稍后再试')
@@ -611,21 +644,23 @@ async function saveAsAsset() {
       return
     }
     const params = { ...cfParams.value }
-    const last = lastSavedAssetColorFix(t.task_id)
+    const last = lastSavedAssetColorFix(t.taskId)
     if (last && colorFixEquals(last, params)) {
       message.info('已存过这一版')
       return
     }
     // 长边 3072，超 9.5MB 降到 2048（goUpload 上限 10MB）
-    const file = await bakeForUpload(async (side) => colorFixDataUrlToFile(await bake.exportBaked(side), `colorfix-${t.task_id}.png`))
+    const file = await bakeForUpload(async (side) =>
+      colorFixDataUrlToFile(await bake.exportBaked(side), `colorfix-${t.taskId}.png`),
+    )
     if (!file) throw new Error('烘图失败')
     const url = await goUploadImage(file)
     await assetLibAddVersion(assetId, {
-      image_url: url,
+      imageUrl: url,
       prompt: '校色后',
-      params: JSON.stringify({ colorFix: params, sourceImage: t.result_url }),
+      params: JSON.stringify({ colorFix: params, sourceImage: t.resultUrl }),
     })
-    rememberSavedAssetColorFix(t.task_id, params)
+    rememberSavedAssetColorFix(t.taskId, params)
     message.success('已存为资产（校色前 / 后两版）')
   } catch {
     message.error('存为资产失败')
@@ -641,7 +676,7 @@ const lbIndex = ref(0)
 const lbItems = computed<LightboxItem[]>(() =>
   tasks.value.filter(isTaskSuccess).map((t) => ({
     // 选中的那张给烘好的校色图（还在烘 / 烘失败时给原图）
-    url: t.task_id === selectedSuccess.value?.task_id && !liveFilter.value ? displaySrc.value : t.result_url,
+    url: t.taskId === selectedSuccess.value?.taskId && !liveFilter.value ? displaySrc.value : t.resultUrl,
     name: taskCaption(t, props.detail?.batch),
   })),
 )
@@ -649,7 +684,7 @@ const lbItems = computed<LightboxItem[]>(() =>
 function openLightbox() {
   const t = selectedSuccess.value
   if (!t) return
-  const at = tasks.value.filter(isTaskSuccess).findIndex((x) => x.task_id === t.task_id)
+  const at = tasks.value.filter(isTaskSuccess).findIndex((x) => x.taskId === t.taskId)
   lbIndex.value = Math.max(0, at)
   lbShow.value = true
 }
@@ -831,7 +866,7 @@ const pillCls =
             <!-- 校色对比：校色前（原图）vs 校色后（烘好的图）；右下两个下载胶囊 -->
             <template v-if="mode === 'colorfix' && showCfCompare">
               <ToolImageCompare
-                :before="selectedSuccess.result_url"
+                :before="selectedSuccess.resultUrl"
                 :after="displaySrc"
                 :after-filter="liveFilter"
                 :labels="['校色前', '校色后']"
@@ -840,13 +875,31 @@ const pillCls =
               />
               <span class="absolute right-10px bottom-10px z-6 flex items-center gap-6px">
                 <button type="button" :class="[pillCls, '!bg-white/72 !text-ink-2']" @click="downloadBefore">
-                  <svg class="w-13px h-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <svg
+                    class="w-13px h-13px"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
                     <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />
                   </svg>
                   下载校色前
                 </button>
                 <button type="button" :class="pillCls" @click="downloadCorrected">
-                  <svg class="w-13px h-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <svg
+                    class="w-13px h-13px"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
                     <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />
                   </svg>
                   下载校色后
@@ -901,7 +954,15 @@ const pillCls =
               aria-label="校色调整"
               @click.stop="openPanel"
             >
-              <svg class="w-13px h-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+              <svg
+                class="w-13px h-13px"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
                 <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
                 <circle cx="15" cy="7" r="2" />
                 <circle cx="9" cy="17" r="2" />
@@ -929,19 +990,28 @@ const pillCls =
               class="grid place-items-center w-36px h-36px mb-2px box-border rounded-full border border-solid border-danger-line bg-white text-danger"
               aria-hidden="true"
             >
-              <svg class="w-16px h-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <svg
+                class="w-16px h-16px"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              >
                 <path d="M12 7v6M12 16.5v.5" />
               </svg>
             </span>
             <b class="text-13px font-600 leading-[1.4] text-ink-2">这一条失败了</b>
-            <span class="max-w-280px break-all text-danger">{{ selectedTask.error_reason || '生成失败，点数已按规则退回' }}</span>
+            <span class="max-w-280px break-all text-danger">{{
+              selectedTask.errorReason || '生成失败，点数已按规则退回'
+            }}</span>
             <n-popconfirm
               v-if="retrySupported && canRetryTask(detail!.batch, selectedTask)"
               @positive-click="retryTask(selectedTask)"
             >
               <template #trigger>
                 <button type="button" class="sx-btn mt-6px" :disabled="!!retrying">
-                  {{ retrying === selectedTask.task_id ? '提交中…' : '重试这张' }}
+                  {{ retrying === selectedTask.taskId ? '提交中…' : '重试这张' }}
                 </button>
               </template>
               {{ retryConfirmText(detail!) }}
@@ -971,29 +1041,29 @@ const pillCls =
 
         <!-- 候选 4 列、gap 6，方形 r4；选中 1px violet 描边 + 1px 光晕；悬停 / 聚焦看大图 -->
         <div v-if="tasks.length > 1" class="flex-none grid gap-6px grid-cols-4" role="group" aria-label="候选结果">
-          <div v-for="(task, i) in tasks" :key="task.task_id" class="group relative">
+          <div v-for="(task, i) in tasks" :key="task.taskId" class="group relative">
             <button
               type="button"
               class="relative block w-full overflow-hidden aspect-square box-border p-0 rounded-4px border border-solid bg-surface3 cursor-pointer"
               :class="[
                 focusRing,
-                selectedTask?.task_id === task.task_id
+                selectedTask?.taskId === task.taskId
                   ? 'border-violet shadow-[0_0_0_1px_#875f9a]'
                   : 'border-line hover:border-#c9cfd6',
               ]"
               :aria-label="`${taskCaption(task, props.detail?.batch)} · ${taskChip(task.status).label}`"
-              :aria-pressed="selectedTask?.task_id === task.task_id"
+              :aria-pressed="selectedTask?.taskId === task.taskId"
               @click="selectTask(task)"
             >
               <img
                 v-if="isTaskSuccess(task)"
-                :src="task.result_url"
-                :crossorigin="cfTool ? corsAttr(task.result_url) : undefined"
+                :src="task.resultUrl"
+                :crossorigin="cfTool ? corsAttr(task.resultUrl) : undefined"
                 :alt="taskCaption(task, props.detail?.batch)"
                 class="block w-full h-full object-cover"
                 loading="lazy"
                 draggable="false"
-                @error="cfTool && markCorsBlocked(task.result_url)"
+                @error="cfTool && markCorsBlocked(task.resultUrl)"
               />
               <span
                 v-else-if="isTaskRunning(task)"
@@ -1019,11 +1089,11 @@ const pillCls =
             >
               <div class="grid place-items-center w-240px h-[312px] overflow-hidden rounded-6px bg-surface2">
                 <img
-                  :src="task.result_url"
-                  :crossorigin="cfTool ? corsAttr(task.result_url) : undefined"
+                  :src="task.resultUrl"
+                  :crossorigin="cfTool ? corsAttr(task.resultUrl) : undefined"
                   alt=""
                   class="block max-w-full max-h-[312px] object-contain"
-                  @error="cfTool && markCorsBlocked(task.result_url)"
+                  @error="cfTool && markCorsBlocked(task.resultUrl)"
                 />
               </div>
             </div>
@@ -1032,7 +1102,7 @@ const pillCls =
 
         <!-- 当前任务的提示词：姿态可编辑 / 复制 / 复制全部 / 编辑后重新生成；商拍只读（C2 / C4 / C16） -->
         <StudioPromptCard
-          v-if="selectedTask && (detail!.batch.kind === 'pose' || selectedTask.prompt_text)"
+          v-if="selectedTask && (detail!.batch.kind === 'pose' || selectedTask.promptText)"
           :detail="detail!"
           :task="selectedTask"
           @regenerated="onRegenerated"
@@ -1095,12 +1165,18 @@ const pillCls =
               >
               只会取消还没开始的任务，已开始的继续跑完，确定取消？
             </n-popconfirm>
-            <button type="button" class="sx-btn-ghost !text-violet-ink hover:!text-violet-press" @click="reedit(detail!)">
+            <button
+              type="button"
+              class="sx-btn-ghost !text-violet-ink hover:!text-violet-press"
+              @click="reedit(detail!)"
+            >
               重新编辑
             </button>
             <n-popconfirm v-if="!summary!.running" @positive-click="removeBatch(detail!)">
               <template #trigger
-                ><button type="button" class="sx-btn-ghost !text-danger hover:!bg-danger-soft">删除批次</button></template
+                ><button type="button" class="sx-btn-ghost !text-danger hover:!bg-danger-soft">
+                  删除批次
+                </button></template
               >
               删除后历史里不再显示（已入素材库的成品图不受影响），确定删除？
             </n-popconfirm>

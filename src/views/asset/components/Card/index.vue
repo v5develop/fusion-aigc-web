@@ -23,9 +23,7 @@ const { data } = defineProps<{
  * 异步抽帧后回填。不排掉这个值的话，浏览器会拿 mp4 当图片加载，poster 位置直接裂图，
  * 比不设 poster 还糟。
  */
-const videoPoster = computed(() =>
-  data.coverUrl && data.coverUrl !== data.resultUrl ? data.coverUrl : undefined,
-)
+const videoPoster = computed(() => (data.coverUrl && data.coverUrl !== data.resultUrl ? data.coverUrl : undefined))
 
 // 视频加载失败：以占位图替换。data 变化（虚拟列表复用同一实例）时重置失败态
 const videoError = ref(false)

@@ -6,7 +6,7 @@
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import MaskPainter from '@/views/tools/MaskPainter.vue'
-import { capMaskBlob } from './maskStore.ts'
+import { capMaskBlob } from './mask-store.ts'
 
 const { src } = defineProps<{ src: string }>()
 const show = defineModel<boolean>('show', { required: true })
@@ -23,7 +23,13 @@ const exporting = ref(false)
 function onKeyCapture(e: KeyboardEvent) {
   if (!show.value) return
   const t = e.target as HTMLElement | null
-  if (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'range'))) return
+  if (
+    t &&
+    (t.isContentEditable ||
+      t.tagName === 'TEXTAREA' ||
+      (t.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'range'))
+  )
+    return
   const isUndo = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z'
   if (!isUndo && e.key !== 'Backspace' && e.key !== 'Delete') return
   e.preventDefault()
@@ -56,7 +62,9 @@ async function apply() {
       <header class="flex items-center gap-8px">
         <b class="flex-1 text-14px font-600 leading-20px text-ink">涂抹调色选区</b>
         <button type="button" class="sx-btn" @click="show = false">取消</button>
-        <button type="button" class="sx-btn-primary" :disabled="!hasStroke || exporting" @click="apply">应用选区</button>
+        <button type="button" class="sx-btn-primary" :disabled="!hasStroke || exporting" @click="apply">
+          应用选区
+        </button>
       </header>
       <p class="m-0 text-12px leading-18px text-muted">
         在图上涂抹要调色的区域（涂红处会被调整，其余像素不动）；放大后可切「移动」拖动画面，涂错了用「撤销」或「清空」。

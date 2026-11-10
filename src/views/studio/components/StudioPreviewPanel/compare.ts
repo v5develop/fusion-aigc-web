@@ -17,7 +17,7 @@ import type {
   StudioPosePayload,
   StudioTask,
   StudioTryonPayload,
-} from '@/api/studioTypes.ts'
+} from '@/api/studio-types.ts'
 import { taskCaption } from '../../constants.ts'
 
 function parsePayload(raw: string): Record<string, unknown> {
@@ -37,21 +37,21 @@ export function sourceItems(d: StudioBatchDetail, task: StudioTask): LightboxIte
   const out: LightboxItem[] = []
   if (d.batch.kind === 'tryon') {
     const t = p as StudioTryonPayload
-    const model = str(t.model_image_urls?.[task.model_index])
-    if (model) out.push({ url: model, name: `模特图 ${task.model_index + 1}` })
-    for (const g of Array.isArray(t.garment_images) ? t.garment_images : []) {
+    const model = str(t.modelImageUrls?.[task.modelIndex])
+    if (model) out.push({ url: model, name: `模特图 ${task.modelIndex + 1}` })
+    for (const g of Array.isArray(t.garmentImages) ? t.garmentImages : []) {
       const url = str(g?.url)
       if (url) out.push({ url, name: `服装图 · ${g.role || '单品'}` })
     }
   } else if (d.batch.kind === 'pose') {
     const t = p as StudioPosePayload
-    const source = str(t.source_image_url)
+    const source = str(t.sourceImageUrl)
     if (source) out.push({ url: source, name: '人物图' })
-    const pose = str(t.pose_image_urls?.[task.pose_index])
-    if (pose) out.push({ url: pose, name: `姿势图 ${task.pose_index + 1}` })
+    const pose = str(t.poseImageUrls?.[task.poseIndex])
+    if (pose) out.push({ url: pose, name: `姿势图 ${task.poseIndex + 1}` })
   } else {
     const t = p as StudioImageGenPayload
-    ;(Array.isArray(t.image_urls) ? t.image_urls : []).forEach((u, i) => {
+    ;(Array.isArray(t.imageUrls) ? t.imageUrls : []).forEach((u, i) => {
       const url = str(u)
       if (url) out.push({ url, name: `参考图 ${i + 1}` })
     })
@@ -67,24 +67,24 @@ export function sourceItems(d: StudioBatchDetail, task: StudioTask): LightboxIte
 export function compareBefore(d: StudioBatchDetail, task: StudioTask): { url: string; label: string } | null {
   const p = parsePayload(d.batch.payload)
   if (d.batch.kind === 'tryon') {
-    const url = str((p as StudioTryonPayload).model_image_urls?.[task.model_index])
+    const url = str((p as StudioTryonPayload).modelImageUrls?.[task.modelIndex])
     return url ? { url, label: '模特图' } : null
   }
   if (d.batch.kind === 'pose') {
-    const url = str((p as StudioPosePayload).pose_image_urls?.[task.pose_index])
+    const url = str((p as StudioPosePayload).poseImageUrls?.[task.poseIndex])
     return url ? { url, label: '参考姿势图' } : null
   }
   return null
 }
 
-/** 提交时是否开了「默认校色」（payload.color_fix）；老批次没有这个字段按没开 */
+/** 提交时是否开了「默认校色」（payload.colorFix）；老批次没有这个字段按没开 */
 export function batchColorFix(d: StudioBatchDetail): boolean {
-  return parsePayload(d.batch.payload).color_fix === true
+  return parsePayload(d.batch.payload).colorFix === true
 }
 
 /** 对照组：输入图 → 成品；index 指向成品 */
 export function compareItems(d: StudioBatchDetail, task: StudioTask): { items: LightboxItem[]; index: number } {
-  const items = [...sourceItems(d, task), { url: task.result_url, name: `结果 · ${taskCaption(task, d.batch)}` }]
+  const items = [...sourceItems(d, task), { url: task.resultUrl, name: `结果 · ${taskCaption(task, d.batch)}` }]
   return { items, index: items.length - 1 }
 }
 
@@ -98,7 +98,7 @@ export function canRetryTask(batch: StudioBatch, task: StudioTask) {
 
 /** 每张点数（预估冻结额 / 张数），拿不到为 0 */
 export function unitPoints(batch: StudioBatch) {
-  return batch.task_total > 0 ? Math.round(batch.estimated_points / batch.task_total) : 0
+  return batch.taskTotal > 0 ? Math.round(batch.estimatedPoints / batch.taskTotal) : 0
 }
 
 /**

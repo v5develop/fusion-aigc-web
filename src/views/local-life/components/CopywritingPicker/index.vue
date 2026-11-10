@@ -4,8 +4,8 @@
  * 只列已完成的（status=1），与后端约定一致。
  */
 import { computed, ref, watch } from 'vue'
-import { llCopywritingList } from '@/api/localLife.ts'
-import type { ILCopywriting } from '@/api/localLifeTypes.ts'
+import { llCopywritingList } from '@/api/local-life.ts'
+import type { ILCopywriting } from '@/api/local-life-types.ts'
 
 const show = defineModel<boolean>('show', { default: false })
 
@@ -33,7 +33,7 @@ async function load(reset = false) {
       status: 1,
       keyword: keyword.value || undefined,
       page: page.value,
-      page_size: PAGE_SIZE,
+      pageSize: PAGE_SIZE,
     })
     const list = res.data?.list ?? []
     items.value = reset ? list : [...items.value, ...list]
@@ -81,7 +81,7 @@ function pick(item: ILCopywriting) {
             item.title || '未命名文案'
           }}</span>
           <span class="flex-none text-11px leading-16px text-muted tabular-nums"
-            >{{ item.content_type_label }}<template v-if="item.word_count"> · {{ item.word_count }}字</template></span
+            >{{ item.contentTypeLabel }}<template v-if="item.wordCount"> · {{ item.wordCount }}字</template></span
           >
         </span>
         <span class="block line-clamp-2 text-12px leading-18px text-ink-2">{{ item.body }}</span>

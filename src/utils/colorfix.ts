@@ -33,9 +33,7 @@ export const COLORFIX_RANGES: Record<keyof ColorFixParams, { min: number; max: n
 
 /** 两组参数是否完全相同（「恢复默认」禁用、是否调过参数都看它） */
 export function colorFixEquals(a: ColorFixParams, b: ColorFixParams): boolean {
-  return (
-    a.hue === b.hue && a.sat === b.sat && a.light === b.light && a.bright === b.bright && a.contrast === b.contrast
-  )
+  return a.hue === b.hue && a.sat === b.sat && a.light === b.light && a.bright === b.bright && a.contrast === b.contrast
 }
 
 /** 任意来源（接口 / localStorage）的参数 → 合法五参数（缺字段 / 非数字返回 null，越界夹回范围） */
@@ -97,17 +95,39 @@ function applyColorFixPixels(data: Uint8ClampedArray, p: ColorFixParams) {
   const c = Math.cos(rad)
   const s = Math.sin(rad)
   const h = [
-    0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928,
-    0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.14, 0.072 - c * 0.072 - s * 0.283,
-    0.213 - c * 0.213 - s * 0.787, 0.715 - c * 0.715 + s * 0.715, 0.072 + c * 0.928 + s * 0.072,
+    0.213 + c * 0.787 - s * 0.213,
+    0.715 - c * 0.715 - s * 0.715,
+    0.072 - c * 0.072 + s * 0.928,
+    0.213 - c * 0.213 + s * 0.143,
+    0.715 + c * 0.285 + s * 0.14,
+    0.072 - c * 0.072 - s * 0.283,
+    0.213 - c * 0.213 - s * 0.787,
+    0.715 - c * 0.715 + s * 0.715,
+    0.072 + c * 0.928 + s * 0.072,
   ]
   const k = Math.max(0, 100 + p.sat) / 100
   const t = [
-    0.213 + 0.787 * k, 0.715 - 0.715 * k, 0.072 - 0.072 * k,
-    0.213 - 0.213 * k, 0.715 + 0.285 * k, 0.072 - 0.072 * k,
-    0.213 - 0.213 * k, 0.715 - 0.715 * k, 0.072 + 0.928 * k,
+    0.213 + 0.787 * k,
+    0.715 - 0.715 * k,
+    0.072 - 0.072 * k,
+    0.213 - 0.213 * k,
+    0.715 + 0.285 * k,
+    0.072 - 0.072 * k,
+    0.213 - 0.213 * k,
+    0.715 - 0.715 * k,
+    0.072 + 0.928 * k,
   ] as const
-  const [h0, h1, h2, h3, h4, h5, h6, h7, h8] = h as [number, number, number, number, number, number, number, number, number]
+  const [h0, h1, h2, h3, h4, h5, h6, h7, h8] = h as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ]
   const [t0, t1, t2, t3, t4, t5, t6, t7, t8] = t
   // brightness → contrast 两步都是逐通道映射，合成一张 256 项查找表
   const bright = Math.max(0.05, (1 + p.light / 200) * (1 + p.bright / 100))
@@ -128,7 +148,13 @@ function applyColorFixPixels(data: Uint8ClampedArray, p: ColorFixParams) {
 }
 
 /** 把原图按五参数画进画布（整幅）。ctx.filter 可用时走 GPU 滤镜，否则 getImageData 逐像素处理 */
-function drawColorFixed(ctx: CanvasRenderingContext2D, img: CanvasImageSource, width: number, height: number, p: ColorFixParams) {
+function drawColorFixed(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  width: number,
+  height: number,
+  p: ColorFixParams,
+) {
   if (typeof (ctx as { filter?: unknown }).filter === 'string') {
     ctx.filter = colorFixFilter(p)
     ctx.drawImage(img, 0, 0, width, height)
@@ -167,10 +193,13 @@ function evictImages() {
     const oldest = imageCache.keys().next().value as string
     const task = imageCache.get(oldest)
     imageCache.delete(oldest)
-    void task?.then((img) => {
-      img.onload = img.onerror = null
-      img.removeAttribute('src')
-    }, () => {})
+    void task?.then(
+      (img) => {
+        img.onload = img.onerror = null
+        img.removeAttribute('src')
+      },
+      () => {},
+    )
   }
 }
 
@@ -190,10 +219,13 @@ function evictStrings(map: Map<string, string>, max: number) {
 export function forgetColorFixSource(url: string): void {
   const task = imageCache.get(url)
   imageCache.delete(url)
-  void task?.then((img) => {
-    img.onload = img.onerror = null
-    img.removeAttribute('src')
-  }, () => {})
+  void task?.then(
+    (img) => {
+      img.onload = img.onerror = null
+      img.removeAttribute('src')
+    },
+    () => {},
+  )
   for (const cache of [resultCache, exportCache]) {
     for (const key of [...cache.keys()]) if (key.includes(`|${url}|`)) cache.delete(key)
   }
@@ -314,7 +346,12 @@ function blurAlpha(data: Uint8ClampedArray, w: number, h: number, radius: number
 }
 
 /** 把任意蒙版图（alpha 或黑白）整理成「白色 + alpha = 调整强度」的画布，按需反选与柔化 */
-function prepareMask(mask: HTMLImageElement, width: number, height: number, opts: ColorFixMaskOptions): HTMLCanvasElement {
+function prepareMask(
+  mask: HTMLImageElement,
+  width: number,
+  height: number,
+  opts: ColorFixMaskOptions,
+): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -423,9 +460,9 @@ export async function colorFixImage(
   // 调用方的 failed / 原图兜底接住，提示「选区蒙版加载失败，未应用校色」
   const mask = maskUrl
     ? await loadImage(maskUrl).catch(() => {
-      imageCache.delete(maskUrl)
-      throw new ColorFixMaskLoadError()
-    })
+        imageCache.delete(maskUrl)
+        throw new ColorFixMaskLoadError()
+      })
     : null
   const max = maxSide
   const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight))
@@ -497,8 +534,14 @@ export function loadColorFix(taskUid: string): ColorFixParams | null {
     const raw = localStorage.getItem(KEY_PREFIX + taskUid)
     if (!raw) return null
     const value = JSON.parse(raw) as Partial<ColorFixParams>
-    if (typeof value.hue !== 'number' || typeof value.sat !== 'number' || typeof value.light !== 'number'
-      || typeof value.bright !== 'number' || typeof value.contrast !== 'number') return null
+    if (
+      typeof value.hue !== 'number' ||
+      typeof value.sat !== 'number' ||
+      typeof value.light !== 'number' ||
+      typeof value.bright !== 'number' ||
+      typeof value.contrast !== 'number'
+    )
+      return null
     return { hue: value.hue, sat: value.sat, light: value.light, bright: value.bright, contrast: value.contrast }
   } catch {
     return null

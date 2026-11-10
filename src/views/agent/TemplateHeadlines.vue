@@ -97,7 +97,13 @@ function pick(h: IPlazaHeadline) {
 <template>
   <div>
     <div v-if="loading && !items.length" class="flex justify-center py-40px"><n-spin size="small" /></div>
-    <PageLoadError v-else-if="failed" compact :subtitle="failMsg || '本周头条加载失败，请稍后重试'" retryable @retry="load" />
+    <PageLoadError
+      v-else-if="failed"
+      compact
+      :subtitle="failMsg || '本周头条加载失败，请稍后重试'"
+      retryable
+      @retry="load"
+    />
     <PageEmpty v-else-if="!items.length" compact text="没有匹配的模板，换个分类或词试试" />
     <ol
       v-else

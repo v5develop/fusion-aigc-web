@@ -12,7 +12,7 @@
  * 整块是示意图，对读屏只暴露一个「手机预览」名称。内容区可滚动、隐藏滚动条。
  */
 import { computed } from 'vue'
-import type { BrandProfileView } from '@/api/localLifeFull.ts'
+import type { BrandProfileView } from '@/api/local-life-full.ts'
 import type { KindResults } from '../../useFullSet.ts'
 
 const props = withDefaults(

@@ -23,15 +23,15 @@ import {
   batchList,
   batchSubmitEcomImage,
   isBatchTerminal,
-} from '@/api/batchHosting.ts'
-import type { IBatchDetail, IBatchInfo, IBatchItem, IBatchRow } from '@/api/batchHosting.ts'
+} from '@/api/batch-hosting.ts'
+import type { IBatchDetail, IBatchInfo, IBatchItem, IBatchRow } from '@/api/batch-hosting.ts'
 import { useIdempotentSubmit } from '@/views/studio/hooks.ts'
 import { useStudioUploader } from '@/views/studio/components/StudioImageUpload/useStudioUploader.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
 import { batchQuoteEcomImage } from '@/api/agent.ts'
 import type { IBatchEcomQuote } from '@/api/agent.ts'
-import { emitBillingBlock } from '@/utils/billingGuide'
+import { emitBillingBlock } from '@/utils/billing-guide'
 
 const props = defineProps<{
   show: boolean
@@ -645,7 +645,15 @@ onUnmounted(() => {
             </div>
             <div :class="[CELL, 'col-span-2 sm:col-span-5 sm:!flex-row sm:!items-center sm:!gap-10px']">
               <span :class="fieldLabel">生图数量</span>
-              <n-input-number v-model:value="num" :min="1" :max="9" :precision="0" size="small" aria-label="生图数量" class="sm:!w-140px" />
+              <n-input-number
+                v-model:value="num"
+                :min="1"
+                :max="9"
+                :precision="0"
+                size="small"
+                aria-label="生图数量"
+                class="sm:!w-140px"
+              />
             </div>
           </div>
           <p v-if="infoError" class="m-0 flex-none text-11px leading-16px text-danger" role="alert">{{ infoError }}</p>
@@ -769,7 +777,14 @@ onUnmounted(() => {
             ]"
             @click="addTask"
           >
-            <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+            <svg
+              class="h-12px w-12px"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.4"
+              aria-hidden="true"
+            >
               <path d="M12 5v14M5 12h14" />
             </svg>
             添加任务
@@ -777,7 +792,10 @@ onUnmounted(() => {
           <AssetPickerModal v-model:show="assetShow" :limit="assetRoom" @select="addTaskAssets" />
         </div>
         <div class="flex flex-none items-center gap-8px border-t border-solid border-line-soft px-20px py-10px">
-          <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-8px text-12px leading-16px text-placeholder tabular-nums" role="status">
+          <span
+            class="flex min-w-0 flex-1 flex-wrap items-center gap-x-8px text-12px leading-16px text-placeholder tabular-nums"
+            role="status"
+          >
             <template v-if="quote">
               <span
                 >共 {{ quote.taskCount }} 个任务 · {{ quote.imageCount }} 张 · 约 {{ quote.totalPoints }} 点数{{

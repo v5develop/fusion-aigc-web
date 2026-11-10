@@ -171,10 +171,7 @@ function close(refocus = false) {
                   >
                     {{ s.uploads.map((u) => u.label).join(' · ') || '无需本地上传' }}
                   </span>
-                  <span
-                    v-if="TAGLINES[s.name]"
-                    class="col-span-full truncate text-11px leading-14px text-placeholder"
-                  >
+                  <span v-if="TAGLINES[s.name]" class="col-span-full truncate text-11px leading-14px text-placeholder">
                     {{ TAGLINES[s.name] }}
                   </span>
                 </RouterLink>

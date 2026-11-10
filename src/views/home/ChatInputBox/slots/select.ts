@@ -37,21 +37,22 @@ export function showDropdown(anchor: HTMLElement, onSelect: () => void) {
   dd.style.top = rect.bottom + 4 + 'px'
   dd.style.left = rect.left + 'px'
   // options 为空（后端暂未配置选项）时展示空态
-  const bodyHtml = options.length === 0
-    ? `<div class="ps-dropdown-empty">暂无可选项</div>`
-    : options
-      .map((opt) => {
-        // icon 仅支持图片 URL；options 来自接口，内联 SVG/HTML 字符串一律不渲染，防注入
-        const isIconUrl = !!opt.icon && !opt.icon.trimStart().startsWith('<')
-        const iconHtml = isIconUrl
-          ? `<span class="ps-dropdown-icon"><img src="${escapeHtml(opt.icon!)}" alt="" /></span>`
-          : ''
-        return `<div class="ps-dropdown-item${opt.value === currentValue ? ' active' : ''}" data-value="${escapeHtml(opt.value)}">
+  const bodyHtml =
+    options.length === 0
+      ? `<div class="ps-dropdown-empty">暂无可选项</div>`
+      : options
+          .map((opt) => {
+            // icon 仅支持图片 URL；options 来自接口，内联 SVG/HTML 字符串一律不渲染，防注入
+            const isIconUrl = !!opt.icon && !opt.icon.trimStart().startsWith('<')
+            const iconHtml = isIconUrl
+              ? `<span class="ps-dropdown-icon"><img src="${escapeHtml(opt.icon!)}" alt="" /></span>`
+              : ''
+            return `<div class="ps-dropdown-item${opt.value === currentValue ? ' active' : ''}" data-value="${escapeHtml(opt.value)}">
           ${iconHtml}<span class="ps-dropdown-label">${escapeHtml(opt.label)}</span>
           ${opt.value === currentValue ? '<span class="ps-dropdown-check">✓</span>' : ''}
         </div>`
-      })
-      .join('')
+          })
+          .join('')
 
   dd.innerHTML = headerHtml + bodyHtml
 

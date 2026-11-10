@@ -10,8 +10,8 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
-import { markPointSegmentBroken, POINT_UNSUPPORTED_HINT } from './pointSupport.ts'
-import type { PointBox, PointMaskResult, PointPrompt, PointSegmenter, PointSegmentError } from './pointSegment.ts'
+import { markPointSegmentBroken, POINT_UNSUPPORTED_HINT } from './point-support.ts'
+import type { PointBox, PointMaskResult, PointPrompt, PointSegmenter, PointSegmentError } from './point-segment.ts'
 
 /** 同 pointSegment.ts 的 POINT_SEGMENT_INPUT_SIDE（不静态引那个模块：它随点选弹窗一起懒加载） */
 const POINT_SEGMENT_INPUT_SIDE = 1024
@@ -95,7 +95,7 @@ async function start() {
   progress.value = 0
   seg.value?.dispose()
   try {
-    const { createPointSegmenter } = await import('./pointSegment.ts')
+    const { createPointSegmenter } = await import('./point-segment.ts')
     const s = createPointSegmenter({
       onProgress: ({ loaded, total }) => {
         if (total > 0) progress.value = Math.min(99, Math.round((loaded / total) * 100))
@@ -275,7 +275,12 @@ function onPointerMove(e: PointerEvent) {
   clearTimeout(pressTimer)
   const p = toImage(e.clientX, e.clientY)
   if (!p) return
-  dragBox.value = { x0: Math.min(down.x, p.x), y0: Math.min(down.y, p.y), x1: Math.max(down.x, p.x), y1: Math.max(down.y, p.y) }
+  dragBox.value = {
+    x0: Math.min(down.x, p.x),
+    y0: Math.min(down.y, p.y),
+    x1: Math.max(down.x, p.x),
+    y1: Math.max(down.y, p.y),
+  }
 }
 
 function onPointerUp(e: PointerEvent) {
@@ -334,7 +339,14 @@ async function apply() {
       <header class="flex flex-wrap items-center gap-8px">
         <b class="flex-1 min-w-120px text-14px font-600 leading-20px text-ink">点选调色选区</b>
         <button type="button" class="sx-btn" @click="show = false">取消</button>
-        <button type="button" class="sx-btn-primary" :disabled="!result || exporting || decoding || embedding" @click="apply">完成</button>
+        <button
+          type="button"
+          class="sx-btn-primary"
+          :disabled="!result || exporting || decoding || embedding"
+          @click="apply"
+        >
+          完成
+        </button>
       </header>
 
       <div class="flex flex-wrap items-center gap-8px">
@@ -360,12 +372,18 @@ async function apply() {
         <div class="ps-bar h-full bg-#875f9a" :style="{ width: `${Math.max(4, progress)}%` }" />
       </div>
 
-      <p v-if="error" class="m-0 flex items-center gap-8px px-12px py-8px rounded-12px bg-#fbeceb text-12px leading-18px text-#b4433e" role="alert">
+      <p
+        v-if="error"
+        class="m-0 flex items-center gap-8px px-12px py-8px rounded-12px bg-#fbeceb text-12px leading-18px text-#b4433e"
+        role="alert"
+      >
         <span class="flex-1">{{ error }}</span>
         <button v-if="retryable" type="button" class="sx-btn" @click="retry">重试</button>
       </p>
 
-      <div class="flex justify-center rounded-15px bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] bg-[length:16px_16px] p-8px">
+      <div
+        class="flex justify-center rounded-15px bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] bg-[length:16px_16px] p-8px"
+      >
         <div
           ref="stageEl"
           class="ps-stage relative inline-block max-w-full select-none"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useMessage } from 'naive-ui'
-import { upload } from '@/api/ossUpload.ts'
+import { upload } from '@/api/oss-upload.ts'
 import { ACCEPT_IMAGE, ACCEPT_VIDEO } from '@/utils/utils'
 import { onPickerKeydown, useFileDropPaste } from '@/composables/useFileDropPaste'
 import IconButton from '@/components/IconButton/index.vue'
@@ -261,14 +261,7 @@ defineExpose({ addFiles })
         >
           <img class="img-item" :src="getPreviewSrc(item)" alt="" @mouseenter="expand = true" />
 
-          <IconButton
-            class="delete-box"
-            size="sm"
-            variant="overlay"
-            reveal
-            label="删除图片"
-            @click.stop="deleteImg(i)"
-          >
+          <IconButton class="delete-box" size="sm" variant="overlay" reveal label="删除图片" @click.stop="deleteImg(i)">
             <i class="icon-ic_ds_return-2"></i>
           </IconButton>
         </div>

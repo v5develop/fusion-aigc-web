@@ -7,7 +7,7 @@
  * 结果图是按钮：点开灯箱看全部候选（灯箱里可下载）；候选缩略图悬停出 主 / 大 / ↓ / ×。
  */
 import { computed, ref } from 'vue'
-import { modelLabelOf } from '@/utils/modelLabel'
+import { modelLabelOf } from '@/utils/model-label'
 import { Handle, Position } from '@vue-flow/core'
 import EditorIcon from '../EditorIcon.vue'
 import RunErrorNotice from '../RunErrorNotice.vue'
@@ -35,7 +35,7 @@ import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
 import NodeLightbox from './NodeLightbox.vue'
 import { ColorFixPill } from '@/components/ColorFix'
-import { openColorFix } from '../colorFixAction.ts'
+import { openColorFix } from '../color-fix-action.ts'
 
 const props = defineProps<{
   id: string
@@ -60,7 +60,9 @@ const promptTop = computed(() => (isVideo.value ? '20%' : '30%'))
 const selectedIdx = computed(() => props.data.selectedCandidate ?? 0)
 
 /** 头部副标题：模型名（与标题相同时不重复，同原型） */
-const modelLine = computed(() => (props.data.model && props.data.model !== props.data.title ? modelLabelOf(props.data.model) : ''))
+const modelLine = computed(() =>
+  props.data.model && props.data.model !== props.data.title ? modelLabelOf(props.data.model) : '',
+)
 
 /** 参考图计数徽标：连到 image 口的线数（原型 .wf-model-node__ref-count） */
 const imageRefCount = computed(
@@ -150,7 +152,11 @@ const lightboxIndex = ref(0)
 const lightboxItems = computed(() => {
   const name = props.data.title || '生成结果'
   if (visibleCandidates.value.length && !isVideo.value) {
-    return visibleCandidates.value.map((item) => ({ url: item.url, type: 'image' as const, name: `${name}-${item.index + 1}` }))
+    return visibleCandidates.value.map((item) => ({
+      url: item.url,
+      type: 'image' as const,
+      name: `${name}-${item.index + 1}`,
+    }))
   }
   return props.data.image ? [{ url: props.data.image, type: 'image' as const, name }] : []
 })
@@ -259,7 +265,12 @@ function onRemoveCandidate(index: number) {
           label="校色"
           :aria-label="`校色：${data.title || '生成结果'}`"
           class="absolute top-8px right-8px z-3 nodrag opacity-0 [.canvas-media:hover_&]:opacity-100 [.is-selected_&]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-          @click="(e: MouseEvent) => { e.stopPropagation(); openColorFix(id, data.image) }"
+          @click="
+            (e: MouseEvent) => {
+              e.stopPropagation()
+              openColorFix(id, data.image)
+            }
+          "
         />
         <div v-else class="flex flex-col items-center justify-center gap-8px text-muted text-11px">
           <span class="grid w-40px h-40px place-items-center border border-solid border-line rounded-full text-ink-2">

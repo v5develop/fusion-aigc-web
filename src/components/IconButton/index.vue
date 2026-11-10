@@ -32,12 +32,28 @@ const props = withDefaults(
     /** 不显示悬停提示（label 仍作为 aria-label） */
     noTitle?: boolean
   }>(),
-  { size: 'md', variant: 'plate', href: undefined, download: undefined, target: undefined, disabled: false, loading: false, reveal: false, pressed: undefined, noTitle: false },
+  {
+    size: 'md',
+    variant: 'plate',
+    href: undefined,
+    download: undefined,
+    target: undefined,
+    disabled: false,
+    loading: false,
+    reveal: false,
+    pressed: undefined,
+    noTitle: false,
+  },
 )
 const emit = defineEmits<{ click: [e: MouseEvent] }>()
 
 const SIZE: Record<Size, string> = { sm: 'sx-iconbtn-sm', md: '', lg: 'sx-iconbtn-lg' }
-const VARIANT: Record<Variant, string> = { plate: '', quiet: 'sx-iconbtn-quiet', overlay: 'sx-iconbtn-overlay', danger: 'sx-iconbtn-danger' }
+const VARIANT: Record<Variant, string> = {
+  plate: '',
+  quiet: 'sx-iconbtn-quiet',
+  overlay: 'sx-iconbtn-overlay',
+  danger: 'sx-iconbtn-danger',
+}
 const ICON: Record<Size, string> = { sm: 'text-14px', md: 'text-16px', lg: 'text-18px' }
 
 const cls = computed(() => [
@@ -87,7 +103,14 @@ function onClick(e: MouseEvent) {
     :title="noTitle ? undefined : label"
     @click="onClick"
   >
-    <span v-if="loading" :class="ICON[size]" class="inline-block w-1em h-1em rounded-full border-2 border-solid border-current border-r-transparent animate-spin" aria-hidden="true" />
-    <span v-else :class="ICON[size]" class="inline-flex leading-none [&>svg]:(w-1em h-1em)" aria-hidden="true"><slot /></span>
+    <span
+      v-if="loading"
+      :class="ICON[size]"
+      class="inline-block w-1em h-1em rounded-full border-2 border-solid border-current border-r-transparent animate-spin"
+      aria-hidden="true"
+    />
+    <span v-else :class="ICON[size]" class="inline-flex leading-none [&>svg]:(w-1em h-1em)" aria-hidden="true"
+      ><slot
+    /></span>
   </button>
 </template>

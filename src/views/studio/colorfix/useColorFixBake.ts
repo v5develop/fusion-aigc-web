@@ -15,7 +15,13 @@
  * 260ms 再烘 1600 的预览图，新图出来前沿用上一张烘好的。`pending=true`（选了选区但蒙版还没就绪）时不校色、显示原图。
  */
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue'
-import { ColorFixMaskLoadError, colorFixFilter, colorFixImage, type ColorFixMaskOptions, type ColorFixParams } from '@/utils/colorfix.ts'
+import {
+  ColorFixMaskLoadError,
+  colorFixFilter,
+  colorFixImage,
+  type ColorFixMaskOptions,
+  type ColorFixParams,
+} from '@/utils/colorfix.ts'
 
 /** 下载 / 存资产时的长边上限（舞台预览用 utils 默认 1600） */
 export const COLORFIX_EXPORT_MAX = 4096
@@ -134,7 +140,9 @@ export function useColorFixBake(opts: {
   /** 导出用的真图（下载 / 存资产）：长边最多 maxSide（默认 4096）的无损 PNG dataURL；失败抛错 */
   function exportBaked(maxSide = COLORFIX_EXPORT_MAX): Promise<string> {
     if (opts.pending?.value) return Promise.reject(new Error('选区尚未就绪'))
-    return colorFixImage(opts.src.value, { ...opts.params.value }, maskUrl.value || null, maxSide, { ...maskOpts.value })
+    return colorFixImage(opts.src.value, { ...opts.params.value }, maskUrl.value || null, maxSide, {
+      ...maskOpts.value,
+    })
   }
 
   return { displaySrc, liveFilter, ready, failed, maskLoadFailed, baking, exportBaked }

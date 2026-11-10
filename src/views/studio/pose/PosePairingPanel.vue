@@ -158,7 +158,7 @@ const fixedDefault = computed(() => !!state && state.sourceCount >= 2 && !state.
             >
               <span class="sx-chip bg-violet-soft text-violet-ink font-600">人物{{ letter(i) }}</span>
               <span>{{ person.position }}</span>
-              <span v-if="person.gender_age">{{ person.gender_age }}</span>
+              <span v-if="person.genderAge">{{ person.genderAge }}</span>
               <span v-if="person.summary" class="text-placeholder">{{ person.summary }}</span>
             </li>
           </ul>

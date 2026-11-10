@@ -18,7 +18,7 @@
  * - #extra（选填）：紧贴列头下方的一行，放提醒胶囊（如图文笔记「N 条待确认」）；224 宽列头放不下第二个胶囊，所以单独一行。不填不占位。
  */
 import { useId } from 'vue'
-import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
+import CreationHistoryHeader from '@/components/Creation/CreationHistoryHeader.vue'
 
 const {
   count,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelsOf } from '@/utils/modelLabel'
+import { modelLabelsOf } from '@/utils/model-label'
 /**
  * 从提示词库选择（商拍 / 图片生成页融合提示词库的弹层）。
  *
@@ -8,8 +8,8 @@ import { modelLabelsOf } from '@/utils/modelLabel'
  * 不 import prompt-library 页面的组件。选中条目把 prompt 交回页面填入输入框。
  */
 import { computed, ref, watch } from 'vue'
-import { promptLibList } from '@/api/promptLibrary.ts'
-import type { IPromptLibItem } from '@/api/promptLibrary.ts'
+import { promptLibList } from '@/api/prompt-library.ts'
+import type { IPromptLibItem } from '@/api/prompt-library.ts'
 import { useDebounce } from '@/utils/hooks/index.ts'
 
 const show = defineModel<boolean>('show', { required: true })
@@ -49,7 +49,7 @@ async function fetchPage(reset: boolean) {
       vertical: tab.value,
       q: keyword.value.trim() || undefined,
       page: page.value,
-      page_size: PAGE_SIZE,
+      pageSize: PAGE_SIZE,
     })
     const list = res.data?.items ?? []
     items.value = reset ? list : [...items.value, ...list]
@@ -93,7 +93,12 @@ const excerpt = (item: IPromptLibItem) => item.prompt.replace(/\s+/g, ' ').trim(
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" title="从提示词库选择" :style="{ width: '720px', maxWidth: 'calc(100vw - 48px)' }">
+  <n-modal
+    v-model:show="show"
+    preset="card"
+    title="从提示词库选择"
+    :style="{ width: '720px', maxWidth: 'calc(100vw - 48px)' }"
+  >
     <div class="flex flex-col gap-10px">
       <div class="flex gap-10px items-center">
         <div class="flex gap-8px flex-wrap">
@@ -103,12 +108,22 @@ const excerpt = (item: IPromptLibItem) => item.prompt.replace(/\s+/g, ' ').trim(
             class="ll-pill !min-h-32px !text-13px"
             :class="{ 'll-pill-active': tab === t.key }"
             @click="tab = t.key"
-          >{{ t.label }}</span>
+            >{{ t.label }}</span
+          >
         </div>
-        <n-input v-model:value="keyword" size="small" clearable placeholder="搜标题 / 提示词" class="!w-220px ml-auto" />
+        <n-input
+          v-model:value="keyword"
+          size="small"
+          clearable
+          placeholder="搜标题 / 提示词"
+          class="!w-220px ml-auto"
+        />
       </div>
 
-      <div class="stu-scroll flex flex-col gap-8px max-h-[min(52vh,480px)] overflow-y-auto [scrollbar-gutter:stable]" v-loading="loading">
+      <div
+        class="stu-scroll flex flex-col gap-8px max-h-[min(52vh,480px)] overflow-y-auto [scrollbar-gutter:stable]"
+        v-loading="loading"
+      >
         <button
           v-for="item in items"
           :key="item.id"
@@ -119,15 +134,24 @@ const excerpt = (item: IPromptLibItem) => item.prompt.replace(/\s+/g, ' ').trim(
           <span class="text-13px font-600 text-ink">{{ item.title }}</span>
           <span class="line-clamp-2 overflow-hidden text-11px leading-17px text-muted">{{ excerpt(item) }}</span>
           <span class="flex gap-6px items-center flex-wrap">
-            <span v-for="m in modelLabelsOf(item.models)" :key="`m-${item.id}-${m}`" class="ll-tag !cursor-default">{{ m }}</span>
+            <span v-for="m in modelLabelsOf(item.models)" :key="`m-${item.id}-${m}`" class="ll-tag !cursor-default">{{
+              m
+            }}</span>
             <span v-for="tg in item.tags" :key="`t-${item.id}-${tg}`" class="ll-tag !cursor-default">#{{ tg }}</span>
-            <span class="ml-auto text-11px text-violet opacity-0 transition-opacity duration-110 ease-[cubic-bezier(0.2,0.7,0.2,1)] group-hover:opacity-100">点击使用 →</span>
+            <span
+              class="ml-auto text-11px text-violet opacity-0 transition-opacity duration-110 ease-[cubic-bezier(0.2,0.7,0.2,1)] group-hover:opacity-100"
+              >点击使用 →</span
+            >
           </span>
         </button>
 
-        <div v-if="!loading && !items.length" class="py-40px text-center text-placeholder text-12px">这个页签下没有匹配的提示词，换个关键词试试</div>
+        <div v-if="!loading && !items.length" class="py-40px text-center text-placeholder text-12px">
+          这个页签下没有匹配的提示词，换个关键词试试
+        </div>
         <div v-if="loadingMore" class="py-6px pb-2px text-11px text-center">加载中…</div>
-        <div v-else-if="hasMore && items.length" class="ll-link pt-6px pb-2px !text-13px text-center" @click="loadMore">加载更多（{{ items.length }}/{{ total }}）</div>
+        <div v-else-if="hasMore && items.length" class="ll-link pt-6px pb-2px !text-13px text-center" @click="loadMore">
+          加载更多（{{ items.length }}/{{ total }}）
+        </div>
       </div>
     </div>
   </n-modal>

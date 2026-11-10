@@ -6,7 +6,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { NConfigProvider, NImage, NSpin } from 'naive-ui'
-import { renderMiniMarkdown } from '@/utils/miniMarkdown.ts'
+import { renderMiniMarkdown } from '@/utils/mini-markdown.ts'
 import { llTheme } from '@/views/local-life/theme.ts'
 import { agentSharedMessages, replyFromFrames } from '@/api/agent.ts'
 import type { IAgentMessage, IAgentReply } from '@/api/agent.ts'

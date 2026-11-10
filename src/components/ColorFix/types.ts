@@ -10,7 +10,15 @@ export type ColorFixAutoTarget = 'garment' | 'product' | 'person' | 'background'
 export type ColorFixGarmentPart = 'tops' | 'coat' | 'pants' | 'skirt' | 'shoes' | 'bag' | 'hat'
 
 /** 部位固定顺序（与服务端一致：缓存键 / 返回顺序都按它） */
-export const COLORFIX_GARMENT_PARTS: readonly ColorFixGarmentPart[] = ['tops', 'coat', 'pants', 'skirt', 'shoes', 'bag', 'hat']
+export const COLORFIX_GARMENT_PARTS: readonly ColorFixGarmentPart[] = [
+  'tops',
+  'coat',
+  'pants',
+  'skirt',
+  'shoes',
+  'bag',
+  'hat',
+]
 
 export const COLORFIX_PART_LABELS: Record<ColorFixGarmentPart, string> = {
   tops: '上衣',
@@ -30,7 +38,10 @@ export function colorFixPartsSanitize(raw: unknown): ColorFixGarmentPart[] {
 }
 
 /** 两组部位是否相同（都已 sanitize：按固定顺序比） */
-export function colorFixPartsEqual(a: readonly ColorFixGarmentPart[] | undefined, b: readonly ColorFixGarmentPart[] | undefined): boolean {
+export function colorFixPartsEqual(
+  a: readonly ColorFixGarmentPart[] | undefined,
+  b: readonly ColorFixGarmentPart[] | undefined,
+): boolean {
   const x = a ?? []
   const y = b ?? []
   return x.length === y.length && x.every((p, i) => p === y[i])
@@ -69,8 +80,12 @@ export function colorFixRegionSanitize(raw: unknown): ColorFixRegion | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
   const mode = o.mode === 'auto' || o.mode === 'paint' || o.mode === 'point' || o.mode === 'whole' ? o.mode : 'whole'
-  const target = typeof o.target === 'string' && o.target in COLORFIX_TARGET_LABELS ? (o.target as ColorFixAutoTarget) : 'garment'
-  const feather = typeof o.feather === 'number' && Number.isFinite(o.feather) ? Math.min(20, Math.max(0, Math.round(o.feather))) : COLORFIX_REGION_DEFAULT.feather
+  const target =
+    typeof o.target === 'string' && o.target in COLORFIX_TARGET_LABELS ? (o.target as ColorFixAutoTarget) : 'garment'
+  const feather =
+    typeof o.feather === 'number' && Number.isFinite(o.feather)
+      ? Math.min(20, Math.max(0, Math.round(o.feather)))
+      : COLORFIX_REGION_DEFAULT.feather
   const parts = colorFixPartsSanitize(o.parts)
   return { mode, target, invert: o.invert === true, feather, ...(parts.length ? { parts } : {}) }
 }

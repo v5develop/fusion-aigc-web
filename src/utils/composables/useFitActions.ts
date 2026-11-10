@@ -24,7 +24,9 @@ export function useFitActions(rowRef: Ref<HTMLElement | null | undefined>, gap =
     const actions = row.querySelector<HTMLElement>('[data-fit-actions]')
     if (!actions) return
     if (!collapsed.value && actions.offsetWidth > 0) expandedActions = actions.offsetWidth
-    const leadWidth = content ? content.offsetWidth : (lead?.firstElementChild as HTMLElement | null)?.scrollWidth ?? 0
+    const leadWidth = content
+      ? content.offsetWidth
+      : ((lead?.firstElementChild as HTMLElement | null)?.scrollWidth ?? 0)
     const need = leadWidth + gap + expandedActions
     collapsed.value = row.clientWidth > 0 && row.clientWidth < need
   }

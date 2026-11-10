@@ -18,7 +18,7 @@ import {
   brandProfileList,
   brandProfileUpdate,
   type BrandFormItem,
-} from '@/api/localLifeFull.ts'
+} from '@/api/local-life-full.ts'
 import { toApiError } from '@/api/index.ts'
 import ImageField from './ImageField.vue'
 import {
@@ -65,8 +65,12 @@ let editSchema: Node | null = null
 
 const isEdit = computed(() => props.editId != null)
 const form = computed(() => forms.value.find((f) => f.brandFormId === formId.value) ?? null)
-const schema = computed<Node | null>(() => (isEdit.value ? editSchema : (form.value?.jsonSchema as Node | undefined) ?? null))
-const fields = computed<FieldDef[]>(() => (schema.value ? listFields(schema.value.properties, schema.value.required) : []))
+const schema = computed<Node | null>(() =>
+  isEdit.value ? editSchema : ((form.value?.jsonSchema as Node | undefined) ?? null),
+)
+const fields = computed<FieldDef[]>(() =>
+  schema.value ? listFields(schema.value.properties, schema.value.required) : [],
+)
 /** 新建时必填却不在简化表单里的图组：提前说明并拦下（编辑时原值整份带回，不受影响） */
 const blockedGroups = computed(() => (isEdit.value ? [] : requiredGroupFields(schema.value)))
 const blockedGroupText = computed(() =>
@@ -289,7 +293,12 @@ async function submit() {
           <button type="button" class="sx-btn !h-28px !px-10px !text-12px" @click="open">重试</button>
         </div>
         <template v-else-if="schema">
-          <div v-if="!isEdit && forms.length > 1" class="flex flex-wrap items-center gap-8px" role="radiogroup" aria-label="行业">
+          <div
+            v-if="!isEdit && forms.length > 1"
+            class="flex flex-wrap items-center gap-8px"
+            role="radiogroup"
+            aria-label="行业"
+          >
             <span class="text-12px text-muted">行业</span>
             <button
               v-for="f in forms"
@@ -370,11 +379,7 @@ async function submit() {
                 :label="String(f.node.title)"
                 @uploading="onUploading"
               />
-              <n-dynamic-tags
-                v-else-if="f.kind === 'tags'"
-                v-model:value="model[f.key]"
-                :max="f.node.maxItems"
-              />
+              <n-dynamic-tags v-else-if="f.kind === 'tags'" v-model:value="model[f.key]" :max="f.node.maxItems" />
 
               <div v-else class="flex flex-col gap-10px">
                 <div
@@ -429,7 +434,11 @@ async function submit() {
                       :label="String(sf.node.title)"
                       @uploading="onUploading"
                     />
-                    <n-dynamic-tags v-else-if="sf.kind === 'tags'" v-model:value="row[sf.key]" :max="sf.node.maxItems" />
+                    <n-dynamic-tags
+                      v-else-if="sf.kind === 'tags'"
+                      v-model:value="row[sf.key]"
+                      :max="sf.node.maxItems"
+                    />
                   </div>
                 </div>
                 <button
@@ -450,7 +459,9 @@ async function submit() {
 
           <p v-if="submitError" class="m-0 text-12px leading-18px text-danger" role="alert">{{ submitError }}</p>
           <footer class="flex items-center justify-end gap-8px border-t border-t-solid border-line-soft pt-12px">
-            <button type="button" class="sx-btn !h-32px !px-14px" :disabled="submitting" @click="requestClose">取消</button>
+            <button type="button" class="sx-btn !h-32px !px-14px" :disabled="submitting" @click="requestClose">
+              取消
+            </button>
             <button
               type="button"
               :class="['sx-btn-primary !px-16px', saveDisabledReason ? 'cursor-not-allowed opacity-60' : '']"

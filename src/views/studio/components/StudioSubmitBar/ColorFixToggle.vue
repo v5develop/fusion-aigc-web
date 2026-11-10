@@ -17,7 +17,10 @@ const { disabled = false, size = 'md' } = defineProps<{
 <template>
   <label
     class="flex flex-none items-center gap-6px text-muted whitespace-nowrap select-none"
-    :class="[size === 'sm' ? 'text-10px leading-14px' : 'text-12px leading-16px', disabled ? 'cursor-not-allowed' : 'cursor-pointer']"
+    :class="[
+      size === 'sm' ? 'text-10px leading-14px' : 'text-12px leading-16px',
+      disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+    ]"
     title="出图后按校色的默认参数自动校一遍，结果里还能再调"
   >
     <span>默认校色</span>

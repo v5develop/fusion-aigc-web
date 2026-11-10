@@ -8,8 +8,8 @@
  * 序列化时标签换成 {{region_xxx}}，服务端据此替换成区域描述。
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { IActionRegion } from './imageActions.ts'
-import { regionRect } from './imageActions.ts'
+import type { IActionRegion } from './image-actions.ts'
+import { regionRect } from './image-actions.ts'
 
 const props = defineProps<{
   regions: IActionRegion[]

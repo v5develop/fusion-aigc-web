@@ -1,6 +1,6 @@
 /** 本地生活套件共享常量与展示辅助 */
 
-import type * as types from '@/api/localLifeTypes.ts'
+import type * as types from '@/api/local-life-types.ts'
 
 // ---------------- 状态文案 ----------------
 

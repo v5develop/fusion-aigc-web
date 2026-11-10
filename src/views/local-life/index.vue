@@ -36,7 +36,12 @@ import {
   type KindResults,
   type TemplateCard,
 } from './useFullSet.ts'
-import { BIZ_TYPE_TO_KIND, type BrandProfileAssetRow, type LLKindKey, type LLProfileItem } from '@/api/localLifeFull.ts'
+import {
+  BIZ_TYPE_TO_KIND,
+  type BrandProfileAssetRow,
+  type LLKindKey,
+  type LLProfileItem,
+} from '@/api/local-life-full.ts'
 
 const SHOP_PROFILE_PATH = '/local-life/shop-profile'
 
@@ -425,7 +430,11 @@ const trashIcon = ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6
                 role="status"
               >
                 {{ runNotice }}
-                <button type="button" :class="smallBtn" @click="activeTab = 'history'; fs.loadHistory()">
+                <button
+                  type="button"
+                  :class="smallBtn"
+                  @click="activeTab = 'history'; fs.loadHistory()"
+                >
                   去历史刷新
                 </button>
               </p>
@@ -499,11 +508,7 @@ const trashIcon = ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6
                     <div class="truncate text-12px font-600 leading-18px text-ink" :title="historyTitle(row)">
                       {{ historyTitle(row) }}
                     </div>
-                    <p
-                      v-if="historyFailed(row)"
-                      class="m-0 text-12px leading-18px text-danger"
-                      role="note"
-                    >
+                    <p v-if="historyFailed(row)" class="m-0 text-12px leading-18px text-danger" role="note">
                       {{ row.error || '生成失败' }}
                     </p>
                     <div
@@ -665,7 +670,9 @@ const trashIcon = ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6
                   </svg>
                 </span>
                 <h2 id="ll-card-setup" class="m-0 sx-title-card">
-                  <template v-if="profile">整体设计要求<em class="text-muted font-400 not-italic">（选填）</em></template>
+                  <template v-if="profile"
+                    >整体设计要求<em class="text-muted font-400 not-italic">（选填）</em></template
+                  >
                   <template v-else>选择品牌档案</template>
                 </h2>
                 <button
@@ -778,10 +785,7 @@ const trashIcon = ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6
                       取消
                     </button>
                   </div>
-                  <p
-                    v-if="continueFrom"
-                    class="m-0 text-11px leading-16px text-placeholder"
-                  >
+                  <p v-if="continueFrom" class="m-0 text-11px leading-16px text-placeholder">
                     继续生成沿用上一轮的整体设计要求与模板，下面的修改只用于新的全案
                   </p>
                   <div class="grid grid-cols-1 gap-14px md:grid-cols-2">
@@ -939,7 +943,9 @@ const trashIcon = ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6
                 "
                 >{{ costText }}</b
               >
-              <span class="text-12px leading-18px text-muted">点数{{ estimateIsMinimum && estimatedCost != null ? '起' : '' }}</span>
+              <span class="text-12px leading-18px text-muted"
+                >点数{{ estimateIsMinimum && estimatedCost != null ? '起' : '' }}</span
+              >
               <n-tooltip :show="billingTipShow" placement="top">
                 <template #trigger>
                   <button

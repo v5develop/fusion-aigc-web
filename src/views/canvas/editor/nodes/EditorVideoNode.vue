@@ -89,10 +89,7 @@ const { dragging } = useFileDropPaste(dropRef, {
       <NodeMenu :title="data.title || '视频'" @remove="emit('remove')" />
     </header>
     <div class="p-10px rounded-b-8px bg-[#f4f6fa]">
-      <div
-        class="relative grid w-full place-items-center overflow-hidden"
-        :style="{ height: `${mediaHeight}px` }"
-      >
+      <div class="relative grid w-full place-items-center overflow-hidden" :style="{ height: `${mediaHeight}px` }">
         <video
           v-if="data.video"
           :src="data.video"

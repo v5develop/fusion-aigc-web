@@ -85,7 +85,15 @@ function onInput(index: number, event: Event) {
           ]"
           aria-hidden="true"
         >
-          <svg v-if="selected" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3">
+          <svg
+            v-if="selected"
+            viewBox="0 0 24 24"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+          >
             <path d="M5 12l5 5 9-10" />
           </svg>
         </span>
@@ -171,7 +179,9 @@ function onInput(index: number, event: Event) {
                 :label="`移除第 ${imgIndex + 1} 张设计素材`"
                 @click="emit('removeImage', index, url)"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
               </IconButton>
             </li>
           </ul>

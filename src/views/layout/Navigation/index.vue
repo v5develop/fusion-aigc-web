@@ -24,13 +24,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { NDropdown, useDialog, type DropdownOption } from 'naive-ui'
 import { signOut } from '@/api/auth.ts'
-import { useUserInfoStore } from '@/stores/userInfo.ts'
+import { useUserInfoStore } from '@/stores/user-info.ts'
 import { catalogFor, type CatalogGroup } from '@/views/tools/catalog'
 import { tools } from '@/views/home/tools'
 import { chuandaitu_data, shangpingshiping_data, shangpingtu_data, type EcEntry } from '@/views/e-commerce/entries'
 import { pictureLanding, videoLanding, SECTION_ENTRY_ICONS, type LandingPageData } from '@/views/image/landing'
-import NotificationBell from '@/components/notifications/NotificationBell.vue'
-import CheckInButton from '@/components/check-in/CheckInButton.vue'
+import NotificationBell from '@/components/Notifications/NotificationBell.vue'
+import CheckInButton from '@/components/CheckIn/CheckInButton.vue'
 
 const props = defineProps<{
   /** 更新条标题（原型「部分功能有新版本」）；不传则不显示更新条 */
@@ -281,7 +281,9 @@ const ecVideoRoutes = shangpingshiping_data
   .filter((r) => !!r && r !== '/')
 
 const ownedRoutes: Record<'image' | 'video', string[]> = {
-  image: ['/image', ...panelRoutes('image'), ...landingRoutes(pictureLanding)].filter((r) => !r.startsWith('/workflow')),
+  image: ['/image', ...panelRoutes('image'), ...landingRoutes(pictureLanding)].filter(
+    (r) => !r.startsWith('/workflow'),
+  ),
   video: ['/video', ...panelRoutes('video'), ...landingRoutes(videoLanding), ...ecVideoRoutes].filter(
     (r) => !r.startsWith('/workflow'),
   ),

@@ -17,8 +17,8 @@ import {
   canvasRename,
   canvasSaveAs,
   canvasTemplates,
-} from '@/api/canvasHome.ts'
-import type { ICanvasSummary, ICanvasTemplate } from '@/api/canvasHome.ts'
+} from '@/api/canvas-home.ts'
+import type { ICanvasSummary, ICanvasTemplate } from '@/api/canvas-home.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import { toApiError } from '@/api/index.ts'
 import TitleModal from './TitleModal.vue'
@@ -32,12 +32,48 @@ defineOptions({ name: 'canvas-page' })
  * 点击按标题匹配接口模板（接口无稳定 code），命中则直接建画布并进编辑器，未命中退回「从模板创建」弹层并预选/过滤。
  */
 const HOME_TEMPLATES = [
-  { title: '模特换装', desc: '人物图 + 单品图，保脸保姿势，只换衣服', tint: 'bg-[rgba(135,95,154,0.09)]', dot: 'rgba(135,95,154,0.78)', cover: '/canvas-templates/outfit.webp' },
-  { title: '商品三视图', desc: '一张商品图，生成正/侧/背三视图，白底一致', tint: 'bg-[rgba(20,184,166,0.10)]', dot: 'rgba(20,184,166,0.78)', cover: '/canvas-templates/three-view.webp' },
-  { title: '元素替换', desc: '参考视频 + 3 张元素图，只换局部元素', tint: 'bg-[rgba(249,115,22,0.10)]', dot: 'rgba(249,115,22,0.78)', cover: '/canvas-templates/element-replace.webp' },
-  { title: '商品主图', desc: '一张商品图，出白底 / 场景两版 1:1 主图', tint: 'bg-[rgba(20,184,166,0.10)]', dot: 'rgba(20,184,166,0.78)', cover: '/canvas-templates/product-main.webp' },
-  { title: '带货短片', desc: '商品图 + 卖点，出 8 秒竖屏带货短片', tint: 'bg-[rgba(106,72,123,0.10)]', dot: 'rgba(106,72,123,0.78)', cover: '/canvas-templates/short-video.webp' },
-  { title: '高清放大', desc: '模糊素材放到 2K，保留原构图与比例', tint: 'bg-[rgba(59,130,246,0.10)]', dot: 'rgba(59,130,246,0.78)', cover: '/canvas-templates/hd-upscale.webp' },
+  {
+    title: '模特换装',
+    desc: '人物图 + 单品图，保脸保姿势，只换衣服',
+    tint: 'bg-[rgba(135,95,154,0.09)]',
+    dot: 'rgba(135,95,154,0.78)',
+    cover: '/canvas-templates/outfit.webp',
+  },
+  {
+    title: '商品三视图',
+    desc: '一张商品图，生成正/侧/背三视图，白底一致',
+    tint: 'bg-[rgba(20,184,166,0.10)]',
+    dot: 'rgba(20,184,166,0.78)',
+    cover: '/canvas-templates/three-view.webp',
+  },
+  {
+    title: '元素替换',
+    desc: '参考视频 + 3 张元素图，只换局部元素',
+    tint: 'bg-[rgba(249,115,22,0.10)]',
+    dot: 'rgba(249,115,22,0.78)',
+    cover: '/canvas-templates/element-replace.webp',
+  },
+  {
+    title: '商品主图',
+    desc: '一张商品图，出白底 / 场景两版 1:1 主图',
+    tint: 'bg-[rgba(20,184,166,0.10)]',
+    dot: 'rgba(20,184,166,0.78)',
+    cover: '/canvas-templates/product-main.webp',
+  },
+  {
+    title: '带货短片',
+    desc: '商品图 + 卖点，出 8 秒竖屏带货短片',
+    tint: 'bg-[rgba(106,72,123,0.10)]',
+    dot: 'rgba(106,72,123,0.78)',
+    cover: '/canvas-templates/short-video.webp',
+  },
+  {
+    title: '高清放大',
+    desc: '模糊素材放到 2K，保留原构图与比例',
+    tint: 'bg-[rgba(59,130,246,0.10)]',
+    dot: 'rgba(59,130,246,0.78)',
+    cover: '/canvas-templates/hd-upscale.webp',
+  },
 ]
 
 /** 加载失败的模板封面：回落同色调色块 + 迷你节点装饰 */
@@ -93,7 +129,7 @@ function notifyNetworkError(err: unknown, text: string) {
 }
 
 async function loadPage(p: number): Promise<ICanvasSummary[]> {
-  const res = await canvasList({ page: p, page_size: PAGE_SIZE })
+  const res = await canvasList({ page: p, pageSize: PAGE_SIZE })
   total.value = res.data?.total ?? 0
   return res.data?.items ?? []
 }
@@ -213,7 +249,7 @@ async function startFromHomeTemplate(t: { title: string }) {
       openPicker(t.title)
       return
     }
-    const res = await canvasFromTemplate({ template_id: hit.id })
+    const res = await canvasFromTemplate({ templateId: hit.id })
     const id = res.data?.id
     if (id) void router.push({ name: 'canvas-editor', params: { id } })
     else void reload()
@@ -231,7 +267,9 @@ function openPicker(hint = '') {
 
 function scrollToTemplates() {
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  document.getElementById('canvas-home-templates')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+  document
+    .getElementById('canvas-home-templates')
+    ?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
 }
 
 /** 从模板建好后直接打开（契约 4.3 回包带 id + snapshot）；没拿到 id 时退回刷新列表 */
@@ -320,10 +358,10 @@ async function doSaveAs(title: string) {
         id: d.id,
         title: d.title,
         revision: d.revision,
-        node_count: d.node_count,
-        cover_url: d.cover_url,
-        created_at: d.created_at,
-        updated_at: d.updated_at,
+        nodeCount: d.nodeCount,
+        coverUrl: d.coverUrl,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
       })
       total.value++
     } else void reload()
@@ -568,13 +606,13 @@ async function doSaveAs(title: string) {
                 >
                   <span class="grid place-items-center shrink-0 w-88px h-58px rounded-6px overflow-hidden bg-surface3">
                     <img
-                      v-if="item.cover_url && !failedCovers.has(item.cover_url)"
-                      :src="item.cover_url"
+                      v-if="item.coverUrl && !failedCovers.has(item.coverUrl)"
+                      :src="item.coverUrl"
                       alt=""
                       loading="lazy"
                       decoding="async"
                       class="block w-full h-full object-cover"
-                      @error="markCoverFailed(item.cover_url)"
+                      @error="markCoverFailed(item.coverUrl)"
                     />
                     <span
                       v-else
@@ -604,12 +642,23 @@ async function doSaveAs(title: string) {
                         <circle cx="12" cy="12" r="9" />
                         <path d="M12 7v5l3 2" />
                       </svg>
-                      更新于 {{ formatTime(item.updated_at) }} · {{ item.node_count }} 个节点
+                      更新于 {{ formatTime(item.updatedAt) }} · {{ item.nodeCount }} 个节点
                     </span>
                   </span>
                 </button>
-                <n-dropdown trigger="click" placement="bottom-end" :options="MORE_OPTIONS" @select="(k: string | number) => onMore(k, item)">
-                  <IconButton label="更多" size="md" variant="quiet" reveal class="absolute right-10px top-1/2 -translate-y-1/2">
+                <n-dropdown
+                  trigger="click"
+                  placement="bottom-end"
+                  :options="MORE_OPTIONS"
+                  @select="(k: string | number) => onMore(k, item)"
+                >
+                  <IconButton
+                    label="更多"
+                    size="md"
+                    variant="quiet"
+                    reveal
+                    class="absolute right-10px top-1/2 -translate-y-1/2"
+                  >
                     <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
                       <circle cx="5" cy="12" r="1.8" />
                       <circle cx="12" cy="12" r="1.8" />
@@ -625,7 +674,14 @@ async function doSaveAs(title: string) {
               >
                 <strong class="text-14px text-ink">还没有保存的画布</strong>
                 <p class="m-0">从模板开始，或者新建一张空白画布。</p>
-                <button type="button" :class="BTN_DEFAULT" :disabled="creating || !!startingTemplate" @click="createBlank()">新建画布</button>
+                <button
+                  type="button"
+                  :class="BTN_DEFAULT"
+                  :disabled="creating || !!startingTemplate"
+                  @click="createBlank()"
+                >
+                  新建画布
+                </button>
               </div>
             </div>
 

@@ -14,7 +14,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { studioTryonDetails } from '@/api/studio.ts'
 import { toApiError } from '@/api/index.ts'
-import type { StudioDetailCrop, StudioGarmentImage } from '@/api/studioTypes.ts'
+import type { StudioDetailCrop, StudioGarmentImage } from '@/api/studio-types.ts'
 
 const props = defineProps<{
   /** 将要提交的 garment_images（顺序即 garment_index） */
@@ -56,8 +56,8 @@ async function detect() {
   try {
     const res = await studioTryonDetails({
       items: [...props.items],
-      set_mode: props.setMode,
-      garment_images: props.garments.map((g) => ({ ...g })),
+      setMode: props.setMode,
+      garmentImages: props.garments.map((g) => ({ ...g })),
       fabric: props.fabric || undefined,
       prompt: props.prompt || undefined,
     })
@@ -110,13 +110,13 @@ function ensureSize(url: string) {
   img.src = url
 }
 watch(
-  () => crops.value.map((c) => props.garments[c.garment_index]?.url ?? ''),
+  () => crops.value.map((c) => props.garments[c.garmentIndex]?.url ?? ''),
   (urls) => urls.forEach(ensureSize),
   { immediate: true },
 )
 
 function thumbStyle(c: StudioDetailCrop) {
-  const url = props.garments[c.garment_index]?.url ?? ''
+  const url = props.garments[c.garmentIndex]?.url ?? ''
   const size = natural[url]
   const [x = 0, y = 0, w = 1, h = 1] = c.box
   if (!size?.w || !size.h) {
@@ -184,14 +184,14 @@ const shortLabel = (label: string) => label.split('·').slice(-1)[0] || label
     <div v-if="crops.length" class="flex flex-wrap gap-6px" role="list" aria-label="细节裁切缩略图">
       <div
         v-for="(c, i) in crops"
-        :key="`${c.garment_index}-${c.label}-${i}`"
+        :key="`${c.garmentIndex}-${c.label}-${i}`"
         class="group relative w-56px"
         role="listitem"
       >
         <span
           class="block w-56px h-56px box-border rounded-4px border border-solid border-line bg-surface3 bg-no-repeat"
           :style="thumbStyle(c)"
-          :title="`${c.label}（服装图 ${c.garment_index + 1}）`"
+          :title="`${c.label}（服装图 ${c.garmentIndex + 1}）`"
         />
         <span class="block mt-2px text-10px leading-14px text-muted truncate" :title="c.label">{{
           shortLabel(c.label)

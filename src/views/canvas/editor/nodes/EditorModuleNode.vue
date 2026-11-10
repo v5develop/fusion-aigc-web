@@ -27,7 +27,9 @@ defineEmits<{ remove: [] }>()
 
 const store = useCanvasEditor()
 
-const isGroup = computed(() => isGroupPlate({ id: props.id, type: 'module', position: { x: 0, y: 0 }, data: props.data }))
+const isGroup = computed(() =>
+  isGroupPlate({ id: props.id, type: 'module', position: { x: 0, y: 0 }, data: props.data }),
+)
 
 /** 副标题：成组底板显示「分组 · N 个节点」（成员按几何包含实时算）；模板模块沿用快照副标题 */
 const subtitle = computed(() =>

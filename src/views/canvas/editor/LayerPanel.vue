@@ -10,9 +10,9 @@ import { canvasImageLayer, pollCanvasImageLayer } from '@/api/agent.ts'
 import { toApiError } from '@/api/index.ts'
 import ActionStatus from './ActionStatus.vue'
 import { useActionRun } from './useActionRun.ts'
-import type { IImageSource, ILayerItem } from './imageActions.ts'
-import { addResultNodes, POLL_BROKEN, describeError, extractLayers, isAbort } from './imageActions.ts'
-import { ACTION_LABEL, ACTION_RING, ACTION_SUBMIT } from './actionUi.ts'
+import type { IImageSource, ILayerItem } from './image-actions.ts'
+import { addResultNodes, POLL_BROKEN, describeError, extractLayers, isAbort } from './image-actions.ts'
+import { ACTION_LABEL, ACTION_RING, ACTION_SUBMIT } from './action-ui.ts'
 
 const props = defineProps<{ source: IImageSource }>()
 const emit = defineEmits<{ busy: [value: boolean] }>()

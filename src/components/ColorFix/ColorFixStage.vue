@@ -80,7 +80,12 @@ const segBtn =
       >
         <button
           type="button"
-          :class="[segBtn, mode === 'result' ? 'bg-white text-ink font-600 shadow-[0_1px_2px_rgba(31,35,41,0.08)]' : 'bg-transparent text-ink-2']"
+          :class="[
+            segBtn,
+            mode === 'result'
+              ? 'bg-white text-ink font-600 shadow-[0_1px_2px_rgba(31,35,41,0.08)]'
+              : 'bg-transparent text-ink-2',
+          ]"
           :aria-pressed="mode === 'result'"
           @click="mode = 'result'"
         >
@@ -88,7 +93,12 @@ const segBtn =
         </button>
         <button
           type="button"
-          :class="[segBtn, mode === 'compare' ? 'bg-white text-ink font-600 shadow-[0_1px_2px_rgba(31,35,41,0.08)]' : 'bg-transparent text-ink-2']"
+          :class="[
+            segBtn,
+            mode === 'compare'
+              ? 'bg-white text-ink font-600 shadow-[0_1px_2px_rgba(31,35,41,0.08)]'
+              : 'bg-transparent text-ink-2',
+          ]"
           :aria-pressed="mode === 'compare'"
           @click="mode = 'compare'"
         >
@@ -96,7 +106,13 @@ const segBtn =
         </button>
       </div>
       <span class="min-w-0 truncate text-12px leading-18px text-muted" role="status" aria-live="polite">
-        {{ cf.baking.value ? '正在生成校色效果…' : cf.active.value ? '下载 / 存资产将使用校色后的图片' : `第 ${entry.index + 1} 张 · 点「校色调整」修正偏色` }}
+        {{
+          cf.baking.value
+            ? '正在生成校色效果…'
+            : cf.active.value
+              ? '下载 / 存资产将使用校色后的图片'
+              : `第 ${entry.index + 1} 张 · 点「校色调整」修正偏色`
+        }}
       </span>
       <span class="ml-auto flex flex-wrap items-center gap-8px">
         <button type="button" class="sx-btn !h-32px !px-12px !text-13px" @click="downloadAfter">

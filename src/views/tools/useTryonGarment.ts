@@ -1,6 +1,6 @@
 import { computed, getCurrentScope, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
-import { upload } from '@/api/ossUpload.ts'
+import { upload } from '@/api/oss-upload.ts'
 import { toApiError } from '@/api/index.ts'
 import type { UploadSpec } from './schemas'
 

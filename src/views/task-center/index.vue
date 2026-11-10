@@ -16,8 +16,8 @@ import { NConfigProvider, NDatePicker, NPagination, NSelect, useDialog, useMessa
 import { toApiError } from '@/api/index.ts'
 import { toolSchemas } from '@/views/tools/schemas'
 import { workflowRouteOf, workflowSchemas } from '@/views/workflow/schemas'
-import { ENTRY_ROUTE } from '@/utils/sameStyle'
-import { stashRefill, type RefillMode } from '@/utils/refillHandoff'
+import { ENTRY_ROUTE } from '@/utils/same-style'
+import { stashRefill, type RefillMode } from '@/utils/refill-handoff'
 import { llTheme } from '@/views/local-life/theme.ts'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import IconButton from '@/components/IconButton/index.vue'
@@ -35,7 +35,7 @@ import {
   type ITaskCenterFilters,
   type ITaskCenterItem,
   type ITaskCenterOverview,
-} from '@/api/taskCenter.ts'
+} from '@/api/task-center.ts'
 
 defineOptions({ name: 'task-center' })
 
@@ -566,7 +566,17 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
                 <!-- 缩略 44 / r6：被屏蔽或加载失败走占位；文本产物显示正文首段 -->
                 <component
                   :is="previewable(item) ? 'a' : 'span'"
-                  v-bind="previewable(item) ? { href: item.coverUrl, target: '_blank', rel: 'noopener noreferrer', tabindex: -1, 'aria-hidden': true } : {}"
+                  v-bind="
+                    previewable(item)
+                      ? {
+                          href: item.coverUrl,
+                          target: '_blank',
+                          rel: 'noopener noreferrer',
+                          tabindex: -1,
+                          'aria-hidden': true,
+                        }
+                      : {}
+                  "
                   class="relative flex-none grid place-items-center w-44px h-44px box-border overflow-hidden rounded-6px border border-solid border-line bg-surface3 text-placeholder"
                 >
                   <MediaFallback

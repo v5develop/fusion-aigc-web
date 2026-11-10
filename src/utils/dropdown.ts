@@ -42,19 +42,12 @@ export function dropdownMenuProps(width?: number): DropdownMenuProps {
  */
 export function dropdownNodeProps(getSelectedKey: () => string | number | undefined | null) {
   return (option: DropdownOption) => ({
-    class:
-      option.key === getSelectedKey()
-        ? 'n-dropdown-option fusion-dropdown-option--selected'
-        : 'n-dropdown-option',
+    class: option.key === getSelectedKey() ? 'n-dropdown-option fusion-dropdown-option--selected' : 'n-dropdown-option',
   })
 }
 
 /** 选项行：16px 图标 + 8px 间距 + 文字，选中时右侧补勾 */
-export function renderDropdownLabel(params: {
-  label: string
-  iconSvg?: string
-  selected?: boolean
-}): VNodeChild {
+export function renderDropdownLabel(params: { label: string; iconSvg?: string; selected?: boolean }): VNodeChild {
   const { label, iconSvg, selected } = params
 
   return h('div', { class: 'fusion-dropdown-row' }, [

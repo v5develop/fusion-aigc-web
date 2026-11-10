@@ -6,7 +6,7 @@ import { DEFAULT_UPLOAD_LIMIT } from './types'
 import { buildSelectHTML, showDropdown, closeAllDropdowns } from './slots/select'
 import { buildUploadHTML, updateUploadBlockDOM, type UploadIdentity } from './slots/upload'
 import ModelImageModal from './ModelImageModal.vue'
-import { upload } from '@/api/ossUpload'
+import { upload } from '@/api/oss-upload'
 import { ACCEPT_IMAGE } from '@/utils/utils'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
 

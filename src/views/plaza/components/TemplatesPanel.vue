@@ -40,11 +40,14 @@ async function loadTags() {
   }
 }
 
-const list = usePagedList<IPlazaTemplate>(async (page) => {
-  const res = await plazaTemplateList({ page, size: PAGE_SIZE, tags: activeTag.value || undefined })
-  const d = res.data
-  return { items: d?.data ?? [], hasMore: (d?.current ?? page) < (d?.pages ?? 0) }
-}, { silenced: true })
+const list = usePagedList<IPlazaTemplate>(
+  async (page) => {
+    const res = await plazaTemplateList({ page, size: PAGE_SIZE, tags: activeTag.value || undefined })
+    const d = res.data
+    return { items: d?.data ?? [], hasMore: (d?.current ?? page) < (d?.pages ?? 0) }
+  },
+  { silenced: true },
+)
 const { items, hasMore, loading, loadingMore, failed, errorMsg, reload, loadMore, onScroll } = list
 
 function pickTag(t: string) {

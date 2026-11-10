@@ -26,7 +26,7 @@ import {
   assetLibTagCreate,
   assetLibTags,
   assetLibUpdate,
-} from '@/api/assetLibrary.ts'
+} from '@/api/asset-library.ts'
 import type {
   AssetLibKindGroup,
   IAssetCategoryNode,
@@ -34,7 +34,7 @@ import type {
   IAssetLibCategory,
   IAssetLibListParams,
   IAssetLibTag,
-} from '@/api/assetLibrary.ts'
+} from '@/api/asset-library.ts'
 import { useDebounce } from '@/utils/hooks'
 import IconButton from '@/components/IconButton/index.vue'
 import PageEmpty from '@/components/PageEmpty/index.vue'
@@ -90,7 +90,9 @@ const domain = ref<Domain>(parseDomain(route.query.domain))
   if (raw != null && raw !== domain.value) void router.replace({ query: { ...route.query, domain: domain.value } })
 }
 /** 走资产列表的域（图片 / 视频 / 官方） */
-const isAssetDomain = computed(() => domain.value === 'image' || domain.value === 'video' || domain.value === 'official')
+const isAssetDomain = computed(
+  () => domain.value === 'image' || domain.value === 'video' || domain.value === 'official',
+)
 
 /** 点页签：写进地址（push，返回键回到上一个域），真正切换由下面的地址监听完成 */
 function setDomain(next: Domain) {
@@ -112,7 +114,7 @@ watch(
 function applyDomain(next: Domain) {
   domain.value = next
   filters.source = ''
-  filters.favorite_only = false
+  filters.favoriteOnly = false
   officialKind.value = ''
   activeGroup.value = ''
   activeSub.value = ''
@@ -204,26 +206,26 @@ function selectSub(key: string) {
 }
 /** 分类条末尾「我的收藏」与筛选面板的收藏开关同一个 favorite_only：选分类 = 关掉只看收藏 */
 function pickGroup(key: string) {
-  filters.favorite_only = false
+  filters.favoriteOnly = false
   selectGroup(key)
 }
 function pickFavorite() {
   selectGroup('')
-  filters.favorite_only = true
+  filters.favoriteOnly = true
 }
 
 /**
  * 当前分类的列表筛选：null = 不限。按素材类型的节点走 kind_group / kind；入口码节点走 entry_codes。
  * entry_codes 为空串 = 选中的节点没有任何入口（直接视为空列表，不发请求）。
  */
-function categoryFilter(): { kind?: string; kind_group?: AssetLibKindGroup; entry_codes?: string } | null {
+function categoryFilter(): { kind?: string; kindGroup?: AssetLibKindGroup; entryCodes?: string } | null {
   const node = activeNode.value
   if (!node) return null
   const sub = activeSub.value ? childrenOf(node).find((c) => c.categoryCode === activeSub.value) : undefined
   if (sub?.kind) return { kind: sub.kind }
-  if (!sub && node.kindGroup) return { kind_group: node.kindGroup }
+  if (!sub && node.kindGroup) return { kindGroup: node.kindGroup }
   const codes = sub ? uniq(sub.entryCodes ?? []) : codesOf(node)
-  return { entry_codes: codes.join(',') }
+  return { entryCodes: codes.join(',') }
 }
 
 async function loadTree() {
@@ -263,10 +265,10 @@ const SOURCE_TABS = [
 
 const filters = reactive({
   source: '',
-  favorite_only: false,
+  favoriteOnly: false,
   q: '',
   tag: '',
-  aspect_ratio: '',
+  aspectRatio: '',
 })
 /** 来源再点一次回到「全部」 */
 function pickSource(v: string) {
@@ -283,7 +285,7 @@ const RATIO_OPTIONS = [
 ]
 
 const filterOpen = ref(false)
-const activeFilterCount = computed(() => (filters.favorite_only ? 1 : 0) + (filters.aspect_ratio ? 1 : 0))
+const activeFilterCount = computed(() => (filters.favoriteOnly ? 1 : 0) + (filters.aspectRatio ? 1 : 0))
 
 /** 关键词防抖后才进查询 */
 const debouncedQ = ref('')
@@ -294,16 +296,16 @@ const hasFilter = computed(
   () =>
     !!filters.source ||
     !!filters.tag ||
-    filters.favorite_only ||
-    !!filters.aspect_ratio ||
+    filters.favoriteOnly ||
+    !!filters.aspectRatio ||
     !!activeGroup.value ||
     !!officialKind.value,
 )
 function clearFilters() {
   filters.source = ''
   filters.tag = ''
-  filters.favorite_only = false
-  filters.aspect_ratio = ''
+  filters.favoriteOnly = false
+  filters.aspectRatio = ''
   officialKind.value = ''
   selectGroup('')
 }
@@ -316,7 +318,7 @@ const untaggedCount = ref<number | null>(null)
 async function loadTags() {
   try {
     const res = await assetLibTags()
-    untaggedCount.value = res.data?.untagged_count ?? null
+    untaggedCount.value = res.data?.untaggedCount ?? null
     tags.value = (res.data?.items ?? []).slice().sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
   } catch {
     // 拉失败沿用上次的字典
@@ -333,9 +335,9 @@ const PAGE_SIZE = 32
 /** 当前域的列表参数；null = 非资产域；'empty' = 选中的分类没有任何入口（不发请求） */
 const listParams = computed<IAssetLibListParams | 'empty' | null>(() => {
   const base: IAssetLibListParams = {
-    aspect_ratio: filters.aspect_ratio || undefined,
+    aspectRatio: filters.aspectRatio || undefined,
     ...tagListParams(filters.tag),
-    favorite_only: filters.favorite_only || undefined,
+    favoriteOnly: filters.favoriteOnly || undefined,
     q: debouncedQ.value || undefined,
   }
   switch (domain.value) {
@@ -345,11 +347,11 @@ const listParams = computed<IAssetLibListParams | 'empty' | null>(() => {
       return { ...base, source: filters.source || undefined, media: 'video' }
     case 'image': {
       const cat = categoryFilter()
-      if (cat?.entry_codes === '') return 'empty'
+      if (cat?.entryCodes === '') return 'empty'
       return {
         ...base,
         ...(cat ?? {}),
-        entry_codes: cat?.entry_codes || undefined,
+        entryCodes: cat?.entryCodes || undefined,
         source: filters.source || undefined,
         media: 'image',
       }
@@ -386,7 +388,7 @@ async function load(silent = false) {
       total.value = 0
       return
     }
-    const res = await assetLibList({ ...params, page: page.value, page_size: PAGE_SIZE })
+    const res = await assetLibList({ ...params, page: page.value, pageSize: PAGE_SIZE })
     if (cur !== seq) return
     items.value = res.data?.items ?? []
     total.value = res.data?.total ?? 0
@@ -421,9 +423,7 @@ async function loadCategories() {
   const cur = ++catSeq
   try {
     const res = await assetLibCategories(
-      d === 'official'
-        ? { source: 'official' }
-        : { source: filters.source || undefined, media: d },
+      d === 'official' ? { source: 'official' } : { source: filters.source || undefined, media: d },
     )
     if (cur === catSeq && d === domain.value) categories.value = res.data?.items ?? []
   } catch {
@@ -479,7 +479,7 @@ async function toggleFavorite(asset: IAssetLibAsset) {
   }
   asset.favorite = next
   // 只看收藏时，取消收藏的卡就地移出，计数跟着走
-  if (!next && filters.favorite_only) {
+  if (!next && filters.favoriteOnly) {
     items.value = items.value.filter((i) => i.id !== asset.id)
     total.value = Math.max(0, total.value - 1)
     // 本页被取空且不在第 1 页：退到最后一个有效页（page 变化会触发重查）
@@ -559,7 +559,9 @@ const assetDelete = useAssetDelete({
 const deletableSelectedCount = computed(() => assetDelete.deletableOf(selectedIds.value).length)
 
 /** 详情底部「删除」：当前打开的资产（列表里找不到时不给删，避免拿不到来源信息误判官方素材） */
-const detailAsset = computed(() => (detailId.value == null ? undefined : items.value.find((it) => it.id === detailId.value)))
+const detailAsset = computed(() =>
+  detailId.value == null ? undefined : items.value.find((it) => it.id === detailId.value),
+)
 const detailCanDelete = computed(() => canDeleteAsset(detailAsset.value))
 const detailDeleteReason = computed(() => (detailAsset.value?.source === 'official' ? '官方素材不可删除' : ''))
 function onDetailDelete() {
@@ -680,7 +682,7 @@ const emptyCopy = computed(() => {
   if (debouncedQ.value) return { text: '没有匹配的资产', desc: '换个关键词试试。' }
   if (filters.tag === UNTAGGED_TAG) return { text: '没有未分类的素材', desc: '所有素材都已经归到标签里了。' }
   if (filters.tag) return { text: `「${filters.tag}」下没有资产`, desc: '换个标签，或清除筛选。' }
-  if (filters.favorite_only) return { text: '还没有收藏', desc: '点卡片右上角的星标，常用的资产会集中到这里。' }
+  if (filters.favoriteOnly) return { text: '还没有收藏', desc: '点卡片右上角的星标，常用的资产会集中到这里。' }
   if (hasFilter.value) return { text: '没有符合筛选的资产', desc: '换个来源或分类，或清除筛选。' }
   switch (domain.value) {
     case 'video':
@@ -698,7 +700,9 @@ const emptyCopy = computed(() => {
     <div class="h-full min-h-0 flex flex-col overflow-hidden bg-page text-ink">
       <h1 class="sr-only">资产</h1>
       <!-- 第一层：五个域（56 高）+ 右侧操作 -->
-      <header class="flex items-center gap-10px shrink-0 h-56px px-20px bg-white border-b border-b-solid border-line-soft">
+      <header
+        class="flex items-center gap-10px shrink-0 h-56px px-20px bg-white border-b border-b-solid border-line-soft"
+      >
         <nav
           ref="domainNav"
           class="relative flex items-stretch shrink-0 h-56px gap-1px"
@@ -744,7 +748,9 @@ const emptyCopy = computed(() => {
             <button type="button" :class="TOOL_CLS" @click="showTagManager = true">标签管理</button>
           </template>
           <template v-else>
-            <span class="text-12px font-600 text-violet-ink whitespace-nowrap" aria-live="polite">已选 {{ selectedIds.length }}</span>
+            <span class="text-12px font-600 text-violet-ink whitespace-nowrap" aria-live="polite"
+              >已选 {{ selectedIds.length }}</span
+            >
             <button
               type="button"
               :class="TOOL_CLS"
@@ -771,7 +777,9 @@ const emptyCopy = computed(() => {
               class="!text-danger"
               :disabled="!deletableSelectedCount || assetDelete.deleting.value"
               :aria-busy="assetDelete.deleting.value || undefined"
-              :title="deletableSelectedCount ? undefined : selectedIds.length ? '官方素材不可删除' : '先勾选要删除的素材'"
+              :title="
+                deletableSelectedCount ? undefined : selectedIds.length ? '官方素材不可删除' : '先勾选要删除的素材'
+              "
               @click="assetDelete.confirmDeleteSelected(selectedIds)"
             >
               删除
@@ -780,11 +788,7 @@ const emptyCopy = computed(() => {
             <button type="button" :class="TOOL_CLS" @click="exitSelect">取消</button>
           </template>
         </div>
-        <router-link
-          v-else-if="domain === 'prompt'"
-          to="/prompt-library"
-          class="sx-btn ml-auto no-underline"
-        >
+        <router-link v-else-if="domain === 'prompt'" to="/prompt-library" class="sx-btn ml-auto no-underline">
           管理提示词
         </router-link>
         <!-- 右上角点阵装饰（对齐原型 5185 .relay-dots）：10px 点距、往左渐隐，不抢内容；音频域没有操作区，靠它自己推到最右 -->
@@ -831,8 +835,17 @@ const emptyCopy = computed(() => {
 
         <span class="shrink-0 w-1px h-20px mx-2px bg-line" aria-hidden="true" />
         <IconButton label="全部标签" size="md" variant="plate" @click="showTagManager = true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7a1 1 0 0 1 .7.3l7.3 7.3a1 1 0 0 1 0 1.4l-7.7 7.7a1 1 0 0 1-1.4 0l-7.3-7.3a1 1 0 0 1-.3-.7Z" />
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.9"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7a1 1 0 0 1 .7.3l7.3 7.3a1 1 0 0 1 0 1.4l-7.7 7.7a1 1 0 0 1-1.4 0l-7.3-7.3a1 1 0 0 1-.3-.7Z"
+            />
             <circle cx="8.2" cy="8.2" r="1.2" />
           </svg>
         </IconButton>
@@ -858,7 +871,7 @@ const emptyCopy = computed(() => {
             :class="[PILL_CLS, filters.tag === t.name ? PILL_ON : PILL_OFF]"
             @click="toggleTag(t.name)"
           >
-            {{ t.name }}<em :class="PILL_COUNT_CLS" class="not-italic">{{ t.asset_count }}</em>
+            {{ t.name }}<em :class="PILL_COUNT_CLS" class="not-italic">{{ t.assetCount }}</em>
           </button>
           <input
             v-if="tagAdding"
@@ -886,7 +899,15 @@ const emptyCopy = computed(() => {
         </div>
 
         <label :class="SEARCH_CLS">
-          <svg class="w-13px h-13px shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <svg
+            class="w-13px h-13px shrink-0"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
             <circle cx="11" cy="11" r="6.5" />
             <path d="m16 16 4 4" />
           </svg>
@@ -911,21 +932,26 @@ const emptyCopy = computed(() => {
       <div v-else ref="scroller" class="flex-1 min-h-0 overflow-auto px-20px pt-14px pb-20px">
         <!-- 图片域：聚合分类条 -->
         <div v-if="domain === 'image'" class="flex flex-col gap-8px mb-12px">
-          <div class="flex flex-wrap items-center gap-8px" role="group" aria-label="资产分类" title="分类数量统计全部来源，不随来源、媒体筛选变化">
+          <div
+            class="flex flex-wrap items-center gap-8px"
+            role="group"
+            aria-label="资产分类"
+            title="分类数量统计全部来源，不随来源、媒体筛选变化"
+          >
             <button
               v-for="g in groupItems"
               :key="g.key || '__all'"
               type="button"
-              :aria-pressed="!filters.favorite_only && activeGroup === g.key"
-              :class="[PILL_CLS, !filters.favorite_only && activeGroup === g.key ? PILL_ON : PILL_OFF]"
+              :aria-pressed="!filters.favoriteOnly && activeGroup === g.key"
+              :class="[PILL_CLS, !filters.favoriteOnly && activeGroup === g.key ? PILL_ON : PILL_OFF]"
               @click="pickGroup(g.key)"
             >
               {{ g.label }}<em :class="PILL_COUNT_CLS" class="not-italic">{{ g.count }}</em>
             </button>
             <button
               type="button"
-              :aria-pressed="filters.favorite_only"
-              :class="[PILL_CLS, filters.favorite_only ? PILL_ON : PILL_OFF]"
+              :aria-pressed="filters.favoriteOnly"
+              :class="[PILL_CLS, filters.favoriteOnly ? PILL_ON : PILL_OFF]"
               @click="pickFavorite"
             >
               我的收藏
@@ -961,15 +987,15 @@ const emptyCopy = computed(() => {
               v-for="r in RATIO_OPTIONS"
               :key="r.value || '__all'"
               type="button"
-              :aria-pressed="filters.aspect_ratio === r.value"
-              :class="[PILL_CLS, filters.aspect_ratio === r.value ? PILL_ON : PILL_OFF]"
-              @click="filters.aspect_ratio = r.value"
+              :aria-pressed="filters.aspectRatio === r.value"
+              :class="[PILL_CLS, filters.aspectRatio === r.value ? PILL_ON : PILL_OFF]"
+              @click="filters.aspectRatio = r.value"
             >
               {{ r.label }}
             </button>
           </div>
           <label class="flex items-center gap-6px min-h-32px text-12px text-ink-2 whitespace-nowrap cursor-pointer">
-            <n-switch v-model:value="filters.favorite_only" size="small" />
+            <n-switch v-model:value="filters.favoriteOnly" size="small" />
             只看收藏
           </label>
         </div>
@@ -986,7 +1012,12 @@ const emptyCopy = computed(() => {
           </button>
         </div>
 
-        <PageLoadError v-if="loadError && !loading" subtitle="资产列表没有取到，请检查网络后重试" retryable @retry="load()" />
+        <PageLoadError
+          v-if="loadError && !loading"
+          subtitle="资产列表没有取到，请检查网络后重试"
+          retryable
+          @retry="load()"
+        />
         <template v-else>
           <TransitionGroup
             v-loading="loading"

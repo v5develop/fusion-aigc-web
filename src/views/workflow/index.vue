@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelOf } from '@/utils/modelLabel'
+import { modelLabelOf } from '@/utils/model-label'
 /**
  * 工作流页 /workflow?flow=&category=&template=（query 形状与 v1.0 原型一致；契约 14 个 wf:* 按 schemas.ts 渲染）。
  *
@@ -21,17 +21,17 @@ import {
   type WorkflowTemplateView,
 } from '@/api/workflows.ts'
 import { videoModelConfigs, type ModelConfig } from '@/api/tools.ts'
-import { useUserInfoStore } from '@/stores/userInfo'
-import PointsBalanceChip from '@/components/points/PointsBalanceChip.vue'
-import CreationOptionPills from '@/components/creation/CreationOptionPills.vue'
+import { useUserInfoStore } from '@/stores/user-info'
+import PointsBalanceChip from '@/components/Points/PointsBalanceChip.vue'
+import CreationOptionPills from '@/components/Creation/CreationOptionPills.vue'
 import ToolUploadSlot from '@/views/tools/ToolUploadSlot.vue'
 import PollingOfflineBanner from '@/views/tools/PollingOfflineBanner.vue'
-import CreationImageSettings from '@/components/creation/CreationImageSettings.vue'
-import CreationSettingsRow from '@/components/creation/CreationSettingsRow.vue'
-import CreationModelPicker from '@/components/creation/CreationModelPicker.vue'
-import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
-import CreationActionBar from '@/components/creation/CreationActionBar.vue'
-import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
+import CreationImageSettings from '@/components/Creation/CreationImageSettings.vue'
+import CreationSettingsRow from '@/components/Creation/CreationSettingsRow.vue'
+import CreationModelPicker from '@/components/Creation/CreationModelPicker.vue'
+import CreationPromptInput from '@/components/Creation/CreationPromptInput.vue'
+import CreationActionBar from '@/components/Creation/CreationActionBar.vue'
+import CreationHistoryHeader from '@/components/Creation/CreationHistoryHeader.vue'
 import WorkflowTemplateHead from './WorkflowTemplateHead.vue'
 import { TAGLINES } from './taglines'
 import WorkflowFlowBoard, { type WorkflowFlowInput } from './WorkflowFlowBoard.vue'
@@ -43,7 +43,7 @@ import {
   type CreationSettingsConfig,
   type CreationSettingsRowItem,
   type CreationSettingsValue,
-} from '@/components/creation/types'
+} from '@/components/Creation/types'
 import {
   isWorkflowListed,
   resolveWorkflowSchema,
@@ -57,7 +57,7 @@ import {
   type WorkflowSchema,
 } from './schemas'
 import { isWorkflowTerminal, useWorkflowHistory } from './useWorkflowHistory'
-import { takeRefill } from '@/utils/refillHandoff'
+import { takeRefill } from '@/utils/refill-handoff'
 
 const route = useRoute()
 const router = useRouter()
@@ -94,7 +94,9 @@ const categoryLabel = computed(() =>
   schema.value ? workflowCategoryLabel(schema.value.flow, schema.value.category) || schema.value.name : '',
 )
 const headDesc = computed(() =>
-  schema.value ? (TAGLINES[schema.value.name] ?? `${workflowFlowLabels[schema.value.flow]} · ${categoryLabel.value}`) : '',
+  schema.value
+    ? (TAGLINES[schema.value.name] ?? `${workflowFlowLabels[schema.value.flow]} · ${categoryLabel.value}`)
+    : '',
 )
 const actionHint = computed(() => {
   const n = schema.value?.uploads.length ?? 0
@@ -751,10 +753,7 @@ const headBtn =
               asset-picker
               @update:model-value="setUploads(u.slot, $event)"
             />
-            <p
-              v-if="u.itemNote && !(uploads[u.slot]?.length)"
-              class="m-0 mt-10px text-11px leading-16px text-muted"
-            >
+            <p v-if="u.itemNote && !uploads[u.slot]?.length" class="m-0 mt-10px text-11px leading-16px text-muted">
               上传图片后可逐张填写规格参数
             </p>
             <!-- 逐张备注（SKU替换「特殊需求」）：每张图一格、两列，选填（原型 WorkflowNotesList.vue:159-258） -->
@@ -1017,7 +1016,9 @@ const headBtn =
                     :style="{ width: `${progressOf(item)}%` }"
                   />
                 </span>
-                <span class="flex-none text-11px font-600 leading-16px text-violet-ink tabular-nums">{{ progressOf(item) }}%</span>
+                <span class="flex-none text-11px font-600 leading-16px text-violet-ink tabular-nums"
+                  >{{ progressOf(item) }}%</span
+                >
               </span>
               <span v-else class="ll-chip self-start" :class="statusOf(item.status).cls">{{
                 statusOf(item.status).text

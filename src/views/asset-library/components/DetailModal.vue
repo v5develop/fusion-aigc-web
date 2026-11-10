@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelOf } from '@/utils/modelLabel'
+import { modelLabelOf } from '@/utils/model-label'
 /**
  * 资产详情弹层（NModal 960）：
  * 预览（image 大图 / video 播放器）、标题行内编辑、分类 / 授权下拉、收藏开关、
@@ -26,10 +26,10 @@ import {
   assetLibRemoveRelation,
   assetLibTags,
   assetLibUpdate,
-} from '@/api/assetLibrary.ts'
-import type { IAssetLibAsset, IAssetLibDetail, IAssetLibTag, IAssetLibUpdateReq } from '@/api/assetLibrary.ts'
+} from '@/api/asset-library.ts'
+import type { IAssetLibAsset, IAssetLibDetail, IAssetLibTag, IAssetLibUpdateReq } from '@/api/asset-library.ts'
 import { formatTime } from '@/views/local-life/constants.ts'
-import { goUploadImage } from '@/api/goUpload.ts'
+import { goUploadImage } from '@/api/go-upload.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
 import { copyText, downloadName } from '../ui.ts'
@@ -115,7 +115,7 @@ const titleDraft = ref('')
 async function load(id: number) {
   loading.value = true
   try {
-    const res = await assetLibDetail(id, { page_size: PAGE_SIZE })
+    const res = await assetLibDetail(id, { pageSize: PAGE_SIZE })
     detail.value = res.data ?? null
     versionPage.value = 1
     relatedPage.value = 1
@@ -157,7 +157,7 @@ const asset = computed<IAssetLibAsset | null>(() => detail.value?.asset ?? null)
 const metaLine = computed(() => {
   const a = asset.value
   if (!a) return ''
-  const date = a.created_at ? formatTime(a.created_at).slice(0, 10) : ''
+  const date = a.createdAt ? formatTime(a.createdAt).slice(0, 10) : ''
   const kind = KIND_OPTIONS.find((k) => k.value === a.kind)?.label ?? '其他分类'
   return [date, kind, a.media === 'video' ? '视频' : ''].filter(Boolean).join(' · ')
 })
@@ -198,7 +198,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 const downloadHref = computed(() => {
   const a = asset.value
   if (!a) return ''
-  return (a.media === 'video' ? a.video_url : a.image) || ''
+  return (a.media === 'video' ? a.videoUrl : a.image) || ''
 })
 
 // ---------------- 通用 PATCH（返回完整资产，就地覆盖） ----------------
@@ -353,12 +353,12 @@ const provRows = computed(() => {
   const p = asset.value?.provenance
   if (!p) return []
   const rows = [
-    { label: '运行 ID', value: p.run_id || '' },
+    { label: '运行 ID', value: p.runId || '' },
     { label: '模型', value: modelLabelOf(p.model) },
-    { label: '工作流', value: p.workflow_id || '' },
-    { label: '节点', value: p.node_id || '' },
+    { label: '工作流', value: p.workflowId || '' },
+    { label: '节点', value: p.nodeId || '' },
     { label: '操作人', value: p.operator || '' },
-    { label: '时间', value: p.created_at ? formatTime(p.created_at) : '' },
+    { label: '时间', value: p.createdAt ? formatTime(p.createdAt) : '' },
     { label: '参数', value: p.params || '' },
   ]
   return rows.filter((r) => r.value)
@@ -388,7 +388,7 @@ async function loadMoreVersions() {
   loadingVersions.value = true
   try {
     const next = versionPage.value + 1
-    const res = await assetLibDetail(id, { version_page: next, page_size: PAGE_SIZE })
+    const res = await assetLibDetail(id, { versionPage: next, pageSize: PAGE_SIZE })
     d.versions.items.push(...(res.data?.versions?.items ?? []))
     versionPage.value = next
   } finally {
@@ -399,7 +399,7 @@ async function loadMoreVersions() {
 // ---------------- 相关资产 / 生成结果 ----------------
 
 const related = computed(() => detail.value?.related ?? { items: [], total: 0 })
-const generatedResults = computed(() => detail.value?.generated_results ?? { items: [], total: 0 })
+const generatedResults = computed(() => detail.value?.generatedResults ?? { items: [], total: 0 })
 const hasMoreRelated = computed(() => related.value.items.length < related.value.total)
 const hasMoreResults = computed(() => generatedResults.value.items.length < generatedResults.value.total)
 const loadingRelated = ref(false)
@@ -412,7 +412,7 @@ async function loadMoreRelated() {
   loadingRelated.value = true
   try {
     const next = relatedPage.value + 1
-    const res = await assetLibDetail(id, { related_page: next, page_size: PAGE_SIZE })
+    const res = await assetLibDetail(id, { relatedPage: next, pageSize: PAGE_SIZE })
     d.related.items.push(...(res.data?.related?.items ?? []))
     relatedPage.value = next
   } finally {
@@ -427,8 +427,8 @@ async function loadMoreResults() {
   loadingResults.value = true
   try {
     const next = resultPage.value + 1
-    const res = await assetLibDetail(id, { result_page: next, page_size: PAGE_SIZE })
-    d.generated_results.items.push(...(res.data?.generated_results?.items ?? []))
+    const res = await assetLibDetail(id, { resultPage: next, pageSize: PAGE_SIZE })
+    d.generatedResults.items.push(...(res.data?.generatedResults?.items ?? []))
     resultPage.value = next
   } finally {
     loadingResults.value = false
@@ -517,7 +517,7 @@ async function submitVersion() {
   versionUploading.value = true
   try {
     await assetLibAddVersion(id, {
-      image_url: versionImage.value[0] ?? '',
+      imageUrl: versionImage.value[0] ?? '',
       prompt: versionPrompt.value.trim() || undefined,
       model: versionModel.value || undefined,
     })
@@ -546,8 +546,8 @@ function parseVersionParams(raw: string | null | undefined): Record<string, unkn
 /** 当前版本若是校色版本，取它的 params（colorFix / colorFixRegion / sourceImage） */
 const currentFixParams = computed(() => {
   const a = asset.value
-  if (!a?.current_version_id) return null
-  const v = versions.value.items.find((x) => x.id === a.current_version_id)
+  if (!a?.currentVersionId) return null
+  const v = versions.value.items.find((x) => x.id === a.currentVersionId)
   const o = parseVersionParams(v?.params)
   return o?.colorFix ? o : null
 })
@@ -624,8 +624,9 @@ async function saveFixVersion() {
     if (r.status === 'not-active') return
     cf.close()
     if (r.status === 'duplicate') {
-      if (!r.versionId || r.versionId === asset.value?.current_version_id) message.info('当前已是这组参数的校色版本')
-      else if (await patchAsset({ current_version_id: r.versionId })) message.success('已有相同参数的校色版本，已切换到它')
+      if (!r.versionId || r.versionId === asset.value?.currentVersionId) message.info('当前已是这组参数的校色版本')
+      else if (await patchAsset({ currentVersionId: r.versionId }))
+        message.success('已有相同参数的校色版本，已切换到它')
       return
     }
     message.success('已存为校色版本并设为当前版本')
@@ -690,120 +691,128 @@ async function removeRelation(relatedId: number) {
       aria-modal="true"
       aria-label="资产详情"
     >
-      <IconButton
-        label="关闭"
-        variant="overlay"
-        class="!absolute right-10px top-10px z-3"
-        @click="show = false"
-      >
+      <IconButton label="关闭" variant="overlay" class="!absolute right-10px top-10px z-3" @click="show = false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <path d="M6 6l12 12M18 6 6 18" />
         </svg>
       </IconButton>
-      <div v-if="loading && !asset" class="flex-1 flex items-center justify-center text-13px text-placeholder">加载中…</div>
+      <div v-if="loading && !asset" class="flex-1 flex items-center justify-center text-13px text-placeholder">
+        加载中…
+      </div>
       <template v-if="asset">
         <!-- relative：校色参数台相对这一行定位（压在右侧信息栏上，不挡大图） -->
         <ColorFixResultPanel :cf="cf" title="资产校色" />
-          <div
-            class="relative flex-1 min-w-0 h-full flex items-center justify-center bg-sunken overflow-hidden"
+        <div class="relative flex-1 min-w-0 h-full flex items-center justify-center bg-sunken overflow-hidden">
+          <!-- 校色对比：左原图右校色后（下载按钮在右侧操作区） -->
+          <ColorFixCompare
+            v-if="fixMode === 'compare' && cf.compareAvailable.value && !previewFailed"
+            :before="cf.src.value"
+            :after="cf.displaySrc.value"
+            :after-filter="cf.liveFilter.value"
+            :labels="['原图', '校色后']"
+            :downloads="false"
           >
-            <!-- 校色对比：左原图右校色后（下载按钮在右侧操作区） -->
-            <ColorFixCompare
-              v-if="fixMode === 'compare' && cf.compareAvailable.value && !previewFailed"
-              :before="cf.src.value"
-              :after="cf.displaySrc.value"
-              :after-filter="cf.liveFilter.value"
-              :labels="['原图', '校色后']"
-              :downloads="false"
+            <template #actions>
+              <ColorFixPill :pressed="cf.panelOpen.value" @click="cf.open()" />
+            </template>
+          </ColorFixCompare>
+          <video
+            v-if="asset.media === 'video' && asset.videoUrl && !previewFailed"
+            :src="asset.videoUrl"
+            :poster="asset.image || undefined"
+            controls
+            class="max-w-full max-h-full object-contain"
+            @error="previewFailed = true"
+          />
+          <img
+            v-else-if="asset.image && !previewFailed"
+            class="max-w-full max-h-full object-contain"
+            :src="mediaSrc"
+            :crossorigin="corsAttr(mediaSrc)"
+            :style="cf.active.value ? cf.previewStyle.value : undefined"
+            alt=""
+            @error="onMediaError"
+          />
+          <MediaFallback v-else type="image" reason="loadFailed" />
+          <!-- 上一个 / 下一个（原型 relay-nav）：按列表页当前筛选顺序，跨页由列表页处理；键盘 ← / → 同效 -->
+          <IconButton
+            v-if="hasPrev"
+            label="上一个（←）"
+            variant="overlay"
+            class="!absolute left-8px top-1/2 -translate-y-1/2 z-1"
+            @click="emit('prev')"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
             >
-              <template #actions>
-                <ColorFixPill :pressed="cf.panelOpen.value" @click="cf.open()" />
-              </template>
-            </ColorFixCompare>
-            <video
-              v-if="asset.media === 'video' && asset.video_url && !previewFailed"
-              :src="asset.video_url"
-              :poster="asset.image || undefined"
-              controls
-              class="max-w-full max-h-full object-contain"
-              @error="previewFailed = true"
-            />
-            <img
-              v-else-if="asset.image && !previewFailed"
-              class="max-w-full max-h-full object-contain"
-              :src="mediaSrc"
-              :crossorigin="corsAttr(mediaSrc)"
-              :style="cf.active.value ? cf.previewStyle.value : undefined"
-              alt=""
-              @error="onMediaError"
-            />
-            <MediaFallback v-else type="image" reason="loadFailed" />
-            <!-- 上一个 / 下一个（原型 relay-nav）：按列表页当前筛选顺序，跨页由列表页处理；键盘 ← / → 同效 -->
-            <IconButton
-              v-if="hasPrev"
-              label="上一个（←）"
-              variant="overlay"
-              class="!absolute left-8px top-1/2 -translate-y-1/2 z-1"
-              @click="emit('prev')"
+              <path d="m15 5-7 7 7 7" />
+            </svg>
+          </IconButton>
+          <IconButton
+            v-if="hasNext"
+            label="下一个（→）"
+            variant="overlay"
+            class="!absolute right-8px top-1/2 -translate-y-1/2 z-1"
+            @click="emit('next')"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m15 5-7 7 7 7" />
-              </svg>
-            </IconButton>
-            <IconButton
-              v-if="hasNext"
-              label="下一个（→）"
-              variant="overlay"
-              class="!absolute right-8px top-1/2 -translate-y-1/2 z-1"
-              @click="emit('next')"
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+          </IconButton>
+          <!-- 校色入口（图片资产）：右上毛玻璃胶囊，常显 -->
+          <ColorFixPill
+            v-if="asset.media === 'image' && asset.image && !previewFailed && fixMode !== 'compare'"
+            class="absolute top-10px right-10px z-2"
+            :label="cf.active.value ? '校色中' : '校色调整'"
+            :pressed="cf.panelOpen.value"
+            @click="cf.open()"
+          />
+          <!-- 版本胶囊（原型 .relay-versions）：媒体底部居中悬浮，原图 / 各版本一键切换（= 切当前版本）；对比档让位给滑杆 -->
+          <div
+            v-if="versions.items.length && fixMode !== 'compare'"
+            class="absolute bottom-10px left-1/2 -translate-x-1/2 flex items-center gap-2px p-4px rounded-full border border-solid border-white/70 bg-white/92 backdrop-blur-[6px] shadow-[0_4px_12px_rgba(31,35,41,0.14)] max-w-[92%]"
+          >
+            <button
+              type="button"
+              class="h-28px box-border px-12px rounded-full border-none text-12px cursor-pointer whitespace-nowrap [transition:background_140ms,color_140ms] motion-reduce:transition-none"
+              :class="
+                !asset.currentVersionId
+                  ? 'bg-violet text-white font-600'
+                  : 'bg-transparent text-ink-2 hover:(bg-surface3 text-ink)'
+              "
+              @click="patchAsset({ currentVersionId: 0 })"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m9 5 7 7-7 7" />
-              </svg>
-            </IconButton>
-            <!-- 校色入口（图片资产）：右上毛玻璃胶囊，常显 -->
-            <ColorFixPill
-              v-if="asset.media === 'image' && asset.image && !previewFailed && fixMode !== 'compare'"
-              class="absolute top-10px right-10px z-2"
-              :label="cf.active.value ? '校色中' : '校色调整'"
-              :pressed="cf.panelOpen.value"
-              @click="cf.open()"
-            />
-            <!-- 版本胶囊（原型 .relay-versions）：媒体底部居中悬浮，原图 / 各版本一键切换（= 切当前版本）；对比档让位给滑杆 -->
-            <div
-              v-if="versions.items.length && fixMode !== 'compare'"
-              class="absolute bottom-10px left-1/2 -translate-x-1/2 flex items-center gap-2px p-4px rounded-full border border-solid border-white/70 bg-white/92 backdrop-blur-[6px] shadow-[0_4px_12px_rgba(31,35,41,0.14)] max-w-[92%]"
+              原图
+            </button>
+            <button
+              v-for="(v, vi) in versions.items"
+              :key="v.id"
+              type="button"
+              class="h-28px box-border px-12px rounded-full border-none text-12px cursor-pointer whitespace-nowrap [transition:background_140ms,color_140ms] motion-reduce:transition-none"
+              :class="
+                v.id === asset.currentVersionId
+                  ? 'bg-violet text-white font-600'
+                  : 'bg-transparent text-ink-2 hover:(bg-surface3 text-ink)'
+              "
+              :title="v.prompt || undefined"
+              @click="patchAsset({ currentVersionId: v.id })"
             >
-              <button
-                type="button"
-                class="h-28px box-border px-12px rounded-full border-none text-12px cursor-pointer whitespace-nowrap [transition:background_140ms,color_140ms] motion-reduce:transition-none"
-                :class="
-                  !asset.current_version_id
-                    ? 'bg-violet text-white font-600'
-                    : 'bg-transparent text-ink-2 hover:(bg-surface3 text-ink)'
-                "
-                @click="patchAsset({ current_version_id: 0 })"
-              >
-                原图
-              </button>
-              <button
-                v-for="(v, vi) in versions.items"
-                :key="v.id"
-                type="button"
-                class="h-28px box-border px-12px rounded-full border-none text-12px cursor-pointer whitespace-nowrap [transition:background_140ms,color_140ms] motion-reduce:transition-none"
-                :class="
-                  v.id === asset.current_version_id
-                    ? 'bg-violet text-white font-600'
-                    : 'bg-transparent text-ink-2 hover:(bg-surface3 text-ink)'
-                "
-                :title="v.prompt || undefined"
-                @click="patchAsset({ current_version_id: v.id })"
-              >
-                {{ versionLabel(v, vi) }}
-              </button>
-            </div>
+              {{ versionLabel(v, vi) }}
+            </button>
           </div>
-
+        </div>
 
         <aside class="w-360px shrink-0 min-w-0 flex flex-col border-l border-l-solid border-line-soft max-md:w-300px">
           <div v-loading="loading" class="flex-1 min-h-0 overflow-auto px-18px pt-18px pb-14px">
@@ -825,7 +834,13 @@ async function removeRelation(relatedId: number) {
                 <h2 class="m-0 text-18px leading-26px font-600 text-ink break-all line-clamp-2" :title="asset.title">
                   {{ asset.title || '未命名资产' }}
                 </h2>
-                <button type="button" class="ll-link relative after:(content-empty absolute -inset-x-6px -inset-y-8px rounded-[inherit]) shrink-0 border-none bg-transparent p-0 cursor-pointer text-12px" @click="startEditTitle">编辑</button>
+                <button
+                  type="button"
+                  class="ll-link relative after:(content-empty absolute -inset-x-6px -inset-y-8px rounded-[inherit]) shrink-0 border-none bg-transparent p-0 cursor-pointer text-12px"
+                  @click="startEditTitle"
+                >
+                  编辑
+                </button>
               </div>
               <div class="mt-4px flex items-center gap-8px text-12px text-placeholder">
                 <span class="min-w-0 truncate">{{ metaLine }}</span>
@@ -896,7 +911,9 @@ async function removeRelation(relatedId: number) {
                 />
                 <div v-if="dictOptions.length" class="flex flex-wrap items-center gap-6px mt-8px">
                   <span class="text-12px text-placeholder">我的标签：</span>
-                  <span v-for="t in dictOptions" :key="t.id" class="ll-tag" @click="toggleDictTag(t.name)">{{ t.name }}</span>
+                  <span v-for="t in dictOptions" :key="t.id" class="ll-tag" @click="toggleDictTag(t.name)">{{
+                    t.name
+                  }}</span>
                 </div>
               </div>
             </div>
@@ -908,319 +925,345 @@ async function removeRelation(relatedId: number) {
               :aria-expanded="moreOpen"
               @click="moreOpen = !moreOpen"
             >
-              <span class="inline-block transition-transform motion-reduce:transition-none" :class="moreOpen && 'rotate-90'" aria-hidden="true">›</span>
+              <span
+                class="inline-block transition-transform motion-reduce:transition-none"
+                :class="moreOpen && 'rotate-90'"
+                aria-hidden="true"
+                >›</span
+              >
               更多信息（属性 · 版本 · 相关资产）
             </button>
             <div v-if="moreOpen">
-            <!-- 字段网格：分类/授权/收藏与元数据共用同一两列网格（标签列 28px、列距 16px），控件左缘对齐 -->
-            <div class="grid grid-cols-2 gap-x-16px gap-y-8px mb-12px">
-              <div class="flex items-center gap-8px min-w-0">
-                <span class="shrink-0 w-28px text-12px text-placeholder">分类</span>
-                <n-select
-                  class="flex-1 min-w-0"
-                  size="small"
-                  :options="KIND_OPTIONS"
-                  :value="asset.kind"
-                  :disabled="saving"
-                  @update:value="(v: string) => patchAsset({ kind: v })"
-                />
-              </div>
-              <div class="flex items-center gap-8px min-w-0">
-                <span class="shrink-0 w-28px text-12px text-placeholder">授权</span>
-                <n-select
-                  class="flex-1 min-w-0"
-                  size="small"
-                  :options="LICENSE_OPTIONS"
-                  v-model:value="licenseDraft"
-                  :disabled="saving"
-                />
-              </div>
-            </div>
-
-            <div class="mb-12px">
-              <div class="ll-label">元数据</div>
-              <div class="grid grid-cols-2 gap-x-16px gap-y-8px">
-                <div v-for="f in META_FIELDS" :key="f.key" class="flex items-center gap-8px min-w-0">
-                  <span class="shrink-0 w-28px text-12px text-placeholder">{{ f.label }}</span>
-                  <n-input
-                    v-model:value="metaDraft[f.key]"
+              <!-- 字段网格：分类/授权/收藏与元数据共用同一两列网格（标签列 28px、列距 16px），控件左缘对齐 -->
+              <div class="grid grid-cols-2 gap-x-16px gap-y-8px mb-12px">
+                <div class="flex items-center gap-8px min-w-0">
+                  <span class="shrink-0 w-28px text-12px text-placeholder">分类</span>
+                  <n-select
                     class="flex-1 min-w-0"
                     size="small"
-                    :maxlength="META_MAX"
-                    show-count
+                    :options="KIND_OPTIONS"
+                    :value="asset.kind"
                     :disabled="saving"
-                    :placeholder="`${f.label}（选填）`"
+                    @update:value="(v: string) => patchAsset({ kind: v })"
+                  />
+                </div>
+                <div class="flex items-center gap-8px min-w-0">
+                  <span class="shrink-0 w-28px text-12px text-placeholder">授权</span>
+                  <n-select
+                    class="flex-1 min-w-0"
+                    size="small"
+                    :options="LICENSE_OPTIONS"
+                    v-model:value="licenseDraft"
+                    :disabled="saving"
                   />
                 </div>
               </div>
-              <div class="flex items-center gap-8px mt-10px">
-                <n-button size="small" type="primary" :disabled="!profileDirty" :loading="saving" @click="saveProfile"
-                  >保存授权与元数据</n-button
-                >
-                <n-button size="small" quaternary :disabled="!profileDirty || saving" @click="resetDrafts"
-                  >还原</n-button
-                >
-                <span v-if="profileDirty" class="text-12px text-placeholder">有未保存的修改</span>
-              </div>
-            </div>
 
-            <div class="mb-12px">
-              <div class="ll-label">基础信息</div>
-              <div class="flex flex-wrap gap-x-16px gap-y-6px">
-                <span class="text-12px text-ink max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
-                  ><i class="not-italic text-placeholder mr-6px after:content-['：']">来源</i
-                  >{{ SOURCE_LABELS[asset.source] ?? asset.source }}</span
-                >
-                <span class="text-12px text-ink max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
-                  ><i class="not-italic text-placeholder mr-6px after:content-['：']">媒体</i
-                  >{{ asset.media === 'video' ? '视频' : '图片' }}</span
-                >
-                <span class="text-12px text-ink max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
-                  ><i class="not-italic text-placeholder mr-6px after:content-['：']">创建</i
-                  >{{ formatTime(asset.created_at) }}</span
-                >
-                <span
-                  v-if="asset.width"
-                  class="text-12px text-ink max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
-                  ><i class="not-italic text-placeholder mr-6px after:content-['：']">尺寸</i>{{ asset.width }}×{{
-                    asset.height
-                  }}</span
-                >
-              </div>
-            </div>
-
-            <n-collapse v-if="provRows.length">
-              <n-collapse-item title="溯源信息" name="prov">
-                <div class="flex flex-col gap-6px">
-                  <div v-for="r in provRows" :key="r.label" class="flex gap-8px text-12px">
-                    <span class="shrink-0 text-placeholder">{{ r.label }}</span>
-                    <span class="text-ink break-all">{{ r.value }}</span>
+              <div class="mb-12px">
+                <div class="ll-label">元数据</div>
+                <div class="grid grid-cols-2 gap-x-16px gap-y-8px">
+                  <div v-for="f in META_FIELDS" :key="f.key" class="flex items-center gap-8px min-w-0">
+                    <span class="shrink-0 w-28px text-12px text-placeholder">{{ f.label }}</span>
+                    <n-input
+                      v-model:value="metaDraft[f.key]"
+                      class="flex-1 min-w-0"
+                      size="small"
+                      :maxlength="META_MAX"
+                      show-count
+                      :disabled="saving"
+                      :placeholder="`${f.label}（选填）`"
+                    />
                   </div>
                 </div>
-              </n-collapse-item>
-            </n-collapse>
+                <div class="flex items-center gap-8px mt-10px">
+                  <n-button size="small" type="primary" :disabled="!profileDirty" :loading="saving" @click="saveProfile"
+                    >保存授权与元数据</n-button
+                  >
+                  <n-button size="small" quaternary :disabled="!profileDirty || saving" @click="resetDrafts"
+                    >还原</n-button
+                  >
+                  <span v-if="profileDirty" class="text-12px text-placeholder">有未保存的修改</span>
+                </div>
+              </div>
 
-        <div class="border-t border-solid border-sunken pt-12px mt-12px">
-          <div class="flex items-center gap-10px min-h-20px mb-10px">
-            <span class="ll-section-title !mb-0">版本（{{ versions.total }}）</span>
-            <span v-if="!asset.current_version_id" class="ll-chip ll-chip-success">当前：原图</span>
-            <span class="ll-link ml-auto" @click="addingVersion = !addingVersion">
-              {{ addingVersion ? '收起' : '+ 追加版本' }}
-            </span>
-          </div>
+              <div class="mb-12px">
+                <div class="ll-label">基础信息</div>
+                <div class="flex flex-wrap gap-x-16px gap-y-6px">
+                  <span class="text-12px text-ink max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+                    ><i class="not-italic text-placeholder mr-6px after:content-['：']">来源</i
+                    >{{ SOURCE_LABELS[asset.source] ?? asset.source }}</span
+                  >
+                  <span class="text-12px text-ink max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+                    ><i class="not-italic text-placeholder mr-6px after:content-['：']">媒体</i
+                    >{{ asset.media === 'video' ? '视频' : '图片' }}</span
+                  >
+                  <span class="text-12px text-ink max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+                    ><i class="not-italic text-placeholder mr-6px after:content-['：']">创建</i
+                    >{{ formatTime(asset.createdAt) }}</span
+                  >
+                  <span
+                    v-if="asset.width"
+                    class="text-12px text-ink max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
+                    ><i class="not-italic text-placeholder mr-6px after:content-['：']">尺寸</i>{{ asset.width }}×{{
+                      asset.height
+                    }}</span
+                  >
+                </div>
+              </div>
 
-          <!-- 追加版本：Go presign 直传（资产库只认 Go 签发地址） -->
-          <div
-            v-if="addingVersion"
-            class="flex flex-col gap-8px mt-8px mb-10px p-10px border border-solid border-sunken rounded-8px bg-surface2"
-          >
-            <div
-              v-if="!versionImage.length"
-              ref="versionDropRef"
-              class="relative flex flex-col items-center gap-4px py-18px border-2 border-dashed border-line-strong rounded-8px text-muted text-12px hover:(border-violet text-violet-ink) has-[:focus-visible]:(outline outline-2 outline-solid outline-violet outline-offset-2)"
-              :class="[versionUploading ? 'opacity-60 cursor-wait' : 'cursor-pointer', versionDragging && 'sx-drop']"
-              @click="pickVersionFile"
-            >
-              <!-- 从资产库添加：盖在透明文件框之上（z-1），点它不弹文件框 -->
-              <button
-                type="button"
-                class="absolute right-12px top-12px z-1 px-4px text-12px leading-18px text-violet bg-transparent border-none cursor-pointer rounded-sm hover:underline disabled:(opacity-45 cursor-not-allowed) sx-focus"
-                aria-label="从资产库添加新版本图片"
-                :disabled="versionUploading"
-                @click.stop="openVersionAssets"
-              >
-                从资产库添加
-              </button>
-              <input
-                ref="versionFileRef"
-                type="file"
-                accept="image/*"
-                class="absolute inset-0 opacity-0 cursor-pointer"
-                @change="onVersionFile"
-              />
-              <span class="text-20px">☁</span>
-              <span>{{ versionUploading ? '上传中…' : '上传新版本图片' }}</span>
-              <span class="text-11px text-placeholder">单张 ≤10M</span>
-            </div>
-            <div v-else class="relative">
-              <img
-                class="max-w-120px max-h-120px rounded-8px border border-solid border-line block"
-                :src="versionImage[0]"
-                alt=""
-              />
-              <span
-                class="absolute top-4px right-4px text-11px text-white bg-[rgba(0,0,0,0.45)] rounded-4px px-6px py-1px cursor-pointer"
-                @click="versionImage = []"
-                >重选</span
-              >
-            </div>
-            <n-input v-model:value="versionPrompt" type="textarea" :rows="2" placeholder="版本说明 / 提示词（选填）" />
-            <div>
-              <n-select
-                v-model:value="versionModel"
-                :options="versionModelOptions"
-                placeholder="生成模型（选填）"
-                size="small"
-                clearable
-              />
-              <n-button size="small" type="primary" :loading="versionUploading" @click="submitVersion"
-                >提交版本</n-button
-              >
-            </div>
-          </div>
+              <n-collapse v-if="provRows.length">
+                <n-collapse-item title="溯源信息" name="prov">
+                  <div class="flex flex-col gap-6px">
+                    <div v-for="r in provRows" :key="r.label" class="flex gap-8px text-12px">
+                      <span class="shrink-0 text-placeholder">{{ r.label }}</span>
+                      <span class="text-ink break-all">{{ r.value }}</span>
+                    </div>
+                  </div>
+                </n-collapse-item>
+              </n-collapse>
 
-          <AssetPickerModal v-model:show="versionAssetShow" :limit="1" @select="onVersionAssets" />
+              <div class="border-t border-solid border-sunken pt-12px mt-12px">
+                <div class="flex items-center gap-10px min-h-20px mb-10px">
+                  <span class="ll-section-title !mb-0">版本（{{ versions.total }}）</span>
+                  <span v-if="!asset.currentVersionId" class="ll-chip ll-chip-success">当前：原图</span>
+                  <span class="ll-link ml-auto" @click="addingVersion = !addingVersion">
+                    {{ addingVersion ? '收起' : '+ 追加版本' }}
+                  </span>
+                </div>
 
-          <div v-if="!versions.items.length" class="ll-empty">没有版本记录，当前展示原图</div>
-          <div
-            v-for="v in versions.items"
-            :key="v.id"
-            class="flex items-center gap-12px px-10px py-8px border border-solid rounded-8px mt-8px"
-            :class="v.id === asset.current_version_id ? 'border-violet-line bg-violet-soft' : 'border-line'"
-          >
-            <img
-              v-if="v.image && !versionThumbFailed[v.id]"
-              class="w-56px h-56px shrink-0 object-cover rounded-6px bg-sunken"
-              :src="v.image"
-              alt=""
-              loading="lazy"
-              @error="versionThumbFailed[v.id] = true"
-            />
-            <div
-              v-else
-              class="w-56px h-56px shrink-0 rounded-6px bg-sunken flex items-center justify-center text-11px text-placeholder"
-            >
-              无图
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-8px">
-                <span class="text-13px font-600 text-ink">V{{ v.version_no }}</span>
-                <span v-if="v.id === asset.current_version_id" class="ll-chip ll-chip-success">当前版本</span>
-                <span class="text-12px text-placeholder"
-                  >{{ modelLabelOf(v.model) || '未知模型' }} · {{ formatTime(v.created_at) }}</span
+                <!-- 追加版本：Go presign 直传（资产库只认 Go 签发地址） -->
+                <div
+                  v-if="addingVersion"
+                  class="flex flex-col gap-8px mt-8px mb-10px p-10px border border-solid border-sunken rounded-8px bg-surface2"
                 >
-              </div>
-              <div class="text-12px text-ink-2 mt-2px line-clamp-2" :title="v.prompt">
-                {{ v.prompt || '（无提示词）' }}
-              </div>
-            </div>
-            <n-button
-              v-if="v.id !== asset.current_version_id"
-              size="tiny"
-              :disabled="saving"
-              @click="patchAsset({ current_version_id: v.id })"
-            >
-              设为当前版本
-            </n-button>
-          </div>
-          <div v-if="asset.current_version_id || hasMoreVersions" class="flex gap-16px mt-8px">
-            <span v-if="asset.current_version_id" class="ll-link" @click="patchAsset({ current_version_id: 0 })"
-              >回到原图</span
-            >
-            <span v-if="hasMoreVersions" class="ll-link" @click="loadMoreVersions">
-              {{ loadingVersions ? '加载中…' : '加载更多版本' }}
-            </span>
-          </div>
-        </div>
+                  <div
+                    v-if="!versionImage.length"
+                    ref="versionDropRef"
+                    class="relative flex flex-col items-center gap-4px py-18px border-2 border-dashed border-line-strong rounded-8px text-muted text-12px hover:(border-violet text-violet-ink) has-[:focus-visible]:(outline outline-2 outline-solid outline-violet outline-offset-2)"
+                    :class="[
+                      versionUploading ? 'opacity-60 cursor-wait' : 'cursor-pointer',
+                      versionDragging && 'sx-drop',
+                    ]"
+                    @click="pickVersionFile"
+                  >
+                    <!-- 从资产库添加：盖在透明文件框之上（z-1），点它不弹文件框 -->
+                    <button
+                      type="button"
+                      class="absolute right-12px top-12px z-1 px-4px text-12px leading-18px text-violet bg-transparent border-none cursor-pointer rounded-sm hover:underline disabled:(opacity-45 cursor-not-allowed) sx-focus"
+                      aria-label="从资产库添加新版本图片"
+                      :disabled="versionUploading"
+                      @click.stop="openVersionAssets"
+                    >
+                      从资产库添加
+                    </button>
+                    <input
+                      ref="versionFileRef"
+                      type="file"
+                      accept="image/*"
+                      class="absolute inset-0 opacity-0 cursor-pointer"
+                      @change="onVersionFile"
+                    />
+                    <span class="text-20px">☁</span>
+                    <span>{{ versionUploading ? '上传中…' : '上传新版本图片' }}</span>
+                    <span class="text-11px text-placeholder">单张 ≤10M</span>
+                  </div>
+                  <div v-else class="relative">
+                    <img
+                      class="max-w-120px max-h-120px rounded-8px border border-solid border-line block"
+                      :src="versionImage[0]"
+                      alt=""
+                    />
+                    <span
+                      class="absolute top-4px right-4px text-11px text-white bg-[rgba(0,0,0,0.45)] rounded-4px px-6px py-1px cursor-pointer"
+                      @click="versionImage = []"
+                      >重选</span
+                    >
+                  </div>
+                  <n-input
+                    v-model:value="versionPrompt"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="版本说明 / 提示词（选填）"
+                  />
+                  <div>
+                    <n-select
+                      v-model:value="versionModel"
+                      :options="versionModelOptions"
+                      placeholder="生成模型（选填）"
+                      size="small"
+                      clearable
+                    />
+                    <n-button size="small" type="primary" :loading="versionUploading" @click="submitVersion"
+                      >提交版本</n-button
+                    >
+                  </div>
+                </div>
 
-        <div class="border-t border-solid border-sunken pt-12px mt-12px">
-          <div class="flex items-center gap-10px min-h-20px mb-10px">
-            <span class="ll-section-title !mb-0">相关资产（{{ related.total }}）</span>
-            <span class="ll-link ml-auto" @click="addingRelation = !addingRelation">
-              {{ addingRelation ? '收起' : '+ 添加关联' }}
-            </span>
-          </div>
-          <div
-            v-if="addingRelation"
-            class="flex flex-row items-center gap-8px mt-8px mb-10px p-10px border border-solid border-sunken rounded-8px bg-surface2"
-          >
-            <n-input
-              v-model:value="relationIdDraft"
-              class="flex-1"
-              size="small"
-              placeholder="输入对方资产 id（数字）"
-              @keydown.enter="submitRelation"
-            />
-            <n-button size="small" type="primary" :loading="relationBusy" @click="submitRelation">建立关联</n-button>
-          </div>
-          <div v-if="!related.items.length" class="ll-empty">暂无相关资产</div>
-          <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-10px mt-10px">
-            <div v-for="r in related.items" :key="r.id" class="relative cursor-pointer group" @click="assetId = r.id">
-              <img
-                v-if="r.image && !miniThumbFailed[r.id]"
-                class="block w-full aspect-square object-cover rounded-6px bg-sunken"
-                :src="r.image"
-                alt=""
-                loading="lazy"
-                @error="miniThumbFailed[r.id] = true"
-              />
-              <div
-                v-else
-                class="w-full aspect-square rounded-6px bg-sunken flex items-center justify-center text-11px text-placeholder"
-              >
-                无图
-              </div>
-              <span
-                class="block text-11px text-ink-2 mt-4px whitespace-nowrap overflow-hidden text-ellipsis hover:text-violet"
-                :title="r.title"
-                >{{ r.title || '未命名资产' }}</span
-              >
-              <IconButton
-                label="解除关联"
-                variant="overlay"
-                size="sm"
-                reveal
-                class="absolute top-4px right-4px"
-                @click.stop="removeRelation(r.id)"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
-                  <path d="M6 6l12 12M18 6 6 18" />
-                </svg>
-              </IconButton>
-            </div>
-          </div>
-          <div v-if="hasMoreRelated" class="flex gap-16px mt-8px">
-            <span class="ll-link" @click="loadMoreRelated">{{ loadingRelated ? '加载中…' : '加载更多' }}</span>
-          </div>
-        </div>
+                <AssetPickerModal v-model:show="versionAssetShow" :limit="1" @select="onVersionAssets" />
 
-        <div class="border-t border-solid border-sunken pt-12px mt-12px">
-          <div class="flex items-center gap-10px min-h-20px mb-10px">
-            <span class="ll-section-title !mb-0">生成结果（{{ generatedResults.total }}）</span>
-          </div>
-          <div v-if="!generatedResults.items.length" class="ll-empty">还没有由它生成的资产</div>
-          <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-10px mt-10px">
-            <div
-              v-for="r in generatedResults.items"
-              :key="r.id"
-              class="relative cursor-pointer group"
-              @click="assetId = r.id"
-            >
-              <img
-                v-if="r.image && !miniThumbFailed[r.id]"
-                class="block w-full aspect-square object-cover rounded-6px bg-sunken"
-                :src="r.image"
-                alt=""
-                loading="lazy"
-                @error="miniThumbFailed[r.id] = true"
-              />
-              <div
-                v-else
-                class="w-full aspect-square rounded-6px bg-sunken flex items-center justify-center text-11px text-placeholder"
-              >
-                无图
+                <div v-if="!versions.items.length" class="ll-empty">没有版本记录，当前展示原图</div>
+                <div
+                  v-for="v in versions.items"
+                  :key="v.id"
+                  class="flex items-center gap-12px px-10px py-8px border border-solid rounded-8px mt-8px"
+                  :class="v.id === asset.currentVersionId ? 'border-violet-line bg-violet-soft' : 'border-line'"
+                >
+                  <img
+                    v-if="v.image && !versionThumbFailed[v.id]"
+                    class="w-56px h-56px shrink-0 object-cover rounded-6px bg-sunken"
+                    :src="v.image"
+                    alt=""
+                    loading="lazy"
+                    @error="versionThumbFailed[v.id] = true"
+                  />
+                  <div
+                    v-else
+                    class="w-56px h-56px shrink-0 rounded-6px bg-sunken flex items-center justify-center text-11px text-placeholder"
+                  >
+                    无图
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-8px">
+                      <span class="text-13px font-600 text-ink">V{{ v.versionNo }}</span>
+                      <span v-if="v.id === asset.currentVersionId" class="ll-chip ll-chip-success">当前版本</span>
+                      <span class="text-12px text-placeholder"
+                        >{{ modelLabelOf(v.model) || '未知模型' }} · {{ formatTime(v.createdAt) }}</span
+                      >
+                    </div>
+                    <div class="text-12px text-ink-2 mt-2px line-clamp-2" :title="v.prompt">
+                      {{ v.prompt || '（无提示词）' }}
+                    </div>
+                  </div>
+                  <n-button
+                    v-if="v.id !== asset.currentVersionId"
+                    size="tiny"
+                    :disabled="saving"
+                    @click="patchAsset({ currentVersionId: v.id })"
+                  >
+                    设为当前版本
+                  </n-button>
+                </div>
+                <div v-if="asset.currentVersionId || hasMoreVersions" class="flex gap-16px mt-8px">
+                  <span v-if="asset.currentVersionId" class="ll-link" @click="patchAsset({ currentVersionId: 0 })"
+                    >回到原图</span
+                  >
+                  <span v-if="hasMoreVersions" class="ll-link" @click="loadMoreVersions">
+                    {{ loadingVersions ? '加载中…' : '加载更多版本' }}
+                  </span>
+                </div>
               </div>
-              <span
-                class="block text-11px text-ink-2 mt-4px whitespace-nowrap overflow-hidden text-ellipsis hover:text-violet"
-                :title="r.title"
-                >{{ r.title || '未命名资产' }}</span
-              >
-            </div>
-          </div>
-          <div v-if="hasMoreResults" class="flex gap-16px mt-8px">
-            <span class="ll-link" @click="loadMoreResults">{{ loadingResults ? '加载中…' : '加载更多' }}</span>
-          </div>
-        </div>
+
+              <div class="border-t border-solid border-sunken pt-12px mt-12px">
+                <div class="flex items-center gap-10px min-h-20px mb-10px">
+                  <span class="ll-section-title !mb-0">相关资产（{{ related.total }}）</span>
+                  <span class="ll-link ml-auto" @click="addingRelation = !addingRelation">
+                    {{ addingRelation ? '收起' : '+ 添加关联' }}
+                  </span>
+                </div>
+                <div
+                  v-if="addingRelation"
+                  class="flex flex-row items-center gap-8px mt-8px mb-10px p-10px border border-solid border-sunken rounded-8px bg-surface2"
+                >
+                  <n-input
+                    v-model:value="relationIdDraft"
+                    class="flex-1"
+                    size="small"
+                    placeholder="输入对方资产 id（数字）"
+                    @keydown.enter="submitRelation"
+                  />
+                  <n-button size="small" type="primary" :loading="relationBusy" @click="submitRelation"
+                    >建立关联</n-button
+                  >
+                </div>
+                <div v-if="!related.items.length" class="ll-empty">暂无相关资产</div>
+                <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-10px mt-10px">
+                  <div
+                    v-for="r in related.items"
+                    :key="r.id"
+                    class="relative cursor-pointer group"
+                    @click="assetId = r.id"
+                  >
+                    <img
+                      v-if="r.image && !miniThumbFailed[r.id]"
+                      class="block w-full aspect-square object-cover rounded-6px bg-sunken"
+                      :src="r.image"
+                      alt=""
+                      loading="lazy"
+                      @error="miniThumbFailed[r.id] = true"
+                    />
+                    <div
+                      v-else
+                      class="w-full aspect-square rounded-6px bg-sunken flex items-center justify-center text-11px text-placeholder"
+                    >
+                      无图
+                    </div>
+                    <span
+                      class="block text-11px text-ink-2 mt-4px whitespace-nowrap overflow-hidden text-ellipsis hover:text-violet"
+                      :title="r.title"
+                      >{{ r.title || '未命名资产' }}</span
+                    >
+                    <IconButton
+                      label="解除关联"
+                      variant="overlay"
+                      size="sm"
+                      reveal
+                      class="absolute top-4px right-4px"
+                      @click.stop="removeRelation(r.id)"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.4"
+                        stroke-linecap="round"
+                      >
+                        <path d="M6 6l12 12M18 6 6 18" />
+                      </svg>
+                    </IconButton>
+                  </div>
+                </div>
+                <div v-if="hasMoreRelated" class="flex gap-16px mt-8px">
+                  <span class="ll-link" @click="loadMoreRelated">{{ loadingRelated ? '加载中…' : '加载更多' }}</span>
+                </div>
+              </div>
+
+              <div class="border-t border-solid border-sunken pt-12px mt-12px">
+                <div class="flex items-center gap-10px min-h-20px mb-10px">
+                  <span class="ll-section-title !mb-0">生成结果（{{ generatedResults.total }}）</span>
+                </div>
+                <div v-if="!generatedResults.items.length" class="ll-empty">还没有由它生成的资产</div>
+                <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-10px mt-10px">
+                  <div
+                    v-for="r in generatedResults.items"
+                    :key="r.id"
+                    class="relative cursor-pointer group"
+                    @click="assetId = r.id"
+                  >
+                    <img
+                      v-if="r.image && !miniThumbFailed[r.id]"
+                      class="block w-full aspect-square object-cover rounded-6px bg-sunken"
+                      :src="r.image"
+                      alt=""
+                      loading="lazy"
+                      @error="miniThumbFailed[r.id] = true"
+                    />
+                    <div
+                      v-else
+                      class="w-full aspect-square rounded-6px bg-sunken flex items-center justify-center text-11px text-placeholder"
+                    >
+                      无图
+                    </div>
+                    <span
+                      class="block text-11px text-ink-2 mt-4px whitespace-nowrap overflow-hidden text-ellipsis hover:text-violet"
+                      :title="r.title"
+                      >{{ r.title || '未命名资产' }}</span
+                    >
+                  </div>
+                </div>
+                <div v-if="hasMoreResults" class="flex gap-16px mt-8px">
+                  <span class="ll-link" @click="loadMoreResults">{{ loadingResults ? '加载中…' : '加载更多' }}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1265,7 +1308,16 @@ async function removeRelation(relatedId: number) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <svg class="w-13px h-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg
+                  class="w-13px h-13px"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
                   <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
                 </svg>
                 下载

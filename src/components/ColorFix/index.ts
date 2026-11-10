@@ -6,8 +6,8 @@
  *    const cf = useResultColorFix({
  *      key: computed(() => task.value?.taskUid),        // 持久化键（localStorage `colorfix:<key>`）
  *      src: computed(() => selectedImageUrl.value),      // 当前结果图；视频 / 无图传 ''
- *      maskUrl: computed(() => task.value?.mask_url),    // 可选：现成蒙版 = 「自动识别 · 服装」结果
- *      maskParts: computed(() => task.value?.mask_parts), // 可选：逐件蒙版（mask_url 是它们的合并），也用来探测部位支持
+ *      maskUrl: computed(() => task.value?.maskUrl),    // 可选：现成蒙版 = 「自动识别 · 服装」结果
+ *      maskParts: computed(() => task.value?.maskParts), // 可选：逐件蒙版（mask_url 是它们的合并），也用来探测部位支持
  *    })
  *    ```
  * 2. 舞台：结果图改用 `cf.displaySrc` + `:style="cf.previewStyle"`，并给 `<img>` 加
@@ -53,8 +53,14 @@ export {
   type SaveColorFixVersionOptions,
   type SaveColorFixVersionResult,
   type ColorFixTaskAssetResult,
-} from './assetVersion.ts'
-export { provideColorFixHost, useColorFixHost, type ColorFixHost, type ColorFixHostEntry, type ColorFixHostOptions } from './host.ts'
+} from './asset-version.ts'
+export {
+  provideColorFixHost,
+  useColorFixHost,
+  type ColorFixHost,
+  type ColorFixHostEntry,
+  type ColorFixHostOptions,
+} from './host.ts'
 export { default as ColorFixPill } from './ColorFixPill.vue'
 export { default as ColorFixCompare } from './ColorFixCompare.vue'
 export { default as ColorFixResultPanel } from './ColorFixResultPanel.vue'

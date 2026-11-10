@@ -6,8 +6,8 @@
  */
 import type { CanvasEditorEdge, CanvasEditorNode, CanvasEditorNodeData, CanvasToolKind } from './types'
 import { candidateIndexOf } from './types'
-import type { ICanvasRunRef } from '@/api/canvasHome.ts'
-import { modelLabelOf } from '@/utils/modelLabel'
+import type { ICanvasRunRef } from '@/api/canvas-home.ts'
+import { modelLabelOf } from '@/utils/model-label'
 
 export type CanvasInputHandle = 'prompt' | 'image' | 'video' | 'audio' | 'garment' | 'models' | 'image-in'
 
@@ -231,14 +231,14 @@ export function toolSourceImage(nodes: CanvasEditorNode[], edges: CanvasEditorEd
 function emitRef(ref: IRawRef, index?: number): ICanvasRunRef {
   const out: ICanvasRunRef = {
     handle: ref.handle,
-    node_id: ref.node_id,
+    nodeId: ref.nodeId,
     text: ref.text,
     image: ref.image,
     video: ref.video,
-    asset_id: ref.asset_id,
-    media_id: ref.media_id,
-    source_handle: ref.source_handle,
-    candidate_index: ref.candidate_index,
+    assetId: ref.assetId,
+    mediaId: ref.mediaId,
+    sourceHandle: ref.sourceHandle,
+    candidateIndex: ref.candidateIndex,
   }
   if (index !== undefined) out.index = index
   return out
@@ -265,14 +265,14 @@ export function buildReferences(
     const media = sourceMediaOf(source, candidateIndex)
     raw.push({
       handle,
-      node_id: source.id,
+      nodeId: source.id,
       text: media.text,
       image: media.image,
       video: media.video,
-      asset_id: media.assetId,
-      media_id: media.mediaId,
-      source_handle: edge.sourceHandle ?? undefined,
-      candidate_index: candidateIndex >= 0 ? candidateIndex : undefined,
+      assetId: media.assetId,
+      mediaId: media.mediaId,
+      sourceHandle: edge.sourceHandle ?? undefined,
+      candidateIndex: candidateIndex >= 0 ? candidateIndex : undefined,
       order: edge.data?.order ?? 0,
     })
   }
@@ -282,7 +282,7 @@ export function buildReferences(
     const upstream = nodeById.get(target.data.sourceNodeId)
     const media = upstream ? sourceMediaOf(upstream, -1) : undefined
     if (upstream && media?.image) {
-      raw.push({ handle: 'image', node_id: upstream.id, image: media.image, asset_id: media.assetId, order: 0 })
+      raw.push({ handle: 'image', nodeId: upstream.id, image: media.image, assetId: media.assetId, order: 0 })
     }
   }
   const groups: Record<string, IRawRef[]> = {}
@@ -483,22 +483,22 @@ export function applyModelToNode(
   data: CanvasEditorNodeData,
   model: {
     model: string
-    model_id: string
+    modelId: string
     badge?: string
-    max_image_refs: number
+    maxImageRefs: number
     ratios: string[]
     sizes: string[]
     durations?: string[]
-    count_max: number
+    countMax: number
     capabilities: { quality: boolean; count: boolean; duration: boolean; sound: boolean }
   },
   isVideo: boolean,
 ): void {
   if (data.kind !== 'model' && data.kind !== 'video') return
   data.model = model.model
-  data.modelId = model.model_id
+  data.modelId = model.modelId
   data.badge = model.badge || undefined
-  data.maxImageRefs = model.max_image_refs
+  data.maxImageRefs = model.maxImageRefs
   data.capabilities = { ...model.capabilities }
   if (!model.ratios.includes(data.ratio ?? '')) data.ratio = model.ratios[0] ?? '1:1'
   if (!model.sizes.includes(data.size ?? '')) data.size = model.sizes[0] ?? (isVideo ? '720p' : '1K')

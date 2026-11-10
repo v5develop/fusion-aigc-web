@@ -26,7 +26,7 @@ import { useDialog, useMessage } from 'naive-ui'
 import { ACCEPT_IMAGE } from '@/utils/utils.ts'
 import AssetPickerModal from '../AssetPickerModal/index.vue'
 import StudioMedBtn from './StudioMedBtn.vue'
-import AssetCornerButton from '@/components/creation/AssetCornerButton.vue'
+import AssetCornerButton from '@/components/Creation/AssetCornerButton.vue'
 import { useStudioUploader } from './useStudioUploader.ts'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
 

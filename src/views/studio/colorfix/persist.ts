@@ -15,7 +15,7 @@
 import { ref } from 'vue'
 import { studioSaveTaskColorFix, studioSaveTaskColorFixKeepalive } from '@/api/studio.ts'
 import { toApiError } from '@/api/index.ts'
-import type { StudioColorFixParams, StudioTask } from '@/api/studioTypes.ts'
+import type { StudioColorFixParams, StudioTask } from '@/api/studio-types.ts'
 import { colorFixEquals, colorFixSanitize, type ColorFixParams } from '@/utils/colorfix.ts'
 
 const LS_PREFIX = 'studio-colorfix:'
@@ -70,22 +70,23 @@ function writeLocal(taskId: string, entry: LocalEntry) {
 /** PATCH 成功：本机那份标成已同步（期间又改过的不动） */
 function markSynced(taskId: string, p: ColorFixParams) {
   const cur = readLocal(taskId)
-  if (cur && cur.pendingSync && colorFixEquals(cur.params, p)) writeLocal(taskId, { params: cur.params, pendingSync: false })
+  if (cur && cur.pendingSync && colorFixEquals(cur.params, p))
+    writeLocal(taskId, { params: cur.params, pendingSync: false })
 }
 
 /** 这个任务保存过的校色参数；没有返回 null */
 export function loadTaskColorFix(task: StudioTask): ColorFixParams | null {
-  const mem = session.get(task.task_id)
+  const mem = session.get(task.taskId)
   if (mem) return mem
-  const local = readLocal(task.task_id)
+  const local = readLocal(task.taskId)
   if (local?.pendingSync) {
     // 本机比服务端新：用本机的，并补发一次
-    const server = fromWire(task.color_fix_params)
-    if (server && colorFixEquals(server, local.params)) markSynced(task.task_id, local.params)
-    else if (task.status === 2) schedule(task.task_id, local.params, 0)
+    const server = fromWire(task.colorFixParams)
+    if (server && colorFixEquals(server, local.params)) markSynced(task.taskId, local.params)
+    else if (task.status === 2) schedule(task.taskId, local.params, 0)
     return local.params
   }
-  return fromWire(task.color_fix_params) ?? local?.params ?? null
+  return fromWire(task.colorFixParams) ?? local?.params ?? null
 }
 
 /** 防抖中的保存：任务号 → { 定时器, 参数 } */
@@ -115,7 +116,7 @@ function schedule(taskId: string, value: ColorFixParams, delay: number) {
 
 /** 记下这个任务的参数（立即进内存与 localStorage，停手 500ms 后同步到网关） */
 export function saveTaskColorFix(task: StudioTask, p: ColorFixParams) {
-  const id = task.task_id
+  const id = task.taskId
   const value = { ...p }
   session.set(id, value)
   const syncable = task.status === 2 && colorFixPatchSupported.value

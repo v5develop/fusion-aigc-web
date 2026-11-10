@@ -24,18 +24,8 @@ const deckGap =
   <div class="h-full overflow-y-auto box-border bg-page" :class="pageClass">
     <div class="max-w-1180px mx-auto w-full flex flex-col" :class="deckGap">
       <h1 class="m-0 text-24px font-600 leading-32px text-ink motion-reduce:animate-none" :class="headAnim">AI 电商</h1>
-      <Row
-        :data="shangpingtu_data"
-        title="商品图"
-        class="motion-reduce:animate-none"
-        :class="sectionAnim[0]"
-      />
-      <Row
-        :data="shangpingshiping_data"
-        title="商品视频"
-        class="motion-reduce:animate-none"
-        :class="sectionAnim[1]"
-      />
+      <Row :data="shangpingtu_data" title="商品图" class="motion-reduce:animate-none" :class="sectionAnim[0]" />
+      <Row :data="shangpingshiping_data" title="商品视频" class="motion-reduce:animate-none" :class="sectionAnim[1]" />
       <Row :data="chuandaitu_data" title="穿戴图" class="motion-reduce:animate-none" :class="sectionAnim[2]" />
     </div>
   </div>

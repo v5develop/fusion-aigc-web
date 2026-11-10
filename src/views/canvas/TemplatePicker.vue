@@ -5,8 +5,8 @@
  */
 import { ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
-import { canvasFromTemplate, canvasTemplates } from '@/api/canvasHome.ts'
-import type { ICanvasTemplate } from '@/api/canvasHome.ts'
+import { canvasFromTemplate, canvasTemplates } from '@/api/canvas-home.ts'
+import type { ICanvasTemplate } from '@/api/canvas-home.ts'
 import { toApiError } from '@/api/index.ts'
 
 const show = defineModel<boolean>('show', { required: true })
@@ -78,7 +78,7 @@ async function create() {
   creating.value = true
   try {
     const res = await canvasFromTemplate({
-      template_id: selected.value.id,
+      templateId: selected.value.id,
       title: title.value.trim() || undefined,
     })
     message.success('画布已创建')
@@ -141,7 +141,7 @@ async function create() {
           @keydown.space.self.prevent="selected = t"
         >
           <div class="h-116px overflow-hidden rounded-6px bg-[rgba(135,95,154,0.09)]">
-            <img v-if="t.cover_url" :src="t.cover_url" alt="" class="block w-full h-full object-cover" />
+            <img v-if="t.coverUrl" :src="t.coverUrl" alt="" class="block w-full h-full object-cover" />
             <div v-else class="h-full flex items-center justify-center text-13px text-violet-ink">模板</div>
           </div>
           <div class="text-13px font-600 text-ink overflow-hidden text-ellipsis whitespace-nowrap">
@@ -152,7 +152,7 @@ async function create() {
           >
             {{ t.description }}
           </div>
-          <div class="text-11px text-placeholder">{{ t.node_count }} 个节点 · {{ t.edge_count }} 条连线</div>
+          <div class="text-11px text-placeholder">{{ t.nodeCount }} 个节点 · {{ t.edgeCount }} 条连线</div>
           <span v-if="selected?.id === t.id" class="ll-chip ll-chip-running absolute top-16px right-16px !bg-white"
             >已选择</span
           >

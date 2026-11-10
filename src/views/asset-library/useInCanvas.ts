@@ -7,8 +7,8 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { toApiError } from '@/api'
-import { canvasCreate } from '@/api/canvasHome.ts'
-import { stashCanvasImport } from '@/utils/canvasImportHandoff.ts'
+import { canvasCreate } from '@/api/canvas-home.ts'
+import { stashCanvasImport } from '@/utils/canvas-import-handoff.ts'
 
 export interface ICanvasAssetRef {
   media: string
@@ -32,13 +32,20 @@ export function useAssetsInCanvas() {
   async function openAssetsInCanvas(assets: ICanvasAssetRef[]) {
     if (opening.value) return
     const picked = assets.slice(0, CANVAS_IMPORT_LIMIT)
-    const urls = picked.filter((a) => a.media !== 'video').map((a) => a.image).filter(isHttp)
-    const videos = picked.filter((a) => a.media === 'video').map((a) => a.video_url).filter(isHttp)
+    const urls = picked
+      .filter((a) => a.media !== 'video')
+      .map((a) => a.image)
+      .filter(isHttp)
+    const videos = picked
+      .filter((a) => a.media === 'video')
+      .map((a) => a.video_url)
+      .filter(isHttp)
     if (!urls.length && !videos.length) {
       message.warning('这些素材没有可用的文件地址，无法用于画布')
       return
     }
-    if (assets.length > CANVAS_IMPORT_LIMIT) message.info(`一次最多带 ${CANVAS_IMPORT_LIMIT} 个素材进画布，已取前 ${CANVAS_IMPORT_LIMIT} 个`)
+    if (assets.length > CANVAS_IMPORT_LIMIT)
+      message.info(`一次最多带 ${CANVAS_IMPORT_LIMIT} 个素材进画布，已取前 ${CANVAS_IMPORT_LIMIT} 个`)
     opening.value = true
     let navigated = false
     try {

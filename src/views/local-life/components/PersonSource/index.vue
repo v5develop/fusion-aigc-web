@@ -20,8 +20,8 @@ import {
   llPortraitDetail,
   llPublicDigitalHumans,
   llRegeneratePortrait,
-} from '@/api/localLife.ts'
-import type { ILDhOptions, ILPortrait, ILPortraitSource, ILPublicDigitalHuman } from '@/api/localLifeTypes.ts'
+} from '@/api/local-life.ts'
+import type { ILDhOptions, ILPortrait, ILPortraitSource, ILPublicDigitalHuman } from '@/api/local-life-types.ts'
 import { useAgreement, usePollingWhile } from '@/views/local-life/hooks.ts'
 
 const props = defineProps<{
@@ -84,7 +84,7 @@ const dhOptions = ref<ILDhOptions | null>(null)
 const portraitForm = reactive({
   gender: 'female',
   age: '',
-  skin_tone: '',
+  skinTone: '',
   role: '',
   description: '',
 })
@@ -96,7 +96,7 @@ async function loadOptions() {
   const data = res.data ?? null
   dhOptions.value = data
   if (!portraitForm.age && data?.ages?.length) portraitForm.age = data.ages[0]?.code ?? ''
-  if (!portraitForm.skin_tone && data?.skin_tones?.length) portraitForm.skin_tone = data.skin_tones[0]?.code ?? ''
+  if (!portraitForm.skinTone && data?.skinTones?.length) portraitForm.skinTone = data.skinTones[0]?.code ?? ''
 }
 
 /** 轮询形象生成结果，终态自动收掉 */
@@ -109,7 +109,7 @@ const { start: startPortraitPolling } = usePollingWhile(
     if (data.status === 1) {
       message.success('形象已生成，请选择一张')
     } else {
-      message.error(data.fail_reason || '形象生成失败')
+      message.error(data.failReason || '形象生成失败')
     }
     return false
   },
@@ -118,7 +118,7 @@ const { start: startPortraitPolling } = usePollingWhile(
 async function generatePortrait() {
   if (generating.value) return
   if (!portraitForm.age) return message.warning('请选择年龄段')
-  if (!portraitForm.skin_tone) return message.warning('请选择肤色')
+  if (!portraitForm.skinTone) return message.warning('请选择肤色')
 
   const { ensureAgreed } = useAgreement()
   if (!(await ensureAgreed())) return
@@ -131,7 +131,7 @@ async function generatePortrait() {
       {
         gender: portraitForm.gender as 'female' | 'male',
         age: portraitForm.age,
-        skin_tone: portraitForm.skin_tone,
+        skinTone: portraitForm.skinTone,
         role: portraitForm.role || undefined,
         description: portraitForm.description || undefined,
       },
@@ -147,7 +147,7 @@ async function generatePortrait() {
 async function regeneratePortrait() {
   if (!portrait.value || generating.value) return
   generating.value = true
-  portrait.value = { ...portrait.value, status: 0, image_urls: [] }
+  portrait.value = { ...portrait.value, status: 0, imageUrls: [] }
   try {
     const res = await llRegeneratePortrait(portrait.value.id, llIdempotencyHeaders())
     portrait.value = res.data
@@ -202,9 +202,9 @@ onMounted(() => {
           "
           @click="publicId = item.id"
         >
-          <img :src="item.image_url || item.avatar_url" alt="" class="block w-full aspect-[3/4] object-cover" />
+          <img :src="item.imageUrl || item.avatarUrl" alt="" class="block w-full aspect-[3/4] object-cover" />
           <span class="block truncate px-6px pt-4px text-12px leading-17px text-ink">{{ item.name }}</span>
-          <span class="block truncate px-6px pb-6px text-11px leading-16px text-muted">{{ item.role_label }}</span>
+          <span class="block truncate px-6px pb-6px text-11px leading-16px text-muted">{{ item.roleLabel }}</span>
           <span
             v-if="publicId === item.id"
             class="absolute top-4px right-4px w-18px h-18px rounded-full sx-grad-primary shadow-btn text-white text-12px flex items-center justify-center"
@@ -236,8 +236,8 @@ onMounted(() => {
         </Field>
         <Field label="肤色">
           <ChipGroup
-            v-model="portraitForm.skin_tone"
-            :options="(dhOptions?.skin_tones ?? []).map((o) => ({ label: o.label, value: o.code }))"
+            v-model="portraitForm.skinTone"
+            :options="(dhOptions?.skinTones ?? []).map((o) => ({ label: o.label, value: o.code }))"
             label="肤色"
           />
         </Field>
@@ -266,7 +266,7 @@ onMounted(() => {
       <template v-else>
         <div class="grid grid-cols-4 gap-8px" role="radiogroup" aria-label="定制形象">
           <button
-            v-for="(url, index) in portrait.image_urls"
+            v-for="(url, index) in portrait.imageUrls"
             :key="url"
             type="button"
             role="radio"

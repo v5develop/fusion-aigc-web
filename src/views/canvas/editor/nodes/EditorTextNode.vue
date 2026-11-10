@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelOf } from '@/utils/modelLabel'
+import { modelLabelOf } from '@/utils/model-label'
 /**
  * 提示词文本节点（对齐原型 CanvasTextNode + canvas-v31）：
  * 头部只有标题与「…」；正文无框 textarea；底部字数；再下面是「生成来源」引用条
@@ -53,7 +53,12 @@ const sourceRefs = computed(() => {
     refs.push({
       id: source.id,
       name: source.data.title,
-      model: source.type === 'model' ? (modelLabelOf(source.data.model) || '模型') : source.type === 'video' ? '视频' : '参考图',
+      model:
+        source.type === 'model'
+          ? modelLabelOf(source.data.model) || '模型'
+          : source.type === 'video'
+            ? '视频'
+            : '参考图',
     })
   }
   return refs

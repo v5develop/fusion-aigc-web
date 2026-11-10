@@ -8,9 +8,10 @@
  * <p>幂等：三个提交接口必须带 Idempotency-Key（UUID），每次点「生成」新生成一个；
  * 重新编辑后的再提交是新的一次提交，自然拿到新 key。
  */
-import { get, post, del, patch, authorizedFetch } from './index.ts'
-import type * as types from './studioTypes.ts'
-import { llIdempotencyHeaders } from './localLife.ts'
+import { post, patch, authorizedFetch } from './index.ts'
+import { goGet, goDel } from './go-http'
+import type * as types from './studio-types.ts'
+import { llIdempotencyHeaders } from './local-life.ts'
 
 const PREFIX = '/api/v1/studio'
 /** 提交是重操作（整批冻结点数、图片校验），放宽超时 */
@@ -78,15 +79,15 @@ export function studioQuoteImageGen(data: types.StudioImageGenQuoteReq) {
  * 模型档能力（只读）：每个模型档的展示名、实际可用的分辨率 / 比例、参考图上限；with_price 附单张点数。
  * kind 影响参考图上限与是否有「自动」比例；不传 = imagegen。
  */
-export function studioModels(params: { kind?: types.StudioKind; with_price?: boolean } = {}) {
-  return get<types.StudioModelsResp>(`${PREFIX}/models`, params)
+export function studioModels(params: { kind?: types.StudioKind; withPrice?: boolean } = {}) {
+  return goGet<types.StudioModelsResp>(`${PREFIX}/models`, params)
 }
 
 // ---------------- 批次 ----------------
 
 /** 批次详情 + 全部子任务（生成中每 2 秒轮询这个） */
 export function studioBatchDetail(id: number) {
-  return get<types.StudioBatchDetail>(`${PREFIX}/batches/${id}`)
+  return goGet<types.StudioBatchDetail>(`${PREFIX}/batches/${id}`)
 }
 
 /** 取消批次：只取消还在排队的任务（点数立即退回），生成中的会继续跑完 */
@@ -135,14 +136,14 @@ export function studioSaveTaskColorFixKeepalive(taskId: string, data: types.Stud
 
 /** 删除批次（逻辑删除；生成中不能删，code=4002） */
 export function studioDeleteBatch(id: number) {
-  return del(`${PREFIX}/batches/${id}`)
+  return goDel(`${PREFIX}/batches/${id}`)
 }
 
 // ---------------- 历史 ----------------
 
 /** 生成历史（游标分页，按创建时间倒序）；next_cursor 空 = 没有下一页 */
 export function studioHistory(params: types.StudioHistoryParams = {}) {
-  return get<types.StudioHistoryResp>(`${PREFIX}/history`, {
+  return goGet<types.StudioHistoryResp>(`${PREFIX}/history`, {
     kind: params.kind || undefined,
     cursor: params.cursor || undefined,
     limit: params.limit ?? 20,
@@ -161,8 +162,12 @@ export const SEGMENT_MASK_TIMEOUT = 130000
  * 错误（已在 SILENT_ERROR_URLS，不弹全局 toast，调用方就地提示）：4001「没识别到对应区域」、
  * 4002「识别太频繁，请稍后再试」、1003 地址不是本服务的、6001 识别服务暂不可用、7003 未开放；老网关 HTTP 404。
  */
-export function studioSegmentMask(imageUrl: string, target: types.StudioMaskTarget, parts?: types.StudioMaskGarmentPart[]) {
-  const body: types.StudioMaskReq = { image_url: imageUrl, target }
+export function studioSegmentMask(
+  imageUrl: string,
+  target: types.StudioMaskTarget,
+  parts?: types.StudioMaskGarmentPart[],
+) {
+  const body: types.StudioMaskReq = { imageUrl: imageUrl, target }
   if (target === 'garment' && parts?.length) body.parts = parts
   return post<types.StudioMaskResp>(`${PREFIX}/masks`, body, undefined, SEGMENT_MASK_TIMEOUT)
 }

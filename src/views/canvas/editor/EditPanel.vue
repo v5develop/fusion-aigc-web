@@ -13,7 +13,7 @@ import RegionList from './RegionList.vue'
 import RegionPromptEditor from './RegionPromptEditor.vue'
 import ActionStatus from './ActionStatus.vue'
 import { useActionRun } from './useActionRun.ts'
-import type { IActionRegion, IImageSource, RatioPoint } from './imageActions.ts'
+import type { IActionRegion, IImageSource, RatioPoint } from './image-actions.ts'
 import {
   addRegion,
   addResultNodes,
@@ -24,8 +24,8 @@ import {
   pollCompatTask,
   regionBbox,
   regionsOf,
-} from './imageActions.ts'
-import { ACTION_FIELD, ACTION_LABEL, ACTION_RING, ACTION_SUBMIT } from './actionUi.ts'
+} from './image-actions.ts'
+import { ACTION_FIELD, ACTION_LABEL, ACTION_RING, ACTION_SUBMIT } from './action-ui.ts'
 
 const props = defineProps<{ source: IImageSource; sources: IImageSource[] }>()
 const emit = defineEmits<{ busy: [value: boolean] }>()

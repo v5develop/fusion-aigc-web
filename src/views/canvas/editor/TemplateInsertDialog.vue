@@ -5,8 +5,8 @@
  * 画布首页的「从模板新建画布」仍走 ../TemplatePicker.vue，不受影响。
  */
 import { ref, watch } from 'vue'
-import { canvasTemplateDetail, canvasTemplates } from '@/api/canvasHome.ts'
-import type { ICanvasTemplate, ICanvasTemplateDetail } from '@/api/canvasHome.ts'
+import { canvasTemplateDetail, canvasTemplates } from '@/api/canvas-home.ts'
+import type { ICanvasTemplate, ICanvasTemplateDetail } from '@/api/canvas-home.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 
@@ -108,17 +108,19 @@ async function pick(t: ICanvasTemplate) {
           @click="pick(t)"
         >
           <div class="h-116px w-full overflow-hidden rounded-6px bg-[rgba(135,95,154,0.09)]">
-            <img v-if="t.cover_url" :src="t.cover_url" alt="" loading="lazy" class="block w-full h-full object-cover" />
+            <img v-if="t.coverUrl" :src="t.coverUrl" alt="" loading="lazy" class="block w-full h-full object-cover" />
             <div v-else class="h-full flex items-center justify-center text-13px text-violet-ink">模板</div>
           </div>
-          <div class="w-full text-13px font-600 text-ink overflow-hidden text-ellipsis whitespace-nowrap">{{ t.title }}</div>
+          <div class="w-full text-13px font-600 text-ink overflow-hidden text-ellipsis whitespace-nowrap">
+            {{ t.title }}
+          </div>
           <div
             class="text-11px text-muted leading-[1.45] overflow-hidden min-h-32px [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
           >
             {{ t.description }}
           </div>
           <div class="text-11px text-placeholder">
-            {{ picking === t.id ? '正在插入…' : `${t.node_count} 个节点 · ${t.edge_count} 条连线` }}
+            {{ picking === t.id ? '正在插入…' : `${t.nodeCount} 个节点 · ${t.edgeCount} 条连线` }}
           </div>
         </button>
 

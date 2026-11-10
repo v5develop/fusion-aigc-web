@@ -28,8 +28,8 @@ import {
   llCreationSubmit,
   llCreationTemplates,
   llIdempotencyHeaders,
-} from '@/api/localLife.ts'
-import type { ILCreation, ILCreationKind, ILCreationOptions } from '@/api/localLifeTypes.ts'
+} from '@/api/local-life.ts'
+import type { ILCreation, ILCreationKind, ILCreationOptions } from '@/api/local-life-types.ts'
 import { useAgreement, useLLList } from '../hooks.ts'
 import { CREATION_STATUS_MAP, isCreationRunning } from '../constants.ts'
 
@@ -48,27 +48,27 @@ const { ensureAgreed } = useAgreement()
 const options = ref<ILCreationOptions | null>(null)
 const form = reactive({
   content: '',
-  poster_type: '',
-  poster_style: '',
+  posterType: '',
+  posterStyle: '',
   size: '',
-  image_count: undefined as number | undefined,
+  imageCount: undefined as number | undefined,
   materials: [] as string[],
-  copywriting_id: undefined as number | undefined,
+  copywritingId: undefined as number | undefined,
 })
 
 const posterTypeOptions = computed(() =>
-  (options.value?.poster_types ?? []).map((o) => ({ label: o.label, value: o.code })),
+  (options.value?.posterTypes ?? []).map((o) => ({ label: o.label, value: o.code })),
 )
 const posterStyleOptions = computed(() =>
-  (options.value?.poster_styles ?? []).map((o) => ({ label: o.label, value: o.code })),
+  (options.value?.posterStyles ?? []).map((o) => ({ label: o.label, value: o.code })),
 )
 const sizeOptions = computed(() => (options.value?.sizes ?? []).map((o) => ({ label: o.label, value: o.code })))
 const imageCountOptions = computed(() => {
-  const max = options.value?.max_images ?? 4
+  const max = options.value?.maxImages ?? 4
   return Array.from({ length: max }, (_, i) => ({ label: `${i + 1}张`, value: i + 1 }))
 })
-const templateRequired = computed(() => options.value?.template_required ?? false)
-const maxMaterials = computed(() => options.value?.max_materials ?? 0)
+const templateRequired = computed(() => options.value?.templateRequired ?? false)
+const maxMaterials = computed(() => options.value?.maxMaterials ?? 0)
 
 // ---------------- 模板 ----------------
 
@@ -79,7 +79,7 @@ const templateId = ref<number | undefined>(undefined)
 async function loadTemplates() {
   templatesLoading.value = true
   try {
-    const res = await llCreationTemplates(props.kind, isPoster.value ? form.poster_type || undefined : undefined)
+    const res = await llCreationTemplates(props.kind, isPoster.value ? form.posterType || undefined : undefined)
     templates.value = res.data?.list ?? []
     // 类型切换后原模板可能不在新列表里，失效就清掉
     if (templateId.value && !templates.value.some((t) => t.id === templateId.value)) templateId.value = undefined
@@ -89,7 +89,7 @@ async function loadTemplates() {
 }
 
 watch(
-  () => [props.kind, form.poster_type],
+  () => [props.kind, form.posterType],
   () => {
     void loadTemplates()
   },
@@ -115,12 +115,12 @@ async function aiWriteContent() {
 
 function pickCopy(c: { id: number; body: string }) {
   form.content = c.body
-  form.copywriting_id = c.id
+  form.copywritingId = c.id
   showCopyPicker.value = false
 }
 
 // 提交前报价：按张计（海报档位不影响价格），提交即冻结
-const { estimate } = useLLQuote(() => ({ tool: props.kind, image_count: form.image_count }))
+const { estimate } = useLLQuote(() => ({ tool: props.kind, imageCount: form.imageCount }))
 
 // ---------------- 提交 ----------------
 
@@ -140,19 +140,19 @@ async function submit() {
       {
         kind: props.kind,
         content: form.content.trim(),
-        template_id: templateId.value,
-        poster_type: isPoster.value ? form.poster_type || undefined : undefined,
-        poster_style: isPoster.value ? form.poster_style || undefined : undefined,
+        templateId: templateId.value,
+        posterType: isPoster.value ? form.posterType || undefined : undefined,
+        posterStyle: isPoster.value ? form.posterStyle || undefined : undefined,
         size: form.size || undefined,
-        image_count: form.image_count,
-        material_urls: form.materials.length ? form.materials : undefined,
-        copywriting_id: form.copywriting_id,
+        imageCount: form.imageCount,
+        materialUrls: form.materials.length ? form.materials : undefined,
+        copywritingId: form.copywritingId,
       },
       llIdempotencyHeaders(),
     )
     message.success('已提交生成')
     form.content = ''
-    form.copywriting_id = undefined
+    form.copywritingId = undefined
     // 明确选中接口返回的新记录（不依赖「新记录排第一」）；先刷列表，免得新 id 还不在列表里时预览闪到旧记录
     await listCtl.refresh()
     if (res.data?.id) selectId(res.data.id)
@@ -170,9 +170,9 @@ onMounted(async () => {
   const res = await llCreationOptions(props.kind)
   const data = res.data ?? null
   options.value = data
-  if (data?.default_size) form.size = data.default_size
-  if (data?.poster_types?.length && !form.poster_type) form.poster_type = data.poster_types[0]?.code ?? ''
-  form.image_count = 1
+  if (data?.defaultSize) form.size = data.defaultSize
+  if (data?.posterTypes?.length && !form.posterType) form.posterType = data.posterTypes[0]?.code ?? ''
+  form.imageCount = 1
   void listCtl.reload()
 })
 
@@ -191,14 +191,20 @@ async function removeItem(item: ILCreation) {
 </script>
 
 <template>
-  <Workbench :title="pageTitle" :submit="submit" :loading="submitting" :estimate="estimate" :history-count="listCtl.total.value">
+  <Workbench
+    :title="pageTitle"
+    :submit="submit"
+    :loading="submitting"
+    :estimate="estimate"
+    :history-count="listCtl.total.value"
+  >
     <template #default>
       <FormCard :title="isPoster ? '海报信息' : '长图内容'" required>
         <PromptBox
           v-model="form.content"
           :label="isPoster ? '海报信息' : '长图内容'"
           size="lg"
-          :max-length="options?.max_content_len || undefined"
+          :max-length="options?.maxContentLen || undefined"
           :placeholder="
             isPoster ? '活动主题、时间、优惠信息等，画在海报上的文字' : '要放进长图的分段内容，AI 会按模板排版'
           "
@@ -211,10 +217,10 @@ async function removeItem(item: ILCreation) {
 
       <FormCard v-if="isPoster" title="海报偏好">
         <Field label="海报类型">
-          <ChipGroup v-model="form.poster_type" :options="posterTypeOptions" label="海报类型" />
+          <ChipGroup v-model="form.posterType" :options="posterTypeOptions" label="海报类型" />
         </Field>
         <Field label="风格">
-          <ChipGroup v-model="form.poster_style" :options="posterStyleOptions" label="风格" empty-label="不限" />
+          <ChipGroup v-model="form.posterStyle" :options="posterStyleOptions" label="风格" empty-label="不限" />
         </Field>
       </FormCard>
 
@@ -295,10 +301,10 @@ async function removeItem(item: ILCreation) {
           :title="item.content || pageTitle"
           :status="CREATION_STATUS_MAP[item.status]?.type ?? 'running'"
           :status-label="CREATION_STATUS_MAP[item.status]?.label ?? ''"
-          :time="item.create_time"
-          :thumb="item.image_urls?.[0] || item.input_image_url"
-          :count="item.image_urls?.length ?? 0"
-          :fail-reason="item.status === 2 ? item.fail_reason || '生成失败' : ''"
+          :time="item.createTime"
+          :thumb="item.imageUrls?.[0] || item.inputImageUrl"
+          :count="item.imageUrls?.length ?? 0"
+          :fail-reason="item.status === 2 ? item.failReason || '生成失败' : ''"
           :eta-sec="90"
           :selected="current?.id === item.id"
           @select="select(item)"
@@ -307,7 +313,14 @@ async function removeItem(item: ILCreation) {
             <n-popconfirm @positive-click="removeItem(item)">
               <template #trigger>
                 <IconButton label="删除记录" size="sm" variant="danger">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
                     <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
                   </svg>
                 </IconButton>
@@ -325,9 +338,9 @@ async function removeItem(item: ILCreation) {
         :title="current?.content || pageTitle"
         :status="current ? (CREATION_STATUS_MAP[current.status]?.type ?? 'running') : 'running'"
         :status-label="current ? (CREATION_STATUS_MAP[current.status]?.label ?? '') : ''"
-        :time="current?.create_time"
-        :images="current?.image_urls ?? []"
-        :fail-reason="current?.fail_reason"
+        :time="current?.createTime"
+        :images="current?.imageUrls ?? []"
+        :fail-reason="current?.failReason"
         :record-id="current?.id"
         ratio="3 / 4"
       >

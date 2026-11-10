@@ -11,7 +11,7 @@
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NModal, NSpin } from 'naive-ui'
-import { loadProfileList, type LLProfileItem, type LLProfileSource } from '@/api/localLifeFull.ts'
+import { loadProfileList, type LLProfileItem, type LLProfileSource } from '@/api/local-life-full.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import BrandProfileForm from '../BrandProfileForm/index.vue'
 
@@ -70,13 +70,7 @@ function choose(item: LLProfileItem) {
 </script>
 
 <template>
-  <n-modal
-    v-model:show="show"
-    preset="card"
-    title="选择品牌档案"
-    class="max-w-[calc(100vw-48px)]"
-    style="width: 780px"
-  >
+  <n-modal v-model:show="show" preset="card" title="选择品牌档案" class="max-w-[calc(100vw-48px)]" style="width: 780px">
     <n-spin :show="loading">
       <div class="min-h-160px flex flex-col gap-10px">
         <div v-if="error" class="sx-empty flex-1" role="alert">

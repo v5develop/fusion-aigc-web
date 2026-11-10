@@ -3,7 +3,7 @@
  * 上传助手不回报进度，所以只显示「上传中…」，不显示百分比。
  */
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
-import { canvasUploadMedia } from '@/api/canvasHome.ts'
+import { canvasUploadMedia } from '@/api/canvas-home.ts'
 import { editorMessage, useCanvasEditor } from '../useCanvasEditor.ts'
 
 /** 画布图片上传的大小上限（节点上传 / 拖入节点 / 菜单「替换图片」/ 拖到空白画布同一口径） */

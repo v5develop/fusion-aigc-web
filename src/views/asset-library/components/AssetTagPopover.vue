@@ -8,8 +8,8 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { NButton, NInput, NModal, useMessage } from 'naive-ui'
 import { ApiError } from '@/api/index.ts'
-import { assetLibBatchTag, assetLibTagCreate, assetLibTags, assetLibUpdate } from '@/api/assetLibrary.ts'
-import type { IAssetLibAsset, IAssetLibTag } from '@/api/assetLibrary.ts'
+import { assetLibBatchTag, assetLibTagCreate, assetLibTags, assetLibUpdate } from '@/api/asset-library.ts'
+import type { IAssetLibAsset, IAssetLibTag } from '@/api/asset-library.ts'
 
 const message = useMessage()
 const emit = defineEmits<{ changed: [] }>()
@@ -32,7 +32,7 @@ async function loadTags() {
   try {
     const res = await assetLibTags()
     tags.value = res.data?.items ?? []
-    untaggedCount.value = res.data?.untagged_count ?? null
+    untaggedCount.value = res.data?.untaggedCount ?? null
   } catch {
     // 拉失败沿用上次的字典；失败 toast 已由请求层弹出
   }
@@ -120,7 +120,7 @@ const options = computed<IOption[]>(() => {
     { key: '__uncat__', label: '未分类', count: untaggedCount.value, tag: null },
     ...tags.value
       .filter((t) => !needle || t.name.toLowerCase().includes(needle))
-      .map((t) => ({ key: String(t.id), label: t.name, count: t.asset_count, tag: t })),
+      .map((t) => ({ key: String(t.id), label: t.name, count: t.assetCount, tag: t })),
   ]
 })
 
@@ -132,18 +132,18 @@ function isOn(o: IOption) {
 /** 乐观改：资产标签 + 字典计数，返回回滚函数 */
 function applyLocal(target: IAssetLibAsset, nextTags: string[]) {
   const prevTags = target.tags
-  const prevCounts = new Map(tags.value.map((t) => [t.id, t.asset_count]))
+  const prevCounts = new Map(tags.value.map((t) => [t.id, t.assetCount]))
   for (const t of tags.value) {
     const had = prevTags.includes(t.name)
     const has = nextTags.includes(t.name)
-    if (had !== has) t.asset_count = Math.max(0, t.asset_count + (has ? 1 : -1))
+    if (had !== has) t.assetCount = Math.max(0, t.assetCount + (has ? 1 : -1))
   }
   target.tags = nextTags
   return () => {
     target.tags = prevTags
     for (const t of tags.value) {
       const c = prevCounts.get(t.id)
-      if (c !== undefined) t.asset_count = c
+      if (c !== undefined) t.assetCount = c
     }
   }
 }
@@ -162,7 +162,7 @@ async function pick(o: IOption) {
   const rollback = applyLocal(target, nextTags)
   busy.value = true
   try {
-    if (o.tag && !on) await assetLibBatchTag({ asset_ids: [target.id], tag_ids: [o.tag.id] })
+    if (o.tag && !on) await assetLibBatchTag({ assetIds: [target.id], tagIds: [o.tag.id] })
     else await assetLibUpdate(target.id, { tags: nextTags })
     message.success(o.tag && !on ? `已放入「${o.tag.name}」` : '已移出标签')
     emit('changed')
@@ -227,7 +227,7 @@ async function createTag() {
   }
   showCreate.value = false
   if (!created?.id) return
-  tags.value.push({ ...created, asset_count: 0 })
+  tags.value.push({ ...created, assetCount: 0 })
   emit('changed')
   const target = createFor
   createFor = null
@@ -235,7 +235,7 @@ async function createTag() {
   const tag = tags.value[tags.value.length - 1]!
   const rollback = applyLocal(target, [...target.tags, tag.name])
   try {
-    await assetLibBatchTag({ asset_ids: [target.id], tag_ids: [tag.id] })
+    await assetLibBatchTag({ assetIds: [target.id], tagIds: [tag.id] })
     message.success(`已放入「${tag.name}」`)
     emit('changed')
   } catch (err) {

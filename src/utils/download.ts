@@ -119,10 +119,7 @@ export function zipNameOf(item: any): string {
  * 只有一张时直接下载单图，不打包。
  * zipName 默认按调用时刻生成（默认参数每次调用才求值），漏传也不会重名互相覆盖。
  */
-export async function downloadImagesAsZip(
-  urls: string[],
-  zipName = zipNameByNow(),
-): Promise<void> {
+export async function downloadImagesAsZip(urls: string[], zipName = zipNameByNow()): Promise<void> {
   const list = urls.filter(Boolean)
   if (!list.length) return
   if (list.length === 1) {

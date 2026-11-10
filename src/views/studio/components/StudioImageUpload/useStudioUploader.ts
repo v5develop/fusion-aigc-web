@@ -1,7 +1,7 @@
 import { getCurrentScope, onScopeDispose, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
-import { goUploadImage } from '@/api/goUpload.ts'
-import { checkMinShortSide } from '../../imageSize.ts'
+import { goUploadImage } from '@/api/go-upload.ts'
+import { checkMinShortSide } from '../../image-size.ts'
 
 /**
  * 商拍工作室的图片直传（叠片入口与服装图弹窗共用）。
@@ -15,7 +15,9 @@ import { checkMinShortSide } from '../../imageSize.ts'
  * @param options.minShortSide 给了就在上传前读尺寸，短边不够的跳过并提示（见 imageSize.ts）；不给不检查
  * @param options.onOverflow 多选超出余量时的提示；不给沿用默认 warning 文案（只有姿态页自定义）
  */
-export function useStudioUploader(options: { minShortSide?: number; onOverflow?: (info: { room: number; max: number; extra: number }) => void } = {}) {
+export function useStudioUploader(
+  options: { minShortSide?: number; onOverflow?: (info: { room: number; max: number; extra: number }) => void } = {},
+) {
   const message = useMessage()
   const uploading = ref(false)
   let generation = 0

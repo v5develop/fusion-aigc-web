@@ -4,7 +4,7 @@
  * 原入口页（全案设计）移到 #/local-life/full-set。
  */
 import LandingPage from '@/views/image/LandingPage.vue'
-import { localLifeLanding } from '../landingData'
+import { localLifeLanding } from '../landing-data'
 
 defineOptions({ name: 'local-life' })
 </script>

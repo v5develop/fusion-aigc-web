@@ -7,7 +7,7 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { createDiscreteApi } from 'naive-ui'
-import { normalizeModelTier } from '@/utils/modelLabel'
+import { normalizeModelTier } from '@/utils/model-label'
 import {
   canvasGet,
   canvasNodeRun,
@@ -22,7 +22,7 @@ import {
   type ICanvasRunReq,
   type ICanvasRunRef,
   type ICanvasRunResult,
-} from '@/api/canvasHome.ts'
+} from '@/api/canvas-home.ts'
 import { toApiError } from '@/api/index.ts'
 import { createSafeUuid } from '@/utils/utils.ts'
 import {
@@ -359,7 +359,9 @@ export function migrateNodes(raw: unknown): CanvasEditorNode[] {
       type: node.type as CanvasEditorNode['type'],
       position: { x: Number(node.position.x) || 0, y: Number(node.position.y) || 0 },
       data: (node.data ?? { title: '节点' }) as CanvasEditorNodeData,
-      ...((node.draggable === false || (node.data as CanvasEditorNodeData | undefined)?.locked) ? { draggable: false } : {}),
+      ...(node.draggable === false || (node.data as CanvasEditorNodeData | undefined)?.locked
+        ? { draggable: false }
+        : {}),
       ...(node.selectable === false ? { selectable: false } : {}),
       ...(typeof node.zIndex === 'number' ? { zIndex: node.zIndex } : {}),
     }
@@ -445,7 +447,7 @@ async function init(id: string): Promise<boolean> {
 
 // ---------------- 保存（乐观锁 + 冲突处理） ----------------
 
-const conflictInfo = ref<{ revision: string; updated_at: number } | null>(null)
+const conflictInfo = ref<{ revision: string; updatedAt: number } | null>(null)
 
 function scheduleSave(): void {
   if (!ready.value || conflictInfo.value) return
@@ -524,7 +526,7 @@ async function doSave(force: boolean): Promise<boolean> {
   try {
     const body = force
       ? { title: title.value, snapshot: payload, force: true }
-      : { title: title.value, snapshot: payload, if_match_revision: revision.value }
+      : { title: title.value, snapshot: payload, ifMatchRevision: revision.value }
     const env = await canvasSaveWithLock(targetId, body)
     // 期间切换 / 重载了画布：这次回包的 revision 不属于当前画布，不能写进来
     if (seq !== saveSeq || targetId !== canvasId) return false
@@ -538,7 +540,7 @@ async function doSave(force: boolean): Promise<boolean> {
       return true
     }
     if (env.code === 4002 && env.data && 'conflict' in env.data && env.data.conflict === 'revision') {
-      conflictInfo.value = { revision: env.data.revision ?? '', updated_at: env.data.updated_at ?? 0 }
+      conflictInfo.value = { revision: env.data.revision ?? '', updatedAt: env.data.updatedAt ?? 0 }
       saveState.value = 'conflict'
       showConflictDialog()
       return false
@@ -638,7 +640,7 @@ function applyCatalogDefaults(node: CanvasEditorNode): void {
   const data = node.data
   if (data.kind !== 'model' && data.kind !== 'video') return
   const isVideo = data.kind === 'video'
-  const list = isVideo ? catalog.value?.video_models : catalog.value?.image_models
+  const list = isVideo ? catalog.value?.video_models : catalog.value?.imageModels
   const model = list?.find((item) => item.ready) ?? list?.[0]
   if (!model) return
   applyModelToNode(data, model, isVideo)
@@ -1092,15 +1094,15 @@ function timeoutMsFor(node: CanvasEditorNode): number {
 
 function runCountOf(node: CanvasEditorNode): number {
   if (node.data.kind === 'video') return 1
-  const max = catalogOf(node)?.count_max ?? 4
+  const max = catalogOf(node)?.countMax ?? 4
   return Math.min(max, Math.max(1, Math.round(Number((node.data as { count?: number }).count) || 1)))
 }
 
 function catalogOf(node: CanvasEditorNode): ICanvasCatalogModel | undefined {
   const data = node.data
   if (data.kind !== 'model' && data.kind !== 'video') return undefined
-  const list = data.kind === 'video' ? catalog.value?.video_models : catalog.value?.image_models
-  return list?.find((item) => item.model_id === data.modelId) ?? list?.find((item) => item.model === data.model)
+  const list = data.kind === 'video' ? catalog.value?.video_models : catalog.value?.imageModels
+  return list?.find((item) => item.modelId === data.modelId) ?? list?.find((item) => item.model === data.model)
 }
 
 const QUALITY_MAP: Record<string, string> = { 低: 'low', 中: 'medium', 高: 'high' }
@@ -1150,7 +1152,7 @@ function toolParamsOf(node: CanvasEditorNode): { params?: Record<string, unknown
           ...(fabric ? { fabric } : {}),
           model: normalizeModelTier(data.tryonModel) || '通用',
           resolution: data.tryonResolution || '1k',
-          aspect_ratio: data.tryonAspectRatio || '3:4',
+          aspectRatio: data.tryonAspectRatio || '3:4',
         },
       }
     }
@@ -1186,7 +1188,7 @@ function buildRunRequest(node: CanvasEditorNode): { req?: ICanvasRunReq; error?:
     if (error) return { error }
     return {
       req: {
-        run_id: createSafeUuid(),
+        runId: createSafeUuid(),
         kind: 'tool',
         tool: data.tool,
         ...(params ? { params } : {}),
@@ -1198,7 +1200,7 @@ function buildRunRequest(node: CanvasEditorNode): { req?: ICanvasRunReq; error?:
   if (data.inputOnly) return { error: '参考素材节点不需要执行' }
   const isVideo = data.kind === 'video'
   const model = data.model ?? ''
-  const modelId = data.modelId || catalogOf(node)?.model_id || ''
+  const modelId = data.modelId || catalogOf(node)?.modelId || ''
   if (!model || !modelId) return { error: '请先在参数面板选择模型' }
   const refs = buildReferences(nodes.value, edges.value, node.id)
   // body.prompt 只放节点自带的提示词；连线文字走 references，服务端把两者拼成「连线文本 + 换行 + 节点提示词」
@@ -1208,10 +1210,10 @@ function buildRunRequest(node: CanvasEditorNode): { req?: ICanvasRunReq; error?:
     }
   }
   const req: ICanvasRunReq = {
-    run_id: createSafeUuid(),
+    runId: createSafeUuid(),
     kind: isVideo ? 'video' : 'image',
     model,
-    model_id: modelId,
+    modelId: modelId,
     prompt: (node.data.prompt ?? '').trim(),
     references: refs,
     ratio: data.ratio ?? (isVideo ? '16:9' : '1:1'),
@@ -1264,7 +1266,7 @@ async function runNode(nodeId: string, reuse?: ICanvasRunReq, opts?: { quiet?: b
     if (!saved || targetId !== canvasId) return false
     const live = findNode(nodeId)
     if (!live) return false
-    live.data.runId = req.run_id
+    live.data.runId = req.runId
     // 清掉上一次 run 的 request_id：提交在途时点停止不能去取消上一次（已结束）的 run
     live.data.requestId = undefined
     live.data.status = 'queued'
@@ -1275,9 +1277,9 @@ async function runNode(nodeId: string, reuse?: ICanvasRunReq, opts?: { quiet?: b
     live.data.requestedCount = runCountOf(live)
     let requestId = ''
     try {
-      const res = await canvasNodeRun(targetId, nodeId, req, req.run_id)
+      const res = await canvasNodeRun(targetId, nodeId, req, req.runId)
       if (targetId !== canvasId) return false
-      requestId = res.data?.request_id ?? ''
+      requestId = res.data?.requestId ?? ''
       if (!requestId) throw new Error('提交结果未知')
       pendingUnknownRuns.delete(nodeId)
       const current = findNode(nodeId)
@@ -1343,10 +1345,10 @@ async function adoptActiveRun(nodeId: string, fallbackMsg: string): Promise<void
     if (targetId !== canvasId) return
     const node = findNode(nodeId)
     if (!node) return
-    const active = res.data?.items?.find((item) => item.node_id === nodeId && !TERMINAL_RUN_STATUS.has(item.status))
-    if (active?.request_id) {
+    const active = res.data?.items?.find((item) => item.nodeId === nodeId && !TERMINAL_RUN_STATUS.has(item.status))
+    if (active?.requestId) {
       pendingUnknownRuns.delete(nodeId)
-      node.data.requestId = active.request_id
+      node.data.requestId = active.requestId
       applyRunResult(nodeId, active)
       startPolling(node)
       message.info('该节点已有进行中的执行，已继续跟踪')
@@ -1430,16 +1432,16 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
   if (!node) return true
   if (!run?.status) return false
   const data = node.data
-  data.requestId = run.request_id || data.requestId
-  data.runId = run.run_id || data.runId
+  data.requestId = run.requestId || data.requestId
+  data.runId = run.runId || data.runId
   if (run.status === 'succeeded') {
     const urls = (run.candidates ?? []).map((item) => item.url)
-    const selected = Math.min(Math.max(run.selected_index ?? 0, 0), Math.max(urls.length - 1, 0))
+    const selected = Math.min(Math.max(run.selectedIndex ?? 0, 0), Math.max(urls.length - 1, 0))
     data.candidates = urls
     data.selectedCandidate = selected
     if (data.kind === 'video') {
       // 视频 run 的 candidates[0] 是封面图
-      if (run.video_url) data.video = run.video_url
+      if (run.videoUrl) data.video = run.videoUrl
       data.image = urls[selected] ?? urls[0]
     } else if (data.kind === 'model' || data.kind === 'tool') {
       data.image = urls[selected] ?? urls[0]
@@ -1449,23 +1451,23 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
     if (data.hiddenCandidates && hiddenCandidatesOf(data).size === 0) data.hiddenCandidates = undefined
     data.status = 'done'
     data.progress = 100
-    data.requestedCount = run.requested_count ?? data.requestedCount
+    data.requestedCount = run.requestedCount ?? data.requestedCount
     data.errorMessage = undefined
     data.errorCode = undefined
     data.retryable = undefined
-    productRunIds.set(nodeId, run.run_id)
-    stopPolling(run.request_id)
+    productRunIds.set(nodeId, run.runId)
+    stopPolling(run.requestId)
     return true
   }
   if (run.status === 'failed' || run.status === 'cancelled') {
     data.status = 'error'
     data.errorMessage = run.error || (run.status === 'cancelled' ? '已取消执行' : '执行失败')
-    data.errorCode = run.error_code || undefined
+    data.errorCode = run.errorCode || undefined
     data.retryable = run.status === 'failed' && run.retryable === true
-    stopPolling(run.request_id)
+    stopPolling(run.requestId)
     // 计费（2026-11-06 二轮）：失败 / 取消由服务端退回预扣点数。只有本会话提交时确实预扣过（credits>0）才提示退回；
     // Java 工具（credits=0）、刷新后恢复轮询的旧 run 不知道有没有扣，不说「退回」
-    const charged = chargedRuns.get(run.request_id || data.requestId || '') ?? 0
+    const charged = chargedRuns.get(run.requestId || data.requestId || '') ?? 0
     if (!quietNodes.has(nodeId)) {
       if (charged > 0) {
         message.info(`${run.status === 'cancelled' ? '已取消' : '执行失败'}：预扣的 ${charged} 点将退回`)
@@ -1583,10 +1585,10 @@ async function resolveProductRunId(nodeId: string): Promise<string | undefined> 
   if (!canvasId) return undefined
   try {
     const res = await canvasRuns(canvasId, 50, nodeId)
-    const hit = res.data?.items?.find((item) => item.node_id === nodeId && item.status === 'succeeded')
-    if (hit?.run_id) {
-      productRunIds.set(nodeId, hit.run_id)
-      return hit.run_id
+    const hit = res.data?.items?.find((item) => item.nodeId === nodeId && item.status === 'succeeded')
+    if (hit?.runId) {
+      productRunIds.set(nodeId, hit.runId)
+      return hit.runId
     }
   } catch {
     // 查询失败走下面的兜底提示
@@ -1613,8 +1615,8 @@ async function selectCandidate(nodeId: string, index: number): Promise<void> {
     if (!isVideoModel) data.image = url
   }
   try {
-    const res = await canvasSelectCandidate(canvasId, nodeId, { run_id: runId, index })
-    const selected = res.data?.selected_index
+    const res = await canvasSelectCandidate(canvasId, nodeId, { runId: runId, index })
+    const selected = res.data?.selectedIndex
     if (typeof selected === 'number' && node.data.candidates?.[selected]) {
       node.data.selectedCandidate = selected
       if (!isVideoModel && (data.kind === 'model' || data.kind === 'tool')) {
@@ -1651,7 +1653,7 @@ function reconcileCatalogLimits(): void {
   commitHistory()
   let changed = false
   for (const node of nodes.value) {
-    const cap = catalogOf(node)?.max_image_refs ?? 0
+    const cap = catalogOf(node)?.maxImageRefs ?? 0
     if (cap > 0 && (node.data.maxImageRefs ?? 0) > cap) {
       node.data.maxImageRefs = cap
       changed = true

@@ -14,7 +14,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { studioRegenerateTask } from '@/api/studio.ts'
 import { toApiError } from '@/api/index.ts'
-import type { StudioBatchDetail, StudioTask } from '@/api/studioTypes.ts'
+import type { StudioBatchDetail, StudioTask } from '@/api/studio-types.ts'
 import { unitPoints } from './compare.ts'
 
 const props = defineProps<{
@@ -32,21 +32,21 @@ const message = useMessage()
 const PROMPT_MAX = 3000
 
 const isPose = computed(() => props.detail.batch.kind === 'pose')
-const serverText = computed(() => props.task.prompt_text ?? '')
+const serverText = computed(() => props.task.promptText ?? '')
 
 /** 草稿：task_id → 文本（只存改过的） */
 const drafts = reactive<Record<string, string>>({})
 const draft = computed({
-  get: () => drafts[props.task.task_id] ?? serverText.value,
+  get: () => drafts[props.task.taskId] ?? serverText.value,
   set: (v: string) => {
-    drafts[props.task.task_id] = v
+    drafts[props.task.taskId] = v
   },
 })
-const dirty = computed(() => (drafts[props.task.task_id] ?? serverText.value).trim() !== serverText.value.trim())
+const dirty = computed(() => (drafts[props.task.taskId] ?? serverText.value).trim() !== serverText.value.trim())
 
 // 服务端提示词换了（重新生成后的新提示词）：没有未提交修改的草稿跟着丢掉
 watch(serverText, () => {
-  if (!dirty.value) delete drafts[props.task.task_id]
+  if (!dirty.value) delete drafts[props.task.taskId]
 })
 
 /** 终态（成功 / 失败）才能重新生成；在跑的等它结束 */
@@ -81,16 +81,16 @@ async function copy(text: string, okText: string) {
 }
 
 function copyOne() {
-  const label = isPose.value ? `姿势 ${props.task.pose_index + 1} 的提示词` : '提示词'
+  const label = isPose.value ? `姿势 ${props.task.poseIndex + 1} 的提示词` : '提示词'
   return copy(draft.value, `已复制${label}`)
 }
 
 /** 复制全部（C16）：本批每个姿势一段，「【姿势 N】」开头；有草稿的用草稿 */
 const allPoseText = computed(() =>
   [...props.detail.tasks]
-    .filter((t) => (drafts[t.task_id] ?? t.prompt_text ?? '').trim())
-    .sort((a, b) => a.pose_index - b.pose_index)
-    .map((t) => `【姿势 ${t.pose_index + 1}】\n${(drafts[t.task_id] ?? t.prompt_text ?? '').trim()}`),
+    .filter((t) => (drafts[t.taskId] ?? t.promptText ?? '').trim())
+    .sort((a, b) => a.poseIndex - b.poseIndex)
+    .map((t) => `【姿势 ${t.poseIndex + 1}】\n${(drafts[t.taskId] ?? t.promptText ?? '').trim()}`),
 )
 function copyAll() {
   const parts = allPoseText.value
@@ -99,12 +99,12 @@ function copyAll() {
 }
 
 function resetDraft() {
-  delete drafts[props.task.task_id]
+  delete drafts[props.task.taskId]
 }
 
 const confirmText = computed(() => {
   const unit = unitPoints(props.detail.batch)
-  return `用${dirty.value ? '修改后的' : '当前'}提示词只重新生成姿势 ${props.task.pose_index + 1} 这一张，会重新冻结 1 张的点数${
+  return `用${dirty.value ? '修改后的' : '当前'}提示词只重新生成姿势 ${props.task.poseIndex + 1} 这一张，会重新冻结 1 张的点数${
     unit ? `（约 ${unit} 点）` : ''
   }${props.task.status === 2 ? '；原来的成品仍保留在素材库' : ''}。确定？`
 })
@@ -114,8 +114,8 @@ async function regenerate() {
   const text = draft.value.trim()
   if (text.length > PROMPT_MAX) return message.warning(`提示词最多 ${PROMPT_MAX} 字`)
   // 请求期间可能切到别的任务：草稿 / 提示语都按发起时的任务算
-  const taskId = props.task.task_id
-  const poseNo = props.task.pose_index + 1
+  const taskId = props.task.taskId
+  const poseNo = props.task.poseIndex + 1
   const edited = dirty.value
   busy.value = true
   try {
@@ -139,12 +139,12 @@ async function regenerate() {
   <section
     v-if="serverText || isPose"
     class="flex-none flex flex-col gap-6px p-10px box-border border border-solid border-line rounded-lg bg-white"
-    :aria-label="isPose ? `姿势 ${task.pose_index + 1} 的提示词` : '提示词'"
+    :aria-label="isPose ? `姿势 ${task.poseIndex + 1} 的提示词` : '提示词'"
   >
     <div class="flex items-center gap-6px min-w-0">
       <h3 class="m-0 text-12px font-600 text-ink">提示词</h3>
-      <span v-if="isPose" class="text-11px text-muted">姿势 {{ task.pose_index + 1 }}</span>
-      <span v-if="task.prompt_edited" class="ll-chip ll-chip-running">已编辑</span>
+      <span v-if="isPose" class="text-11px text-muted">姿势 {{ task.poseIndex + 1 }}</span>
+      <span v-if="task.promptEdited" class="ll-chip ll-chip-running">已编辑</span>
       <span v-if="isPose && dirty" class="text-11px text-warning">未提交的修改</span>
       <span class="ml-auto flex items-center gap-4px">
         <button
@@ -168,9 +168,9 @@ async function regenerate() {
     <p v-if="!serverText" class="m-0 text-11px leading-16px text-muted">提示词生成后会出现在这里，可直接编辑</p>
     <template v-else>
       <!-- C4：提示词区高度明显小于图片区，可编辑、可滚动 -->
-      <label :for="`studio-prompt-${task.task_id}`" class="sr-only">提示词</label>
+      <label :for="`studio-prompt-${task.taskId}`" class="sr-only">提示词</label>
       <textarea
-        :id="`studio-prompt-${task.task_id}`"
+        :id="`studio-prompt-${task.taskId}`"
         v-model="draft"
         class="block w-full h-96px box-border m-0 px-8px py-6px resize-y overflow-y-auto overscroll-contain rounded-6px border border-solid text-12px leading-18px text-ink-2 outline-none"
         :class="isPose ? 'border-[#bfe3c8] bg-[#f3fbf5] focus:border-violet' : 'border-line bg-surface2'"

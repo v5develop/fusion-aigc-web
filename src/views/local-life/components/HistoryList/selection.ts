@@ -9,7 +9,10 @@ import { computed, ref, type Ref } from 'vue'
 export function useHistorySelection<T extends { id: number }>(items: Ref<T[]> | { value: T[] }) {
   const selectedId = ref<number | null>(null)
   const current = computed<T | null>(
-    () => (selectedId.value !== null ? items.value.find((i) => i.id === selectedId.value) : undefined) ?? items.value[0] ?? null,
+    () =>
+      (selectedId.value !== null ? items.value.find((i) => i.id === selectedId.value) : undefined) ??
+      items.value[0] ??
+      null,
   )
   return {
     selectedId,

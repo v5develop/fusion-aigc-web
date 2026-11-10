@@ -1,5 +1,5 @@
 import type { App } from 'vue'
-import observerScrollDirective from './observerScroll.ts'
+import observerScrollDirective from './observer-scroll.ts'
 import loading from './loading.tsx'
 
 export function registerDirectives(app: App) {

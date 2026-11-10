@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelOf, modelLabelsOf } from '@/utils/modelLabel'
+import { modelLabelOf, modelLabelsOf } from '@/utils/model-label'
 /**
  * 提示词库：官方电商 / 官方通用 / 我的 三个页签 + 搜索 + 卡片列表。
  * 官方卡片可复制、看详情；我的卡片可编辑 / 删除（新建编辑见 PromptEditor）。
@@ -8,8 +8,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
-import { promptLibList, promptLibRemove } from '@/api/promptLibrary.ts'
-import type { IPromptLibItem } from '@/api/promptLibrary.ts'
+import { promptLibList, promptLibRemove } from '@/api/prompt-library.ts'
+import type { IPromptLibItem } from '@/api/prompt-library.ts'
 import { useDebounce } from '@/utils/hooks'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PromptEditor from './PromptEditor.vue'
@@ -79,7 +79,7 @@ async function loadPage(p: number): Promise<IPromptLibItem[]> {
     group: groupFilter.value || undefined,
     model: modelFilter.value || undefined,
     page: p,
-    page_size: PAGE_SIZE,
+    pageSize: PAGE_SIZE,
   })
   total.value = res.data?.total ?? 0
   return res.data?.items ?? []
@@ -249,7 +249,7 @@ function onSaved() {
           </div>
 
           <div class="mt-auto pt-6px flex justify-between items-center text-12px text-placeholder">
-            <span>{{ formatTime(item.updated_at || item.created_at) }}</span>
+            <span>{{ formatTime(item.updatedAt || item.createdAt) }}</span>
             <div class="flex gap-8px">
               <button type="button" :class="ACTION" @click.stop="copyPrompt(item.prompt)">复制</button>
               <template v-if="item.owner === 'mine'">
@@ -303,7 +303,7 @@ function onSaved() {
             {{ detail.prompt }}
           </div>
           <div class="mt-12px flex justify-between items-center text-12px text-placeholder">
-            <span>更新于 {{ formatTime(detail.updated_at || detail.created_at) }}</span>
+            <span>更新于 {{ formatTime(detail.updatedAt || detail.createdAt) }}</span>
             <n-button size="small" type="primary" @click="copyPrompt(detail.prompt)">复制提示词</n-button>
           </div>
         </div>

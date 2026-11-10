@@ -47,10 +47,12 @@ export async function reportDevice() {
 }
 
 export async function sendSms(phone: string) {
-  return unionApi.post<{ expireIn: number }>('/api/v1/auth/sms/send', {
-    phone,
-    scene: 'login',
-  }).then(unwrap<{ expireIn: number }>)
+  return unionApi
+    .post<{ expireIn: number }>('/api/v1/auth/sms/send', {
+      phone,
+      scene: 'login',
+    })
+    .then(unwrap<{ expireIn: number }>)
 }
 
 export async function smsLogin(data: { phone: string; code: string; inviteCode?: string }) {
@@ -60,33 +62,41 @@ export async function smsLogin(data: { phone: string; code: string; inviteCode?:
     deviceId: getDeviceId(),
   }
   if (data.inviteCode) body.inviteCode = data.inviteCode
-  return unionApi.post<{
-    token: string
-    refreshToken: string
-    expiresIn: number
-    isNewUser: boolean
-  }>('/api/v1/auth/sms/login', body).then(unwrap<{
-    token: string
-    refreshToken: string
-    expiresIn: number
-    isNewUser: boolean
-  }>)
+  return unionApi
+    .post<{
+      token: string
+      refreshToken: string
+      expiresIn: number
+      isNewUser: boolean
+    }>('/api/v1/auth/sms/login', body)
+    .then(
+      unwrap<{
+        token: string
+        refreshToken: string
+        expiresIn: number
+        isNewUser: boolean
+      }>,
+    )
 }
 
 export async function getAuthToken(accessToken: string) {
-  return unionApi.get<{ tempToken: string }>('/api/v1/user/auth/token', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  }).then(unwrap<{ tempToken: string }>)
+  return unionApi
+    .get<{ tempToken: string }>('/api/v1/user/auth/token', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    .then(unwrap<{ tempToken: string }>)
 }
 
 export async function refreshToken(refreshToken: string) {
-  return unionApi.post<{
-    token: string
-    refreshToken: string
-    expiresIn: number
-    isNewUser: boolean
-  }>('/api/v1/auth/refresh', {
-    refreshToken,
-    deviceId: getDeviceId(),
-  }).then(unwrap<{ token: string; refreshToken: string; expiresIn: number; isNewUser: boolean }>)
+  return unionApi
+    .post<{
+      token: string
+      refreshToken: string
+      expiresIn: number
+      isNewUser: boolean
+    }>('/api/v1/auth/refresh', {
+      refreshToken,
+      deviceId: getDeviceId(),
+    })
+    .then(unwrap<{ token: string; refreshToken: string; expiresIn: number; isNewUser: boolean }>)
 }

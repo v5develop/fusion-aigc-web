@@ -215,7 +215,9 @@ const pickedParts = computed(() => {
   const allowed = new Set(props.garmentParts)
   return colorFixPartsSanitize(region.value?.parts).filter((p) => allowed.has(p))
 })
-const showParts = computed(() => region.value?.mode === 'auto' && region.value.target === 'garment' && props.garmentParts.length > 0)
+const showParts = computed(
+  () => region.value?.mode === 'auto' && region.value.target === 'garment' && props.garmentParts.length > 0,
+)
 
 /** 部位多选：点「全部服装」清空；点某件切换，全取消 = 回到全部服装 */
 function togglePart(part: ColorFixGarmentPart | null) {
@@ -255,8 +257,21 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
       <header class="cfp__head" title="拖动调整面板" @pointerdown="onPointerDown">
         <span class="cfp__grip" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
         <b class="cfp__title">{{ title }}</b>
-        <button type="button" class="cfp__close sx-hit" aria-label="收起校色参数" title="收起校色参数" @click="emit('done')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <button
+          type="button"
+          class="cfp__close sx-hit"
+          aria-label="收起校色参数"
+          title="收起校色参数"
+          @click="emit('done')"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
             <path d="m7 7 10 10M17 7 7 17" />
           </svg>
         </button>
@@ -326,11 +341,19 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
         </div>
         <div v-if="region.mode === 'paint'" class="cfp__row">
           <span class="cfp__label" />
-          <button type="button" class="cfp__btn sx-hit" @click="emit('paint')">{{ hasPainted ? '重新涂抹' : '涂抹选区' }}</button>
+          <button type="button" class="cfp__btn sx-hit" @click="emit('paint')">
+            {{ hasPainted ? '重新涂抹' : '涂抹选区' }}
+          </button>
         </div>
         <div v-if="region.mode === 'point'" class="cfp__row">
           <span class="cfp__label" />
-          <button type="button" class="cfp__btn sx-hit" :disabled="!!pointBlocked" :title="pointBlocked || undefined" @click="emit('point')">
+          <button
+            type="button"
+            class="cfp__btn sx-hit"
+            :disabled="!!pointBlocked"
+            :title="pointBlocked || undefined"
+            @click="emit('point')"
+          >
             {{ hasPoint ? '重新点选' : '点选区域' }}
           </button>
         </div>

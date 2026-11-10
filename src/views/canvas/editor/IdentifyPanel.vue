@@ -7,9 +7,9 @@
 import { computed, ref } from 'vue'
 import RegionStage from './RegionStage.vue'
 import RegionList from './RegionList.vue'
-import type { IActionRegion, IImageSource, ImageActionKind, RatioPoint } from './imageActions.ts'
-import { addRegion, identifiableUrl, regionsOf } from './imageActions.ts'
-import { ACTION_SUBMIT } from './actionUi.ts'
+import type { IActionRegion, IImageSource, ImageActionKind, RatioPoint } from './image-actions.ts'
+import { addRegion, identifiableUrl, regionsOf } from './image-actions.ts'
+import { ACTION_SUBMIT } from './action-ui.ts'
 
 const props = defineProps<{ source: IImageSource }>()
 // 识别很快且结果写进模块级区域表，不锁页签：切到编辑后识别中的区域照样会落定

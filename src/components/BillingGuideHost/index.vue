@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { onBillingBlock } from '@/utils/billingGuide'
+import { onBillingBlock } from '@/utils/billing-guide'
 import { hasBillingPage, openBillingPage } from '@/utils/billing'
-import { registerOverlayCloser } from '@/utils/overlayGuard'
-import { useUserInfoStore } from '@/stores/userInfo'
+import { registerOverlayCloser } from '@/utils/overlay-guard'
+import { useUserInfoStore } from '@/stores/user-info'
 import warnIcon from '@/assets/icons/billing-warn.svg'
 
 /**
@@ -13,8 +13,8 @@ import warnIcon from '@/assets/icons/billing-warn.svg'
  * 46012（业务已过期）。这三类失败用户<b>可以自助解决</b>——去订阅套餐或买加油包就能继续，
  * 所以按《创作提交-失败错误码-前端接入说明》的要求，不能只弹一句报错，得给购买入口。
  *
- * <p>信号从 `api/index.ts` 的响应拦截器经 `utils/billingGuide` 这条模块级通道过来，
- * 请求层不直接碰组件——两者之间隔着 stores 的循环依赖，详见 `utils/billingGuide.ts`。
+ * <p>信号从 `api/index.ts` 的响应拦截器经 `utils/billing-guide` 这条模块级通道过来，
+ * 请求层不直接碰组件——两者之间隔着 stores 的循环依赖，详见 `utils/billing-guide.ts`。
  *
  * <p>用 n-modal 手写卡片而不是 n-dialog：设计稿是「图标 + 标题 + 副文案 + 两个胶囊按钮」的
  * 居中卡片，没有标题栏、没有右上角 ✕，n-dialog 的固定结构套不上。

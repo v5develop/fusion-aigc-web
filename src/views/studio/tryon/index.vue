@@ -13,9 +13,14 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { studioSubmitTryon } from '@/api/studio.ts'
-import { goUploadImage } from '@/api/goUpload.ts'
-import { checkMinShortSide } from '../imageSize.ts'
-import type { StudioDetailCrop, StudioGarmentImage, StudioTryonPayload, StudioTryonSubmitReq } from '@/api/studioTypes.ts'
+import { goUploadImage } from '@/api/go-upload.ts'
+import { checkMinShortSide } from '../image-size.ts'
+import type {
+  StudioDetailCrop,
+  StudioGarmentImage,
+  StudioTryonPayload,
+  StudioTryonSubmitReq,
+} from '@/api/studio-types.ts'
 import ToolTryonMaterials from '@/views/tools/ToolTryonMaterials.vue'
 import { useTryonGarment } from '@/views/tools/useTryonGarment.ts'
 import type { UploadSpec } from '@/views/tools/schemas.ts'
@@ -37,7 +42,7 @@ import {
   OUTFIT_MAP,
   RESOLUTION_OPTIONS,
 } from '../constants.ts'
-import { normalizeModelTier } from '@/utils/modelLabel'
+import { normalizeModelTier } from '@/utils/model-label'
 import type { StudioOutfitItem } from '../constants.ts'
 
 defineOptions({ name: 'studio-tryon' })
@@ -90,8 +95,8 @@ const form = reactive({
   prompt: '',
   model: '通用',
   resolution: '1k',
-  aspect_ratio: '3:4',
-  count_per_model: 1,
+  aspectRatio: '3:4',
+  countPerModel: 1,
 })
 
 /** 单品 / 一套合影 / 逐件角度格：与工具页同一份状态逻辑 */
@@ -172,7 +177,7 @@ const angleLabel = (code: string) => ANGLE_OPTIONS.find((o) => o.value === code)
 /** 合计超额（只会出现在取消单品后又选回时）：分别上传模式下拦提交 */
 const modelCaps = useStudioModels('tryon')
 /** 当前模型档的参考图上限（后端 /studio/models 的 max_ref_images；没拉到 = 不限制到这一层） */
-const maxRefImages = computed(() => modelCaps.value?.find((c) => c.code === form.model)?.max_ref_images ?? 0)
+const maxRefImages = computed(() => modelCaps.value?.find((c) => c.code === form.model)?.maxRefImages ?? 0)
 /** 服装图上限：9 与「模型参考图上限 − 1（留给模特图）」取小 */
 const garmentMax = computed(() =>
   maxRefImages.value > 1 ? Math.min(MAX_GARMENT_IMAGES, maxRefImages.value - 1) : MAX_GARMENT_IMAGES,
@@ -207,11 +212,11 @@ const detailManual = ref(false)
 
 /** 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例）原样发给报价接口，拿不到价就不显示 */
 const { points: costPoints } = useStudioCost('tryon', () => ({
-  model_image_urls: modelImages.value,
-  count_per_model: form.count_per_model,
+  modelImageUrls: modelImages.value,
+  countPerModel: form.countPerModel,
   model: form.model || undefined,
   resolution: form.resolution || undefined,
-  aspect_ratio: form.aspect_ratio || undefined,
+  aspectRatio: form.aspectRatio || undefined,
 }))
 idem.bindForm(
   form,
@@ -277,10 +282,12 @@ watch(garmentSig, () => {
 })
 /** 生图时最多能用的细节图：模型参考图上限 − 服装图 − 模特 1（不知道上限时 0 = 不提示） */
 const detailBudget = computed(() =>
-  maxRefImages.value > 0 ? Math.max(0, maxRefImages.value - Math.min(garmentImages.value.length, maxRefImages.value - 1) - 1) : 0,
+  maxRefImages.value > 0
+    ? Math.max(0, maxRefImages.value - Math.min(garmentImages.value.length, maxRefImages.value - 1) - 1)
+    : 0,
 )
 
-const taskCount = computed(() => modelImages.value.length * form.count_per_model)
+const taskCount = computed(() => modelImages.value.length * form.countPerModel)
 const submitText = computed(() => (taskCount.value ? `开始换装（${taskCount.value} 张）` : '开始换装'))
 
 /** 素材板上传中（服装图 / 模特图）：还没回来的图不会进提交体，先拦下 */
@@ -316,22 +323,22 @@ async function submit() {
   }
 
   const body: StudioTryonSubmitReq = {
-    model_image_urls: [...modelImages.value],
-    garment_images: garmentImages.value.map((gi) => ({ ...gi })),
+    modelImageUrls: [...modelImages.value],
+    garmentImages: garmentImages.value.map((gi) => ({ ...gi })),
     items: [...g.selected],
-    set_mode: g.isTogether ? 'one' : 'two',
-    count_per_model: form.count_per_model,
+    setMode: g.isTogether ? 'one' : 'two',
+    countPerModel: form.countPerModel,
     model: form.model || undefined,
     resolution: form.resolution || undefined,
-    aspect_ratio: form.aspect_ratio || undefined,
+    aspectRatio: form.aspectRatio || undefined,
     prompt: form.prompt.trim() || undefined,
     fabric: fabricText.value || undefined,
     ...(Object.keys(lengthsOut).length ? { lengths: lengthsOut } : {}),
     ...(Object.keys(sleevesOut).length ? { sleeves: sleevesOut } : {}),
-    color_fix: colorFix.value,
-    ...(fineRead.value ? { fine_read: true } : {}),
+    colorFix: colorFix.value,
+    ...(fineRead.value ? { fineRead: true } : {}),
     ...(detailManual.value
-      ? { detail_crops_manual: true, detail_crops: detailCrops.value.map((c) => ({ ...c, box: [...c.box] })) }
+      ? { detailCropsManual: true, detailCrops: detailCrops.value.map((c) => ({ ...c, box: [...c.box] })) }
       : {}),
   }
 
@@ -341,15 +348,15 @@ async function submit() {
     const res = await studioSubmitTryon(body, { 'Idempotency-Key': idem.take() })
     idem.settle()
     const d = res.data
-    const points = d?.estimated_points
+    const points = d?.estimatedPoints
     message.success(
-      `已提交 ${d?.task_total ?? taskCount.value} 个换装任务${points ? `，预估消耗 ${points} 点` : ''}${
+      `已提交 ${d?.taskTotal ?? taskCount.value} 个换装任务${points ? `，预估消耗 ${points} 点` : ''}${
         d?.replayed ? '（幂等重放，返回原批次）' : ''
       }`,
     )
     for (const w of d?.warnings ?? []) message.warning(w)
     await shell.value?.refresh()
-    if (d?.batch_id) shell.value?.openBatch(d.batch_id)
+    if (d?.batchId) shell.value?.openBatch(d.batchId)
   } catch (err) {
     // 拦截器已 toast（3003 走引导购买弹框）；结果未知（网络 / 超时 / 5001）保留 key 进「重试生成」态，
     // 确定失败（参数错、点数不足等）清掉 key，充值或改参后再提交换新 key
@@ -373,7 +380,7 @@ function onReedit(payload: Record<string, unknown>) {
     .slice(0, MAX_ITEMS)
 
   // 服装图按 role 归组；整套图收进合影，认不出的角色挂到第一件单品下，避免静默丢图
-  const snapGarments = Array.isArray(p.garment_images) ? p.garment_images : []
+  const snapGarments = Array.isArray(p.garmentImages) ? p.garmentImages : []
   let look = ''
   const photos: { url: string; role: string; angle: string }[] = []
   for (const gi of snapGarments) {
@@ -386,8 +393,8 @@ function onReedit(payload: Record<string, unknown>) {
     const key = items.find((k) => OUTFIT_MAP[k]?.label === gi.role) ?? items[0]
     if (key) photos.push({ url, role: key, angle: angleLabel(gi.angle ?? '') })
   }
-  let together = p.set_mode === 'one' && !!look
-  if (p.set_mode === 'one' && items.length < 2 && look && items[0]) {
+  let together = p.setMode === 'one' && !!look
+  if (p.setMode === 'one' && items.length < 2 && look && items[0]) {
     // 不到 2 件页面不提供「一套合影」：合影图挂到这一件的正面，按分别上传回填
     photos.unshift({ url: look, role: items[0], angle: '正面' })
     look = ''
@@ -396,7 +403,7 @@ function onReedit(payload: Record<string, unknown>) {
   // 快照是整套模式却没有整套图（异常 / 旧数据）：按分别上传回填，别让提交被拦
   g.restore({ selected: items, mode: together ? 'together' : 'separate', photos, look })
 
-  modelImages.value = (Array.isArray(p.model_image_urls) ? p.model_image_urls : [])
+  modelImages.value = (Array.isArray(p.modelImageUrls) ? p.modelImageUrls : [])
     .filter((u): u is string => !!u)
     .slice(0, MAX_MODEL_IMAGES)
 
@@ -423,13 +430,13 @@ function onReedit(payload: Record<string, unknown>) {
   form.prompt = typeof p.prompt === 'string' ? p.prompt : ''
   form.model = MODEL_OPTIONS.find((o) => o.value === normalizeModelTier(p.model))?.value ?? '通用'
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
-  form.aspect_ratio = typeof p.aspect_ratio === 'string' ? p.aspect_ratio : ''
-  form.count_per_model = Math.min(9, Math.max(1, Math.round(Number(p.count_per_model) || 1)))
+  form.aspectRatio = typeof p.aspectRatio === 'string' ? p.aspectRatio : ''
+  form.countPerModel = Math.min(9, Math.max(1, Math.round(Number(p.countPerModel) || 1)))
   // 默认校色跟着快照走（老快照没有这个字段 = 没开）
-  colorFix.value = p.color_fix === true
-  fineRead.value = p.fine_read === true
+  colorFix.value = p.colorFix === true
+  fineRead.value = p.fineRead === true
   // 找过细节的批次：细节框按回填的服装图原样恢复（服装图回填会触发一次指纹变化，跳过那次清空）
-  const restored = p.detail_crops_manual === true && Array.isArray(p.detail_crops) ? p.detail_crops : null
+  const restored = p.detailCropsManual === true && Array.isArray(p.detailCrops) ? p.detailCrops : null
   keepCropsOnce = true
   detailCrops.value = (restored ?? []).filter((c) => c && Array.isArray(c.box) && c.box.length === 4)
   detailManual.value = !!restored
@@ -580,9 +587,10 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
                 @click="togglePick(`${item.key}:${pk.kind}`)"
               >
                 <span class="shrink-0 text-11px text-placeholder">{{ pk.label }}</span>
-                <b class="flex-1 min-w-0 overflow-hidden text-left text-12px font-400 whitespace-nowrap text-ellipsis">{{
-                  pickStore(pk.kind)[item.key] || '按图'
-                }}</b>
+                <b
+                  class="flex-1 min-w-0 overflow-hidden text-left text-12px font-400 whitespace-nowrap text-ellipsis"
+                  >{{ pickStore(pk.kind)[item.key] || '按图' }}</b
+                >
                 <svg
                   class="shrink-0 w-10px h-10px text-placeholder transition-transform duration-160 motion-reduce:transition-none"
                   :class="picker === `${item.key}:${pk.kind}` ? 'rotate-180' : ''"
@@ -630,8 +638,8 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
         <ModelSettings
           v-model:model="form.model"
           v-model:resolution="form.resolution"
-          v-model:aspect-ratio="form.aspect_ratio"
-          v-model:count="form.count_per_model"
+          v-model:aspect-ratio="form.aspectRatio"
+          v-model:count="form.countPerModel"
           count-label="生成张数"
           count-hint="按模特算：每位模特各出这么多张"
           auto-ratio

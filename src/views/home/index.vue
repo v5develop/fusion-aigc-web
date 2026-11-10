@@ -6,7 +6,7 @@
  */
 import { computed, nextTick, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { toolCover } from '@/views/image/toolCovers.ts'
+import { toolCover } from '@/views/image/tool-covers.ts'
 import { tools, toolCategories, toolInputShapeLabels, type ToolCategory } from './tools'
 
 type TabKey = 'all' | ToolCategory

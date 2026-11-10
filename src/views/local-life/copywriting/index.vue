@@ -30,8 +30,8 @@ import {
   llCopywritingOptions,
   llCopywritingSave,
   llIdempotencyHeaders,
-} from '@/api/localLife.ts'
-import type { ILCopywriting, ILCopywritingOptions, ILDerivative } from '@/api/localLifeTypes.ts'
+} from '@/api/local-life.ts'
+import type { ILCopywriting, ILCopywritingOptions, ILDerivative } from '@/api/local-life-types.ts'
 import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import ResultPreview from '../components/ResultPreview/index.vue'
@@ -58,26 +58,26 @@ const activeModeTab = computed(() => modeTabs.find((t) => t.key === mode.value) 
 
 const options = ref<ILCopywritingOptions | null>(null)
 const form = reactive({
-  content_type: '',
+  contentType: '',
   style: '',
   industry: '',
-  target_words: undefined as string | undefined,
+  targetWords: undefined as string | undefined,
   topic: '',
-  reference_text: '',
+  referenceText: '',
   title: '',
   body: '',
-  shop_profile_id: undefined as number | undefined,
+  shopProfileId: undefined as number | undefined,
 })
 
 const toOptions = (list?: { label: string; code: string }[]) =>
   (list ?? []).map((o) => ({ label: o.label, value: o.code }))
-const contentTypeOptions = computed(() => toOptions(options.value?.content_types))
+const contentTypeOptions = computed(() => toOptions(options.value?.contentTypes))
 const styleOptions = computed(() => toOptions(options.value?.styles))
 const industryOptions = computed(() => toOptions(options.value?.industries))
 /** 「生成设置」里的目标字数：首项「不限」= 不传 target_words（原下拉清空的效果） */
 const targetWordSettingOptions = computed(() =>
-  (options.value?.word_counts?.length ? [{ label: '不限', value: '' }] : []).concat(
-    toOptions(options.value?.word_counts),
+  (options.value?.wordCounts?.length ? [{ label: '不限', value: '' }] : []).concat(
+    toOptions(options.value?.wordCounts),
   ),
 )
 
@@ -85,7 +85,7 @@ onMounted(async () => {
   const res = await llCopywritingOptions()
   const data = res.data ?? null
   options.value = data
-  if (data?.content_types?.length) form.content_type = data.content_types[0]?.code ?? ''
+  if (data?.contentTypes?.length) form.contentType = data.contentTypes[0]?.code ?? ''
 })
 
 const aiWriting = ref(false)
@@ -97,7 +97,7 @@ async function aiWriteDraft() {
   try {
     const res = await llCopywritingAiWrite({
       scene: 'topic',
-      content_type: form.content_type || undefined,
+      contentType: form.contentType || undefined,
       industry: form.industry || undefined,
       context,
     })
@@ -137,7 +137,7 @@ async function submit() {
   if (mode.value === 'AI_WRITE') {
     if (!form.topic.trim()) return message.warning('请输入主题')
   } else {
-    if (!form.reference_text.trim()) return message.warning('请粘贴要仿写的爆款文案')
+    if (!form.referenceText.trim()) return message.warning('请粘贴要仿写的爆款文案')
   }
 
   if (!(await ensureAgreed())) return
@@ -147,13 +147,13 @@ async function submit() {
     const res = await llCopywritingGenerate(
       {
         source: mode.value as 'AI_WRITE' | 'IMITATE',
-        content_type: form.content_type || undefined,
+        contentType: form.contentType || undefined,
         style: form.style || undefined,
         industry: form.industry || undefined,
-        target_words: form.target_words ? Number(form.target_words) : undefined,
+        targetWords: form.targetWords ? Number(form.targetWords) : undefined,
         topic: form.topic.trim() || undefined,
-        reference_text: form.reference_text.trim() || undefined,
-        shop_profile_id: form.shop_profile_id,
+        referenceText: form.referenceText.trim() || undefined,
+        shopProfileId: form.shopProfileId,
       },
       llIdempotencyHeaders(),
     )
@@ -325,7 +325,7 @@ async function copyBody() {
 }
 
 function openDerivative(d: ILDerivative) {
-  window.open(d.result_url, '_blank')
+  window.open(d.resultUrl, '_blank')
 }
 </script>
 
@@ -348,17 +348,17 @@ function openDerivative(d: ILDerivative) {
           v-model="form.topic"
           label="主题"
           size="lg"
-          :max-length="options?.max_topic_len || 500"
+          :max-length="options?.maxTopicLen || 500"
           placeholder="想写什么？如：新店开业暖场活动宣传"
         />
       </FormCard>
 
       <FormCard v-if="mode === 'IMITATE'" title="爆款原文" required>
         <PromptBox
-          v-model="form.reference_text"
+          v-model="form.referenceText"
           label="爆款原文"
           size="lg"
-          :max-length="options?.max_reference_len || 2000"
+          :max-length="options?.maxReferenceLen || 2000"
           placeholder="粘贴一篇对标爆款文案，AI 会仿写同款结构的新文案"
         />
       </FormCard>
@@ -378,7 +378,7 @@ function openDerivative(d: ILDerivative) {
 
       <FormCard v-else title="参数">
         <Field label="内容类型">
-          <ChipGroup v-model="form.content_type" :options="contentTypeOptions" label="内容类型" />
+          <ChipGroup v-model="form.contentType" :options="contentTypeOptions" label="内容类型" />
         </Field>
         <Field label="风格">
           <ChipGroup v-model="form.style" :options="styleOptions" label="风格" empty-label="不限" />
@@ -387,7 +387,7 @@ function openDerivative(d: ILDerivative) {
           <ChipGroup v-model="form.industry" :options="industryOptions" label="行业" empty-label="不限" />
         </Field>
         <Field label="关联店铺档案">
-          <ShopProfileSelect v-model:value="form.shop_profile_id" />
+          <ShopProfileSelect v-model:value="form.shopProfileId" />
         </Field>
       </FormCard>
     </template>
@@ -443,9 +443,9 @@ function openDerivative(d: ILDerivative) {
             :title="item.title || '未命名文案'"
             :status="COPY_STATUS_MAP[item.status]?.type ?? 'running'"
             :status-label="COPY_STATUS_MAP[item.status]?.label ?? '未知'"
-            :time="item.create_time"
+            :time="item.createTime"
             placeholder="文案"
-            :fail-reason="item.status === 2 ? item.fail_reason || '生成失败' : ''"
+            :fail-reason="item.status === 2 ? item.failReason || '生成失败' : ''"
             :eta-sec="30"
             :summary="item.body"
             :selected="detail?.id === item.id"
@@ -456,9 +456,15 @@ function openDerivative(d: ILDerivative) {
     </template>
 
     <template #preview>
-      <ResultPreview v-if="!detail" :active="false" empty-text="点中间的历史记录查看文案详情；左边提交后会自动打开新文案" />
+      <ResultPreview
+        v-if="!detail"
+        :active="false"
+        empty-text="点中间的历史记录查看文案详情；左边提交后会自动打开新文案"
+      />
       <div v-else class="flex-1 min-h-0 flex flex-col">
-        <header class="flex-none flex items-center gap-8px min-h-56px px-16px py-12px box-border border-b border-b-solid border-b-line-soft">
+        <header
+          class="flex-none flex items-center gap-8px min-h-56px px-16px py-12px box-border border-b border-b-solid border-b-line-soft"
+        >
           <div class="min-w-0 flex-1 flex flex-col gap-2px">
             <h2 class="m-0 truncate text-14px font-600 leading-20px text-ink" :title="detail.title || '未命名文案'">
               {{ detail.title || '未命名文案' }}
@@ -468,9 +474,9 @@ function openDerivative(d: ILDerivative) {
                 {{ COPY_STATUS_MAP[detail.status]?.label }}
               </span>
               <span class="truncate">
-                {{ detail.content_type_label }}<template v-if="detail.style"> · {{ detail.style }}</template>
-                <template v-if="detail.word_count"> · {{ detail.word_count }}字</template> ·
-                {{ formatTime(detail.create_time) }}
+                {{ detail.contentTypeLabel }}<template v-if="detail.style"> · {{ detail.style }}</template>
+                <template v-if="detail.wordCount"> · {{ detail.wordCount }}字</template> ·
+                {{ formatTime(detail.createTime) }}
               </span>
             </span>
           </div>
@@ -487,7 +493,7 @@ function openDerivative(d: ILDerivative) {
             v-else-if="detail.status === 2"
             class="bg-white rounded-lg border border-solid border-line shadow-card-v3 flex items-center justify-center gap-10px p-40px text-13px text-danger"
           >
-            {{ detail.fail_reason || '生成失败' }}
+            {{ detail.failReason || '生成失败' }}
           </div>
 
           <template v-else>
@@ -527,11 +533,11 @@ function openDerivative(d: ILDerivative) {
                   class="relative w-96px overflow-hidden rounded-8px border border-solid border-line bg-white cursor-pointer transition-[border-color,box-shadow] duration-mid ease-[ease] motion-reduce:transition-none hover:(border-violet-line shadow-raised-hover)"
                   @click="openDerivative(d)"
                 >
-                  <img v-if="d.cover_url" class="block w-full aspect-square object-cover" :src="d.cover_url" alt="" />
+                  <img v-if="d.coverUrl" class="block w-full aspect-square object-cover" :src="d.coverUrl" alt="" />
                   <video
-                    v-else-if="d.is_video && d.result_url"
+                    v-else-if="d.isVideo && d.resultUrl"
                     class="block w-full aspect-square object-cover"
-                    :src="d.result_url"
+                    :src="d.resultUrl"
                     muted
                   />
                   <div class="absolute inset-x-0 bottom-0 py-2px bg-black/45 text-center text-11px text-white">

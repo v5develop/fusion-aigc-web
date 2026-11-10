@@ -47,9 +47,16 @@ import {
   type ColorFixPresetPart,
   type ColorFixSegmenter,
 } from './segment.ts'
-import { deletePaintedMask, loadPaintedMask, loadRegion, onPaintedMaskChange, saveRegion, savePaintedMask } from './maskStore.ts'
+import {
+  deletePaintedMask,
+  loadPaintedMask,
+  loadRegion,
+  onPaintedMaskChange,
+  saveRegion,
+  savePaintedMask,
+} from './mask-store.ts'
 import { clearStoredColorFix } from './stored.ts'
-import { pointSegmentBlocked } from './pointSupport.ts'
+import { pointSegmentBlocked } from './point-support.ts'
 import { triggerDownload, withImageExt, withPngExt } from './files.ts'
 
 export { triggerDownload }
@@ -131,11 +138,17 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     { immediate: true },
   )
   /** 「自动识别 · 服装」可细分的部位；空 = 不出部位选择 */
-  const garmentParts = computed(() => (autoTargets.value.includes('garment') && segmenter && colorFixSegmentSupported.value ? colorFixGarmentParts.value : []))
+  const garmentParts = computed(() =>
+    autoTargets.value.includes('garment') && segmenter && colorFixSegmentSupported.value
+      ? colorFixGarmentParts.value
+      : [],
+  )
   /** 当前选区实际生效的部位（服务端不支持 / 非服装为空 = 全部服装） */
   const activeParts = computed(() => colorFixRequestParts(region.value.target, region.value.parts))
   const regionModes = computed<ColorFixRegionMode[]>(() =>
-    (opts.regionModes ?? ['whole', 'auto', 'paint', 'point']).filter((m) => m !== 'auto' || autoTargets.value.length > 0),
+    (opts.regionModes ?? ['whole', 'auto', 'paint', 'point']).filter(
+      (m) => m !== 'auto' || autoTargets.value.length > 0,
+    ),
   )
 
   const autoMask = ref('')
@@ -166,7 +179,15 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   let segTicket = 0
   watch(
-    () => [region.value.mode, region.value.target, src.value, presetMask.value, activeParts.value.join(','), presetParts.value] as const,
+    () =>
+      [
+        region.value.mode,
+        region.value.target,
+        src.value,
+        presetMask.value,
+        activeParts.value.join(','),
+        presetParts.value,
+      ] as const,
     async ([mode, target, image, preset]) => {
       const my = ++segTicket
       maskError.value = ''
@@ -191,7 +212,10 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
         const url = await segmenter(image, target, parts)
         if (my === segTicket) autoMask.value = url
       } catch {
-        if (my === segTicket) maskError.value = colorFixSegmentSupported.value ? '识别失败，可重试或改用手动涂抹' : '当前环境不支持自动识别，请改用手动涂抹'
+        if (my === segTicket)
+          maskError.value = colorFixSegmentSupported.value
+            ? '识别失败，可重试或改用手动涂抹'
+            : '当前环境不支持自动识别，请改用手动涂抹'
       } finally {
         if (my === segTicket) maskBusy.value = false
       }
@@ -217,7 +241,9 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   async function applyPaintedMask(blob: Blob) {
     const scope = paintScope.value
     if (!scope) return
-    const { url, persisted } = key.value ? await savePaintedMask(scope, blob) : { url: URL.createObjectURL(blob), persisted: false }
+    const { url, persisted } = key.value
+      ? await savePaintedMask(scope, blob)
+      : { url: URL.createObjectURL(blob), persisted: false }
     if (scope !== paintScope.value) return
     paintedMask.value = url
     paintedVolatile.value = !persisted
@@ -258,7 +284,9 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   async function applyPointMask(blob: Blob) {
     const scope = pointScope.value
     if (!scope) return
-    const { url, persisted } = key.value ? await savePaintedMask(scope, blob) : { url: URL.createObjectURL(blob), persisted: false }
+    const { url, persisted } = key.value
+      ? await savePaintedMask(scope, blob)
+      : { url: URL.createObjectURL(blob), persisted: false }
     if (scope !== pointScope.value) return
     pointMask.value = url
     pointVolatile.value = !persisted

@@ -10,8 +10,8 @@ import { computed, inject } from 'vue'
 import type { DropdownOption } from 'naive-ui'
 import { useNodeId } from '@vue-flow/core'
 import { NODE_ICON_BTN, NODE_MENU_HOST } from './ui.ts'
-import { IMAGE_ACTIONS, collectImageSources, openImageAction, type ImageActionKind } from './imageActions.ts'
-import { colorFixSources, openColorFix } from './colorFixAction.ts'
+import { IMAGE_ACTIONS, collectImageSources, openImageAction, type ImageActionKind } from './image-actions.ts'
+import { colorFixSources, openColorFix } from './color-fix-action.ts'
 
 const props = defineProps<{
   /** 节点标题，用于无障碍名 */
@@ -47,7 +47,11 @@ const options = computed<DropdownOption[]>(() => [
           label: hasImage.value ? item.label : `${item.label}（先上传或生成图片）`,
           disabled: !hasImage.value,
         })),
-        { key: 'colorfix', label: hasOwnImage.value ? '校色' : '校色（先上传或生成图片）', disabled: !hasOwnImage.value },
+        {
+          key: 'colorfix',
+          label: hasOwnImage.value ? '校色' : '校色（先上传或生成图片）',
+          disabled: !hasOwnImage.value,
+        },
         { key: 'divider', type: 'divider' },
       ]
     : []),

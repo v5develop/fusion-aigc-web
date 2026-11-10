@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelOf, modelLabelsOf } from '@/utils/modelLabel'
+import { modelLabelOf, modelLabelsOf } from '@/utils/model-label'
 /**
  * 资产 · 提示词域（原型 5185：提示词只分官方 / 我的）。数据走提示词库接口 /api/v1/prompt-library：
  * 来源 全部('') / 官方电商(ecommerce) / 官方通用(general) / 我的(mine)，模型四档筛选，关键词与页面共用。
@@ -8,8 +8,8 @@ import { modelLabelOf, modelLabelsOf } from '@/utils/modelLabel'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NModal, NPopconfirm, NSelect, useMessage } from 'naive-ui'
-import { promptLibList, promptLibRemove } from '@/api/promptLibrary.ts'
-import type { IPromptLibItem } from '@/api/promptLibrary.ts'
+import { promptLibList, promptLibRemove } from '@/api/prompt-library.ts'
+import type { IPromptLibItem } from '@/api/prompt-library.ts'
 import { useDebounce } from '@/utils/hooks'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
@@ -50,7 +50,7 @@ async function load() {
       model: model.value || undefined,
       q: q.value.trim() || undefined,
       page: page.value,
-      page_size: PAGE_SIZE,
+      pageSize: PAGE_SIZE,
     })
     if (cur !== seq) return
     items.value = res.data?.items ?? []
@@ -123,7 +123,8 @@ function formatTime(ms?: number) {
 const emptyText = computed(() => {
   if (q.value.trim()) return { text: '没有匹配的提示词', desc: '换个关键词试试。' }
   if (model.value) return { text: `没有适用于「${model.value}」的提示词`, desc: '换个模型，或清除模型筛选。' }
-  if (vertical.value === 'mine') return { text: '还没有我的提示词', desc: '在提示词库里新建，常用的提示词会出现在这里。' }
+  if (vertical.value === 'mine')
+    return { text: '还没有我的提示词', desc: '在提示词库里新建，常用的提示词会出现在这里。' }
   return { text: '还没有提示词', desc: '官方提示词会出现在这里。' }
 })
 
@@ -134,7 +135,11 @@ const ACTION =
 <template>
   <div :class="ROW_CLS">
     <span :class="ROW_LABEL_CLS">来源</span>
-    <div class="flex items-center gap-6px min-w-0 overflow-x-auto [scrollbar-width:none]" role="group" aria-label="提示词来源">
+    <div
+      class="flex items-center gap-6px min-w-0 overflow-x-auto [scrollbar-width:none]"
+      role="group"
+      aria-label="提示词来源"
+    >
       <button
         v-for="s in SOURCES"
         :key="s.value || '__all'"
@@ -155,7 +160,15 @@ const ACTION =
       class="!w-120px shrink-0"
     />
     <label :class="SEARCH_CLS">
-      <svg class="w-13px h-13px shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <svg
+        class="w-13px h-13px shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
         <circle cx="11" cy="11" r="6.5" />
         <path d="m16 16 4 4" />
       </svg>
@@ -170,7 +183,12 @@ const ACTION =
   </div>
 
   <div ref="scroller" class="flex-1 min-h-0 overflow-auto px-20px pt-14px pb-20px">
-    <PageLoadError v-if="loadError && !loading" subtitle="提示词列表没有取到，请检查网络后重试" retryable @retry="load" />
+    <PageLoadError
+      v-if="loadError && !loading"
+      subtitle="提示词列表没有取到，请检查网络后重试"
+      retryable
+      @retry="load"
+    />
     <template v-else>
       <div
         v-loading="loading"
@@ -188,20 +206,35 @@ const ACTION =
           @keydown.space.self.prevent="detail = item"
         >
           <div class="flex items-center gap-8px min-w-0">
-            <strong class="flex-1 min-w-0 text-13px font-600 text-ink whitespace-nowrap overflow-hidden text-ellipsis" :title="item.title">
+            <strong
+              class="flex-1 min-w-0 text-13px font-600 text-ink whitespace-nowrap overflow-hidden text-ellipsis"
+              :title="item.title"
+            >
               {{ item.title }}
             </strong>
             <span class="ll-chip" :class="isMine(item) ? 'll-chip-success' : 'll-chip-running'">
               {{ isMine(item) ? '我的' : '官方' }}
             </span>
           </div>
-          <p class="m-0 text-12px leading-20px text-ink-2 whitespace-pre-wrap break-all line-clamp-4">{{ item.prompt }}</p>
+          <p class="m-0 text-12px leading-20px text-ink-2 whitespace-pre-wrap break-all line-clamp-4">
+            {{ item.prompt }}
+          </p>
           <div v-if="item.models?.length || item.tags?.length" class="flex flex-wrap gap-4px">
-            <span v-for="m in modelLabelsOf(item.models)" :key="`m-${m}`" class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px">{{ m }}</span>
-            <span v-for="t in item.tags ?? []" :key="`t-${t}`" class="text-11px text-muted bg-surface3 rounded-4px px-6px py-1px">{{ t }}</span>
+            <span
+              v-for="m in modelLabelsOf(item.models)"
+              :key="`m-${m}`"
+              class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px"
+              >{{ m }}</span
+            >
+            <span
+              v-for="t in item.tags ?? []"
+              :key="`t-${t}`"
+              class="text-11px text-muted bg-surface3 rounded-4px px-6px py-1px"
+              >{{ t }}</span
+            >
           </div>
           <div class="flex items-center gap-8px mt-auto text-11px text-placeholder">
-            <span class="mr-auto">{{ formatTime(item.updated_at || item.created_at) }}</span>
+            <span class="mr-auto">{{ formatTime(item.updatedAt || item.createdAt) }}</span>
             <button type="button" :class="ACTION" @click.stop="copyText(item.prompt, message)">复制</button>
             <n-popconfirm v-if="isMine(item)" @positive-click="removeItem(item)">
               <template #trigger>
@@ -215,7 +248,9 @@ const ACTION =
         <div v-if="!loading && !items.length" class="col-span-full h-360px">
           <PageEmpty :text="emptyText.text" :description="emptyText.desc">
             <button v-if="q.trim()" type="button" class="sx-btn" @click="q = ''">清除搜索</button>
-            <button v-else-if="vertical === 'mine'" type="button" class="sx-btn-primary" @click="goLibrary">去提示词库新建</button>
+            <button v-else-if="vertical === 'mine'" type="button" class="sx-btn-primary" @click="goLibrary">
+              去提示词库新建
+            </button>
           </PageEmpty>
         </div>
       </div>
@@ -224,20 +259,32 @@ const ACTION =
     </template>
   </div>
 
-  <n-modal v-model:show="showDetail" preset="card" :title="detail?.title" style="width: 640px; max-width: calc(100vw - 32px)">
+  <n-modal
+    v-model:show="showDetail"
+    preset="card"
+    :title="detail?.title"
+    style="width: 640px; max-width: calc(100vw - 32px)"
+  >
     <div v-if="detail">
       <div class="flex flex-wrap items-center gap-6px mb-12px">
         <span class="ll-chip" :class="isMine(detail) ? 'll-chip-success' : 'll-chip-running'">
           {{ isMine(detail) ? '我的' : '官方' }}
         </span>
-        <span v-for="m in modelLabelsOf(detail.models)" :key="m" class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px">{{ m }}</span>
+        <span
+          v-for="m in modelLabelsOf(detail.models)"
+          :key="m"
+          class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px"
+          >{{ m }}</span
+        >
         <span v-for="t in detail.tags ?? []" :key="t" class="ll-tag">{{ t }}</span>
       </div>
-      <div class="bg-surface2 border border-solid border-line rounded-8px p-12px text-13px text-ink leading-22px whitespace-pre-wrap break-all max-h-420px overflow-auto">
+      <div
+        class="bg-surface2 border border-solid border-line rounded-8px p-12px text-13px text-ink leading-22px whitespace-pre-wrap break-all max-h-420px overflow-auto"
+      >
         {{ detail.prompt }}
       </div>
       <div class="mt-12px flex flex-wrap items-center gap-8px text-12px text-placeholder">
-        <span class="mr-auto">更新于 {{ formatTime(detail.updated_at || detail.created_at) }}</span>
+        <span class="mr-auto">更新于 {{ formatTime(detail.updatedAt || detail.createdAt) }}</span>
         <button v-if="isMine(detail)" type="button" class="sx-btn" @click="goLibrary">去提示词库编辑</button>
         <button type="button" class="sx-btn-primary" @click="copyText(detail.prompt, message)">复制提示词</button>
       </div>

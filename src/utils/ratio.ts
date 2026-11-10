@@ -13,9 +13,7 @@ export const imageRatioOps = [
   { label: '16:9', value: '1280,720' },
 ]
 
-const SIZE_TO_RATIO: Record<string, string> = Object.fromEntries(
-  imageRatioOps.map((o) => [o.value, o.label]),
-)
+const SIZE_TO_RATIO: Record<string, string> = Object.fromEntries(imageRatioOps.map((o) => [o.value, o.label]))
 
 function gcd(a: number, b: number): number {
   while (b) {

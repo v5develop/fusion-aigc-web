@@ -171,9 +171,11 @@ onBeforeUnmount(() => {
     <span class="flex-none text-12px font-400 leading-18px text-muted"
       >{{ label }}<span v-if="required" class="text-danger" aria-hidden="true"> *</span></span
     >
-    <span class="ml-auto min-w-0 truncate text-right text-13px font-500 leading-18px text-ink-2" :title="current?.label">{{
-      current?.label ?? placeholder
-    }}</span>
+    <span
+      class="ml-auto min-w-0 truncate text-right text-13px font-500 leading-18px text-ink-2"
+      :title="current?.label"
+      >{{ current?.label ?? placeholder }}</span
+    >
     <svg
       class="absolute right-8px top-1/2 -mt-6px w-12px h-12px text-muted transition-transform duration-150 motion-reduce:transition-none"
       :class="open ? 'rotate-180' : ''"

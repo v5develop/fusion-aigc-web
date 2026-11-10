@@ -9,8 +9,8 @@ import {
   modelOps,
   config,
 } from './constants.ts'
-import { ensureModelCatalog, videoModelOpsFor } from '@/utils/modelCatalog'
-import { originalImagesOf, promptOf } from '@/utils/sameStyle'
+import { ensureModelCatalog, videoModelOpsFor } from '@/utils/model-catalog'
+import { originalImagesOf, promptOf } from '@/utils/same-style'
 import type { ISameStyleRecipe } from '@/api/types'
 
 /**

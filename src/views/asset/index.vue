@@ -34,10 +34,7 @@ const tabOps2 = computed(() => {
 })
 
 const loadFilters = async () => {
-  const [cat, ratio] = await Promise.all([
-    assetCategories().catch(() => null),
-    assetAspectRatios().catch(() => null),
-  ])
+  const [cat, ratio] = await Promise.all([assetCategories().catch(() => null), assetAspectRatios().catch(() => null)])
   if (cat?.code === 0) {
     categories.value = cat.data ?? []
     // 默认选中第一个一级，而不是写死 'ecommerce'——分类由运营配，写死的值可能已经不存在了。
@@ -72,7 +69,8 @@ const exitManage = () => {
 }
 
 // 当前已加载数据中被选中的资产
-const getSelectedAssets = () => records.value.flatMap((r: any) => r.assets).filter((a: any) => selectedIds.value.has(a.id))
+const getSelectedAssets = () =>
+  records.value.flatMap((r: any) => r.assets).filter((a: any) => selectedIds.value.has(a.id))
 
 const batchDownloading = ref(false)
 const batchDownload = async () => {
@@ -225,11 +223,7 @@ watch(formData, () => {
       </div>
 
       <div v-if="aspectRatios.length" class="tab-lv1 tab-lv2">
-        <span
-          class="item"
-          :class="formData.aspectRatio === '' ? 'active' : ''"
-          @click="formData.aspectRatio = ''"
-        >
+        <span class="item" :class="formData.aspectRatio === '' ? 'active' : ''" @click="formData.aspectRatio = ''">
           全部比例
         </span>
         <span

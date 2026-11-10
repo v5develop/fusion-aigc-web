@@ -125,9 +125,11 @@ export function checkField(f: FieldDef, v: any): string {
     if (f.node.minItems && n < f.node.minItems) return `${title}至少 ${f.node.minItems} 项`
     if (f.node.maxItems && n > f.node.maxItems) return `${title}最多 ${f.node.maxItems} 项`
     const max = f.node.items?.maxLength
-    if (f.kind === 'tags' && max && (v as string[]).some((t) => t.length > max)) return `${title}每项不能超过 ${max} 个字`
+    if (f.kind === 'tags' && max && (v as string[]).some((t) => t.length > max))
+      return `${title}每项不能超过 ${max} 个字`
     const min = f.node.items?.minLength
-    if (f.kind === 'tags' && min && (v as string[]).some((t) => t.trim().length < min)) return `${title}每项至少 ${min} 个字`
+    if (f.kind === 'tags' && min && (v as string[]).some((t) => t.trim().length < min))
+      return `${title}每项至少 ${min} 个字`
   }
   return ''
 }

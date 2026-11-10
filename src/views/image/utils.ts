@@ -1,7 +1,7 @@
 import { entryCodeVal2Label, modelVal2Label, numOps } from './constants.ts'
 import { imageRatioOps, ratioLabel } from '@/utils/ratio'
-import { ensureModelCatalog, imageModelOps } from '@/utils/modelCatalog'
-import { originalImagesOf, promptOf } from '@/utils/sameStyle'
+import { ensureModelCatalog, imageModelOps } from '@/utils/model-catalog'
+import { originalImagesOf, promptOf } from '@/utils/same-style'
 import type { ISameStyleRecipe } from '@/api/types'
 
 /** 图片页输入图上限，与模板里 ChatInputBox 的 :imageLimit 保持一致 */
@@ -133,6 +133,5 @@ export const applySameStyleRecipe = async (
   // submit.request 里的用户素材已被后端清空（隐私红线），原作输入图只在 original.request 里。
   // 产品口径是直接回填原作图、允许用户删改或原样提交，与 App 端一致。
   // 只有收图的场景才回填：文生图的上传区是隐藏的，塞了图用户看不见也删不掉，却会一路带进询价与提交。
-  formData.images =
-    entryCode === 'imageToImage' ? originalImagesOf(recipe.original?.request).slice(0, IMAGE_LIMIT) : []
+  formData.images = entryCode === 'imageToImage' ? originalImagesOf(recipe.original?.request).slice(0, IMAGE_LIMIT) : []
 }

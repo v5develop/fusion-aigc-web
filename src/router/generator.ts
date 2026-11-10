@@ -8,7 +8,7 @@
 // 返回键回不到「做同款」所在的页面。
 import type { RouteLocationNormalized } from 'vue-router'
 import { useHomeStore } from '@/stores/home'
-import { hasRefill } from '@/utils/refillHandoff'
+import { hasRefill } from '@/utils/refill-handoff'
 
 const GENERATOR_QUERY_KEYS = ['entryCode', 'sameStyleId', 'sameStyleSource'] as const
 const TARGET: Record<string, string> = { image: '/image/generate', video: '/video/generate' }

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { upload } from '@/api/ossUpload.ts'
+import { upload } from '@/api/oss-upload.ts'
 import { ACCEPT_IMAGE } from '@/utils/utils'
 import { useDialog, useMessage } from 'naive-ui'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
-import { mapWithConcurrency, useUploadBusyReporter } from '@/components/uploadBusy'
+import { mapWithConcurrency, useUploadBusyReporter } from '@/components/upload-busy'
 import {
   UPLOAD_ENTRY_ASSET_LABEL,
   badgeClass,
@@ -15,7 +15,7 @@ import {
   type ResolvedUploadBadge,
   type UploadBadgeInput,
   type UploadBadgeVisibility,
-} from './uploadBadges.ts'
+} from './upload-badges.ts'
 
 // 资产库选择弹窗按需加载：只有开了 fromAsset 角标的页面才会用到
 const AssetPickerModal = defineAsyncComponent(() => import('@/views/studio/components/AssetPickerModal/index.vue'))
@@ -282,7 +282,10 @@ const resetInput = () => {
 }
 
 /** 单张上传（失败返回 null，由格子遮罩提示，不再只弹 toast） */
-const uploadOne = (file: File) => upload([file]).then((urls) => urls[0] ?? null).catch(() => null)
+const uploadOne = (file: File) =>
+  upload([file])
+    .then((urls) => urls[0] ?? null)
+    .catch(() => null)
 
 /** 选文件 / 拖入 / 粘贴共用的校验 + 上传 */
 const uploadFiles = (fileArray: File[]) => {
@@ -588,10 +591,20 @@ const RETRY_BTN =
             </div>
             <div v-else :class="STATUS_MASK" role="alert" :style="{ fontSize: statusFont }">
               <span class="leading-16px">上传失败</span>
-              <button type="button" :class="RETRY_BTN" :aria-label="`重试上传 ${p.file.name}`" @click.stop="retryPending(p.id)">
+              <button
+                type="button"
+                :class="RETRY_BTN"
+                :aria-label="`重试上传 ${p.file.name}`"
+                @click.stop="retryPending(p.id)"
+              >
                 重试
               </button>
-              <button type="button" :class="PENDING_REMOVE_BTN" aria-label="移除上传失败的图片" @click.stop="dropPending(p.id)">
+              <button
+                type="button"
+                :class="PENDING_REMOVE_BTN"
+                aria-label="移除上传失败的图片"
+                @click.stop="dropPending(p.id)"
+              >
                 <i class="icon-ic_ds_return-2 text-white text-12px" aria-hidden="true"></i>
               </button>
             </div>

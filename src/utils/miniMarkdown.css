@@ -1,10 +1,46 @@
-.md-body > :first-child { margin-top: 0; }
-.md-body > :last-child { margin-bottom: 0; }
-.md-body p { margin: 0 0 6px; }
-.md-body ul, .md-body ol { margin: 0 0 6px; padding-left: 20px; }
-.md-body li { margin: 2px 0; }
-.md-body strong { font-weight: 600; color: var(--ink, inherit); }
-.md-body a { color: #7a3fa8; text-decoration: underline; text-underline-offset: 2px; }
-.md-body code { padding: 1px 5px; border-radius: 4px; background: rgba(31, 35, 41, 0.06); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-.md-body pre { margin: 0 0 6px; padding: 8px 10px; overflow-x: auto; border-radius: 8px; background: rgba(31, 35, 41, 0.06); white-space: pre-wrap; word-break: break-all; }
-.md-body pre code { padding: 0; background: none; }
+.md-body > :first-child {
+  margin-top: 0;
+}
+.md-body > :last-child {
+  margin-bottom: 0;
+}
+.md-body p {
+  margin: 0 0 6px;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0 0 6px;
+  padding-left: 20px;
+}
+.md-body li {
+  margin: 2px 0;
+}
+.md-body strong {
+  font-weight: 600;
+  color: var(--ink, inherit);
+}
+.md-body a {
+  color: #7a3fa8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-body code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(31, 35, 41, 0.06);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.md-body pre {
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: rgba(31, 35, 41, 0.06);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.md-body pre code {
+  padding: 0;
+  background: none;
+}
