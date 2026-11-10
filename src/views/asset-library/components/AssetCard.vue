@@ -54,12 +54,11 @@ const dateText = computed(() => {
   const d = new Date(ms)
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
 })
-/** 封面保持原图比例（夹在 1:2 ~ 9:5 之间，避免极端长图撑爆网格）；没有尺寸时按 4:3 */
-const coverRatio = computed(() => {
-  const { width: w, height: h } = props.asset
-  if (!w || !h) return '4 / 3'
-  return String(Math.min(1.8, Math.max(0.5, w / h)))
-})
+/**
+ * 封面统一 4:3 画框（对齐原型 5185 资产卡 .relay-thumb）：原图完整 contain 在中性底上，不裁切；
+ * 每张卡等高，网格一行齐平。原来按原图比例撑高，横竖图混排时一行高高低低。
+ */
+const COVER_RATIO = '4 / 3'
 const downloadHref = computed(() => (isVideoAsset.value ? props.asset.video_url : props.asset.image) || '')
 const title = computed(() => props.asset.title || '未命名资产')
 
@@ -82,7 +81,7 @@ function onCard() {
     @keydown.enter.self.prevent="onCard"
     @keydown.space.self.prevent="onCard"
   >
-    <div class="relative overflow-hidden bg-surface3" :style="{ aspectRatio: coverRatio }">
+    <div class="relative overflow-hidden bg-surface3" :style="{ aspectRatio: COVER_RATIO }">
       <video
         v-if="isVideo && !videoFailed"
         :src="asset.video_url"
