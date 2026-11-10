@@ -28,6 +28,7 @@ import ToolUploadSlot from '@/views/tools/ToolUploadSlot.vue'
 import PollingOfflineBanner from '@/views/tools/PollingOfflineBanner.vue'
 import CreationImageSettings from '@/components/creation/CreationImageSettings.vue'
 import CreationSettingsRow from '@/components/creation/CreationSettingsRow.vue'
+import CreationModelPicker from '@/components/creation/CreationModelPicker.vue'
 import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
 import CreationActionBar from '@/components/creation/CreationActionBar.vue'
 import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
@@ -109,9 +110,13 @@ const isSettingField = (f: WorkflowField) => SETTING_KEYS.includes(f.key) && f.t
 const settingFields = computed(() => (schema.value?.fields ?? []).filter(isSettingField))
 /** 视频模板的时长也进「视频设置」弹层（原型 WorkflowView.vue:1139-1182：清晰度 / 画幅比例 / 时长同一抽屉） */
 const durationField = computed(() => schema.value?.fields.find((f) => f.key === 'duration'))
-/** 表单里渲染的字段：设置字段改由底部设置行承载 */
+/** 视频模板的模型也进底部设置行（与视频生成工具一致：「模型」与「视频设置」并排一行，弹层铺满整行） */
+const modelField = computed(() =>
+  schema.value?.fields.find((f) => f.key === 'model' && f.dynamic === 'videoModel' && f.type !== 'textarea'),
+)
+/** 表单里渲染的字段：模型、设置字段改由底部设置行承载 */
 const formFields = computed(() =>
-  (schema.value?.fields ?? []).filter((f) => !isSettingField(f) && f !== durationField.value),
+  (schema.value?.fields ?? []).filter((f) => !isSettingField(f) && f !== durationField.value && f !== modelField.value),
 )
 const settingsConfig = computed<CreationSettingsConfig>(() =>
   Object.fromEntries(
@@ -140,23 +145,33 @@ function onSettings(v: CreationSettingsValue) {
   for (const f of settingFields.value) values[f.key] = v[f.key as CreationSettingKey]
 }
 /** 底部设置行：有设置字段才出一枚按钮；视频模板叫「视频设置」 */
-const settingItems = computed<CreationSettingsRowItem[]>(() =>
-  settingFields.value.length
-    ? [
-        {
-          key: 'settings',
-          icon: 'gear',
-          label: schema.value?.media === 'video' ? '视频设置' : '图片设置',
-          value: [
-            creationSettingsSummary(settingsConfig.value, settingsValue.value),
-            durationField.value && values.duration ? `${values.duration} 秒` : '',
-          ]
-            .filter(Boolean)
-            .join(' · '),
-        },
+const settingItems = computed<CreationSettingsRowItem[]>(() => {
+  const list: CreationSettingsRowItem[] = []
+  if (modelField.value) {
+    const picked = typeof values.model === 'string' && values.model ? modelLabelOf(values.model) : ''
+    list.push({
+      key: 'model',
+      icon: 'sparkle',
+      label: '模型',
+      value: picked || (videoModelsLoaded.value ? '暂无可用模型' : '加载中…'),
+      ariaLabel: '视频模型',
+    })
+  }
+  if (settingFields.value.length || durationField.value) {
+    list.push({
+      key: 'settings',
+      icon: 'gear',
+      label: schema.value?.media === 'video' ? '视频设置' : '图片设置',
+      value: [
+        creationSettingsSummary(settingsConfig.value, settingsValue.value),
+        durationField.value && values.duration ? `${values.duration} 秒` : '',
       ]
-    : [],
-)
+        .filter(Boolean)
+        .join(' · '),
+    })
+  }
+  return list
+})
 
 // ---------------- 视频模型（GET /api/v1/features/video-model-configs，与视频生成工具同源） ----------------
 
@@ -268,7 +283,8 @@ function clampNumber(f: WorkflowField) {
 
 /** 只把模板选项恢复默认（不动素材）：先清掉这些字段的当前值，再回填 schema 默认值 */
 function resetOptions() {
-  for (const f of formFields.value) {
+  // 模型挪到了底部设置行，但仍属于「模板选项」：一并恢复默认
+  for (const f of modelField.value ? [...formFields.value, modelField.value] : formFields.value) {
     delete values[f.key]
     if (f.default !== undefined) values[f.key] = f.default
   }
@@ -872,7 +888,21 @@ const headBtn =
       <div class="flex-none flex flex-col gap-8px px-12px pb-12px" :class="mapped ? '' : 'pt-12px'">
         <!-- 共用设置行按钮是 40 高，工作流页按原型 WorkflowSettings 撑到 44 -->
         <div v-if="mapped && settingItems.length" class="[&_button]:h-44px">
-          <CreationSettingsRow :items="settingItems">
+          <CreationSettingsRow :items="settingItems" popover-width="row" layout="grid">
+            <template v-if="modelField" #model>
+              <CreationModelPicker
+                v-if="fieldOptions(modelField).length"
+                :model-value="String(values.model ?? '')"
+                :options="fieldOptions(modelField).map((o) => ({ ...o, value: String(o.value) }))"
+                label="视频模型"
+                hide-label
+                :disabled="submitting"
+                @update:model-value="values.model = $event"
+              />
+              <p v-else class="m-0 py-12px text-center text-12px text-muted">
+                {{ videoModelsLoaded ? '暂无可用模型' : videoModelsFailed ? '视频模型加载失败' : '模型加载中…' }}
+              </p>
+            </template>
             <template #settings>
               <CreationImageSettings
                 :model-value="settingsValue"

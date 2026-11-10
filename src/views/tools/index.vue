@@ -912,6 +912,8 @@ const pickedModel = computed({
 })
 const hasModelCard = computed(() => !!modelField.value || imageModelSelectable.value)
 
+/** 视频生成：模型与视频设置并排一行，两个弹层都铺满整行（左按钮贴左缘弹、右按钮贴右缘弹） */
+const isVideoGenerator = computed(() => schema.value?.homeId === 'ai-video-generator')
 /** 底部设置行：模型卡（有模型时）+ 设置按钮（有设置字段时）；只有设置时设置按钮占满整行 */
 const settingItems = computed<CreationSettingsRowItem[]>(() => {
   const list: CreationSettingsRowItem[] = []
@@ -2795,8 +2797,8 @@ const plateBtnCls =
             v-else-if="settingItems.length"
             :items="settingItems"
             :disabled="submitting"
-            popover-width="trigger"
-            :layout="schema.media === 'video' ? 'stack' : 'auto'"
+            :popover-width="isVideoGenerator ? 'row' : 'trigger'"
+            :layout="isVideoGenerator ? 'grid' : schema.media === 'video' ? 'stack' : 'auto'"
           >
             <template #model>
               <CreationModelPicker

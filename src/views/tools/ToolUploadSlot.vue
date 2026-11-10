@@ -493,7 +493,7 @@ const seamCls = [
       @clear="urls = []"
     />
 
-    <!-- 带标题的单槽卡（titled）：卡内顶部居中槽名 → 投放区（最小高 200、可压缩）→ 下方居中「资产添加」 -->
+    <!-- 带标题的单槽卡（titled）：卡内顶部居中槽名 → 投放区（最小高 200、可压缩）。空态「从资产库添加」在投放区右上角（不占投放区高度）；已有视频时「换一段 / 资产添加」在下方 -->
     <div
       v-else-if="titled && mode === 'single'"
       :class="[
@@ -506,8 +506,8 @@ const seamCls = [
         {{ spec.label }}<span v-if="spec.required" class="text-danger"> *</span>
       </p>
       <p v-if="unsupportedHint" class="flex-none m-0 text-center text-12px leading-18px text-muted">{{ unsupportedHint }}</p>
+      <div v-if="!urls.length" class="relative flex flex-col flex-[1_1_auto] min-h-200px">
       <button
-        v-if="!urls.length"
         type="button"
         class="relative flex flex-col flex-[1_1_auto] items-center justify-center gap-6px w-full min-h-200px box-border p-12px cursor-pointer motion-reduce:transition-none disabled:(cursor-not-allowed opacity-60)"
         :class="[
@@ -556,6 +556,19 @@ const seamCls = [
         <span v-if="spec.subtitle" class="text-11px leading-[1.5] text-muted">{{ spec.subtitle }}</span>
         <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
       </button>
+      <!-- 与投放按钮是兄弟节点（按钮里不能再套按钮）；样式与其它上传卡右上角那颗一致 -->
+      <button
+        v-if="canPickAsset"
+        type="button"
+        class="absolute right-10px top-10px z-30 h-32px box-border px-12px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+        :class="focusRing"
+        :disabled="disabled || uploading"
+        :aria-label="`从资产库添加${spec.label}`"
+        @click="openAssetPicker"
+      >
+        从资产库添加
+      </button>
+      </div>
       <div
         v-else
         class="relative grid flex-[1_1_auto] min-h-200px place-items-center overflow-hidden rounded-8px border border-solid border-line bg-surface3"
@@ -573,9 +586,8 @@ const seamCls = [
           </svg>
         </StudioMedBtn>
       </div>
-      <div class="flex-none flex flex-wrap items-center justify-center gap-8px">
+      <div v-if="urls.length" class="flex-none flex flex-wrap items-center justify-center gap-8px">
         <button
-          v-if="urls.length"
           type="button"
           :class="[smallBtnCls, focusRing]"
           :disabled="disabled || uploading"
