@@ -1863,12 +1863,24 @@ function modelOptionsOf(node: CanvasEditorNode): ICanvasCatalogModel[] {
 
 const ctxModelOptions = computed(() => (ctxNode.value ? modelOptionsOf(ctxNode.value) : []))
 
+/**
+ * 节点副标题：生成节点按当前模型重算（「Nano Banana 2.1 · 1K」）。旧画布存的 subtitle 可能是简称（「Banana · 1K」），
+ * 只在显示时换成完整名，不改存量数据。
+ */
+function nodeSubtitleOf(node: CanvasEditorNode): string {
+  const data = node.data
+  if ((data.kind === 'model' || data.kind === 'video') && data.model) {
+    return `${modelLabelOf(data.model)} · ${data.kind === 'video' ? (data.duration ?? '4s') : (data.size ?? '1K')}`
+  }
+  return data.subtitle || '节点'
+}
+
 function applyModelPick(model: ICanvasCatalogModel) {
   const node = ctxNode.value
   closeCtxMenu()
   if (!node || !model.ready) return
   store.changeModel(node.id, model)
-  editorMessage.success(`已切换为 ${modelLabelOf(model.model)}`)
+  editorMessage.success(`已切换为 ${model.label || modelLabelOf(model.model)}`)
 }
 
 // ---------------- 导出（2026-11-06 二轮）：工程 JSON + 整张画布 PNG（SVG 2× 渲染，跨域图留灰块） ----------------
@@ -3132,7 +3144,7 @@ async function onStageDrop(event: DragEvent) {
                   @click="applyModelPick(option)"
                 >
                   <EditorIcon :name="ctxNode.data.modelId === option.modelId ? 'check' : 'model'" :size="14" />
-                  <span class="min-w-0 flex-1 truncate">{{ modelLabelOf(option.model) }}</span>
+                  <span class="min-w-0 flex-1 truncate">{{ option.label || modelLabelOf(option.model) }}</span>
                   <small v-if="option.badge" class="shrink-0 text-11px text-muted">{{ option.badge }}</small>
                 </button>
               </div>
@@ -3141,11 +3153,7 @@ async function onStageDrop(event: DragEvent) {
               <header class="ctx-head">
                 <b class="truncate text-13px font-600 leading-18px text-ink">{{ ctxNode.data.title || '节点' }}</b>
                 <small class="truncate text-10.5px leading-14px text-muted">{{
-                  ctxNode.type === 'module'
-                    ? isGroupPlate(ctxNode)
-                      ? '分组'
-                      : '模块'
-                    : ctxNode.data.subtitle || '节点'
+                  ctxNode.type === 'module' ? (isGroupPlate(ctxNode) ? '分组' : '模块') : nodeSubtitleOf(ctxNode)
                 }}</small>
               </header>
               <template v-for="(group, gi) in nodeMenuGroups" :key="gi">

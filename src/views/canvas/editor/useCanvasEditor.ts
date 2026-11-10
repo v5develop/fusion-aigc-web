@@ -7,7 +7,7 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { createDiscreteApi } from 'naive-ui'
-import { normalizeModelTier } from '@/utils/model-label'
+import { catalogModelLabels, normalizeModelTier } from '@/utils/model-label'
 import {
   canvasGet,
   canvasNodeRun,
@@ -1636,10 +1636,24 @@ async function loadCatalog(): Promise<void> {
   try {
     const res = await canvasCatalog()
     catalog.value = res.data ?? null
+    registerCatalogLabels(catalog.value)
     reconcileCatalogLimits()
   } catch {
     catalog.value = null
     message.warning('模型目录加载失败，生成节点暂时无法选择模型，请刷新重试')
+  }
+}
+
+/**
+ * 目录下发的完整模型名登记进 modelLabelOf 的目录表：节点 data.model / data.modelId 是 wire 值（Image / banana-v1 …），
+ * 画布各处（节点头、下拉、素材面板、运行记录）经 modelLabelOf 显示时就拿到服务端的完整名。不改节点数据。
+ */
+function registerCatalogLabels(cat: ICanvasCatalog | null): void {
+  for (const item of [...(cat?.imageModels ?? []), ...(cat?.video_models ?? [])]) {
+    const label = item.label?.trim()
+    if (!label) continue
+    if (item.model) catalogModelLabels[item.model] = label
+    if (item.modelId) catalogModelLabels[item.modelId] = label
   }
 }
 

@@ -499,7 +499,7 @@ async function doSaveAs(title: string) {
                 >提示词<small>A close-up of the woman.</small></span
               >
               <span :class="[DECO_CLS, 'bottom-28px left-62px rotate-3']">图片<small>输入素材</small></span>
-              <span :class="[DECO_CLS, 'top-38px right-0 rotate-4']">Nano Banana<small>参考图 · 2/5</small></span>
+              <span :class="[DECO_CLS, 'top-38px right-0 rotate-4']">Nano Banana 2.1<small>参考图 · 2/5</small></span>
               <span :class="[DECO_CLS, 'right-72px bottom-18px -rotate-3']">图片<small>输出</small></span>
             </div>
           </section>

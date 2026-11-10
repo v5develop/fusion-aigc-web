@@ -235,7 +235,10 @@ export interface ICanvasCapabilities {
 }
 
 export interface ICanvasCatalogModel {
+  /** wire 值（节点 data.model：Image / Banana / SD5P / SD55 …），不直接给用户看 */
   model: string
+  /** 用户可见的完整模型名（GPT Image 2.5 / Nano Banana 2.1 / Seedream 5.5 …）；旧后端没有时按 modelLabelOf 映射 */
+  label?: string
   modelId: string
   badge: string
   maxImageRefs: number

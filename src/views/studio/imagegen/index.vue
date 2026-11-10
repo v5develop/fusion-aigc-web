@@ -56,12 +56,16 @@ const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
 /** 幂等重试：失败缓存 key 进「重试生成」态；表单任意字段变化换新 key */
 const idem = useIdempotentSubmit()
 
-/** 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例）原样发给报价接口，拿不到价就不显示 */
+/**
+ * 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例 / 参考图）原样发给报价接口，拿不到价就不显示。
+ * 参考图必须带上（没有时传 []）：GPT Image 2.6 按本次参考图张数冻结，不传服务端按参考图上限报，会比提交时冻得多。
+ */
 const { points: costPoints } = useStudioCost('imagegen', () => ({
   count: form.count,
   model: form.model || undefined,
   resolution: form.resolution || undefined,
   aspectRatio: form.aspectRatio || undefined,
+  imageUrls: [...refImages.value],
 }))
 idem.bindForm(form, refImages)
 

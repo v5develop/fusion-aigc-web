@@ -62,7 +62,7 @@ const isVideoModel = computed(() => modelNode.value?.kind === 'video')
 const modelOptions = computed(() => {
   const list = isVideoModel.value ? catalog.value?.video_models : catalog.value?.imageModels
   return (list ?? []).map((item) => ({
-    label: item.ready ? modelLabelOf(item.model) : `${modelLabelOf(item.model)}（不可用）`,
+    label: item.ready ? item.label || modelLabelOf(item.model) : `${item.label || modelLabelOf(item.model)}（不可用）`,
     value: item.modelId,
     disabled: !item.ready,
   }))

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { modelLabelsOf } from '@/utils/model-label'
+import { modelLabelOf, modelLabelsOf } from '@/utils/model-label'
 /**
  * 提示词库浮层（原型 PromptLibraryFlyout：宽 400 的锚定面板，不是整屏弹窗）。
  *
@@ -343,7 +343,7 @@ onBeforeUnmount(() => {
           "
           @click="model = m"
         >
-          {{ m }}
+          {{ m === '全部' ? m : modelLabelOf(m) }}
         </button>
       </div>
       <div v-if="groups.length" class="flex flex-wrap gap-4px" role="group" aria-label="分组">

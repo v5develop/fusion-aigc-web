@@ -38,7 +38,9 @@ const rows = computed(() => {
     if (filter.value === 'text' && node.type !== 'text') return false
     if (filter.value === 'model' && node.type !== 'model') return false
     if (!q) return true
-    return `${node.data.title} ${node.data.subtitle ?? ''}`.toLowerCase().includes(q)
+    return `${node.data.title} ${node.data.subtitle ?? ''} ${node.data.model ? modelLabelOf(node.data.model) : ''}`
+      .toLowerCase()
+      .includes(q)
   })
 })
 

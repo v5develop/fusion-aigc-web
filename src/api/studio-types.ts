@@ -205,8 +205,9 @@ export type StudioTryonQuoteReq = Partial<
 export type StudioPoseQuoteReq = Partial<
   Pick<StudioPoseSubmitReq, 'poseImageUrls' | 'model' | 'resolution' | 'aspectRatio'>
 >
+/** imageUrls 只用张数（按参考图张数冻结的模型，如 GPT Image 2.6）：不传 = 服务端按参考图上限报，传 [] = 文生图 */
 export type StudioImageGenQuoteReq = Partial<
-  Pick<StudioImageGenSubmitReq, 'count' | 'model' | 'resolution' | 'aspectRatio'>
+  Pick<StudioImageGenSubmitReq, 'count' | 'model' | 'resolution' | 'aspectRatio' | 'imageUrls'>
 >
 
 /** 报价响应（POST /{tryon,pose,image-generate}/quote） */

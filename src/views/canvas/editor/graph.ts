@@ -483,6 +483,7 @@ export function applyModelToNode(
   data: CanvasEditorNodeData,
   model: {
     model: string
+    label?: string
     modelId: string
     badge?: string
     maxImageRefs: number
@@ -509,5 +510,5 @@ export function applyModelToNode(
     data.sound = model.capabilities.sound ? (data.sound ?? true) : undefined
   }
   if (!model.capabilities.count) data.count = 1
-  data.subtitle = `${modelLabelOf(model.model)} · ${isVideo ? (data.duration ?? '4s') : (data.size ?? '1K')}`
+  data.subtitle = `${model.label || modelLabelOf(model.model)} · ${isVideo ? (data.duration ?? '4s') : (data.size ?? '1K')}`
 }
