@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 新建 / 编辑我的提示词弹窗。
  * 校验口径按契约：title ≤100 字、prompt ≤3000 字、models ≤10（缺省 ["通用"]）、tags ≤10。
@@ -127,7 +128,7 @@ async function save() {
           <span class="text-12px text-placeholder">{{ form.models.length }}/10</span>
         </div>
         <n-checkbox-group v-model:value="form.models">
-          <n-checkbox v-for="m in MODEL_OPTIONS" :key="m" :value="m" :label="m" />
+          <n-checkbox v-for="m in MODEL_OPTIONS" :key="m" :value="m" :label="modelLabelOf(m)" />
         </n-checkbox-group>
       </div>
 

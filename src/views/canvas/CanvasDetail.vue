@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 画布详情侧抽屉：基础信息（title / revision / 节点数 / 封面 / 更新时间）
  * + 快照节点数 + 运行历史（最近 50 条，状态徽标）。
@@ -119,7 +120,7 @@ function formatTime(ms?: number) {
               <div class="flex items-center gap-10px text-12px">
                 <span class="ll-chip" :class="statusChip(r.status).cls">{{ statusChip(r.status).label }}</span>
                 <span class="text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap">{{
-                  r.model || '未指定模型'
+                  modelLabelOf(r.model) || '未指定模型'
                 }}</span>
                 <span class="ml-auto shrink-0 text-placeholder">{{ formatTime(r.created_at) }}</span>
                 <span v-if="r.status === 'running' || r.status === 'queued'" class="shrink-0 text-violet-ink"

@@ -11,10 +11,12 @@ import type { StudioBatch, StudioKind, StudioPosePayload, StudioTask } from '@/a
 export const MODEL_OPTIONS = [
   { label: '通用', value: '通用', description: '默认档（GPT Image 2.5，按张计费），适合大多数场景' },
   { label: 'GPT Image 2.6', value: 'GPT', description: '细节稳定、出图干净，适合商品图、人物与场景' },
-  { label: 'GPT Image 2.5', value: 'GPT25Dev', description: '按张计费、性价比高' },
-  { label: 'Nano Banana 2.1 Dev', value: 'Banana', description: '出图快、主体一致性稳，适合批量试稿' },
+  { label: 'GPT Image 2.5', value: 'GPT25', description: '按张计费、性价比高' },
+  { label: 'Nano Banana 2.1', value: 'Banana', description: '出图快、主体一致性稳，适合批量试稿' },
   { label: 'Seedream 5.5', value: 'Seedream', description: '质感更强，适合成片与详情页' },
 ]
+
+export { displayModelLabel } from '@/utils/modelLabel'
 
 export const RESOLUTION_OPTIONS = [
   { label: '1K', value: '1k' },

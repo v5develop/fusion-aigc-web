@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 探店视频 / 带货短剧：两步流程 ——
  * 1. 提交表单 → 构思分镜剧本（status 0 → 1，轮询详情）；
@@ -74,7 +75,7 @@ const PERSON_SEGMENTS = [
   { key: true, label: '指定人物' },
 ]
 
-const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: o.label, value: o.code })))
+const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: modelLabelOf(o.label), value: o.code })))
 const sizeOptions = computed(() => (options.value?.sizes ?? []).map((o) => ({ label: o.label, value: o.code })))
 const durationOptions = computed(() => (options.value?.durations ?? []).map((d) => ({ label: `${d}s`, value: d })))
 const maxTextLen = computed(() => options.value?.max_user_text_len ?? 500)

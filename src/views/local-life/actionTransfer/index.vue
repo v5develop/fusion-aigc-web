@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 动作迁移：把一段动作视频里的肢体动作迁移给指定人物。
  * 动作视频二选一：预置（运营维护）/ 我导入的（上传后登记，可删）。
@@ -96,7 +97,7 @@ async function removeMine(item: ILActionVideo) {
 
 const options = ref<ILCreationOptions | null>(null)
 const model = ref<string | undefined>(undefined)
-const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: o.label, value: o.code })))
+const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: modelLabelOf(o.label), value: o.code })))
 /** 底部设置行读写的对象：model 直接映射到 model ref，提交仍读 model */
 const modelSetting = reactive({
   get model() {
@@ -284,7 +285,7 @@ async function removeItem(item: ILCreation) {
         <HistoryCard
           v-for="item in listCtl.items.value"
           :key="item.id"
-          :title="item.model ? '动作迁移 · ' + item.model : '动作迁移'"
+          :title="item.model ? '动作迁移 · ' + modelLabelOf(item.model) : '动作迁移'"
           :status="CREATION_STATUS_MAP[item.status]?.type ?? 'running'"
           :status-label="CREATION_STATUS_MAP[item.status]?.label ?? ''"
           :time="item.create_time"
@@ -336,7 +337,7 @@ async function removeItem(item: ILCreation) {
         ratio="9 / 16"
       >
         <template v-if="current" #meta>
-          <span class="truncate text-ink-2">{{ [current.model, current.duration ? current.duration + 's' : '', current.size].filter(Boolean).join(' · ') }}</span>
+          <span class="truncate text-ink-2">{{ [modelLabelOf(current.model), current.duration ? current.duration + 's' : '', current.size].filter(Boolean).join(' · ') }}</span>
         </template>
       </ResultPreview>
     </template>

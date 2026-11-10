@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf, normalizeModelTier } from '@/utils/modelLabel'
 /**
  * 节点控制台（原型 CanvasConsolePanel + canvas-v31 §3）：约 520×360 的浮层，由画布页定位在选中节点下方（放不下翻到上方）。
  * 头部：类型 + 标题 + 执行钮；主体按节点类型 / catalog 能力出表单；底部：说明 + 「完成」。
@@ -61,7 +62,7 @@ const isVideoModel = computed(() => modelNode.value?.kind === 'video')
 const modelOptions = computed(() => {
   const list = isVideoModel.value ? catalog.value?.video_models : catalog.value?.image_models
   return (list ?? []).map((item) => ({
-    label: item.ready ? item.model : `${item.model}（不可用）`,
+    label: item.ready ? modelLabelOf(item.model) : `${modelLabelOf(item.model)}（不可用）`,
     value: item.model_id,
     disabled: !item.ready,
   }))
@@ -289,13 +290,13 @@ const outpaintRatioOptions = computed(() => {
 })
 const outpaintResolutionOptions = ['1k', '2k', '4k'].map((value) => ({ label: value, value }))
 const tryonResolutionOptions = outpaintResolutionOptions
-// 传值与 studio 模型档一致（GPT = GPT Image 2.6、GPT25Dev = GPT Image 2.5 按张计费）
+// 传值与 studio 模型档一致（GPT = GPT Image 2.6、GPT25 = GPT Image 2.5，按张计费）；旧节点数据里的旧档位值经 normalizeModelTier 归一
 const tryonModelOptions = [
   { label: '通用', value: '通用' },
   { label: 'GPT Image 2.6', value: 'GPT' },
-  { label: 'GPT Image 2.5', value: 'GPT25Dev' },
-  { label: 'Banana', value: 'Banana' },
-  { label: 'Seedream', value: 'Seedream' },
+  { label: 'GPT Image 2.5', value: 'GPT25' },
+  { label: 'Nano Banana 2.1', value: 'Banana' },
+  { label: 'Seedream 5.5', value: 'Seedream' },
 ]
 const TRYON_ITEMS = [
   { value: 'top', label: '上衣' },
@@ -980,7 +981,7 @@ const footHint = computed(() => {
             <div>
               <span :class="LABEL">模型</span>
               <n-select
-                :value="toolNode.tryonModel || '通用'"
+                :value="normalizeModelTier(toolNode.tryonModel) || '通用'"
                 size="small"
                 :options="tryonModelOptions"
                 @update:value="(v: string) => store.updateNodeData(node.id, { tryonModel: v })"

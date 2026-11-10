@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 工具箱共用工具页 /tools/:toolId（各工具按 schemas.ts 渲染）。
  *
@@ -63,6 +64,7 @@ import CreationSettingsRow from '@/components/creation/CreationSettingsRow.vue'
 import ToolChoiceField, { type ToolChoiceOption } from './ToolChoiceField.vue'
 import ToolPipeLinks from './ToolPipeLinks.vue'
 import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
+import BarSlider from '@/components/creation/BarSlider.vue'
 import CreationModelPicker from '@/components/creation/CreationModelPicker.vue'
 import CreationOptionPills from '@/components/creation/CreationOptionPills.vue'
 import NumberStepper from '@/components/creation/NumberStepper.vue'
@@ -378,7 +380,7 @@ const VIDEO_RATIO_LABELS: Record<string, string> = { adaptive: '自适应' }
 /** 清晰度显示名：超分档（1440p-esr / 2160p-esr / 4k-esr）写成 2K / 4K，其余大写 */
 const VIDEO_RESOLUTION_LABELS: Record<string, string> = { '1440p-esr': '2K', '2160p-esr': '4K', '4k-esr': '4K' }
 const videoResolutionLabel = (r: string) => VIDEO_RESOLUTION_LABELS[r.toLowerCase()] ?? r.toUpperCase()
-const modelName = (m: ModelConfigExt) => m.displayName?.trim() || m.model
+const modelName = (m: ModelConfigExt) => modelLabelOf(m.displayName?.trim() || m.model)
 
 /** 当前模型这一档清晰度的配置（清晰度按小写对齐：h3 / happyhorse 下发的是大写 768P、2K） */
 function videoSizeOf(m: ModelConfig | undefined, resolution: unknown) {
@@ -505,7 +507,9 @@ const refImageBlocked = computed(() => videoRefs.value?.maxImages === 0)
 /** 上传槽的实际上限：视频模型的参考素材槽（needsMode）按 refs 收紧 */
 function slotMax(u: ToolUpload) {
   if (isImageRefSlot(u) && imageRefCap.value !== null) return Math.min(u.max, imageRefCap.value)
-  if (!u.needsMode || !currentVideoModel.value) return u.max
+  if (!u.needsMode) return u.max
+  // 模型表没到（或取失败）：参考图先按缺省 9 张收，别让 schema 天花板 30 张漏到不支持的模型上
+  if (!currentVideoModel.value) return u.kind === 'video' ? u.max : Math.min(u.max, refImageCap.value)
   if (u.kind === 'video') {
     const cap = videoRefs.value?.maxVideos
     return typeof cap === 'number' && cap > 0 ? Math.min(u.max, cap) : u.max
@@ -754,6 +758,15 @@ const mlPromptUploads = computed<ToolUpload[]>(() => {
   return s.uploads.filter((u) => u.layout === 'ml')
 })
 const mlPrompt = computed(() => mlPromptUploads.value.length > 0)
+/**
+ * 用原型参考图条（schema strip: 'prototype'）的工具：框顶计数行（计数 + 书本钮）由图条自己画，
+ * 「当前模型最多 N 张参考图…」收进计数的悬停提示，不再在设置行上方单占一行
+ */
+const promptStripOwned = computed(() => mlPromptUploads.value.some((u) => u.strip === 'prototype'))
+/** 画框顶计数行的那个槽：第一个可用的原型图条；模型不支持参考图时没有，退回一体框自己的顶行（只剩书本钮） */
+const stripHeadSlot = computed(() =>
+  mlPromptUploads.value.find((u) => u.strip === 'prototype' && uploadEnabled(u)),
+)
 /** 商拍换装素材板的两个槽位：服装图（clothImageUrl）/ 模特图（modelImageUrl）；缺一个就退回通用槽位 */
 const tryonSlots = computed(() => {
   const list = schema.value?.uploads ?? []
@@ -850,6 +863,7 @@ const settingsSummary = computed(() => {
       continue
     }
     if (f.uiOnly) continue // 「尺寸方式」这类界面分支由后面的取值本身说明（比例 · 分辨率，或 宽×高）
+    if (f.type === 'switch') continue // 原型：摘要只写档位，开关（生成音频等）不进摘要
     const part = summaryPart(f)
     if (part) parts.push(part)
   }
@@ -2198,10 +2212,10 @@ const plateBtnCls =
 
     <!--
       三栏（原型 ToolWorkspaceColumns ml）：≥1440 时 460 / 224 / 1fr、gap 16、内边距 16（左 15），三栏等高、各栏内部滚动；
-      <1440 单列堆叠、gap 12，整页滚动。
+      <1440 单列堆叠、gap 12，整页滚动：行高按内容（auto-rows max-content），否则定高网格会把各卡压扁、表单在卡里只剩一截。
     -->
     <div
-      class="flex-1 min-w-0 min-h-0 grid grid-cols-1 gap-12px p-16px overflow-y-auto border-l border-solid border-shell-line min-[1440px]:(grid-cols-[460px_224px_minmax(0,1fr)] gap-16px pl-15px overflow-hidden)"
+      class="flex-1 min-w-0 min-h-0 grid grid-cols-1 max-[1439px]:auto-rows-max gap-12px p-16px overflow-y-auto border-l border-solid border-shell-line min-[1440px]:(grid-cols-[460px_224px_minmax(0,1fr)] gap-16px pl-15px overflow-hidden)"
     >
       <!--
         操作区：功能卡固定在顶（≥1440 不随表单滚），中间上传 + 参数自己滚，底部固定设置行 + 提交栏
@@ -2396,7 +2410,7 @@ const plateBtnCls =
           id="tool-form"
           ref="formRef"
           tabindex="-1"
-          class="flex-1 min-h-0 overflow-y-auto pt-12px px-12px pb-0 flex flex-col gap-12px [scrollbar-width:thin] [overscroll-behavior:contain] outline-none"
+          class="flex-1 min-h-0 overflow-y-auto pt-12px px-12px pb-0 flex flex-col gap-12px [scrollbar-width:thin] [overscroll-behavior:contain] outline-none max-[1439px]:(flex-none overflow-visible)"
           @submit.prevent="onSubmit"
           @keydown.enter="blockImplicitSubmit"
         >
@@ -2486,13 +2500,16 @@ const plateBtnCls =
             v-for="u in schema.uploadsView === 'tryon' && tryonSlots ? [] : displayUploads"
             :key="`${schema.homeId}-${u.slot}`"
           >
+            <!-- titled 卡（视频生成参考视频）：模型不支持时保持卡形、禁用，标题下写原因 -->
             <ToolUploadSlot
-              v-if="uploadEnabled(u)"
+              v-if="uploadEnabled(u) || u.titled"
               :id="`tool-upload-${u.slot}`"
               :model-value="uploads[u.slot] ?? []"
               :spec="specOf(u)"
               :layout="u.layout"
-              :disabled="submitting"
+              :titled="u.titled"
+              :unsupported-hint="uploadEnabled(u) ? '' : unsupportedUploadHint(u)"
+              :disabled="submitting || !uploadEnabled(u)"
               asset-picker
               @update:uploading="setUploading(`slot-${u.slot}`, $event)"
               @update:model-value="setUploads(u.slot, $event)"
@@ -2672,11 +2689,12 @@ const plateBtnCls =
               :show-rewrite="!!rewriteField"
               :rewrite-hint="rewriteField?.description"
               :variant="mlPrompt ? 'ml' : 'default'"
+              :head-in-top="!!stripHeadSlot"
             >
-              <template v-if="mlPrompt" #top-head>
+              <template v-if="mlPrompt && !stripHeadSlot" #top-head>
                 <span class="text-11px leading-16px tabular-nums text-placeholder">{{ mlCountText }}</span>
               </template>
-              <template v-if="mlPrompt" #top>
+              <template v-if="mlPrompt" #top="{ libraryOpen, toggleLibrary }">
                 <div class="flex flex-col gap-8px">
                   <template v-for="u in mlPromptUploads" :key="`${schema.homeId}-ml-${u.slot}`">
                     <ToolUploadSlot
@@ -2688,6 +2706,12 @@ const plateBtnCls =
                       :disabled="submitting"
                       asset-picker
                       bare
+                      :strip-head="u === stripHeadSlot"
+                      :head-text="mlCountText"
+                      :head-title="refLimitText"
+                      :library="libraryEnabled"
+                      :library-open="libraryOpen"
+                      @open-library="toggleLibrary"
                       @update:uploading="setUploading(`slot-${u.slot}`, $event)"
                       @update:model-value="setUploads(u.slot, $event)"
                     />
@@ -2712,7 +2736,7 @@ const plateBtnCls =
           >
             本次将替换 {{ changedRegions.length }} 处文字
           </p>
-          <p v-if="refLimitText" class="m-0 text-12px leading-18px text-muted">{{ refLimitText }}</p>
+          <p v-if="refLimitText && !promptStripOwned" class="m-0 text-12px leading-18px text-muted">{{ refLimitText }}</p>
           <div
             v-if="inlineSetting"
             class="sx-squircle flex items-center gap-6px w-full h-44px box-border pl-11px pr-3px rounded-14px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]"
@@ -2772,6 +2796,7 @@ const plateBtnCls =
             :items="settingItems"
             :disabled="submitting"
             popover-width="trigger"
+            :layout="schema.media === 'video' ? 'stack' : 'auto'"
           >
             <template #model>
               <CreationModelPicker
@@ -2789,41 +2814,30 @@ const plateBtnCls =
             <template #settings>
               <div class="flex flex-col">
                 <template v-for="f in popoverRows" :key="`${schema.homeId}-set-${f.key}`">
-                  <!-- 时长：模型区间内的滑杆（单位「秒」） -->
+                  <!-- 时长：原型 WakeSlider 浮层档（20 柱、柱高 14、值带「秒」写在右侧、无端点刻度）；区间随模型 -->
                   <div v-if="f.dynamic === 'videoDuration'" :class="setRowCls">
-                    <div class="flex items-center justify-between gap-8px">
-                      <label :for="`tool-set-${f.key}`" class="text-12px leading-18px text-ink-2">{{ f.label }}</label>
-                      <span class="text-13px font-500 leading-18px text-ink tabular-nums">{{ values[f.key] ?? '—' }} 秒</span>
-                    </div>
-                    <template v-if="videoDurationRange">
-                      <input
-                        :id="`tool-set-${f.key}`"
-                        type="range"
-                        class="w-full h-24px m-0 accent-violet cursor-pointer disabled:cursor-not-allowed"
-                        :min="videoDurationRange[0]"
-                        :max="videoDurationRange[1]"
-                        step="1"
-                        :value="Number(values[f.key] ?? videoDurationRange[0])"
-                        :disabled="submitting || videoDurationRange[0] === videoDurationRange[1]"
-                        :aria-valuetext="`${values[f.key]} 秒`"
-                        @input="values[f.key] = String(($event.target as HTMLInputElement).value)"
-                      />
-                      <div class="flex justify-between text-11px leading-16px text-muted tabular-nums">
-                        <span>{{ videoDurationRange[0] }} 秒</span>
-                        <span>{{ videoDurationRange[1] }} 秒</span>
-                      </div>
-                    </template>
+                    <span :id="`tool-set-${f.key}-label`" class="text-12px font-500 leading-18px text-ink-2">{{ f.label }}</span>
+                    <BarSlider
+                      v-if="videoDurationRange"
+                      :model-value="Number(values[f.key] ?? videoDurationRange[0])"
+                      :min="videoDurationRange[0]"
+                      :max="videoDurationRange[1]"
+                      unit="秒"
+                      :label="f.label"
+                      :disabled="submitting"
+                      @update:model-value="values[f.key] = String($event)"
+                    />
                     <p v-else class="m-0 text-12px text-muted">{{ videoModelsLoaded ? '暂无可用时长' : '加载中…' }}</p>
                   </div>
 
                   <!-- 数字 / 张数：共用 NumberStepper（值 | − | +） -->
-                  <div v-else-if="f.type === 'number' || f.type === 'stepper'" :class="setRowCls">
-                    <span :id="`tool-set-${f.key}-label`" class="text-12px leading-18px text-ink-2">
+                  <div v-else-if="f.type === 'number' || f.type === 'stepper'" :class="[setRowCls, '!flex-row items-center justify-between !gap-12px']">
+                    <span :id="`tool-set-${f.key}-label`" class="text-12px font-500 leading-18px text-ink-2">
                       {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
                     </span>
                     <NumberStepper
                       v-model="values[f.key]"
-                      class="self-start"
+                      class="flex-none"
                       :min="f.min"
                       :max="f.max"
                       :aria-label="f.label"
@@ -2833,9 +2847,10 @@ const plateBtnCls =
 
                   <!-- 开关 -->
                   <div v-else-if="f.type === 'switch'" :class="[setRowCls, '!flex-row items-center justify-between']">
-                    <span class="flex min-w-0 flex-col">
-                      <span :id="`tool-set-${f.key}-label`" class="text-12px leading-18px text-ink-2">{{ f.label }}</span>
-                      <span v-if="f.description" :id="`tool-set-${f.key}-desc`" class="text-12px leading-18px text-muted">{{ f.description }}</span>
+                    <!-- 原型 SettingsPopover：开关行不写说明句，说明收进悬停提示（读屏仍读） -->
+                    <span class="flex min-w-0 flex-col" :title="f.description || undefined">
+                      <span :id="`tool-set-${f.key}-label`" class="text-12px font-500 leading-18px text-ink-2">{{ f.label }}</span>
+                      <span v-if="f.description" :id="`tool-set-${f.key}-desc`" class="sr-only">{{ f.description }}</span>
                     </span>
                     <button
                       type="button"
@@ -2863,7 +2878,7 @@ const plateBtnCls =
 
                   <!-- 选项多的下拉（如语言）：原生下拉 -->
                   <div v-else-if="f.type === 'select' && fieldOptions(f).length > 6" :class="setRowCls">
-                    <label :for="`tool-set-${f.key}`" class="text-12px leading-18px text-ink-2">
+                    <label :for="`tool-set-${f.key}`" class="text-12px font-500 leading-18px text-ink-2">
                       {{ f.label }}<span v-if="f.required" class="text-danger" aria-hidden="true"> *</span>
                     </label>
                     <select :id="`tool-set-${f.key}`" v-model="values[f.key]" :class="inputCls" :disabled="submitting">
@@ -2881,12 +2896,12 @@ const plateBtnCls =
                     :disabled="submitting"
                     @update:model-value="values[f.key] = $event"
                   />
-                  <p v-if="f.description" class="m-0 -mt-4px pb-6px text-12px leading-18px text-muted">{{ f.description }}</p>
+                  <p v-if="f.description && f.type !== 'switch'" class="m-0 -mt-4px pb-6px text-12px leading-18px text-muted">{{ f.description }}</p>
                 </template>
 
                 <!-- 比例转换「自定义尺寸」：宽 / 高合成一行 -->
                 <div v-if="sizePair" :class="setRowCls" role="group" aria-labelledby="tool-set-size-label">
-                  <span id="tool-set-size-label" class="text-12px leading-18px text-ink-2">
+                  <span id="tool-set-size-label" class="text-12px font-500 leading-18px text-ink-2">
                     输出尺寸（像素）<span class="text-danger" aria-hidden="true"> *</span>
                   </span>
                   <div class="flex items-center gap-6px">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf, modelLabelsOf } from '@/utils/modelLabel'
 /**
  * 提示词库：官方电商 / 官方通用 / 我的 三个页签 + 搜索 + 卡片列表。
  * 官方卡片可复制、看详情；我的卡片可编辑 / 删除（新建编辑见 PromptEditor）。
@@ -44,7 +45,7 @@ const q = ref('')
 const groupFilter = ref<string | null>(null)
 const modelFilter = ref<string | null>(null)
 
-const MODEL_OPTIONS = ['通用', 'GPT', 'Banana', 'Seedream'].map((m) => ({ label: m, value: m }))
+const MODEL_OPTIONS = ['通用', 'GPT', 'Banana', 'Seedream'].map((m) => ({ label: modelLabelOf(m), value: m }))
 
 const groupOptions = computed(() => {
   const seen = new Set<string>()
@@ -237,7 +238,7 @@ function onSaved() {
 
           <div v-if="item.models?.length" class="flex flex-wrap gap-6px">
             <span
-              v-for="m in item.models"
+              v-for="m in modelLabelsOf(item.models)"
               :key="m"
               class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px"
               >{{ m }}</span
@@ -289,7 +290,7 @@ function onSaved() {
               {{ detail.owner === 'mine' ? '我的' : '官方' }}
             </span>
             <span
-              v-for="m in detail.models ?? []"
+              v-for="m in modelLabelsOf(detail.models)"
               :key="m"
               class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px"
               >{{ m }}</span

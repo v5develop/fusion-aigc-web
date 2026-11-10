@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 数字人口播：一段文案 + 人物图 + 背景（AI智能匹配 / 预设背景 / 上传）→ 一步出片。
  * 与海报/长图共用 creations 接口，kind=voiceover；模板接口返回的是预设背景。
@@ -59,7 +60,7 @@ const portraitSource = ref<'UPLOAD' | 'PUBLIC'>('UPLOAD')
 const personImage = ref('')
 const personPublicId = ref<number | undefined>(undefined)
 
-const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: o.label, value: o.code })))
+const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: modelLabelOf(o.label), value: o.code })))
 const sizeOptions = computed(() => (options.value?.sizes ?? []).map((o) => ({ label: o.label, value: o.code })))
 const durationOptions = computed(() => (options.value?.durations ?? []).map((d) => ({ label: `${d}秒`, value: d })))
 
@@ -321,7 +322,7 @@ watch(bgSource, () => {
         ratio="9 / 16"
       >
         <template v-if="current" #meta>
-          <span class="truncate text-ink-2">{{ [current.model, current.duration ? current.duration + 's' : '', current.size].filter(Boolean).join(' · ') }}</span>
+          <span class="truncate text-ink-2">{{ [modelLabelOf(current.model), current.duration ? current.duration + 's' : '', current.size].filter(Boolean).join(' · ') }}</span>
         </template>
       </ResultPreview>
     </template>

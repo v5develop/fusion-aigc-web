@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 电商功能页底部设置行（原型工具页参数行「模型 ▾ | 生成设置 ▾」，规范 §5.5 – §5.7）。
  *
@@ -40,6 +41,7 @@ const data = defineModel<Record<string, any>>('data', { required: true })
 
 const normalize = (opts: readonly RawOption[]): CreationOption[] =>
   opts.map((o) => ({
+    // 设置字段（比例 / 分辨率 / 张数…）不是模型，不过模型名映射（数字档没有 label 时 modelLabelOf 会给空串）
     label: String(typeof o.label === 'string' ? o.label : (o.value ?? '')),
     value: o.value as CreationOptionValue,
     disabled: o.disabled,
@@ -56,7 +58,7 @@ const capabilityOf = (o: RawOption) =>
 
 const models = computed<CreationOption<string>[]>(() =>
   (modelOptions ?? []).map((o) => ({
-    label: String(typeof o.label === 'string' ? o.label : (o.value ?? '')),
+    label: modelLabelOf(typeof o.label === 'string' ? o.label : String(o.value ?? '')),
     value: String(o.value ?? ''),
     disabled: o.disabled,
     description: capabilityOf(o),

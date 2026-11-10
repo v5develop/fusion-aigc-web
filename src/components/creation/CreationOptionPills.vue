@@ -38,15 +38,16 @@ function pick(opt: CreationOption) {
 
 <template>
   <!--
-    设置弹层内（原型 SettingsPopover 设置行）：最小高 48、内边距 8 0、纵向 gap 6；弹层宽 ≥320 时横排，标签列 64、gap 10。
-    标签 12/18；分段轨道 内边距 3 / gap 2 / 1px line / r6 / #f3f4f5；选项高 30、内边距 0 9、r4、11px，
-    选中 = violet-line + 白→#f8f3fc 渐变 + 短影 + violet-ink 600；过渡 300ms (.4,0,.2,1)。选项多于 5 个时按 5 列排。
+    设置弹层内（原型 SettingsPopover ml 设置行）：最小高 48、内边距 8 0；标签 12/18·500 ink-2 独占一行，控件在下方占满整宽（gap 6）。
+    分段轨道 内边距 3 / gap 2 / 1px line / r6 / #f3f4f5；选项高 30、内边距 0 9、r4、11px，
+    选中 = violet-line + 白→#f8f3fc 渐变 + 短影 + violet-ink 600；过渡 300ms (.4,0,.2,1)。
+    选项多于 4 个时等宽 4 列网格（原型视频比例七档 4+3），4 个时自适应列宽，3 个及以下横排。
   -->
   <div
     v-if="inSettings"
-    class="flex flex-col gap-6px min-h-48px box-border py-8px @[320px]:(flex-row items-center gap-10px)"
+    class="flex flex-col gap-6px min-h-48px box-border py-8px"
   >
-    <div :id="labelId" :class="hideLabel ? 'sr-only' : 'flex-none text-12px leading-18px text-ink-2 @[320px]:w-64px'">
+    <div :id="labelId" :class="hideLabel ? 'sr-only' : 'flex-none text-12px font-500 leading-18px text-ink-2'">
       <span>{{ label }}<span v-if="required" class="text-danger" aria-hidden="true"> *</span></span>
     </div>
     <div
@@ -54,7 +55,13 @@ function pick(opt: CreationOption) {
       :aria-labelledby="labelId"
       :aria-disabled="disabled || undefined"
       class="sx-squircle flex-1 min-w-0 p-3px gap-2px box-border rounded-8px border border-solid border-line bg-surface3 shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
-      :class="options.length > 3 ? 'grid grid-cols-[repeat(auto-fit,minmax(64px,1fr))]' : 'flex flex-wrap'"
+      :class="
+        options.length > 4
+          ? 'grid grid-cols-4'
+          : options.length > 3
+            ? 'grid grid-cols-[repeat(auto-fit,minmax(64px,1fr))]'
+            : 'flex flex-wrap'
+      "
     >
       <button
         v-for="opt in options"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 工作流页 /workflow?flow=&category=&template=（query 形状与 v1.0 原型一致；契约 14 个 wf:* 按 schemas.ts 渲染）。
  *
@@ -191,7 +192,7 @@ function fieldOptions(f: WorkflowField): CreationOption[] {
   switch (f.dynamic) {
     case 'videoModel':
       return videoModels.value.map((x) => ({
-        label: x.description ? `${x.model}（${x.description}）` : x.model,
+        label: x.description ? `${modelLabelOf(x.model)}（${x.description}）` : modelLabelOf(x.model),
         value: x.model,
       }))
     case 'videoResolution':

@@ -245,7 +245,7 @@ export interface StudioModelResolutionPrice {
 
 /** 一个模型档的可选项（后端：组规则 ∩ gateway 目录，与提交时的参数归一同源） */
 export interface StudioModelCapability {
-  /** 传值：通用 / GPT / GPT25Dev / Banana / Seedream */
+  /** 传值：通用 / GPT / GPT25 / Banana / Seedream */
   code: string
   /** 展示名（如 GPT Image 2.6） */
   label: string

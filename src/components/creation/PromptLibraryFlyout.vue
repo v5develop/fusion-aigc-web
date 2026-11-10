@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelsOf } from '@/utils/modelLabel'
 /**
  * 提示词库浮层（原型 PromptLibraryFlyout：宽 400 的锚定面板，不是整屏弹窗）。
  *
@@ -392,7 +393,7 @@ onBeforeUnmount(() => {
                 <span class="flex items-center gap-6px min-w-0">
                   <b class="min-w-0 flex-1 truncate text-13px font-600 text-ink">{{ item.title }}</b>
                   <span
-                    v-for="m in item.models.slice(0, 2)"
+                    v-for="m in modelLabelsOf(item.models).slice(0, 2)"
                     :key="m"
                     class="flex-none h-16px px-5px rounded-full bg-surface3 text-11px leading-16px text-muted"
                     >{{ m }}</span

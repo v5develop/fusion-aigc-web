@@ -7,6 +7,7 @@
 import { shallowRef, type ShallowRef } from 'vue'
 import { studioModels } from '@/api/studio.ts'
 import type { StudioKind, StudioModelCapability } from '@/api/studioTypes.ts'
+import { normalizeModelTier } from '@/utils/modelLabel'
 
 const cache = new Map<StudioKind, ShallowRef<StudioModelCapability[] | null>>()
 const inflight = new Map<StudioKind, Promise<void>>()
@@ -21,7 +22,8 @@ export function useStudioModels(kind: StudioKind): ShallowRef<StudioModelCapabil
   if (!target.value && !inflight.has(kind)) {
     const p = studioModels({ kind })
       .then((res) => {
-        const items = res.data?.items ?? []
+        // 后端过渡期仍可能下发旧档位码：归一后再参与比较与传值
+        const items = (res.data?.items ?? []).map((c) => ({ ...c, code: normalizeModelTier(c.code) }))
         target.value = items.length ? items : null
       })
       .catch(() => {

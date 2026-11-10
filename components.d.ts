@@ -12,7 +12,10 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AssetCornerButton: typeof import('./src/components/creation/AssetCornerButton.vue')['default']
+    BarSlider: typeof import('./src/components/creation/BarSlider.vue')['default']
     BillingGuideHost: typeof import('./src/components/BillingGuideHost/index.vue')['default']
+    BookOutlineIcon: typeof import('./src/components/icons/BookOutlineIcon.vue')['default']
     ChatImageUpload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
     ChatInputSelect: typeof import('./src/components/ChatInputSelect/index.vue')['default']
     CheckboxGroup: typeof import('./src/components/CheckboxGroup/index.vue')['default']
@@ -72,6 +75,8 @@ declare module 'vue' {
     PointSelect: typeof import('./src/components/ColorFix/PointSelect.vue')['default']
     PromptLibraryFlyout: typeof import('./src/components/creation/PromptLibraryFlyout.vue')['default']
     PromptWriteButton: typeof import('./src/components/prompt-write/PromptWriteButton.vue')['default']
+    ReferenceStrip: typeof import('./src/components/creation/ReferenceStrip.vue')['default']
+    ReferenceStripClassic: typeof import('./src/components/creation/ReferenceStripClassic.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SelectGroup: typeof import('./src/components/SelectGroup/index.vue')['default']
@@ -85,7 +90,10 @@ declare module 'vue' {
 
 // For TSX support
 declare global {
+  const AssetCornerButton: typeof import('./src/components/creation/AssetCornerButton.vue')['default']
+  const BarSlider: typeof import('./src/components/creation/BarSlider.vue')['default']
   const BillingGuideHost: typeof import('./src/components/BillingGuideHost/index.vue')['default']
+  const BookOutlineIcon: typeof import('./src/components/icons/BookOutlineIcon.vue')['default']
   const ChatImageUpload: typeof import('./src/components/ChatImageUpload/index.vue')['default']
   const ChatInputSelect: typeof import('./src/components/ChatInputSelect/index.vue')['default']
   const CheckboxGroup: typeof import('./src/components/CheckboxGroup/index.vue')['default']
@@ -145,6 +153,8 @@ declare global {
   const PointSelect: typeof import('./src/components/ColorFix/PointSelect.vue')['default']
   const PromptLibraryFlyout: typeof import('./src/components/creation/PromptLibraryFlyout.vue')['default']
   const PromptWriteButton: typeof import('./src/components/prompt-write/PromptWriteButton.vue')['default']
+  const ReferenceStrip: typeof import('./src/components/creation/ReferenceStrip.vue')['default']
+  const ReferenceStripClassic: typeof import('./src/components/creation/ReferenceStripClassic.vue')['default']
   const RouterLink: typeof import('vue-router')['RouterLink']
   const RouterView: typeof import('vue-router')['RouterView']
   const SelectGroup: typeof import('./src/components/SelectGroup/index.vue')['default']

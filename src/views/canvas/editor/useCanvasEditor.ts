@@ -7,6 +7,7 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { createDiscreteApi } from 'naive-ui'
+import { normalizeModelTier } from '@/utils/modelLabel'
 import {
   canvasGet,
   canvasNodeRun,
@@ -1147,7 +1148,7 @@ function toolParamsOf(node: CanvasEditorNode): { params?: Record<string, unknown
           items,
           ...(garmentName ? { garment_name: garmentName } : {}),
           ...(fabric ? { fabric } : {}),
-          model: data.tryonModel || '通用',
+          model: normalizeModelTier(data.tryonModel) || '通用',
           resolution: data.tryonResolution || '1k',
           aspect_ratio: data.tryonAspectRatio || '3:4',
         },

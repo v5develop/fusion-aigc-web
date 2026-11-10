@@ -37,6 +37,7 @@ import {
   OUTFIT_MAP,
   RESOLUTION_OPTIONS,
 } from '../constants.ts'
+import { normalizeModelTier } from '@/utils/modelLabel'
 import type { StudioOutfitItem } from '../constants.ts'
 
 defineOptions({ name: 'studio-tryon' })
@@ -420,7 +421,7 @@ function onReedit(payload: Record<string, unknown>) {
     fabrics[firstKey] = [fabrics[firstKey], ...unmatched].filter(Boolean).join('；')
   }
   form.prompt = typeof p.prompt === 'string' ? p.prompt : ''
-  form.model = MODEL_OPTIONS.some((o) => o.value === p.model) ? (p.model as string) : '通用'
+  form.model = MODEL_OPTIONS.find((o) => o.value === normalizeModelTier(p.model))?.value ?? '通用'
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
   form.aspect_ratio = typeof p.aspect_ratio === 'string' ? p.aspect_ratio : ''
   form.count_per_model = Math.min(9, Math.max(1, Math.round(Number(p.count_per_model) || 1)))

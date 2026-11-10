@@ -94,18 +94,18 @@ function commitCount(next: number) {
 <template>
   <div class="flex flex-col" :class="inSettings ? 'gap-0' : 'gap-12px'">
     <template v-for="row in rows" :key="row.key">
-      <!-- 张数步进器（共用 NumberStepper：值 | − | +，到上下限时对应按钮禁用） -->
+      <!-- 张数步进器（共用 NumberStepper：值 | − | +，到上下限时对应按钮禁用）；弹层里同原型：标签在左、步进器在右 -->
       <div
         v-if="row.key === 'count' && countRange"
         :class="
           inSettings
-            ? 'flex flex-col gap-6px min-h-48px box-border py-8px @[320px]:(flex-row items-center gap-10px)'
+            ? 'flex items-center justify-between gap-12px min-h-48px box-border py-8px'
             : ''
         "
       >
         <div
           :id="countLabelId"
-          :class="inSettings ? 'flex-none text-12px leading-18px text-ink-2 @[320px]:w-64px' : 'll-label'"
+          :class="inSettings ? 'flex-none text-12px font-500 leading-18px text-ink-2' : 'll-label'"
         >
           <span>{{ row.label }}<span v-if="row.required" class="text-danger" aria-hidden="true"> *</span></span>
         </div>

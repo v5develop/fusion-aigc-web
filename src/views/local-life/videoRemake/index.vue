@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 爆款视频复刻：两种来源二选一 ——
  * - 上传本地视频（≤50M / ≤3 分钟，格式以后端下发为准）
@@ -49,7 +50,7 @@ const SOURCE_SEGMENTS = [
 ] as const
 const videoList = ref<{ url: string; thumbnail?: string; name?: string }[]>([])
 
-const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: o.label, value: o.code })))
+const modelOptions = computed(() => (options.value?.models ?? []).map((o) => ({ label: modelLabelOf(o.label), value: o.code })))
 const sizeOptions = computed(() => (options.value?.sizes ?? []).map((o) => ({ label: o.label, value: o.code })))
 const linkEnabled = computed(() => options.value?.link_enabled ?? false)
 const limitHint = computed(() => {

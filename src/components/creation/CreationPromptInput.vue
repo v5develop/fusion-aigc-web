@@ -17,6 +17,7 @@
  * 须给 ariaLabel 作为无障碍名称。
  */
 import { computed, ref, useId, useSlots } from 'vue'
+import BookOutlineIcon from '@/components/icons/BookOutlineIcon.vue'
 import PromptWriteButton from '@/components/prompt-write/PromptWriteButton.vue'
 import PromptLibraryFlyout from '@/components/creation/PromptLibraryFlyout.vue'
 import type { PromptWriteBizType } from '@/api/promptWrite.ts'
@@ -36,6 +37,7 @@ const {
   showRewrite = false,
   rewriteHint = '',
   variant = 'default',
+  headInTop = false,
 } = defineProps<{
   modelValue?: string
   maxLength?: number
@@ -57,6 +59,11 @@ const {
   rewriteHint?: string
   /** ml = 原型一体框（见文件头）；default = 原来的标签行 + 框 */
   variant?: 'default' | 'ml'
+  /**
+   * ml：框顶行（计数 + 书本钮）交给 `#top` 插槽里的参考图条自己画（ReferenceStrip / ReferenceStripClassic 的 head），
+   * 本组件不再画顶行；插槽拿到 `{ libraryOpen, toggleLibrary }`，书本钮点了调 toggleLibrary(按钮元素)，浮层吸附该按钮
+   */
+  headInTop?: boolean
 }>()
 
 /** 「输入润色」开关值（可选；页面把 rewritePrompt 字段挪进框内时绑定） */
@@ -64,7 +71,10 @@ const rewrite = defineModel<boolean>('rewrite', { default: false })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
-defineSlots<{ top?: () => unknown; 'top-head'?: () => unknown }>()
+defineSlots<{
+  top?: (props: { libraryOpen: boolean; toggleLibrary: (anchor: HTMLElement) => void }) => unknown
+  'top-head'?: () => unknown
+}>()
 const slots = useSlots()
 
 const autoId = `creation-prompt-${useId()}`
@@ -74,10 +84,16 @@ const rewriteHintId = computed(() => `${fieldId.value}-rewrite-hint`)
 const length = computed(() => (modelValue ?? '').length)
 const ml = computed(() => variant === 'ml')
 /** ml 一体框的顶行：有图槽插槽或书本钮时出现 */
-const hasTopRow = computed(() => ml.value && (library || !!slots['top-head'] || !!slots.top))
+const hasTopRow = computed(() => ml.value && !headInTop && (library || !!slots['top-head'] || !!slots.top))
 
 const libraryOpen = ref(false)
 const libraryAnchor = ref<HTMLElement | null>(null)
+/** 顶行交给参考图条时，书本钮在插槽里：浮层吸附那颗按钮 */
+const slotAnchor = ref<HTMLElement | null>(null)
+function toggleLibrary(anchor: HTMLElement) {
+  slotAnchor.value = anchor
+  libraryOpen.value = !libraryOpen.value
+}
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 /** 提示词库选中：整条插入，按上限截断 */
@@ -99,7 +115,7 @@ const bookBtnCls =
 </script>
 
 <template>
-  <div :class="ml ? 'flex flex-col flex-1' : ''">
+  <div :class="ml ? 'flex flex-col flex-[1_1_auto] min-h-[220px] max-[1439px]:min-h-[320px]' : ''">
     <div v-if="!ml && (label || library)" class="ll-label">
       <label v-if="label" :for="fieldId">{{ label }}<span v-if="required" class="text-danger" aria-hidden="true"> *</span></label>
       <!-- 我的提示词（原型 MlReferenceHead 右上书本钮）：24×22、r6、悬停 surface3 -->
@@ -115,10 +131,7 @@ const bookBtnCls =
         :disabled="disabled"
         @click="libraryOpen = !libraryOpen"
       >
-        <svg class="h-13px w-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M5 4.5h6a2 2 0 0 1 2 2V20a1.6 1.6 0 0 0-1.6-1.6H5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z" />
-          <path d="M19 4.5h-6a2 2 0 0 0-2 2V20a1.6 1.6 0 0 1 1.6-1.6H19a1 1 0 0 0 1-1v-12a1 1 0 0 0-1-1z" />
-        </svg>
+        <BookOutlineIcon :size="14" />
         提示词
       </button>
     </div>
@@ -143,14 +156,11 @@ const bookBtnCls =
           :disabled="disabled"
           @click="libraryOpen = !libraryOpen"
         >
-          <svg class="h-14px w-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5 4.5h6a2 2 0 0 1 2 2V20a1.6 1.6 0 0 0-1.6-1.6H5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z" />
-            <path d="M19 4.5h-6a2 2 0 0 0-2 2V20a1.6 1.6 0 0 1 1.6-1.6H19a1 1 0 0 0 1-1v-12a1 1 0 0 0-1-1z" />
-          </svg>
+          <BookOutlineIcon />
         </button>
       </div>
-      <div v-if="ml && $slots.top" class="flex-none mt-8px">
-        <slot name="top" />
+      <div v-if="ml && $slots.top" class="flex-none" :class="headInTop ? '' : 'mt-8px'">
+        <slot name="top" v-bind="{ libraryOpen, toggleLibrary }" />
       </div>
       <textarea
         :id="fieldId"
@@ -221,6 +231,6 @@ const bookBtnCls =
       </div>
     </div>
 
-    <PromptLibraryFlyout v-if="library" v-model:show="libraryOpen" :anchor="libraryAnchor" @select="onLibraryPick" />
+    <PromptLibraryFlyout v-if="library" v-model:show="libraryOpen" :anchor="headInTop ? slotAnchor : libraryAnchor" @select="onLibraryPick" />
   </div>
 </template>

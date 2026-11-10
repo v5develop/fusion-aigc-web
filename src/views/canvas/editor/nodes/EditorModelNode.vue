@@ -7,6 +7,7 @@
  * 结果图是按钮：点开灯箱看全部候选（灯箱里可下载）；候选缩略图悬停出 主 / 大 / ↓ / ×。
  */
 import { computed, ref } from 'vue'
+import { modelLabelOf } from '@/utils/modelLabel'
 import { Handle, Position } from '@vue-flow/core'
 import EditorIcon from '../EditorIcon.vue'
 import RunErrorNotice from '../RunErrorNotice.vue'
@@ -59,7 +60,7 @@ const promptTop = computed(() => (isVideo.value ? '20%' : '30%'))
 const selectedIdx = computed(() => props.data.selectedCandidate ?? 0)
 
 /** 头部副标题：模型名（与标题相同时不重复，同原型） */
-const modelLine = computed(() => (props.data.model && props.data.model !== props.data.title ? props.data.model : ''))
+const modelLine = computed(() => (props.data.model && props.data.model !== props.data.title ? modelLabelOf(props.data.model) : ''))
 
 /** 参考图计数徽标：连到 image 口的线数（原型 .wf-model-node__ref-count） */
 const imageRefCount = computed(

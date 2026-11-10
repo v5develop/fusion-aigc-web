@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import { aigcModelOptions } from '@/api/methods'
+import { catalogModelLabels, displayModelLabel } from './modelLabel'
 import type { IAigcModelOption, IAigcOptionChoice } from '@/api/types'
 
 /**
@@ -53,14 +54,14 @@ export const imageModelOps = reactive<SelectOption[]>([])
 export const videoModelOps = reactive<VideoModelOption[]>([])
 
 /** code → 展示名，供历史记录等只有 code 的地方回显。 */
-export const modelCodeToLabel = reactive<Record<string, string>>({})
+export const modelCodeToLabel = catalogModelLabels
 
 function choiceOps(choices?: IAigcOptionChoice[]): SelectOption[] {
   return (choices ?? []).map((c) => ({ label: String(c.value), value: String(c.value) }))
 }
 
 function toImageOption(m: IAigcModelOption): SelectOption {
-  return { label: m.name || m.code, value: m.code, entryCodes: m.entry_codes }
+  return { label: displayModelLabel(m.name || '') || m.code, value: m.code, entryCodes: m.entry_codes }
 }
 
 function durationOpsOf(choices?: IAigcOptionChoice[]): DurationOption[] {
@@ -72,7 +73,7 @@ function durationOpsOf(choices?: IAigcOptionChoice[]): DurationOption[] {
 
 function toVideoOption(m: IAigcModelOption): VideoModelOption {
   return {
-    label: m.name || m.code,
+    label: displayModelLabel(m.name || '') || m.code,
     value: m.code,
     entryCodes: m.entry_codes,
     resolutionOps: choiceOps(m.resolutions),
@@ -111,7 +112,7 @@ export function ensureModelCatalog(): Promise<void> {
       replaceAll(imageModelOps, imageModels.map(toImageOption))
       replaceAll(videoModelOps, videoModels.map(toVideoOption))
       for (const m of [...imageModels, ...videoModels]) {
-        modelCodeToLabel[m.code] = m.name || m.code
+        modelCodeToLabel[m.code] = displayModelLabel(m.name || '') || m.code
       }
     })
     .catch((e) => {

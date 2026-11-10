@@ -12,9 +12,13 @@
  * 覆盖 Naive 默认的 scale .85 过渡，见文末样式；减少动效时直接出现）；
  * 头部高 44、内边距 0 8 0 14、标题 14，关闭钮 26 / r4；内容区内边距 4 14 10。内容来自同名插槽 #key
  * （模型页放 CreationModelPicker、图片设置放 CreationImageSettings）。
+ *
+ * <p>`layout`：grid（默认，两列等宽）/ stack（每项占满一行、上下叠放，gap 8、高仍 44，弹层贴自己那一行、与行同宽）/
+ * auto（两列放得下就两列；行宽 < 420，或任一项「标签 + 完整取值」超过半宽会被截断时改叠放——按文字自然宽度量，
+ * 与当前排法无关，不会来回跳）。视频工具用 stack（模型名长、摘要「16:9 · 720P · 5 秒」三段）。
  */
 import IconButton from '@/components/IconButton/index.vue'
-import { computed, onBeforeUnmount, onMounted, provide, ref, useId } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, useId, watch } from 'vue'
 import { NPopover } from 'naive-ui'
 import type { CreationSettingsIcon, CreationSettingsRowItem } from './types'
 
@@ -22,11 +26,14 @@ const {
   items,
   disabled = false,
   popoverWidth = 'row',
+  layout = 'grid',
 } = defineProps<{
   items: CreationSettingsRowItem[]
   disabled?: boolean
   /** 弹层宽度：row = 与整行同宽（默认，老页面口径）；trigger = 与触发按钮同宽（原型 SettingsPopover ml，工具页用） */
   popoverWidth?: 'row' | 'trigger'
+  /** grid = 两列等宽（默认）；stack = 每项一整行上下叠放；auto = 两列会截断（或行宽 < 420）时叠放 */
+  layout?: 'grid' | 'stack' | 'auto'
 }>()
 
 defineSlots<Record<string, () => unknown>>()
@@ -50,9 +57,34 @@ onMounted(() => {
   rowObserver.observe(rowRef.value)
 })
 onBeforeUnmount(() => rowObserver?.disconnect())
+
+/** auto：两列会不会截断。按标签 / 取值的自然宽度（scrollWidth 与排法无关）+ 图标 16、两处 gap 6、内边距 11 + 24 估算单项所需宽 */
+const STACK_MIN_ROW = 420
+const triggerEls = ref<(HTMLElement | null)[]>([])
+const wouldTruncate = ref(false)
+function measureFit() {
+  if (layout !== 'auto' || items.length < 2) return
+  const half = (rowWidth.value - 8 * (items.length - 1)) / items.length
+  wouldTruncate.value = triggerEls.value.some((btn) => {
+    if (!btn) return false
+    const [labelEl, valueEl] = btn.querySelectorAll<HTMLElement>('[data-csr-label], [data-csr-value]')
+    const need = 16 + 6 + (labelEl?.scrollWidth ?? 0) + 6 + (valueEl?.scrollWidth ?? 0) + 11 + 24
+    return need > half
+  })
+}
+watch(
+  [rowWidth, () => items.map((i) => `${i.label}|${i.value}`).join('#')],
+  () => void nextTick(measureFit),
+  { immediate: true },
+)
+const stacked = computed(
+  () =>
+    items.length > 1 &&
+    (layout === 'stack' || (layout === 'auto' && (rowWidth.value < STACK_MIN_ROW || wouldTruncate.value))),
+)
 /** trigger 口径：两列等宽 grid（gap 8）里单个按钮的宽 */
 const popWidth = computed(() =>
-  popoverWidth === 'trigger' && items.length > 1 ? Math.round((rowWidth.value - 8 * (items.length - 1)) / items.length) : rowWidth.value,
+  popoverWidth === 'trigger' && items.length > 1 && !stacked.value ? Math.round((rowWidth.value - 8 * (items.length - 1)) / items.length) : rowWidth.value,
 )
 /** 弹层内的列表（模型）选中后据此收起弹层（原型 ModelSelect：选中即关） */
 provide('creation-settings-close', () => {
@@ -82,7 +114,7 @@ const ICON_PATHS: Record<CreationSettingsIcon, string[]> = {
 </script>
 
 <template>
-  <div ref="rowRef" class="grid gap-8px" :class="items.length > 1 ? 'grid-cols-2' : 'grid-cols-1'">
+  <div ref="rowRef" class="grid gap-8px" :class="items.length > 1 && !stacked ? 'grid-cols-2' : 'grid-cols-1'">
     <NPopover
       v-for="(item, index) in items"
       :key="item.key"
@@ -90,13 +122,14 @@ const ICON_PATHS: Record<CreationSettingsIcon, string[]> = {
       class="creation-settings-pop"
       trigger="click"
       :width="popWidth"
-      :placement="index === items.length - 1 ? 'top-end' : 'top-start'"
+      :placement="!stacked && index === items.length - 1 ? 'top-end' : 'top-start'"
       :show="openKey === item.key"
       :show-arrow="false"
       @update:show="(show: boolean) => setOpen(item.key, show)"
     >
       <template #trigger>
         <button
+          :ref="(el) => (triggerEls[index] = el as HTMLElement | null)"
           type="button"
           class="sx-field-btn relative min-w-0 w-full box-border gap-6px [transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s_ease,box-shadow_0.11s_ease,color_0.11s_ease] motion-reduce:transition-none disabled:(opacity-50 cursor-not-allowed)"
           :class="
@@ -123,8 +156,8 @@ const ICON_PATHS: Record<CreationSettingsIcon, string[]> = {
           >
             <path v-for="d in ICON_PATHS[item.icon]" :key="d" :d="d" />
           </svg>
-          <span class="flex-none text-12px font-400 leading-18px text-muted">{{ item.label }}</span>
-          <span class="ml-auto min-w-0 truncate text-right text-13px font-500 leading-18px text-ink-2" :title="item.value">{{
+          <span data-csr-label class="flex-none text-12px font-400 leading-18px text-muted">{{ item.label }}</span>
+          <span data-csr-value class="ml-auto min-w-0 truncate text-right text-13px font-500 leading-18px text-ink-2" :title="item.value">{{
             item.value
           }}</span>
           <svg

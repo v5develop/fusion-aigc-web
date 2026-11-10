@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf, modelLabelsOf } from '@/utils/modelLabel'
 /**
  * 资产 · 提示词域（原型 5185：提示词只分官方 / 我的）。数据走提示词库接口 /api/v1/prompt-library：
  * 来源 全部('') / 官方电商(ecommerce) / 官方通用(general) / 我的(mine)，模型四档筛选，关键词与页面共用。
@@ -28,7 +29,7 @@ const SOURCES = [
   { value: 'general', label: '官方通用' },
   { value: 'mine', label: '我的' },
 ]
-const MODEL_OPTIONS = ['通用', 'GPT', 'Banana', 'Seedream'].map((m) => ({ label: m, value: m }))
+const MODEL_OPTIONS = ['通用', 'GPT', 'Banana', 'Seedream'].map((m) => ({ label: modelLabelOf(m), value: m }))
 
 const vertical = ref('')
 const model = ref<string | null>(null)
@@ -196,7 +197,7 @@ const ACTION =
           </div>
           <p class="m-0 text-12px leading-20px text-ink-2 whitespace-pre-wrap break-all line-clamp-4">{{ item.prompt }}</p>
           <div v-if="item.models?.length || item.tags?.length" class="flex flex-wrap gap-4px">
-            <span v-for="m in item.models ?? []" :key="`m-${m}`" class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px">{{ m }}</span>
+            <span v-for="m in modelLabelsOf(item.models)" :key="`m-${m}`" class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px">{{ m }}</span>
             <span v-for="t in item.tags ?? []" :key="`t-${t}`" class="text-11px text-muted bg-surface3 rounded-4px px-6px py-1px">{{ t }}</span>
           </div>
           <div class="flex items-center gap-8px mt-auto text-11px text-placeholder">
@@ -229,7 +230,7 @@ const ACTION =
         <span class="ll-chip" :class="isMine(detail) ? 'll-chip-success' : 'll-chip-running'">
           {{ isMine(detail) ? '我的' : '官方' }}
         </span>
-        <span v-for="m in detail.models ?? []" :key="m" class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px">{{ m }}</span>
+        <span v-for="m in modelLabelsOf(detail.models)" :key="m" class="text-11px text-violet-ink bg-violet-soft rounded-4px px-6px py-1px">{{ m }}</span>
         <span v-for="t in detail.tags ?? []" :key="t" class="ll-tag">{{ t }}</span>
       </div>
       <div class="bg-surface2 border border-solid border-line rounded-8px p-12px text-13px text-ink leading-22px whitespace-pre-wrap break-all max-h-420px overflow-auto">

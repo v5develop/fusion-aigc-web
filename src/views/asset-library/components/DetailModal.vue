@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 资产详情弹层（NModal 960）：
  * 预览（image 大图 / video 播放器）、标题行内编辑、分类 / 授权下拉、收藏开关、
@@ -353,7 +354,7 @@ const provRows = computed(() => {
   if (!p) return []
   const rows = [
     { label: '运行 ID', value: p.run_id || '' },
-    { label: '模型', value: p.model || '' },
+    { label: '模型', value: modelLabelOf(p.model) },
     { label: '工作流', value: p.workflow_id || '' },
     { label: '节点', value: p.node_id || '' },
     { label: '操作人', value: p.operator || '' },
@@ -445,8 +446,8 @@ const versionModel = ref('')
 const versionModelOptions = [
   { label: '通用', value: '通用' },
   { label: 'GPT Image 2.6', value: 'GPT' },
-  { label: 'GPT Image 2.5', value: 'GPT25Dev' },
-  { label: 'Nano Banana 2.1 Dev', value: 'Banana' },
+  { label: 'GPT Image 2.5', value: 'GPT25' },
+  { label: 'Nano Banana 2.1', value: 'Banana' },
   { label: 'Seedream 5.5', value: 'Seedream' },
 ]
 
@@ -1096,7 +1097,7 @@ async function removeRelation(relatedId: number) {
                 <span class="text-13px font-600 text-ink">V{{ v.version_no }}</span>
                 <span v-if="v.id === asset.current_version_id" class="ll-chip ll-chip-success">当前版本</span>
                 <span class="text-12px text-placeholder"
-                  >{{ v.model || '未知模型' }} · {{ formatTime(v.created_at) }}</span
+                  >{{ modelLabelOf(v.model) || '未知模型' }} · {{ formatTime(v.created_at) }}</span
                 >
               </div>
               <div class="text-12px text-ink-2 mt-2px line-clamp-2" :title="v.prompt">

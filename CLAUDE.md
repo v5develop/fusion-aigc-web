@@ -80,6 +80,10 @@ useDebounce(reactiveObj, callback, 300)
 - **大图预览** `src/components/MediaLightbox`：需要看细节的入口（高清放大等）传 `pannable`，开滚轮缩放 0.5–4× 与放大后拖动平移；不传时行为不变
 - **工具页**：「选一项」字段（目标语言 / 音色）用 `src/views/tools/ToolChoiceField`（`grid` 长列表带搜索，`list` 行尾可带试听）；产品替换图台的连线用 `ToolPipeLinks`，只认 DOM 标记 `data-pr-anchor` / `data-pr-base`（/ `data-pr-hint`）
 - **提交前报价**：本地生活 `useLLQuote`（Workbench）、视频复刻 `useWorkflowVideoQuote`；防抖 300ms、只认最后一次响应、卸载即丢。报价中 / 失败 / 不可提交一律显示「—」，**不拿旧值或前端估算顶上**，点数只来自后端
+- **提示词框参考图条**（`src/components/creation/`，契约 `referenceStrip.ts`）：两个组件同 props / 事件，调用处换组件名即可互换，**设计期在代码里按页选，不做运行时开关**——`ReferenceStrip`（5185 原型 MlReferenceHead + MlReferenceSlots：计数行高 22 + 书本钮 24/r4、78×130 r12 白边叠片、悬停 200ms 摊开 / 离开 100ms 收回、摊开时暗层替换钮与 220ms 后淡入的「+ 点击添加」格）；`ReferenceStripClassic`（原来的样子：StudioImageUpload 叠片，500ms / 2s、下方大图面板）。组件只管长相，选文件 / 校验 / 上传 / 资产弹窗由调用方接事件。工具页由 schema 上传槽的 `strip: 'prototype'` 选原型（目前只有视频生成），不写 = Classic；带 `head` 时计数行由图条画（`CreationPromptInput` 传 `head-in-top`，`#top` 插槽拿 `toggleLibrary` 交给书本钮）
+- **资产角钮** `src/components/creation/AssetCornerButton.vue`：「从资产库添加」云钮全站唯一一份（视觉 20 圆、命中 32 / 触屏 40，默认挂宿主右下角外沿 -12/-12，`:corner="false"` 时位置交给调用方）；叠片 / 片格的资产入口一律用它，不再在片旁挂「从资产库添加」文字钮。书本图标统一 `src/components/icons/BookOutlineIcon.vue`（ionicons BookOutline，15）
+- **底部设置行** `CreationSettingsRow` 的 `layout`：grid（默认两列）/ stack（模型、设置各占一整行上下叠放，弹层贴自己那行、与行同宽）/ auto（行宽 < 420 或「标签 + 完整取值」超半宽时叠放）；工具页视频类 stack、其余 auto。设置弹层分段选项 > 4 个时等宽 4 列（视频比例七档 4+3）
+- **柱列滑条** `src/components/creation/BarSlider.vue`（原型 WakeSlider 浮层档：20 柱、柱高 14、值带单位写右侧、无端点刻度；←/→/Home/End、role=slider）：时长这类逐档数值用它，不用原生 range
 - **回填守卫**：`/tools/ai-digital-model`、`/tools/ai-posture-fission` 默认转商拍工作室完整版（`studioToolRedirect`）；只有 `hasRefill` 发现 2 分钟内发给简版工具的「做同款 / 参数回填」交接时才放行。新增这类转向要同样先看交接
 
 ### 路由要点

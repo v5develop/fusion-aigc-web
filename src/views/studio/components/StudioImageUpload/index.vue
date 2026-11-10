@@ -26,6 +26,7 @@ import { useDialog, useMessage } from 'naive-ui'
 import { ACCEPT_IMAGE } from '@/utils/utils.ts'
 import AssetPickerModal from '../AssetPickerModal/index.vue'
 import StudioMedBtn from './StudioMedBtn.vue'
+import AssetCornerButton from '@/components/creation/AssetCornerButton.vue'
 import { useStudioUploader } from './useStudioUploader.ts'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
@@ -517,22 +518,14 @@ const seamCls = [
       </button>
 
       <!-- 云钮：片外右下角 -12/-12；摊开时片子会盖到它，收掉（空块不藏） -->
-      <StudioMedBtn
+      <AssetCornerButton
         v-if="cloudVisible"
         :label="label ? `从资产库添加${label}` : '从资产库添加'"
-        class="-right-12px -bottom-12px transition-opacity duration-120 motion-reduce:transition-none"
+        class="transition-opacity duration-120 motion-reduce:transition-none"
         :class="expanded && count ? 'opacity-0 pointer-events-none' : ''"
         :disabled="disabled"
-        @click.stop="onCloudClick"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-          <path
-            d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 0 0 7 18.5z"
-            stroke-linejoin="round"
-            transform="translate(0 -0.5)"
-          />
-        </svg>
-      </StudioMedBtn>
+        @click="onCloudClick"
+      />
 
       <!-- 不出面板时：逐张删除钮落在每张片子右下角，摊开时才可点 -->
       <StudioMedBtn
@@ -619,20 +612,13 @@ const seamCls = [
           <span class="text-16px leading-none" aria-hidden="true">＋</span>
           <span>点击添加</span>
         </button>
-        <StudioMedBtn
+        <AssetCornerButton
           v-if="cloudVisible"
-          :label="label ? `从资产库添加${label}` : '资产添加'"
+          :label="label ? `从资产库添加${label}` : '从资产库添加'"
+          :corner="false"
           class="right-4px bottom-4px"
-          @click.stop="onCloudClick"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path
-              d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 0 0 7 18.5z"
-              stroke-linejoin="round"
-              transform="translate(0 -0.5)"
-            />
-          </svg>
-        </StudioMedBtn>
+          @click="onCloudClick"
+        />
       </div>
       <button
         v-if="expanded && count && !disabled && !panelOpen"

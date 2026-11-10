@@ -71,6 +71,16 @@ export interface ToolUpload {
   subtitle?: string
   /** 空态格式行（纯展示，原型给了才写；不写 = 按 accept / maxBytes / 时长拼出来）；校验仍按 accept / maxBytes / 时长 */
   hint?: string
+  /**
+   * 一体框参考图条的长相（纯展示，设计期按工具选）：`prototype` = 5185 原型（components/creation/ReferenceStrip），
+   * 不写 = 原来的样子（ReferenceStripClassic）。两者同 props / 事件，只对收进提示词框的 ml 槽生效
+   */
+  strip?: 'prototype'
+  /**
+   * 单槽卡带标题（纯展示）：与提示词一体框同列时用（原型 tool-op.is-ml 上传卡）——卡内顶部居中写槽名、投放区最小高 200 可压缩、
+   * 「资产添加」在投放区下方居中，高度与提示词框按 flex 比例分；当前模型不支持时保持卡形、禁用并在标题下写原因
+   */
+  titled?: boolean
 }
 
 /** 上传槽位组件（ToolUploadSlot）只看的那几项；工作流页（views/workflow）复用同一个组件 */
@@ -87,6 +97,8 @@ export type UploadSpec = Pick<
   | 'title'
   | 'subtitle'
   | 'hint'
+  | 'strip'
+  | 'titled'
 >
 
 export type FieldType =
@@ -1035,6 +1047,7 @@ export const toolSchemas: ToolSchema[] = [
         slot: 0,
         label: '参考视频（选填）',
         layout: 'single',
+        titled: true,
         title: '上传参考视频',
         subtitle: '以这段视频为基础生成新视频',
         kind: 'video',
@@ -1042,11 +1055,15 @@ export const toolSchemas: ToolSchema[] = [
         required: false,
         maxBytes: VIDEO_MAX,
         accept: VIDEO_ACCEPT,
+        // 原型 SingleVideoZone：时长 2～300 秒（格式行同步写出，校验同口径）
+        minDuration: 2,
+        maxDuration: 300,
         javaKey: 'videoUrl',
         verified: true,
         needsMode: 'v2v',
       },
-      { ...imageSlot('参考图（选填）', 9, 'imageUrls', false, 1), layout: 'ml', needsMode: 'i2v' },
+      // 上限按模型 refs.maxImages 收紧（Seedance 2.5 30 张 / 2.0 9 张）；这里只是天花板，计数「已选/当前模型上限」
+      { ...imageSlot('参考图（选填）', 30, 'imageUrls', false, 1), layout: 'ml', needsMode: 'i2v', strip: 'prototype' },
     ],
     fields: [
       {

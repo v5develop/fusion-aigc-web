@@ -23,6 +23,7 @@ import PosePairingPanel from './PosePairingPanel.vue'
 import { usePosePairing } from './usePosePairing.ts'
 import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import { MAX_POSE_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
+import { normalizeModelTier } from '@/utils/modelLabel'
 
 defineOptions({ name: 'studio-pose' })
 
@@ -169,7 +170,7 @@ function onReedit(payload: Record<string, unknown>) {
   }
 
   form.global_prompt = typeof p.global_prompt === 'string' ? p.global_prompt : ''
-  form.model = MODEL_OPTIONS.some((o) => o.value === p.model) ? (p.model as string) : '通用'
+  form.model = MODEL_OPTIONS.find((o) => o.value === normalizeModelTier(p.model))?.value ?? '通用'
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
   form.aspect_ratio = typeof p.aspect_ratio === 'string' ? p.aspect_ratio : ''
   pairing.restore(p, sourceImages.value, poseImages.value)

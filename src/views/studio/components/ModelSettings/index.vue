@@ -4,8 +4,8 @@
  *
  * <p>外观交给共用的 CreationSettingsRow（原型底部「模型 通用 ▾ | 图片设置 3:4 · 1K · 1 张 ▾」两枚等宽按钮），
  * 两个弹层里分别放 CreationModelPicker 与 CreationImageSettings（与工具页、工作流页同一套胶囊）；
- * 这里只放工作室的选项与字段映射。展示名与传值分离：通用 / GPT Image 2.6 / GPT Image 2.5 / Nano Banana 2.1 Dev / Seedream 5.5，
- * 传值 通用 / GPT / GPT25Dev / Banana / Seedream（GPT25Dev = GPT Image 2.5 Sunburst Developer，按张计费）。tryon / pose 比例支持「自动」（空 = 按输入图比例取最近档，保留为可选档），
+ * 这里只放工作室的选项与字段映射。展示名与传值分离：通用 / GPT Image 2.6 / GPT Image 2.5 / Nano Banana 2.1 / Seedream 5.5，
+ * 传值 通用 / GPT / GPT25 / Banana / Seedream（GPT25 对用户显示 GPT Image 2.5，按张计费；旧档位值经 normalizeModelTier 归一）。tryon / pose 比例支持「自动」（空 = 按输入图比例取最近档，保留为可选档），
  * 三页默认都从 3:4 起（原型默认「3:4 · 1K · 1 张」）；imagegen 无自动档。没绑 v-model:count 就不出张数行（姿态复刻没有张数）。
  */
 import { computed, watch } from 'vue'
@@ -18,9 +18,10 @@ import {
   type CreationSettingsRowItem,
   type CreationSettingsValue,
 } from '@/components/creation/types'
-import { MODEL_OPTIONS, RESOLUTION_OPTIONS, ASPECT_RATIO_OPTIONS, COUNT_OPTIONS } from '../../constants.ts'
+import { MODEL_OPTIONS, displayModelLabel, RESOLUTION_OPTIONS, ASPECT_RATIO_OPTIONS, COUNT_OPTIONS } from '../../constants.ts'
 import type { StudioKind } from '@/api/studioTypes.ts'
 import { useStudioModels } from './useStudioModels.ts'
+import { normalizeModelTier } from '@/utils/modelLabel'
 
 const { autoRatio = false, countLabel, countHint, disabled = false, kind } = defineProps<{
   /** 取模型档能力用的 kind；不传按 autoRatio 推断（有「自动」档 = tryon / pose，否则 imagegen） */
@@ -42,13 +43,22 @@ const count = defineModel<number>('count')
 
 // ---- 按模型档收窄选项（GET /studio/models；拿不到用 constants 写死的全集） ----
 const caps = useStudioModels(kind ?? (autoRatio ? 'tryon' : 'imagegen'))
+// 父组件回填了旧档位值（草稿 / 重新编辑）：就地改成现行值，下拉选中正确、下次提交发新值
+watch(
+  model,
+  (v) => {
+    const next = normalizeModelTier(v)
+    if (next !== v) model.value = next
+  },
+  { immediate: true },
+)
 /** 模型列表：后端给了就用后端的展示名与顺序（不可用的档隐藏，当前选中的保留）；说明沿用前端文案 */
 const modelOptions = computed(() => {
   if (!caps.value) return MODEL_OPTIONS
   return caps.value
     .filter((c) => c.available || c.code === model.value)
     .map((c) => ({
-      label: c.label,
+      label: displayModelLabel(c.label),
       value: c.code,
       description: MODEL_OPTIONS.find((o) => o.value === c.code)?.description ?? c.notes.join('；'),
     }))

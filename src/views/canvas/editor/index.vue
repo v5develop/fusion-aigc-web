@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * 画布节点编辑器（对齐原型 CanvasView + canvas-v31 皮肤）：
  * 顶栏（返回 / 标题✎ / 保存状态 / 运行数 / 模板 · 保存 · 另存为 · 执行模型）
@@ -76,6 +77,8 @@ const {
   setViewport,
   viewport,
   getSelectedNodes,
+  getNodes,
+  onNodesInitialized,
   removeSelectedElements,
   screenToFlowCoordinate,
 } = useVueFlow(FLOW_ID)
@@ -152,6 +155,8 @@ function importFromHandoff(id: string) {
     last = created
   })
   if (last) {
+    // 交接自己定位到新加的那一排，进页的整体居中让给它
+    pendingFit = false
     const at = last.position
     void nextTick(() => setCenter(at.x + 120, at.y + 100, { zoom: 0.86, duration: 220 }))
   }
@@ -164,12 +169,33 @@ watch(
   },
 )
 
-// 节点先挂载、连线后补：Handle 尺寸就绪前加边会被 Vue Flow 丢弃
+// ---------------- 进页居中 ----------------
+// 每次加载完把全部节点居中显示一次（不论有没有连线）。必须等节点量完尺寸再算：
+// 节点先挂载、连线后补，加载结束那一刻节点宽高可能还是 0，这时 fitView 会按空包围盒算，工作区停在左上角。
+// 所以：加载结束时节点都已量好就立刻居中，否则等 Vue Flow 的 nodesInitialized 再居中；只做一次，之后不打扰用户的视角。
+let pendingFit = false
+
+function nodesMeasured(): boolean {
+  const list = getNodes.value
+  return list.length > 0 && list.every((n) => (n.dimensions?.width ?? 0) > 0 && (n.dimensions?.height ?? 0) > 0)
+}
+
+function fitOnce() {
+  if (!pendingFit) return
+  pendingFit = false
+  void fitView({ padding: 0.15, maxZoom: 1 })
+}
+
 watch(loading, async (value) => {
   if (value || !nodes.value.length) return
+  pendingFit = true
   await nextTick()
-  if (edges.value.length) void fitView({ padding: 0.15, maxZoom: 1 })
+  requestAnimationFrame(() => {
+    if (nodesMeasured()) fitOnce()
+  })
 })
+
+onNodesInitialized(() => fitOnce())
 
 // ---------------- 选中 ----------------
 
@@ -1769,7 +1795,7 @@ function applyModelPick(model: ICanvasCatalogModel) {
   closeCtxMenu()
   if (!node || !model.ready) return
   store.changeModel(node.id, model)
-  editorMessage.success(`已切换为 ${model.model}`)
+  editorMessage.success(`已切换为 ${modelLabelOf(model.model)}`)
 }
 
 // ---------------- 导出（2026-11-06 二轮）：工程 JSON + 整张画布 PNG（SVG 2× 渲染，跨域图留灰块） ----------------
@@ -1972,7 +1998,7 @@ async function exportCanvasPng() {
             )
             .join('')
         } else {
-          const label = node.data.model ? `模型 · ${node.data.model}` : node.type === 'model' ? '生成结果' : '空节点'
+          const label = node.data.model ? `模型 · ${modelLabelOf(node.data.model)}` : node.type === 'model' ? '生成结果' : '空节点'
           body =
             `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="6" fill="#f3f4f5" stroke="#e5e1e4" stroke-dasharray="5 5"/>` +
             `<text x="${bx + bw / 2}" y="${by + bh / 2 + 4}" text-anchor="middle" font-family="${font}" font-size="12" fill="#8a9099">${escapeXml(label)}</text>`
@@ -2942,7 +2968,7 @@ async function onStageDrop(event: DragEvent) {
                   @click="applyModelPick(option)"
                 >
                   <EditorIcon :name="ctxNode.data.modelId === option.model_id ? 'check' : 'model'" :size="14" />
-                  <span class="min-w-0 flex-1 truncate">{{ option.model }}</span>
+                  <span class="min-w-0 flex-1 truncate">{{ modelLabelOf(option.model) }}</span>
                   <small v-if="option.badge" class="shrink-0 text-11px text-muted">{{ option.badge }}</small>
                 </button>
               </div>

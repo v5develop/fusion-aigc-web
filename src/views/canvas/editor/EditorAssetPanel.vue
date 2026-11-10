@@ -5,6 +5,7 @@
  * 宽 248 / 头 44 / 搜索 32 / 行 44 / 缩略 32；可折叠到 48。
  */
 import { computed, ref } from 'vue'
+import { modelLabelOf } from '@/utils/modelLabel'
 import EditorIcon from './EditorIcon.vue'
 import { useCanvasEditor } from './useCanvasEditor.ts'
 import type { CanvasEditorNode } from './types.ts'
@@ -50,7 +51,7 @@ function typeLabel(node: CanvasEditorNode) {
   if (node.type === 'text') return '文字'
   if (node.type === 'video') return '视频'
   if (node.type === 'tool') return '工具'
-  if (node.type === 'model') return `${node.data.kind === 'video' ? '视频' : '图片'} · ${node.data.model ?? '模型'}`
+  if (node.type === 'model') return `${node.data.kind === 'video' ? '视频' : '图片'} · ${modelLabelOf(node.data.model) || '模型'}`
   return '图片'
 }
 

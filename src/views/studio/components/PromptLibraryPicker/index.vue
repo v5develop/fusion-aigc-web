@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelsOf } from '@/utils/modelLabel'
 /**
  * 从提示词库选择（商拍 / 图片生成页融合提示词库的弹层）。
  *
@@ -118,7 +119,7 @@ const excerpt = (item: IPromptLibItem) => item.prompt.replace(/\s+/g, ' ').trim(
           <span class="text-13px font-600 text-ink">{{ item.title }}</span>
           <span class="line-clamp-2 overflow-hidden text-11px leading-17px text-muted">{{ excerpt(item) }}</span>
           <span class="flex gap-6px items-center flex-wrap">
-            <span v-for="m in item.models" :key="`m-${item.id}-${m}`" class="ll-tag !cursor-default">{{ m }}</span>
+            <span v-for="m in modelLabelsOf(item.models)" :key="`m-${item.id}-${m}`" class="ll-tag !cursor-default">{{ m }}</span>
             <span v-for="tg in item.tags" :key="`t-${item.id}-${tg}`" class="ll-tag !cursor-default">#{{ tg }}</span>
             <span class="ml-auto text-11px text-violet opacity-0 transition-opacity duration-110 ease-[cubic-bezier(0.2,0.7,0.2,1)] group-hover:opacity-100">点击使用 →</span>
           </span>

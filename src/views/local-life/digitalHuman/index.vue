@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modelLabelOf } from '@/utils/modelLabel'
 /**
  * AI数字人工作台：形象（上传/公共/AI定制）+ 系统音色 + 配音内容 → 口播视频。
  * 生成前必须已同意《AIGC功能使用约定》（后端 1007，前端先弹约定弹窗）。
@@ -106,7 +107,7 @@ const copywritingId = ref<number | undefined>(undefined)
 const showCopyPicker = ref(false)
 const aiWriting = ref(false)
 
-const modelOptions = computed(() => (dhOptions.value?.models ?? []).map((o) => ({ label: o.label, value: o.code })))
+const modelOptions = computed(() => (dhOptions.value?.models ?? []).map((o) => ({ label: modelLabelOf(o.label), value: o.code })))
 const selectedModel = computed(() => modelOptions.value.find((o) => o.value === scriptModel.value))
 const maxScriptLen = computed(() => dhOptions.value?.max_script_len ?? 50)
 /** 配音内容卡头说明：随出片模型档变化（原「出片模型」下拉下面那句） */
@@ -371,7 +372,7 @@ async function removeItem(item: ILDigitalHuman) {
         ratio="9 / 16"
       >
         <template v-if="current" #meta>
-          <span class="truncate text-ink-2">{{ [current.voice_name, current.duration ? current.duration + 's' : '', current.model].filter(Boolean).join(' · ') }}</span>
+          <span class="truncate text-ink-2">{{ [current.voice_name, current.duration ? current.duration + 's' : '', modelLabelOf(current.model)].filter(Boolean).join(' · ') }}</span>
         </template>
       </ResultPreview>
     </template>

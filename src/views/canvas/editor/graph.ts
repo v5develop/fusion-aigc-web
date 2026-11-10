@@ -7,6 +7,7 @@
 import type { CanvasEditorEdge, CanvasEditorNode, CanvasEditorNodeData, CanvasToolKind } from './types'
 import { candidateIndexOf } from './types'
 import type { ICanvasRunRef } from '@/api/canvasHome.ts'
+import { modelLabelOf } from '@/utils/modelLabel'
 
 export type CanvasInputHandle = 'prompt' | 'image' | 'video' | 'audio' | 'garment' | 'models' | 'image-in'
 
@@ -508,5 +509,5 @@ export function applyModelToNode(
     data.sound = model.capabilities.sound ? (data.sound ?? true) : undefined
   }
   if (!model.capabilities.count) data.count = 1
-  data.subtitle = `${model.model} · ${isVideo ? (data.duration ?? '4s') : (data.size ?? '1K')}`
+  data.subtitle = `${modelLabelOf(model.model)} · ${isVideo ? (data.duration ?? '4s') : (data.size ?? '1K')}`
 }

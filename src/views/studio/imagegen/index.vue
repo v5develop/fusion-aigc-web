@@ -9,6 +9,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
+import BookOutlineIcon from '@/components/icons/BookOutlineIcon.vue'
 import { studioSubmitImageGen } from '@/api/studio.ts'
 import type { StudioImageGenPayload, StudioImageGenSubmitReq } from '@/api/studioTypes.ts'
 import StudioWorkspaceColumns from '../components/StudioWorkspaceColumns/index.vue'
@@ -19,6 +20,7 @@ import PromptLibraryFlyout from '@/components/creation/PromptLibraryFlyout.vue'
 import { PromptWriteButton } from '@/components/prompt-write'
 import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import { MAX_REF_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
+import { normalizeModelTier } from '@/utils/modelLabel'
 
 defineOptions({ name: 'studio-imagegen' })
 
@@ -117,7 +119,7 @@ function onReedit(payload: Record<string, unknown>) {
   refImages.value = (Array.isArray(p.image_urls) ? p.image_urls : []).filter((u): u is string => !!u)
 
   form.prompt = typeof p.prompt === 'string' ? p.prompt : ''
-  form.model = MODEL_OPTIONS.some((o) => o.value === p.model) ? (p.model as string) : '通用'
+  form.model = MODEL_OPTIONS.find((o) => o.value === normalizeModelTier(p.model))?.value ?? '通用'
   form.resolution = RESOLUTION_OPTIONS.some((o) => o.value === p.resolution) ? (p.resolution as string) : '1k'
   form.aspect_ratio = typeof p.aspect_ratio === 'string' && p.aspect_ratio ? p.aspect_ratio : '1:1'
   form.count = Math.min(9, Math.max(1, Math.round(Number(p.count) || 1)))
@@ -157,17 +159,7 @@ function onReedit(payload: Record<string, unknown>) {
             aria-haspopup="dialog"
             @click="pickerShow = !pickerShow"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z" />
-              <path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z" />
-            </svg>
+            <BookOutlineIcon class="!w-15px !h-15px" />
           </IconButton>
         </div>
 

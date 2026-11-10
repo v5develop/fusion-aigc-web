@@ -18,6 +18,9 @@ import { useMessage } from 'naive-ui'
 import { upload } from '@/api/ossUpload.ts'
 import { toApiError } from '@/api/index.ts'
 import StudioImageUpload from '@/views/studio/components/StudioImageUpload/index.vue'
+import AssetCornerButton from '@/components/creation/AssetCornerButton.vue'
+import ReferenceStrip from '@/components/creation/ReferenceStrip.vue'
+import ReferenceStripClassic from '@/components/creation/ReferenceStripClassic.vue'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import MediaLightbox, { type LightboxItem } from '@/components/MediaLightbox/index.vue'
@@ -36,7 +39,24 @@ const props = defineProps<{
    * 嵌在提示词一体框里（工具页 ml 版式）：槽头只给读屏（计数由框顶行写），叠片与「从资产库添加」并排一行
    */
   bare?: boolean
+  /**
+   * 嵌在一体框里的参考图条由它画框顶计数行（计数 + 书本钮；见 ReferenceStrip 的 head）。headText 覆盖计数文案，
+   * headTitle 是计数的悬停提示；library 时画书本钮，点了发 open-library（锚点 = 按钮），libraryOpen 给 aria-expanded
+   */
+  stripHead?: boolean
+  headText?: string
+  headTitle?: string
+  library?: boolean
+  libraryOpen?: boolean
+  /**
+   * 带标题的单槽卡（与提示词框同列分高时用，原型 tool-op.is-ml 上传卡）：卡内顶部居中写槽名，投放区最小高 200、可压缩，
+   * 「资产添加」在投放区下方居中；高度随列按 flex 比例分配（flex 1 1 auto）
+   */
+  titled?: boolean
+  /** titled 卡在当前模型不支持这类素材时的说明（写在标题下，投放区保持卡形但禁用） */
+  unsupportedHint?: string
 }>()
+const emit = defineEmits<{ 'open-library': [anchor: HTMLElement] }>()
 const urls = defineModel<string[]>({ required: true })
 /** 正在上传（只往外报）：页面据此在上传未完成时禁止提交；卸载时报回 false */
 const busy = defineModel<boolean>('uploading', { default: false })
@@ -268,6 +288,10 @@ function remove(i: number) {
 
 const mode = computed<UploadLayout>(() => props.layout ?? (isVideo.value || props.spec.max === 1 ? 'single' : 'batch'))
 const isPlates = computed(() => mode.value === 'ml' || mode.value === 'material')
+/** 一体框里的参考图条：schema 的 strip 设计期选长相（prototype = 5185 原型，其余 = 原来的样子），两个组件同 props / 事件 */
+const stripComp = computed(() => (props.spec.strip === 'prototype' ? ReferenceStrip : ReferenceStripClassic))
+/** 读屏 / 提示里的图片名：去掉槽名里的括注（「参考图（选填）」→「参考图」） */
+const stripName = computed(() => props.spec.label.replace(/（[^）]*）/g, ''))
 const unit = computed(() => (isVideo.value ? '段' : '张'))
 /** 槽头只在单角色参考图槽（数量写槽头）和产品替换底图显示；其它版式名称只给读屏（s1.1：上传框上方不再写「原图」） */
 const showHeader = computed(() => (!props.bare && mode.value === 'ml') || mode.value === 'pipe')
@@ -312,6 +336,11 @@ onBeforeUnmount(() => {
 })
 
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
+/** titled 卡下方的小按钮（原型 n-button small「资产添加」）：28 高、12px、白→#fbfcfc 板 + 控制线 */
+const smallBtnCls =
+  'h-28px box-border px-10px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] ' +
+  'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] ' +
+  'text-12px font-500 leading-12px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)'
 /**
  * 批量空态投放区（原型 C-35 压沿空态，sx-drop-pressed.css）：本体 1px 透明实线 + r8；虚线单独一层 ::before（inset -1、r9）——
  * border-style 不能补间，悬停时虚线 160ms 淡出、rgba(.16) 实线淡入，上沿 / 左右内影 240ms ease-out；拖入换藤紫实线 + 柔紫底、虚线隐去。
@@ -362,9 +391,11 @@ const seamCls = [
     :class="
       isPlates
         ? bare
-          ? 'relative flex flex-wrap items-end gap-8px min-w-0'
+          ? 'relative min-w-0'
           : ['tus-plate relative flex-[0_0_auto] min-w-0', seamCls]
-        : mode === 'single' || mode === 'batch'
+        : titled && mode === 'single'
+          ? 'w-full flex flex-col flex-[1_1_auto]'
+          : mode === 'single' || mode === 'batch'
           ? ['w-full flex justify-center', !(urls.length && mode === 'single') && 'flex-[1_0_auto]']
           : mode === 'video'
             ? 'flex-1 min-h-[300px] flex'
@@ -418,9 +449,34 @@ const seamCls = [
       @select="addAssetUrls"
     />
 
-    <!-- 参考图槽 / 材料片：一叠 78×130 · r12 白边浮片就是入口（长相由 StudioImageUpload 的 picker 模式画） -->
+    <!--
+      一体框里的参考图条（bare ml）：ReferenceStrip（原型）/ ReferenceStripClassic（原来的样子），schema 的 strip 选；
+      其余叠片入口（material / 非一体框 ml）仍是 StudioImageUpload picker，资产入口一律是叠片右下角云钮（不再旁挂文字钮）
+    -->
+    <component
+      :is="stripComp"
+      v-if="isPlates && bare"
+      :urls="urls"
+      :max="spec.max"
+      :label="stripName"
+      :disabled="disabled"
+      :uploading="uploading"
+      :head="stripHead"
+      :head-text="headText"
+      :head-title="headTitle"
+      :library="library"
+      :library-open="libraryOpen"
+      :asset="canPickAsset"
+      :on-drop-files="addFiles"
+      @pick="pickFromPlates"
+      @replace="startReplace"
+      @remove="remove"
+      @clear="urls = []"
+      @asset="openAssetPicker"
+      @open-library="(el: HTMLElement) => emit('open-library', el)"
+    />
     <StudioImageUpload
-      v-if="isPlates"
+      v-else-if="isPlates"
       :model-value="urls"
       picker
       :max="spec.max"
@@ -430,22 +486,115 @@ const seamCls = [
       :name="spec.label"
       :hint="uploading ? '上传中…' : ''"
       :on-drop-files="addFiles"
+      :on-cloud="canPickAsset ? openAssetPicker : undefined"
       @pick="pickFromPlates"
       @remove="(_url: string, index: number) => remove(index)"
       @replace="startReplace"
       @clear="urls = []"
     />
-    <div v-if="canPickAsset && isPlates" :class="bare ? 'flex' : 'flex justify-end mt-6px'">
+
+    <!-- 带标题的单槽卡（titled）：卡内顶部居中槽名 → 投放区（最小高 200、可压缩）→ 下方居中「资产添加」 -->
+    <div
+      v-else-if="titled && mode === 'single'"
+      :class="[
+        'relative flex flex-col flex-[1_1_auto] gap-8px w-full box-border p-12px rounded-6px border border-solid border-line bg-white',
+        'shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)]',
+        dragging && 'sx-drop',
+      ]"
+    >
+      <p class="flex-none m-0 mx-auto text-12px font-500 leading-16px text-center text-ink-2" aria-hidden="true">
+        {{ spec.label }}<span v-if="spec.required" class="text-danger"> *</span>
+      </p>
+      <p v-if="unsupportedHint" class="flex-none m-0 text-center text-12px leading-18px text-muted">{{ unsupportedHint }}</p>
       <button
+        v-if="!urls.length"
         type="button"
-        class="h-32px box-border px-12px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
-        :class="focusRing"
-        :disabled="disabled || uploading || (spec.max > 1 && room <= 0)"
-        :aria-label="`从资产库添加${spec.label}`"
-        @click="openAssetPicker"
+        class="relative flex flex-col flex-[1_1_auto] items-center justify-center gap-6px w-full min-h-200px box-border p-12px cursor-pointer motion-reduce:transition-none disabled:(cursor-not-allowed opacity-60)"
+        :class="[
+          focusRing,
+          singleZoneCls,
+          dragging
+            ? 'border-violet bg-violet-soft before:opacity-0'
+            : disabled || uploading
+              ? 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100'
+              : 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100 hover:(border-violet-line from-white to-#fbf7fd before:opacity-0)',
+        ]"
+        :disabled="disabled || uploading"
+        :aria-describedby="`${id}-hint`"
+        @click="pick"
       >
-        从资产库添加
+        <span class="relative grid flex-none w-64px h-72px place-items-center" aria-hidden="true" @pointerenter="playBall">
+          <span
+            class="absolute left-1/2 bottom-2px z-1 w-[38.4px] h-[11.2px] ml-[-19.2px] rounded-full bg-[rgba(31,35,41,0.32)] blur-[7.2px] opacity-75 scale-x-85 scale-y-80 pointer-events-none motion-reduce:animate-none"
+            :class="ballPlaying ? 'animate-[tus-ball-ground_1300ms_both]' : ''"
+          />
+          <span class="relative z-2 w-48px h-48px motion-reduce:animate-none" :class="ballPlaying ? 'animate-[tus-ball-jump_1300ms_both]' : ''">
+            <span
+              class="absolute inset-0 box-border border border-solid border-[#dfe3e8] rounded-full bg-[radial-gradient(circle_at_50%_35%,#fff_0_55%,#fbfbfc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] origin-[50%_100%] motion-reduce:animate-none"
+              :class="ballPlaying ? 'animate-[tus-ball-shell_1300ms_both]' : ''"
+            />
+            <span class="absolute inset-0 z-1 grid place-items-center text-ink-2 pointer-events-none -translate-y-2px">
+              <svg
+                class="w-[35.2px] h-[35.2px] overflow-visible"
+                viewBox="-0.4 -0.56 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M6.5 18a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.5 10.5a3.75 3.75 0 0 1 0 7.5z" />
+                <path d="M12 11v7" />
+                <path d="M9.5 13.5 12 11l2.5 2.5" />
+              </svg>
+            </span>
+          </span>
+        </span>
+        <b class="text-13px font-600 leading-[1.4] text-ink">{{
+          uploading ? '上传中…' : (spec.title ?? `拖拽或点击上传${isVideo ? '视频' : '图片'}`)
+        }}</b>
+        <span v-if="spec.subtitle" class="text-11px leading-[1.5] text-muted">{{ spec.subtitle }}</span>
+        <span :id="`${id}-hint`" class="text-11px leading-[1.5] text-muted">{{ hint }}</span>
       </button>
+      <div
+        v-else
+        class="relative grid flex-[1_1_auto] min-h-200px place-items-center overflow-hidden rounded-8px border border-solid border-line bg-surface3"
+      >
+        <video v-if="isVideo" :src="urls[0]" class="block w-full h-full max-h-[340px] object-contain bg-black" controls preload="metadata" />
+        <img v-else :src="urls[0]" :alt="spec.label" class="block max-w-full max-h-[340px] object-contain" />
+        <StudioMedBtn
+          :label="`删除${spec.label}`"
+          class="top-8px right-8px disabled:(opacity-45 cursor-not-allowed)"
+          :disabled="disabled"
+          @click="remove(0)"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
+          </svg>
+        </StudioMedBtn>
+      </div>
+      <div class="flex-none flex flex-wrap items-center justify-center gap-8px">
+        <button
+          v-if="urls.length"
+          type="button"
+          :class="[smallBtnCls, focusRing]"
+          :disabled="disabled || uploading"
+          @click="pick"
+        >
+          {{ uploading ? '上传中…' : isVideo ? '换一段' : '换一张' }}
+        </button>
+        <button
+          v-if="canPickAsset"
+          type="button"
+          :class="[smallBtnCls, focusRing]"
+          :disabled="disabled || uploading"
+          :aria-label="`从资产库添加${spec.label}`"
+          title="从资产库添加"
+          @click="openAssetPicker"
+        >
+          资产添加
+        </button>
+      </div>
     </div>
 
     <!-- 空态（batch / single）：B3.1 卡撑满余高，整块可点，48 云影球在卡正中 -->
@@ -752,17 +901,14 @@ const seamCls = [
             <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
           </svg>
         </StudioMedBtn>
-        <StudioMedBtn
+        <AssetCornerButton
           v-if="canPickAsset"
           :label="`从资产库添加${spec.label}`"
-          class="right-4px bottom-4px disabled:(opacity-45 cursor-not-allowed)"
+          :corner="false"
+          class="right-4px bottom-4px"
           :disabled="disabled || uploading"
           @click="openAssetPicker"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 0 0 7 18.5z" stroke-linejoin="round" transform="translate(0 -0.5)" />
-          </svg>
-        </StudioMedBtn>
+        />
       </div>
     </template>
 
