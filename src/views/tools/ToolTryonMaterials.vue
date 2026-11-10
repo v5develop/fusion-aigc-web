@@ -17,7 +17,7 @@ import { useMessage } from 'naive-ui'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import ToolGarmentDialog from './ToolGarmentDialog.vue'
-import { MAX_GARMENT, outfitLabel, useToolImageUpload, useTryonGarment } from './useTryonGarment'
+import { outfitLabel, useToolImageUpload, useTryonGarment } from './useTryonGarment'
 import type { TryonGarment } from './useTryonGarment'
 import type { UploadSpec } from './schemas'
 
@@ -34,6 +34,8 @@ const props = defineProps<{
   uploadFn?: (files: File[]) => Promise<string[]>
   /** 服装图弹窗里分别上传区额外的一行说明（商拍工作室写参考图上限）；不传不显示 */
   garmentNote?: string
+  /** 服装图合计上限（默认 9，最多 9）：商拍工作室按模型传 min(9, 参考图上限 − 1)，到顶后不再收图、计数按它写 */
+  maxGarments?: number
 }>()
 
 defineSlots<{
@@ -49,6 +51,12 @@ const models = defineModel<string[]>('models', { required: true })
 const message = useMessage()
 const uploadOptions = props.uploadFn ? { upload: props.uploadFn } : {}
 const g = props.garment ?? useTryonGarment(() => props.clothSpec, uploadOptions)
+// 外部持有的状态也要按页面给的上限拦：写进 hook（不传 = 恢复默认 9）
+watch(
+  () => props.maxGarments,
+  (n) => g.setMaxGarments(n),
+  { immediate: true },
+)
 const modelUploader = useToolImageUpload(() => props.modelSpec, uploadOptions)
 const MAX_MODELS = computed(() => props.modelSpec.max)
 
@@ -413,7 +421,7 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
         >
           <b class="text-12px font-500 text-ink-2">服装图</b>
           <span>{{
-            g.allPhotos.length ? `${g.selected.length}件·${g.allPhotos.length}张` : `最多${MAX_GARMENT}张`
+            g.allPhotos.length ? `${g.selected.length}件·${g.allPhotos.length}张` : `最多${g.maxGarments}张`
           }}</span>
         </p>
 

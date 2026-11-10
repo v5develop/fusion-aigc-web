@@ -20,6 +20,8 @@ import { useMessage } from 'naive-ui'
 // 这里刻意与路由 name 同名，标签条的 include 项直接用路由 name 即可
 defineOptions({ name: 'video-hot' })
 
+const MAX_PRODUCT_IMAGES = 3
+
 const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 
 const { taskList, showList, execute } = useInitCheckTaskStatus('video-hot')
@@ -37,7 +39,7 @@ const formData = reactive({
   duration: 16,
   buyPoint: '',
   modelCode: 'xiaoqi-video-1.0-lite',
-  checked: [] as string[],
+  checked: (checkboxOps.some((o) => o.label === 'UGC 种草') ? [checkboxOps.find((o) => o.label === 'UGC 种草')!.value] : []) as string[],
   personUrl: '',
   personUrlHs: '',
 })
@@ -92,11 +94,11 @@ const submit = () => {
   <Container title="爆款视频" :submit="submit" :loading="loading" :integral="integral" :quote-status="quoteStatus" :submit-hint="`一条商品图生成一条 ${formData.duration} 秒短片`">
     <template #default>
       <div>
-        <SectionTitle>商品图</SectionTitle>
+        <SectionTitle>上传商品图（最多 {{ MAX_PRODUCT_IMAGES }} 张）</SectionTitle>
         <ImageUpload
           fromAsset
           v-model:imgList="formData.imageUrls"
-          :limitNumber="3"
+          :limitNumber="MAX_PRODUCT_IMAGES"
           multiple
           bottomTips
           :exampleImages="[
@@ -112,7 +114,7 @@ const submit = () => {
           :modelCode="formData.modelCode"
         />
 
-        <SectionTitle>商品卖点&要求</SectionTitle>
+        <SectionTitle>商品卖点与要求</SectionTitle>
         <PromptAssist
           v-model:value="formData.buyPoint"
           :params="{

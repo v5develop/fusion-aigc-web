@@ -48,6 +48,44 @@ export interface StudioTryonSubmitReq {
   count_per_model: number
   /** 默认校色：出图后按校色默认参数自动校一遍；不传 = 不校 */
   color_fix?: boolean
+  /** 精细读图：反推读图走精细模式（更慢、设计细节更多），不另收费；不传 = 标准读图 */
+  fine_read?: boolean
+  /** 「AI 找细节」确认后的细节框（detail_crops_manual=true 时生效；空数组 = 不用细节图） */
+  detail_crops?: StudioDetailCrop[]
+  /** true = 用户确认过细节框，服务端只用 detail_crops、不再自动找细节 */
+  detail_crops_manual?: boolean
+}
+
+/** 细节框：garment_index = garment_images 下标；box = 归一化 [x, y, w, h]（0–1） */
+export interface StudioDetailCrop {
+  garment_index: number
+  /** 部位名，如「上衣·领口」 */
+  label: string
+  box: number[]
+  confidence?: number
+}
+
+/** 「AI 找细节」请求：与商拍提交同口径 */
+export interface StudioDetailsReq {
+  items: string[]
+  set_mode?: string
+  garment_images: StudioGarmentImage[]
+  fabric?: string
+  prompt?: string
+}
+
+export interface StudioDetailPlan {
+  garment_index: number
+  angle: string
+  crops: StudioDetailCrop[]
+}
+
+export interface StudioDetailsResp {
+  /** 每张服装图一项（顺序同 garment_images） */
+  plans: StudioDetailPlan[]
+  total: number
+  /** 给用户看的提示；没有为 [] */
+  warnings: string[]
 }
 
 /** 姿态复刻整批提交：人物图 1 张 + 姿势图 1–9 张，每张姿势一个任务 */
@@ -194,6 +232,48 @@ export interface StudioQuoteResp {
   warnings: string[]
 }
 
+// ---------------- 模型档能力 ----------------
+
+/** 单档分辨率的单张点数（GET /models?with_price=true） */
+export interface StudioModelResolutionPrice {
+  /** 1k / 2k / 4k */
+  resolution: string
+  available: boolean
+  /** billing_mode=off 时为 0 */
+  unit_points: number
+}
+
+/** 一个模型档的可选项（后端：组规则 ∩ gateway 目录，与提交时的参数归一同源） */
+export interface StudioModelCapability {
+  /** 传值：通用 / GPT / GPT25Dev / Banana / Seedream */
+  code: string
+  /** 展示名（如 GPT Image 2.6） */
+  label: string
+  /** 2026-11-10 起服务端不再下发（内部模型组码不对用户暴露）；保留可选声明兼容老服务 */
+  model_group?: string
+  /** gateway 目录里该组已启用；目录拉不到时为 true */
+  available: boolean
+  /** 可选分辨率（小写） */
+  resolutions: string[]
+  /** 可选比例（W:H），如 Seedream 5.5 没有 4:5 / 5:4 */
+  aspect_ratios: string[]
+  /** 支持「自动」比例（tryon / pose） */
+  auto_aspect: boolean
+  /** 本 kind 的参考图上限 */
+  max_ref_images: number
+  /** 限制说明短句 */
+  notes: string[]
+  /** with_price=true 时有 */
+  prices: StudioModelResolutionPrice[]
+}
+
+export interface StudioModelsResp {
+  kind: StudioKind
+  items: StudioModelCapability[]
+  /** with_price 时有：on / shadow / off */
+  billing_mode: string
+}
+
 // ---------------- 批次 / 任务 ----------------
 
 /** 批次。status：0 排队 / 1 切图中 / 2 反推中 / 3 生图中 / 4 全部成功 / 5 全部失败 / 6 部分成功 / 7 已取消 / 8 提交中（终态 = 4–7，不要用 >=4 判断） */
@@ -215,6 +295,8 @@ export interface StudioBatch {
   cover_url: string
   created_at: number
   updated_at: number
+  /** 各任务 warnings 去重合并（读图降级 / 品类不符 / 参考图截断…）；老网关不下发 */
+  warnings?: string[]
 }
 
 /** 任务（一张图）。status：0 排队 / 1 生成中 / 5 交付中（按生成中展示）/ 2 成功 / 3 失败 / 4 已取消 */
@@ -256,6 +338,12 @@ export interface StudioTask {
    * 新网关总下发这个字段（老网关没有）——前端据此判断服务端支持「服装细分部位」
    */
   mask_parts?: StudioMaskPart[]
+  /** 给用户看的提示（中文、不含供应商原文）：「已改用文字信息生成」「参考图看起来是…，与所选「文胸」不一致」等；老网关不下发 */
+  warnings?: string[]
+  /** 实际送生图的完整提示词（含首行图序；姿态 / 商拍有，编排完成前为空）；老网关不下发 */
+  prompt_text?: string
+  /** 提示词经用户编辑后重新生成过 */
+  prompt_edited?: boolean
 }
 
 /**

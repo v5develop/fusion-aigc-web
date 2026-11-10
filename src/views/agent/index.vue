@@ -71,6 +71,20 @@ import { PromptWriteButton } from '@/components/prompt-write'
 import { canvasCreate, canvasUploadMedia } from '@/api/canvasHome.ts'
 import { stashCanvasImport } from '@/utils/canvasImportHandoff.ts'
 import { createSafeUuid } from '@/utils/utils.ts'
+import { renderMiniMarkdown } from '@/utils/miniMarkdown.ts'
+
+/** 已定稿消息的 Markdown 渲染缓存（按原文）：流式每个 delta 只重解析正在生成的那条，不重扫全部历史 */
+const mdCache = new Map<string, string>()
+function renderReplyHtml(text: string, live?: boolean): string {
+  if (live) return renderMiniMarkdown(text)
+  let html = mdCache.get(text)
+  if (html === undefined) {
+    if (mdCache.size >= 300) mdCache.clear()
+    html = renderMiniMarkdown(text)
+    mdCache.set(text, html)
+  }
+  return html
+}
 import BatchHostingModal from './BatchHostingModal.vue'
 import TemplateBrowser from './TemplateBrowser.vue'
 import IconButton from '@/components/IconButton/index.vue'
@@ -2943,7 +2957,7 @@ onUnmounted(() => {
                   挑选一个爆款模板
                 </h2>
                 <p class="relative z-1 m-0 mt-8px text-12px leading-18px text-muted">
-                  别人卖爆的那张图，照着复刻一版；也可以直接描述你要做什么，智能体会先拆步骤、再跟你确认设置
+                  别人卖爆的那张图，照着复刻一版，打爆你的店铺
                 </p>
               </section>
               <!-- 输入框槽位：滚动时吸顶（原型 home-dock 停靠） -->
@@ -3063,8 +3077,9 @@ onUnmounted(() => {
                   </button>
                 </div>
               </div>
-              <h3 class="m-0 mb-12px mt-28px text-15px font-600 leading-22px text-ink">模板</h3>
+              <!-- 「模板 / 本周头条」Tab 标题在 TemplateBrowser 里（15/22，原型 .ref-tabs） -->
               <TemplateBrowser
+                class="mt-28px"
                 :picked-id="selectedTemplate?.plazaTemplateId ?? null"
                 :disabled="streaming"
                 @pick="pickTemplate"
@@ -3171,7 +3186,7 @@ onUnmounted(() => {
                     </div>
 
                     <!-- 智能体：头像挂在左槽，正文与各卡片同一条左沿 -->
-                    <!-- 顺序：思考 → 清单 → 结果 → 正文 → 表单。正文是整轮 message_delta 拼成的一段，帧里没有与工具的先后穿插信息，故不按原型把正文挪到清单前 -->
+                    <!-- 顺序（对齐原型）：思考 → 正文 → 清单 → 表单 → 结果。仅调整模板块次序，数据与逻辑不动 -->
                     <div v-else class="msg-wrap relative flex flex-col gap-18px">
                       <span class="ai-avatar" aria-hidden="true"><img src="/brand/xiaoqi-mark.svg" alt="" /></span>
                       <div v-if="item.reply.thinking" class="max-w-800px self-start">
@@ -3212,6 +3227,15 @@ onUnmounted(() => {
                         </svg>
                         正在思考
                       </div>
+                      <!-- 正文气泡：白瓷、左侧小嘴；轻量 Markdown（先转义再白名单标签，见 utils/miniMarkdown） -->
+                      <div
+                        v-if="item.reply.text"
+                        :class="[
+                          'ai-body md-body agent-tail sx-squircle relative w-fit max-w-800px break-words rounded-16px sx-soft px-12px py-8px text-13px leading-21px text-ink-2',
+                          item.live ? 'is-streaming' : '',
+                        ]"
+                        v-html="renderReplyHtml(item.reply.text, item.live)"
+                      ></div>
                       <!-- 执行清单：白瓷卡 + 小嘴；状态圆圈 已完成 / 进行中 / 失败 / 等待执行 -->
                       <div
                         v-if="item.reply.tools.length"
@@ -3253,188 +3277,6 @@ onUnmounted(() => {
                           </li>
                         </ul>
                       </div>
-                      <!-- 结果卡：生图工具每次提交一张；已出图的格可放大 / 引用编辑 / 下载 / 复制 / 在画布中打开 -->
-                      <div
-                        v-for="card in resultCards(item)"
-                        :key="card.key"
-                        class="agent-tail sx-squircle relative max-w-800px rounded-18px sx-soft px-16px py-14px"
-                      >
-                        <div class="flex items-center gap-8px text-13px font-600 leading-20px text-ink">
-                          <svg class="h-14px w-14px flex-none text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path :d="ICON.image" />
-                          </svg>
-                          生成图片
-                          <span class="text-11px font-400 leading-16px text-placeholder tabular-nums"
-                            >{{ card.done }} / {{ card.tiles.length }} 张</span
-                          >
-                        </div>
-                        <div :class="['mt-10px grid gap-8px', resultCols(card.tiles.length)]" :aria-busy="card.pending > 0">
-                          <div
-                            v-for="(tile, k) in card.tiles"
-                            :key="tile.key"
-                            :class="[
-                              'shot sx-squircle group relative aspect-[3/4] overflow-hidden rounded-12px border',
-                              tile.state === 'image'
-                                ? 'border-solid border-line bg-#f3f4f5 shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
-                                : tile.state === 'pending'
-                                  ? 'flex flex-col items-center justify-center gap-8px border-dashed border-#d9c9e4 bg-[linear-gradient(160deg,#faf7fc,#f1ebf6)] text-violet-ink'
-                                  : 'flex flex-col items-center justify-center gap-6px border-solid border-#ecd9d9 bg-[repeating-linear-gradient(135deg,#fbf7f7_0_8px,#f7f0f0_8px_16px)] text-#a24a4a',
-                            ]"
-                          >
-                            <template v-if="tile.state === 'image' && tile.url">
-                              <button
-                                type="button"
-                                :aria-label="multiCard === card.key ? `选择第 ${k + 1} 张` : `查看大图：第 ${k + 1} 张`"
-                                :aria-pressed="multiCard === card.key ? multiPicks.includes(tile.url) : undefined"
-                                :class="[
-                                  'absolute inset-0 block h-full w-full border-none bg-transparent p-0 sx-focus !outline-offset-[-2px]',
-                                  multiCard === card.key ? 'cursor-pointer' : 'cursor-zoom-in',
-                                ]"
-                                @click="onTileClick(card.key, card.urls, tile.url)"
-                              >
-                                <img
-                                  :src="tile.url"
-                                  alt=""
-                                  loading="lazy"
-                                  class="block h-full w-full object-cover"
-                                  :style="tileFix(tile)?.filter ? { filter: tileFix(tile)?.filter } : undefined"
-                                />
-                              </button>
-                              <span
-                                v-if="tileFix(tile)"
-                                class="pointer-events-none absolute left-8px top-8px z-2 rounded-9px bg-white/84 px-6px py-2px text-11px leading-14px text-violet-ink shadow-[0_1px_3px_rgba(0,0,0,0.14)] backdrop-blur-4px"
-                                >已校色</span
-                              >
-                              <template v-if="multiCard === card.key">
-                                <span
-                                  v-if="multiPicks.includes(tile.url)"
-                                  class="pointer-events-none absolute inset-0 z-1 rounded-[inherit] shadow-[inset_0_0_0_2px_#875f9a]"
-                                  aria-hidden="true"
-                                />
-                                <span
-                                  :class="[
-                                    'pointer-events-none absolute right-8px top-8px z-3 grid h-20px w-20px place-items-center rounded-full border border-solid backdrop-blur-4px [transition:background_.12s,border-color_.12s]',
-                                    multiPicks.includes(tile.url)
-                                      ? 'border-violet bg-violet text-white'
-                                      : 'border-white/90 bg-[rgba(20,20,24,0.34)] text-transparent',
-                                  ]"
-                                  aria-hidden="true"
-                                >
-                                  <svg class="h-11px w-11px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                                    <path :d="ICON.check" />
-                                  </svg>
-                                </span>
-                              </template>
-                              <div
-                                v-else
-                                class="absolute inset-x-0 bottom-0 z-2 flex flex-wrap items-center justify-end gap-10px bg-[linear-gradient(transparent,rgba(15,20,25,0.5))] px-6px pb-6px pt-14px opacity-0 [transition:opacity_.12s] group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none"
-                              >
-                                <button
-                                  type="button"
-                                  :class="[SHOT_OP, 'px-9px']"
-                                  :aria-label="`校色：第 ${k + 1} 张`"
-                                  @click="openColorFix(tile, k)"
-                                >
-                                  校色
-                                </button>
-                                <button type="button" :disabled="fixWorking" :class="[SHOT_OP, 'px-9px']" @click="quoteTile(tile)">引用编辑</button>
-                                <button
-                                  type="button"
-                                  :title="tileFix(tile) ? '下载（校色后）' : '下载'"
-                                  :aria-label="tileFix(tile) ? '下载校色后的图' : '下载'"
-                                  :disabled="fixWorking"
-                                  :class="[SHOT_OP, 'w-22px']"
-                                  @click="downloadTile(tile)"
-                                >
-                                  <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                    <path :d="ICON.download" />
-                                  </svg>
-                                </button>
-                                <button type="button" title="复制" aria-label="复制图片" :class="[SHOT_OP, 'w-22px']" @click="copyImage(tile.url)">
-                                  <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                    <path :d="ICON.copy" />
-                                  </svg>
-                                </button>
-                                <button
-                                  type="button"
-                                  title="在画布中打开"
-                                  aria-label="在画布中打开"
-                                  :disabled="openingCanvas || fixWorking"
-                                  :class="[SHOT_OP, 'w-22px']"
-                                  @click="openTileInCanvas(tile)"
-                                >
-                                  <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                    <path :d="ICON.expand" />
-                                  </svg>
-                                </button>
-                              </div>
-                            </template>
-                            <template v-else-if="tile.state === 'pending'">
-                              <span class="w-spin box-border h-16px w-16px rounded-full border-2 border-solid border-#e0d3ea border-t-violet-ink" aria-hidden="true" />
-                              <span class="text-11px leading-16px">生成中</span>
-                            </template>
-                            <template v-else>
-                              <span class="grid h-18px w-18px place-items-center rounded-full bg-#f3dede text-11px font-700" aria-hidden="true">!</span>
-                              <span class="max-w-full px-8px text-center text-11px leading-16px" :title="tile.reason || undefined"
-                                >生成失败<span v-if="tile.reason" class="sr-only">：{{ tile.reason }}</span></span
-                              >
-                            </template>
-                          </div>
-                        </div>
-                        <!-- 失败提示条：退回点数（历史回读才有 refundedPoints / billingStatus）+ 可重试的失败格「重试这 n 张」 -->
-                        <div
-                          v-if="!card.pending && card.failed"
-                          role="status"
-                          :class="[
-                            'mt-10px flex items-center gap-8px rounded-10px border border-solid px-10px py-8px text-12px leading-18px',
-                            card.done ? 'border-#ecdfc8 bg-#fdf9f1 text-#8a6a2f' : 'border-#ecd9d9 bg-#fdf6f6 text-#a24a4a',
-                          ]"
-                        >
-                          <span
-                            :class="[
-                              'grid h-16px w-16px flex-none place-items-center rounded-full text-10px font-700',
-                              card.done ? 'bg-#f3e3c6' : 'bg-#f3dede',
-                            ]"
-                            aria-hidden="true"
-                            >!</span
-                          >
-                          <span class="min-w-0 flex-1">{{ card.stripText }}</span>
-                          <button
-                            v-if="card.retryable.length"
-                            type="button"
-                            :disabled="!!retryingCard || streaming"
-                            :aria-busy="retryingCard === card.key"
-                            :class="BTN"
-                            @click="retryFailed(card)"
-                          >
-                            {{ retryingCard === card.key ? '提交中…' : `重试这 ${Math.min(card.retryable.length, 50)} 张` }}
-                          </button>
-                        </div>
-                        <div v-if="card.urls.length > 1" class="mt-10px flex items-center gap-8px">
-                          <span class="text-11px leading-16px text-#a3a9b2 tabular-nums">{{ card.urls.length }} 张</span>
-                          <span class="flex-1" />
-                          <template v-if="multiCard === card.key">
-                            <button type="button" :class="BTN" @click="toggleMulti(card.key)">取消</button>
-                            <button type="button" :disabled="!multiPicks.length" :class="BTN_PRIMARY" @click="downloadPicked">
-                              下载所选 {{ multiPicks.length }}
-                            </button>
-                          </template>
-                          <button v-else type="button" :class="BTN" @click="toggleMulti(card.key)">
-                            <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                              <path :d="ICON.download" />
-                            </svg>
-                            多选下载
-                          </button>
-                        </div>
-                      </div>
-                      <!-- 正文气泡：白瓷、左侧小嘴；纯文本（pre-wrap），不渲染 HTML -->
-                      <div
-                        v-if="item.reply.text"
-                        :class="[
-                          'ai-body agent-tail sx-squircle relative w-fit max-w-800px whitespace-pre-wrap break-words rounded-16px sx-soft px-12px py-8px text-13px leading-21px text-ink-2',
-                          item.live ? 'is-streaming' : '',
-                        ]"
-                      >{{ item.reply.text }}</div>
                       <!-- 参数确认表单（question_asker 中断）：逐题作答，最后一题「确认并生成」续跑本轮；提交后收成摘要卡 -->
                       <form
                         v-if="item.reply.form && item.form"
@@ -3652,6 +3494,178 @@ onUnmounted(() => {
                           </div>
                         </template>
                       </form>
+                      <!-- 结果卡：生图工具每次提交一张；已出图的格可放大 / 引用编辑 / 下载 / 复制 / 在画布中打开 -->
+                      <div
+                        v-for="card in resultCards(item)"
+                        :key="card.key"
+                        class="agent-tail sx-squircle relative max-w-800px rounded-18px sx-soft px-16px py-14px"
+                      >
+                        <div class="flex items-center gap-8px text-13px font-600 leading-20px text-ink">
+                          <svg class="h-14px w-14px flex-none text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path :d="ICON.image" />
+                          </svg>
+                          生成图片
+                          <span class="text-11px font-400 leading-16px text-placeholder tabular-nums"
+                            >{{ card.done }} / {{ card.tiles.length }} 张</span
+                          >
+                        </div>
+                        <div :class="['mt-10px grid gap-8px', resultCols(card.tiles.length)]" :aria-busy="card.pending > 0">
+                          <div
+                            v-for="(tile, k) in card.tiles"
+                            :key="tile.key"
+                            :class="[
+                              'shot sx-squircle group relative aspect-[3/4] overflow-hidden rounded-12px border',
+                              tile.state === 'image'
+                                ? 'border-solid border-line bg-#f3f4f5 shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                                : tile.state === 'pending'
+                                  ? 'flex flex-col items-center justify-center gap-8px border-dashed border-#d9c9e4 bg-[linear-gradient(160deg,#faf7fc,#f1ebf6)] text-violet-ink'
+                                  : 'flex flex-col items-center justify-center gap-6px border-solid border-#ecd9d9 bg-[repeating-linear-gradient(135deg,#fbf7f7_0_8px,#f7f0f0_8px_16px)] text-#a24a4a',
+                            ]"
+                          >
+                            <template v-if="tile.state === 'image' && tile.url">
+                              <button
+                                type="button"
+                                :aria-label="multiCard === card.key ? `选择第 ${k + 1} 张` : `查看大图：第 ${k + 1} 张`"
+                                :aria-pressed="multiCard === card.key ? multiPicks.includes(tile.url) : undefined"
+                                :class="[
+                                  'absolute inset-0 block h-full w-full border-none bg-transparent p-0 sx-focus !outline-offset-[-2px]',
+                                  multiCard === card.key ? 'cursor-pointer' : 'cursor-zoom-in',
+                                ]"
+                                @click="onTileClick(card.key, card.urls, tile.url)"
+                              >
+                                <img
+                                  :src="tile.url"
+                                  alt=""
+                                  loading="lazy"
+                                  class="block h-full w-full object-cover"
+                                  :style="tileFix(tile)?.filter ? { filter: tileFix(tile)?.filter } : undefined"
+                                />
+                              </button>
+                              <span
+                                v-if="tileFix(tile)"
+                                class="pointer-events-none absolute left-8px top-8px z-2 rounded-9px bg-white/84 px-6px py-2px text-11px leading-14px text-violet-ink shadow-[0_1px_3px_rgba(0,0,0,0.14)] backdrop-blur-4px"
+                                >已校色</span
+                              >
+                              <template v-if="multiCard === card.key">
+                                <span
+                                  v-if="multiPicks.includes(tile.url)"
+                                  class="pointer-events-none absolute inset-0 z-1 rounded-[inherit] shadow-[inset_0_0_0_2px_#875f9a]"
+                                  aria-hidden="true"
+                                />
+                                <span
+                                  :class="[
+                                    'pointer-events-none absolute right-8px top-8px z-3 grid h-20px w-20px place-items-center rounded-full border border-solid backdrop-blur-4px [transition:background_.12s,border-color_.12s]',
+                                    multiPicks.includes(tile.url)
+                                      ? 'border-violet bg-violet text-white'
+                                      : 'border-white/90 bg-[rgba(20,20,24,0.34)] text-transparent',
+                                  ]"
+                                  aria-hidden="true"
+                                >
+                                  <svg class="h-11px w-11px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <path :d="ICON.check" />
+                                  </svg>
+                                </span>
+                              </template>
+                              <div
+                                v-else
+                                class="absolute inset-x-0 bottom-0 z-2 flex flex-wrap items-center justify-end gap-8px bg-[linear-gradient(transparent,rgba(15,20,25,0.5))] px-6px pb-6px pt-14px opacity-0 [transition:opacity_.12s] group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none"
+                              >
+                                <button
+                                  type="button"
+                                  :class="[SHOT_OP, 'px-9px']"
+                                  :aria-label="`校色：第 ${k + 1} 张`"
+                                  @click="openColorFix(tile, k)"
+                                >
+                                  校色
+                                </button>
+                                <button type="button" :disabled="fixWorking" :class="[SHOT_OP, 'px-9px']" @click="quoteTile(tile)">引用编辑</button>
+                                <IconButton
+                                  size="sm"
+                                  variant="overlay"
+                                  :label="tileFix(tile) ? '下载校色后的图' : '下载'"
+                                  :disabled="fixWorking"
+                                  @click="downloadTile(tile)"
+                                >
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path :d="ICON.download" />
+                                  </svg>
+                                </IconButton>
+                                <IconButton size="sm" variant="overlay" label="复制图片" @click="copyImage(tile.url)">
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path :d="ICON.copy" />
+                                  </svg>
+                                </IconButton>
+                                <IconButton
+                                  size="sm"
+                                  variant="overlay"
+                                  label="在画布中打开"
+                                  :disabled="openingCanvas || fixWorking"
+                                  @click="openTileInCanvas(tile)"
+                                >
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path :d="ICON.expand" />
+                                  </svg>
+                                </IconButton>
+                              </div>
+                            </template>
+                            <template v-else-if="tile.state === 'pending'">
+                              <span class="w-spin box-border h-16px w-16px rounded-full border-2 border-solid border-#e0d3ea border-t-violet-ink" aria-hidden="true" />
+                              <span class="text-11px leading-16px">生成中</span>
+                            </template>
+                            <template v-else>
+                              <span class="grid h-18px w-18px place-items-center rounded-full bg-#f3dede text-11px font-700" aria-hidden="true">!</span>
+                              <span class="max-w-full px-8px text-center text-11px leading-16px" :title="tile.reason || undefined"
+                                >生成失败<span v-if="tile.reason" class="sr-only">：{{ tile.reason }}</span></span
+                              >
+                            </template>
+                          </div>
+                        </div>
+                        <!-- 失败提示条：退回点数（历史回读才有 refundedPoints / billingStatus）+ 可重试的失败格「重试这 n 张」 -->
+                        <div
+                          v-if="!card.pending && card.failed"
+                          role="status"
+                          :class="[
+                            'mt-10px flex items-center gap-8px rounded-10px border border-solid px-10px py-8px text-12px leading-18px',
+                            card.done ? 'border-#ecdfc8 bg-#fdf9f1 text-#8a6a2f' : 'border-#ecd9d9 bg-#fdf6f6 text-#a24a4a',
+                          ]"
+                        >
+                          <span
+                            :class="[
+                              'grid h-16px w-16px flex-none place-items-center rounded-full text-10px font-700',
+                              card.done ? 'bg-#f3e3c6' : 'bg-#f3dede',
+                            ]"
+                            aria-hidden="true"
+                            >!</span
+                          >
+                          <span class="min-w-0 flex-1">{{ card.stripText }}</span>
+                          <button
+                            v-if="card.retryable.length"
+                            type="button"
+                            :disabled="!!retryingCard || streaming"
+                            :aria-busy="retryingCard === card.key"
+                            :class="BTN"
+                            @click="retryFailed(card)"
+                          >
+                            {{ retryingCard === card.key ? '提交中…' : `重试这 ${Math.min(card.retryable.length, 50)} 张` }}
+                          </button>
+                        </div>
+                        <div v-if="card.urls.length > 1" class="mt-10px flex items-center gap-8px">
+                          <span class="text-11px leading-16px text-#a3a9b2 tabular-nums">{{ card.urls.length }} 张</span>
+                          <span class="flex-1" />
+                          <template v-if="multiCard === card.key">
+                            <button type="button" :class="BTN" @click="toggleMulti(card.key)">取消</button>
+                            <button type="button" :disabled="!multiPicks.length" :class="BTN_PRIMARY" @click="downloadPicked">
+                              下载所选 {{ multiPicks.length }}
+                            </button>
+                          </template>
+                          <button v-else type="button" :class="BTN" @click="toggleMulti(card.key)">
+                            <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                              <path :d="ICON.download" />
+                            </svg>
+                            多选下载
+                          </button>
+                        </div>
+                      </div>
                       <div v-if="item.stopped" class="text-12px leading-18px text-placeholder">已停止</div>
                       <div v-if="item.reply.error" role="alert" class="flex flex-wrap items-center gap-8px">
                         <span class="sx-squircle inline-flex items-center rounded-10px border border-solid border-#ecd9d9 bg-#fdf6f6 px-10px py-6px text-12px leading-18px text-#a24a4a">{{
@@ -3795,7 +3809,7 @@ onUnmounted(() => {
                     :value="draft"
                     rows="1"
                     :maxlength="12000"
-                    :placeholder="isHome ? '输入你的创作灵感，或从下方挑选一个爆款模板' : '描述你的创作目标、风格方向或产品卖点'"
+                    :placeholder="isHome ? '也可以直接描述你要做什么，智能体会先拆步骤、再跟你确认设置' : '描述你的创作目标、风格方向或产品卖点'"
                     aria-label="输入消息"
                     class="box-border block min-h-78px w-full flex-1 resize-none border-none bg-transparent p-0 font-sans text-13px leading-21px text-ink outline-none placeholder:text-placeholder"
                     :style="{ maxHeight: `${DRAFT_MAX_H}px` }"

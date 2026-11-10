@@ -13,13 +13,20 @@
  *
  * 增强能力照旧：分类条、比例 / 收藏筛选、标签带与标签筛选、收藏、单卡打标签、多选批量打标签、
  * 标签管理、详情（版本 / 相关资产 / 生成结果 / 原图·校色后，← / → 翻上一个下一个）。
- * 资产的新增 / 删除仍走素材库，本页不提供删除（官方资产也就不会被删）。
+ * 删除与「未分类」筛选见 useAssetDelete.ts（多选「删除」只删上传 / AI 生成，官方素材跳过并在确认语里说明）。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NConfigProvider, NSwitch, useMessage } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
-import { assetCategoryTree, assetLibCategories, assetLibList, assetLibTags, assetLibUpdate } from '@/api/assetLibrary.ts'
+import {
+  assetCategoryTree,
+  assetLibCategories,
+  assetLibList,
+  assetLibTagCreate,
+  assetLibTags,
+  assetLibUpdate,
+} from '@/api/assetLibrary.ts'
 import type {
   AssetLibKindGroup,
   IAssetCategoryNode,
@@ -29,6 +36,7 @@ import type {
   IAssetLibTag,
 } from '@/api/assetLibrary.ts'
 import { useDebounce } from '@/utils/hooks'
+import IconButton from '@/components/IconButton/index.vue'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
 import AssetCard from './components/AssetCard.vue'
@@ -39,6 +47,7 @@ import BatchTagModal from './components/BatchTagModal.vue'
 import AssetTagPopover from './components/AssetTagPopover.vue'
 import PromptDomain from './components/PromptDomain.vue'
 import { useAssetsInCanvas } from './useInCanvas.ts'
+import { UNTAGGED_TAG, canDeleteAsset, tagFilterLabel, tagListParams, useAssetDelete } from './useAssetDelete.ts'
 import {
   PILL_CLS,
   PILL_COUNT_CLS,
@@ -302,9 +311,12 @@ function clearFilters() {
 // ---------------- 标签带（我的标签字典） ----------------
 
 const tags = ref<IAssetLibTag[]>([])
+/** 「未分类」（没挂任何标签）的服务端计数；取不到为 null（不显示计数） */
+const untaggedCount = ref<number | null>(null)
 async function loadTags() {
   try {
     const res = await assetLibTags()
+    untaggedCount.value = res.data?.untagged_count ?? null
     tags.value = (res.data?.items ?? []).slice().sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
   } catch {
     // 拉失败沿用上次的字典
@@ -322,7 +334,7 @@ const PAGE_SIZE = 32
 const listParams = computed<IAssetLibListParams | 'empty' | null>(() => {
   const base: IAssetLibListParams = {
     aspect_ratio: filters.aspect_ratio || undefined,
-    tag: filters.tag || undefined,
+    ...tagListParams(filters.tag),
     favorite_only: filters.favorite_only || undefined,
     q: debouncedQ.value || undefined,
   }
@@ -531,9 +543,79 @@ function onBatchTagged() {
   void loadTags()
 }
 
+// ---------------- 删除（useAssetDelete.ts） ----------------
+
+const assetDelete = useAssetDelete({
+  resolve: (id) => selectedAssets.get(id) ?? items.value.find((it) => it.id === id),
+  onDeleted: (ids) => {
+    if (detailId.value != null && ids.includes(detailId.value)) detailId.value = null
+    exitSelect()
+    void silentRefresh()
+    void loadTags()
+    void loadCategories()
+  },
+})
+/** 选中里能删的个数（官方素材不算）：0 时「删除」置灰并提示「官方素材不可删除」 */
+const deletableSelectedCount = computed(() => assetDelete.deletableOf(selectedIds.value).length)
+
+/** 详情底部「删除」：当前打开的资产（列表里找不到时不给删，避免拿不到来源信息误判官方素材） */
+const detailAsset = computed(() => (detailId.value == null ? undefined : items.value.find((it) => it.id === detailId.value)))
+const detailCanDelete = computed(() => canDeleteAsset(detailAsset.value))
+const detailDeleteReason = computed(() => (detailAsset.value?.source === 'official' ? '官方素材不可删除' : ''))
+function onDetailDelete() {
+  if (detailAsset.value) void assetDelete.confirmDeleteOne(detailAsset.value)
+}
+
 // ---------------- 标签管理 / 单卡打标签 / 详情 ----------------
 
 const showTagManager = ref(false)
+
+// 标签带行内新建（原型 relay-strip-add）：点「＋」出输入框，回车建、Esc / 失焦空值收起
+const tagAdding = ref(false)
+const tagDraft = ref('')
+const tagCreating = ref(false)
+const tagDraftInput = ref<HTMLInputElement | null>(null)
+function startTagAdd() {
+  tagAdding.value = true
+  void nextTick(() => tagDraftInput.value?.focus())
+}
+function cancelTagAdd() {
+  tagAdding.value = false
+  tagDraft.value = ''
+}
+async function submitTagAdd() {
+  const name = tagDraft.value.trim()
+  if (!name) return cancelTagAdd()
+  if (tagCreating.value) return
+  if (tags.value.some((t) => t.name === name)) {
+    message.warning('已有同名标签')
+    return
+  }
+  tagCreating.value = true
+  try {
+    await assetLibTagCreate(name)
+    message.success('标签已新建')
+    cancelTagAdd()
+    await loadTags()
+  } catch {
+    // 失败 toast（重名 / 超限）已由请求层弹出，保留输入便于改名
+  } finally {
+    tagCreating.value = false
+  }
+}
+function onTagDraftBlur() {
+  if (!tagDraft.value.trim()) cancelTagAdd()
+}
+
+// 卡片入场：首屏 420ms 自下 8px 淡入，之后翻页 / 追加只位移 4px；reduced-motion 关掉
+const firstEntering = ref(true)
+let firstEnterTimer: ReturnType<typeof setTimeout> | undefined
+watch(items, (v) => {
+  if (v.length && firstEntering.value && !firstEnterTimer) {
+    firstEnterTimer = setTimeout(() => (firstEntering.value = false), 700)
+  }
+})
+onBeforeUnmount(() => clearTimeout(firstEnterTimer))
 
 /** 标签重命名 / 删除会影响卡片上的标签名；若删掉的正被用作筛选，清掉筛选 */
 function onTagsChanged(deletedName?: string) {
@@ -596,6 +678,7 @@ function openSibling(delta: 1 | -1) {
 
 const emptyCopy = computed(() => {
   if (debouncedQ.value) return { text: '没有匹配的资产', desc: '换个关键词试试。' }
+  if (filters.tag === UNTAGGED_TAG) return { text: '没有未分类的素材', desc: '所有素材都已经归到标签里了。' }
   if (filters.tag) return { text: `「${filters.tag}」下没有资产`, desc: '换个标签，或清除筛选。' }
   if (filters.favorite_only) return { text: '还没有收藏', desc: '点卡片右上角的星标，常用的资产会集中到这里。' }
   if (hasFilter.value) return { text: '没有符合筛选的资产', desc: '换个来源或分类，或清除筛选。' }
@@ -681,6 +764,18 @@ const emptyCopy = computed(() => {
             >
               {{ openingCanvas ? '正在创建画布…' : '用于画布' }}
             </button>
+            <!-- 删除（useAssetDelete.ts）：选中里全是官方素材时置灰 -->
+            <button
+              type="button"
+              :class="TOOL_CLS"
+              class="!text-danger"
+              :disabled="!deletableSelectedCount || assetDelete.deleting.value"
+              :aria-busy="assetDelete.deleting.value || undefined"
+              :title="deletableSelectedCount ? undefined : selectedIds.length ? '官方素材不可删除' : '先勾选要删除的素材'"
+              @click="assetDelete.confirmDeleteSelected(selectedIds)"
+            >
+              删除
+            </button>
             <button type="button" :class="TOOL_CLS" @click="selectPage">选择本页</button>
             <button type="button" :class="TOOL_CLS" @click="exitSelect">取消</button>
           </template>
@@ -728,26 +823,61 @@ const emptyCopy = computed(() => {
           </div>
         </template>
 
-        <template v-if="tags.length">
-          <span class="shrink-0 w-1px h-20px mx-2px bg-line" aria-hidden="true" />
-          <span :class="ROW_LABEL_CLS">标签</span>
-          <div
-            class="flex items-center gap-6px min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            role="group"
-            aria-label="按标签筛选"
+        <span class="shrink-0 w-1px h-20px mx-2px bg-line" aria-hidden="true" />
+        <IconButton label="全部标签" size="md" variant="plate" @click="showTagManager = true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7a1 1 0 0 1 .7.3l7.3 7.3a1 1 0 0 1 0 1.4l-7.7 7.7a1 1 0 0 1-1.4 0l-7.3-7.3a1 1 0 0 1-.3-.7Z" />
+            <circle cx="8.2" cy="8.2" r="1.2" />
+          </svg>
+        </IconButton>
+        <div
+          class="flex items-center gap-6px min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="group"
+          aria-label="按标签筛选"
+        >
+          <!-- 「未分类」= 没挂任何标签（useAssetDelete.ts 的 UNTAGGED_TAG → 列表 untagged=true） -->
+          <button
+            type="button"
+            :aria-pressed="filters.tag === UNTAGGED_TAG"
+            :class="[PILL_CLS, filters.tag === UNTAGGED_TAG ? PILL_ON : PILL_OFF]"
+            @click="toggleTag(UNTAGGED_TAG)"
           >
-            <button
-              v-for="t in tags"
-              :key="t.id"
-              type="button"
-              :aria-pressed="filters.tag === t.name"
-              :class="[PILL_CLS, filters.tag === t.name ? PILL_ON : PILL_OFF]"
-              @click="toggleTag(t.name)"
-            >
-              {{ t.name }}<em :class="PILL_COUNT_CLS" class="not-italic">{{ t.asset_count }}</em>
-            </button>
-          </div>
-        </template>
+            未分类<em v-if="untaggedCount != null" :class="PILL_COUNT_CLS" class="not-italic">{{ untaggedCount }}</em>
+          </button>
+          <button
+            v-for="t in tags"
+            :key="t.id"
+            type="button"
+            :aria-pressed="filters.tag === t.name"
+            :class="[PILL_CLS, filters.tag === t.name ? PILL_ON : PILL_OFF]"
+            @click="toggleTag(t.name)"
+          >
+            {{ t.name }}<em :class="PILL_COUNT_CLS" class="not-italic">{{ t.asset_count }}</em>
+          </button>
+          <input
+            v-if="tagAdding"
+            ref="tagDraftInput"
+            v-model="tagDraft"
+            maxlength="12"
+            placeholder="标签名"
+            aria-label="新标签名"
+            :disabled="tagCreating"
+            class="shrink-0 w-96px h-30px box-border px-10px rounded-15px border border-solid border-violet-line bg-white outline-none text-12px text-ink placeholder:text-placeholder"
+            @keydown.enter.prevent="submitTagAdd"
+            @keydown.esc="cancelTagAdd"
+            @blur="onTagDraftBlur"
+          />
+          <button
+            v-else
+            type="button"
+            aria-label="新建标签"
+            title="新建标签"
+            :class="[PILL_CLS, PILL_OFF]"
+            @click="startTagAdd"
+          >
+            ＋
+          </button>
+        </div>
 
         <label :class="SEARCH_CLS">
           <svg class="w-13px h-13px shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -843,18 +973,22 @@ const emptyCopy = computed(() => {
           <button
             type="button"
             class="inline-flex items-center gap-4px h-30px px-10px rounded-15px border border-solid border-violet-line bg-info-soft text-12px text-violet-ink cursor-pointer sx-focus"
-            :aria-label="`清除标签筛选 ${filters.tag}`"
+            :aria-label="`清除标签筛选 ${tagFilterLabel(filters.tag)}`"
             @click="filters.tag = ''"
           >
-            标签：{{ filters.tag }} <span aria-hidden="true">×</span>
+            标签：{{ tagFilterLabel(filters.tag) }} <span aria-hidden="true">×</span>
           </button>
         </div>
 
         <PageLoadError v-if="loadError && !loading" subtitle="资产列表没有取到，请检查网络后重试" retryable @retry="load()" />
         <template v-else>
-          <div
+          <TransitionGroup
             v-loading="loading"
+            name="card"
+            tag="div"
+            appear
             class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-7 wide:grid-cols-8 items-start gap-8px min-h-240px"
+            :class="firstEntering && 'is-first'"
           >
             <AssetCard
               v-for="item in items"
@@ -869,13 +1003,13 @@ const emptyCopy = computed(() => {
               @filter-tag="toggleTag"
               @edit-tags="editTags"
             />
-            <div v-if="!loading && !items.length" class="col-span-full h-360px">
+            <div v-if="!loading && !items.length" key="__empty" class="col-span-full h-360px">
               <PageEmpty :text="emptyCopy.text" :description="emptyCopy.desc">
                 <button v-if="debouncedQ" type="button" class="sx-btn" @click="filters.q = ''">清除搜索</button>
                 <button v-else-if="hasFilter" type="button" class="sx-btn" @click="clearFilters">清除筛选</button>
               </PageEmpty>
             </div>
-          </div>
+          </TransitionGroup>
 
           <AssetPager v-model:page="page" :total="total" :page-size="PAGE_SIZE" :disabled="loading" />
         </template>
@@ -886,6 +1020,9 @@ const emptyCopy = computed(() => {
       v-model="detailId"
       :has-prev="detailHasPrev"
       :has-next="detailHasNext"
+      :can-delete="detailCanDelete"
+      :delete-disabled-reason="detailDeleteReason"
+      @delete="onDetailDelete"
       @changed="onDetailChanged"
       @prev="openSibling(-1)"
       @next="openSibling(1)"
@@ -933,9 +1070,35 @@ const emptyCopy = computed(() => {
   }
 }
 
+// 卡片入场（TransitionGroup name=card）：后续追加位移 4px，首屏（.is-first）8px 且慢一点
+.card-enter-active {
+  transition:
+    opacity 0.32s ease,
+    transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.card-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.is-first {
+  .card-enter-active {
+    transition-duration: 0.42s;
+  }
+  .card-enter-from {
+    transform: translateY(8px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .asset-beam.is-ready {
     transition: none;
+  }
+  .card-enter-active {
+    transition: none !important;
+  }
+  .card-enter-from {
+    opacity: 1;
+    transform: none;
   }
 }
 </style>

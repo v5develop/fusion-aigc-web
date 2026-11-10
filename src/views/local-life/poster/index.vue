@@ -19,6 +19,7 @@ import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
 import ResultPreview from '../components/ResultPreview/index.vue'
+import { useLLQuote } from '../components/Workbench/useLLQuote.ts'
 import {
   llCopywritingAiWrite,
   llCreationList,
@@ -118,6 +119,9 @@ function pickCopy(c: { id: number; body: string }) {
   showCopyPicker.value = false
 }
 
+// 提交前报价：按张计（海报档位不影响价格），提交即冻结
+const { estimate } = useLLQuote(() => ({ tool: props.kind, image_count: form.image_count }))
+
 // ---------------- 提交 ----------------
 
 const submitting = ref(false)
@@ -187,7 +191,7 @@ async function removeItem(item: ILCreation) {
 </script>
 
 <template>
-  <Workbench :title="pageTitle" :submit="submit" :loading="submitting" :history-count="listCtl.total.value">
+  <Workbench :title="pageTitle" :submit="submit" :loading="submitting" :estimate="estimate" :history-count="listCtl.total.value">
     <template #default>
       <FormCard :title="isPoster ? '海报信息' : '长图内容'" required>
         <PromptBox

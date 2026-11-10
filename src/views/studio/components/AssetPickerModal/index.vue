@@ -12,6 +12,8 @@ import { computed, ref, watch } from 'vue'
 import { assetLibCategories, assetLibList } from '@/api/assetLibrary.ts'
 import type { IAssetLibAsset, IAssetLibCategory } from '@/api/assetLibrary.ts'
 import { useDebounce } from '@/utils/hooks/index.ts'
+import { readRecentAssets, writeRecentAssets, RECENT_MAX } from '@/utils/assetRecent.ts'
+import type { IRecentAsset } from '@/utils/assetRecent.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 
@@ -34,6 +36,25 @@ const SOURCES = [
 ] as const
 
 const PAGE_SIZE = 30
+const isHttp = (url: string) => /^https?:\/\//i.test(url)
+
+/** 「最近」：本机最近选过的资产（按账号隔离，见 utils/assetRecent） */
+type IRecent = IRecentAsset
+const readRecent = readRecentAssets
+const writeRecent = writeRecentAssets
+const recentMode = ref(false)
+const recent = ref<IRecent[]>([])
+const recentShown = computed(() => recent.value.filter((r) => r.media === media))
+const toRecent = (a: IAssetLibAsset): IRecent => ({ id: String(a.id), url: pickUrl(a), media, title: a.title ?? '', ...(isHttp(a.image) ? { poster: a.image } : {}) })
+function pushRecent(added: IRecent[]) {
+  const urls = new Set(added.map((r) => r.url))
+  recent.value = [...added, ...readRecent().filter((r) => !urls.has(r.url))].slice(0, RECENT_MAX)
+  writeRecent(recent.value)
+}
+function dropRecent(url: string) {
+  recent.value = recent.value.filter((r) => r.url !== url)
+  writeRecent(recent.value)
+}
 
 const kind = ref('all')
 const source = ref('')
@@ -50,7 +71,6 @@ const chosen = ref<string[]>([])
 let seq = 0
 
 const hasMore = computed(() => items.value.length < total.value)
-const isHttp = (url: string) => /^https?:\/\//i.test(url)
 const isVideoMode = computed(() => media === 'video')
 const mediaWord = computed(() => (isVideoMode.value ? '视频' : '图片'))
 /** 交回调用方的地址：图片取 image，视频取 video_url（image 是封面） */
@@ -116,20 +136,43 @@ function loadMore() {
   void fetchPage(false)
 }
 
+/** 选中的 url -> 资产，确认时写入「最近」 */
+const chosenAssets = new Map<string, IRecent>()
+
+function toggleRecent(r: IRecent) {
+  if (limit <= 1) {
+    emit('select', [r.url])
+    pushRecent([r])
+    show.value = false
+    return
+  }
+  const at = chosen.value.indexOf(r.url)
+  if (at >= 0) chosen.value.splice(at, 1)
+  else if (chosen.value.length < limit) {
+    chosen.value.push(r.url)
+    chosenAssets.set(r.url, r)
+  }
+}
+
 function toggle(asset: IAssetLibAsset) {
   const url = pickUrl(asset)
   if (limit <= 1) {
+    pushRecent([toRecent(asset)])
     emit('select', [url])
     show.value = false
     return
   }
   const at = chosen.value.indexOf(url)
   if (at >= 0) chosen.value.splice(at, 1)
-  else if (chosen.value.length < limit) chosen.value.push(url)
+  else if (chosen.value.length < limit) {
+    chosen.value.push(url)
+    chosenAssets.set(url, toRecent(asset))
+  }
 }
 
 function confirm() {
   if (!chosen.value.length) return
+  pushRecent(chosen.value.map((u) => chosenAssets.get(u)).filter((a): a is IRecent => !!a))
   emit('select', [...chosen.value])
   show.value = false
 }
@@ -143,6 +186,9 @@ watch(
     source.value = ''
     keyword.value = ''
     chosen.value = []
+    chosenAssets.clear()
+    recent.value = readRecent()
+    recentMode.value = false
     void fetchCategories()
     reload()
   },
@@ -169,16 +215,25 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
     <div class="flex flex-col gap-10px">
       <div class="flex gap-10px items-center">
         <div class="flex gap-8px flex-wrap">
-          <span
+          <button
+            type="button"
+            class="ll-pill !min-h-32px !text-13px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
+            :class="{ 'll-pill-active': recentMode }"
+            @click="recentMode = true"
+            >最近</button
+          >
+          <button
             v-for="s in SOURCES"
             :key="s.key"
-            class="ll-pill !min-h-32px !text-13px"
-            :class="{ 'll-pill-active': source === s.key }"
-            @click="source = s.key"
-            >{{ s.label }}</span
+            type="button"
+            class="ll-pill !min-h-32px !text-13px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
+            :class="{ 'll-pill-active': !recentMode && source === s.key }"
+            @click="((recentMode = false), (source = s.key))"
+            >{{ s.label }}</button
           >
         </div>
         <n-input
+          v-if="!recentMode"
           v-model:value="keyword"
           size="small"
           clearable
@@ -186,7 +241,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
           class="!w-200px ml-auto"
         />
       </div>
-      <div v-if="categories.length" class="flex gap-8px flex-wrap">
+      <div v-if="categories.length && !recentMode" class="flex gap-8px flex-wrap">
         <span
           v-for="c in categories"
           :key="c.key"
@@ -197,7 +252,49 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
         >
       </div>
 
-      <div class="max-h-[min(52vh,480px)] min-h-200px overflow-y-auto" v-loading="loading">
+      <div v-if="recentMode" class="max-h-[min(52vh,480px)] min-h-200px overflow-y-auto">
+        <div v-if="!recentShown.length" class="py-40px text-center text-12px text-placeholder">
+          还没有最近使用的{{ mediaWord }}，选过之后会出现在这里
+        </div>
+        <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-10px">
+          <button
+            v-for="r in recentShown"
+            :key="r.url"
+            type="button"
+            class="relative aspect-[3/4] p-0 overflow-hidden border-2 border-solid rounded-8px bg-surface2 cursor-pointer focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet"
+            :class="chosen.includes(r.url) ? 'border-violet' : 'border-transparent hover:border-violet-line'"
+            :title="r.title"
+            :aria-label="r.title || `最近${mediaWord}`"
+            :aria-pressed="chosen.includes(r.url)"
+            @click="toggleRecent(r)"
+          >
+            <img
+              v-if="r.media === 'image'"
+              class="block w-full h-full object-cover"
+              :src="r.url"
+              :alt="r.title"
+              loading="lazy"
+              @error="dropRecent(r.url)"
+            />
+            <img
+              v-else-if="r.poster"
+              class="block w-full h-full object-cover"
+              :src="r.poster"
+              :alt="r.title"
+              loading="lazy"
+            />
+            <span v-else class="grid place-items-center w-full h-full text-muted" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+            </span>
+            <span
+              v-if="chosen.includes(r.url)"
+              class="absolute top-4px right-4px grid place-items-center w-18px h-18px rounded-full bg-violet text-white text-11px"
+              >{{ chosen.indexOf(r.url) + 1 }}</span
+            >
+          </button>
+        </div>
+      </div>
+      <div v-else class="max-h-[min(52vh,480px)] min-h-200px overflow-y-auto" v-loading="loading">
         <div v-if="failed && !loading && !items.length" class="py-40px text-center text-12px text-placeholder">
           资产加载失败
           <span class="ll-link ml-6px !text-13px" @click="reload">重试</span>

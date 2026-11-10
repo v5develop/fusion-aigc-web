@@ -103,7 +103,7 @@ const mealLabels = ['套餐二连图', '套餐图']
         </div>
 
         <!-- 导航 -->
-        <div class="h-38px shrink-0 flex items-center gap-6px bg-white px-12px text-ink">
+        <div class="h-36px shrink-0 flex items-center gap-6px bg-white px-12px text-ink">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <path v-for="d in ICONS.back" :key="d" :d="d" />
           </svg>

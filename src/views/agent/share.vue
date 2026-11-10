@@ -6,6 +6,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { NConfigProvider, NImage, NSpin } from 'naive-ui'
+import { renderMiniMarkdown } from '@/utils/miniMarkdown.ts'
 import { llTheme } from '@/views/local-life/theme.ts'
 import { agentSharedMessages, replyFromFrames } from '@/api/agent.ts'
 import type { IAgentMessage, IAgentReply } from '@/api/agent.ts'
@@ -116,9 +117,11 @@ onMounted(async () => {
                   }}</span>
                 </li>
               </ul>
-              <div v-if="item.reply.text" class="whitespace-pre-wrap break-words text-13px leading-21px text-ink-2">
-                {{ item.reply.text }}
-              </div>
+              <div
+                v-if="item.reply.text"
+                class="md-body break-words text-13px leading-21px text-ink-2"
+                v-html="renderMiniMarkdown(item.reply.text)"
+              ></div>
               <span v-if="item.reply.error" class="ll-chip ll-chip-error self-start">{{ item.reply.error }}</span>
             </div>
           </template>

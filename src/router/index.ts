@@ -11,7 +11,7 @@ import assetLibraryRouter from './asset-library'
 import taskCenterRouter from './task-center'
 import studioRouter from './studio'
 import workflowRouter from './workflow'
-import { generatorRedirect } from './generator'
+import { generatorRedirect, studioToolRedirect } from './generator'
 
 const hasBridge = !!(window as any).ThirdServiceBridge
 
@@ -38,9 +38,9 @@ const router = createRouter({
       path: '/',
       component: () => import('@/views/layout/index.vue'),
       children: [
-        // 首页 = 工具箱，路径对齐原型 #/tools（原型 / 也是重定向到 /tools）；
+        // 默认落地 = AI 图片（/image），工具箱仍在 /tools；
         // 根路径 / 重定向过来：登录回跳、书签与容器初始地址都还写着 /
-        { path: '/', redirect: '/tools' },
+        { path: '/', redirect: '/image' },
         {
           path: '/tools',
           name: 'home',
@@ -188,5 +188,6 @@ async function ensureBootAuth() {
 
 // 入口参数 /image?entryCode=…、/video?… 转到生成页（排在登录守卫之后；见 generator.ts）
 router.beforeEach(generatorRedirect)
+router.beforeEach(studioToolRedirect)
 
 export default router

@@ -99,6 +99,11 @@ export interface ICanvasTemplates {
   items: ICanvasTemplate[]
 }
 
+/** 模板详情：多带快照（{nodes, edges}，只有结构，模型 / 工具节点的生成结果与运行态已由服务端剥掉） */
+export interface ICanvasTemplateDetail extends ICanvasTemplate {
+  snapshot: { nodes?: unknown[]; edges?: unknown[]; [key: string]: unknown } | null
+}
+
 /** 画布列表（updated_at 倒序） */
 export function canvasList(params: { page?: number; page_size?: number } = {}) {
   return get<ICanvasList>(`${PREFIX}/canvases`, { page: 1, page_size: 20, ...params })
@@ -148,9 +153,14 @@ export function canvasRuns(id: string, limit = 50, nodeId?: string) {
   return get<ICanvasRuns>(`${PREFIX}/canvases/${id}/runs`, { limit, ...(nodeId ? { node_id: nodeId } : {}) })
 }
 
-/** 模板列表 */
+/** 模板列表（不带快照） */
 export function canvasTemplates(scope: 'official' | 'user' | 'all' = 'official') {
   return get<ICanvasTemplates>(`${PREFIX}/templates`, { scope })
+}
+
+/** 模板详情（含快照）：编辑器「从模板插入」取结构用；官方模板 + 本人模板可见，其余 4001 */
+export function canvasTemplateDetail(id: number) {
+  return get<ICanvasTemplateDetail>(`${PREFIX}/templates/${id}`)
 }
 
 // ==================== 节点编辑器 ====================

@@ -507,6 +507,14 @@ const trashIcon = ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6
                       {{ row.error || '生成失败' }}
                     </p>
                     <div
+                      v-if="!historyThumbs(row).length && !isLLTerminal(row.status)"
+                      class="flex items-center gap-6px text-12px leading-18px text-muted"
+                      role="status"
+                    >
+                      <n-spin :size="14" />
+                      <span>正在生成，完成后自动出现在这里</span>
+                    </div>
+                    <div
                       v-if="historyThumbs(row).length"
                       class="flex gap-4px overflow-x-auto pb-2px [scrollbar-width:thin]"
                       role="group"

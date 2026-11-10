@@ -66,7 +66,7 @@ const photoTint: Record<string, string> = {
   'local-life-shop-profile': 'bg-[linear-gradient(135deg,#d6eef0_0%,#7fc3c9_55%,#2f8f99_100%)]',
   'local-life-copywriting': 'bg-[linear-gradient(160deg,#cfeaf3_0%,#f4e7b0_55%,#e9c85a_100%)]',
 }
-const bannerPhoto = (b: LandingBanner) => toolCover(b.title)
+const bannerPhoto = (b: LandingBanner) => b.image || toolCover(b.title)
 
 /** 三张 banner 卡的 3D 倾斜（原型 useTilt：rotateX 8 / rotateY 10 / 上抬 -2px / 图片反向位移 10·6；只写 CSS 变量） */
 const tilt = useTilt({ prefix: 'hero', rotateX: 8, rotateY: 10, lift: '-2px', imageX: 10, imageY: 6 })

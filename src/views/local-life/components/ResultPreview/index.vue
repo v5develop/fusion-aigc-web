@@ -10,11 +10,14 @@
  * 校色对比）；校色过的图缩略图直接显示效果、下载给校色后的 PNG。键 `ll:<recordId>:<序号>`；本地生活记录不在
  * 任务中心，只能下载、不存资产。
  */
-import { computed, watch } from 'vue'
+import { computed, inject, watch } from 'vue'
 import { NImage, NImageGroup } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
 import { ColorFixItem, ColorFixPill, ColorFixStage, provideColorFixHost } from '@/components/ColorFix'
 import { formatTime } from '../../constants.ts'
+import { LL_WORKBENCH_KEY } from '../Workbench/context.ts'
+
+const intro = inject(LL_WORKBENCH_KEY, undefined)?.intro
 
 type Status = 'running' | 'success' | 'error' | 'warning'
 
@@ -76,7 +79,23 @@ const CHIP: Record<Status, string> = {
 
 <template>
   <div class="flex-1 min-h-0 flex flex-col">
-    <div v-if="!active" class="flex-1 grid place-items-center p-16px">
+    <!-- 空态：有功能介绍文案的页面显示「功能介绍 / 适用场景」（同工具页右栏空态版式），否则退回一句提示 -->
+    <section
+      v-if="!active && intro"
+      class="flex-1 min-h-0 overflow-y-auto box-border p-18px flex flex-col gap-14px"
+      aria-labelledby="ll-intro-title"
+    >
+      <h2 id="ll-intro-title" class="m-0 text-14px font-600 leading-[1.55] text-ink">功能介绍</h2>
+      <p class="m-0 text-13px leading-[1.65] text-ink-2">{{ intro.desc }}</p>
+      <div class="sx-squircle flex flex-col gap-[5.5px] p-10px rounded-12px border border-solid border-line-soft bg-surface2">
+        <h3 id="ll-intro-scenes" class="m-0 text-13px font-500 leading-[1.55] text-ink">适用场景</h3>
+        <ul class="m-0 p-0 list-none flex flex-col gap-[5.5px] text-13px leading-[1.55] text-ink-2" aria-labelledby="ll-intro-scenes">
+          <li v-for="sc in intro.scenes" :key="sc">{{ sc }}</li>
+        </ul>
+      </div>
+      <p class="m-0 text-11px leading-16px text-muted">{{ emptyText }}</p>
+    </section>
+    <div v-else-if="!active" class="flex-1 grid place-items-center p-16px">
       <div class="sx-empty w-full max-w-420px">
         <span class="sx-empty-title">生成结果</span>
         <span class="sx-empty-desc">{{ emptyText }}</span>

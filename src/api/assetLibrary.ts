@@ -96,6 +96,8 @@ export interface IAssetLibListParams {
   entry_codes?: string
   /** 标签名（精确匹配） */
   tag?: string
+  /** true = 只要没挂任何标签的素材（「未分类」，口径同 GET /tags 的 untagged_count）；不能与 tag 同传 */
+  untagged?: boolean
   favorite_only?: boolean
   /** 标题 / 提示词模糊，≤100 字 */
   q?: string
@@ -212,6 +214,18 @@ export interface IAssetLibBatchTagResp {
   added: number
 }
 
+/** 删除结果（单删 / 批量同形） */
+export interface IAssetLibDeleteResp {
+  /** 实际删除条数 */
+  deleted: number
+  /** 官方素材，未删除 */
+  official_skipped: number
+  /** 不存在 / 不属于本人 / 已删除，跳过 */
+  missing: number
+  /** 已删除的资产 id */
+  deleted_ids: number[]
+}
+
 // ---------------- 资产 ----------------
 
 export function assetLibList(params: IAssetLibListParams) {
@@ -254,6 +268,22 @@ export function assetLibAddRelation(id: number, relatedAssetId: number, relation
 /** 删除资产关系（reference 两个方向都删） */
 export function assetLibRemoveRelation(id: number, relatedAssetId: number, relationType = 'reference') {
   return del(`${PREFIX}/assets/${id}/relations`, { related_asset_id: relatedAssetId, relation_type: relationType })
+}
+
+/**
+ * 删除单个资产（逻辑删除，同时解除标签；不删存储对象、不影响任务结果）。
+ * 不存在 / 不属于本人 4001；官方素材 2005「官方素材不可删除」。
+ */
+export function assetLibDelete(id: number) {
+  return del<IAssetLibDeleteResp>(`${PREFIX}/assets/${id}`)
+}
+
+/**
+ * 批量删除资产（≤100）。只删本人的上传 / 生成资产：官方素材与不存在的 id 静默跳过，
+ * 分别计入 official_skipped / missing（不算错误）。
+ */
+export function assetLibBatchDelete(assetIds: number[]) {
+  return post<IAssetLibDeleteResp>(`${PREFIX}/assets/batch-delete`, { asset_ids: assetIds })
 }
 
 // ---------------- 标签 ----------------

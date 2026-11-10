@@ -8,13 +8,14 @@
  * 单品（8 个、最多 3 件、互斥自动取消）在服装图弹窗里选；分别上传每件 6 个固定角度格，选 2 件起可切「一套合影」。
  * 页面持有 useTryonGarment 状态，按单品 / 角度拼 garment_images；上传走 goUploadImage（studio 只收本服务签发的地址）。
  * 逐件面料 / 长度 / 袖长（没填显示「按图」）；面料提交时拼成契约的「上衣：真丝；鞋子：皮革」一段（fabric 字段不变）。
+ * 「精细读图」+「AI 找细节 / 裁切缩略图 / 重新裁切」见 TryonDetailCrops（提交带 fine_read / detail_crops）。
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { studioSubmitTryon } from '@/api/studio.ts'
 import { goUploadImage } from '@/api/goUpload.ts'
 import { checkMinShortSide } from '../imageSize.ts'
-import type { StudioGarmentImage, StudioTryonPayload, StudioTryonSubmitReq } from '@/api/studioTypes.ts'
+import type { StudioDetailCrop, StudioGarmentImage, StudioTryonPayload, StudioTryonSubmitReq } from '@/api/studioTypes.ts'
 import ToolTryonMaterials from '@/views/tools/ToolTryonMaterials.vue'
 import { useTryonGarment } from '@/views/tools/useTryonGarment.ts'
 import type { UploadSpec } from '@/views/tools/schemas.ts'
@@ -23,7 +24,9 @@ import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ColorFixToggle from '../components/StudioSubmitBar/ColorFixToggle.vue'
 import { useColorFix } from '@/views/studio/colorfix/useColorFix'
 import ModelSettings from '../components/ModelSettings/index.vue'
+import { useStudioModels } from '../components/ModelSettings/useStudioModels.ts'
 import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
+import TryonDetailCrops from './TryonDetailCrops.vue'
 import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import {
   ANGLE_OPTIONS,
@@ -166,7 +169,20 @@ const angleCode = (label: string) => ANGLE_OPTIONS.find((o) => o.label === label
 const angleLabel = (code: string) => ANGLE_OPTIONS.find((o) => o.value === code)?.label ?? '其他'
 
 /** 合计超额（只会出现在取消单品后又选回时）：分别上传模式下拦提交 */
-const garmentOver = computed(() => !g.isTogether && g.allPhotos.length > MAX_GARMENT_IMAGES)
+const modelCaps = useStudioModels('tryon')
+/** 当前模型档的参考图上限（后端 /studio/models 的 max_ref_images；没拉到 = 不限制到这一层） */
+const maxRefImages = computed(() => modelCaps.value?.find((c) => c.code === form.model)?.max_ref_images ?? 0)
+/** 服装图上限：9 与「模型参考图上限 − 1（留给模特图）」取小 */
+const garmentMax = computed(() =>
+  maxRefImages.value > 1 ? Math.min(MAX_GARMENT_IMAGES, maxRefImages.value - 1) : MAX_GARMENT_IMAGES,
+)
+/** 服装图 + 模特图逼近上限时的提示（一套合影只算 1 张） */
+const refCapHint = computed(() => {
+  const cap = maxRefImages.value
+  if (!cap || !g.allPhotos.length) return ''
+  return g.allPhotos.length + 1 >= cap - 2 ? `当前模型最多参考 ${cap} 张图，服装图较多时细节裁切会相应减少` : ''
+})
+const garmentOver = computed(() => !g.isTogether && g.allPhotos.length > garmentMax.value)
 
 /** 参数行缩略：该件第一张图（原型口径，与一套 / 分别无关） */
 const firstPhoto = (key: string) => g.photosOf(key)[0]
@@ -181,6 +197,12 @@ const idem = useIdempotentSubmit()
 
 /** 默认校色（与结果区校色面板同一份状态）：提交时作 color_fix 下发 */
 const { enabled: colorFix } = useColorFix()
+
+/** 精细读图（F7：默认不勾）：提交时作 fine_read 下发，不另收费 */
+const fineRead = ref(false)
+/** AI 找细节结果（用户删减后）；detailManual=true = 找过细节，提交带 detail_crops + detail_crops_manual */
+const detailCrops = ref<StudioDetailCrop[]>([])
+const detailManual = ref(false)
 
 /** 按钮第二行「消耗 N 点」：把提交体里影响价格的字段（张数 / 模型 / 分辨率 / 比例）原样发给报价接口，拿不到价就不显示 */
 const { points: costPoints } = useStudioCost('tryon', () => ({
@@ -202,9 +224,12 @@ idem.bindForm(
   sleeves,
   fabrics,
   colorFix,
+  fineRead,
+  detailCrops,
+  detailManual,
 )
 
-// 产品决定：「精细读图」「提示词可见」不加。
+// 2026-11-10：按反推交付包验收 F7 / F10 补上「精细读图」与「AI 找细节 / 裁切缩略图 / 重新裁切」；结果区显示提示词（商拍只读）。
 
 /** 逐件面料拼成契约格式：「上衣：真丝；鞋子：皮革」，空的不写 */
 const fabricText = computed(() =>
@@ -224,6 +249,36 @@ const missing = computed(() =>
     : g.selected.filter((key) => !g.photosOf(key).length).map((key) => OUTFIT_MAP[key]?.label ?? key),
 )
 
+/** 将要提交的 garment_images（顺序即细节框的 garment_index）；提交与 AI 找细节共用 */
+const garmentImages = computed<StudioGarmentImage[]>(() =>
+  g.isTogether
+    ? g.look
+      ? [{ url: g.look, role: '整套', angle: 'front' }]
+      : []
+    : g.selected.flatMap((key) =>
+        g.photosOf(key).map((p) => ({ url: p.url, role: OUTFIT_MAP[key]?.label ?? '', angle: angleCode(p.angle) })),
+      ),
+)
+/** 服装图 / 单品 / 上传方式的指纹：变了细节框就对不上（按下标对应），清空回到「自动找细节」 */
+const garmentSig = computed(() => JSON.stringify([g.selected, g.isTogether, garmentImages.value]))
+/** 回填时跳过一次清空（回填的细节框本来就对应回填的服装图） */
+let keepCropsOnce = false
+watch(garmentSig, () => {
+  if (keepCropsOnce) {
+    keepCropsOnce = false
+    return
+  }
+  if (detailManual.value) {
+    detailCrops.value = []
+    detailManual.value = false
+    if (garmentImages.value.length) message.info('服装图变了，细节裁切已清空，可以重新裁切')
+  }
+})
+/** 生图时最多能用的细节图：模型参考图上限 − 服装图 − 模特 1（不知道上限时 0 = 不提示） */
+const detailBudget = computed(() =>
+  maxRefImages.value > 0 ? Math.max(0, maxRefImages.value - Math.min(garmentImages.value.length, maxRefImages.value - 1) - 1) : 0,
+)
+
 const taskCount = computed(() => modelImages.value.length * form.count_per_model)
 const submitText = computed(() => (taskCount.value ? `开始换装（${taskCount.value} 张）` : '开始换装'))
 
@@ -235,7 +290,7 @@ const notReadyReason = computed(() => {
   if (materialsUploading.value) return '图片上传中，稍等再提交'
   if (!g.selected.length) return '先选单品：点服装图打开弹窗'
   if (missing.value.length) return `还没传图：${missing.value.join('、')}`
-  if (garmentOver.value) return `服装图最多 ${MAX_GARMENT_IMAGES} 张`
+  if (garmentOver.value) return `服装图最多 ${garmentMax.value} 张`
   if (!modelImages.value.length) return '至少上传 1 位模特'
   return ''
 })
@@ -247,14 +302,8 @@ async function submit() {
   // 校验顺序对齐原型 / 服务端：单品 → 服装图 → 模特图；按钮常亮，点了给原型同一句提示
   if (!g.selected.length) return message.warning('先选单品：点服装图打开弹窗')
   if (missing.value.length) return message.warning(`还没传图：${missing.value.join('、')}`)
-  if (garmentOver.value) return message.warning(`服装图最多 ${MAX_GARMENT_IMAGES} 张`)
+  if (garmentOver.value) return message.warning(`服装图最多 ${garmentMax.value} 张`)
   if (!modelImages.value.length) return message.warning('至少上传 1 位模特')
-
-  const garmentImages: StudioGarmentImage[] = g.isTogether
-    ? [{ url: g.look, role: '整套', angle: 'front' }]
-    : g.selected.flatMap((key) =>
-        g.photosOf(key).map((p) => ({ url: p.url, role: OUTFIT_MAP[key]?.label ?? '', angle: angleCode(p.angle) })),
-      )
 
   const lengthsOut: Record<string, string> = {}
   const sleevesOut: Record<string, string> = {}
@@ -267,7 +316,7 @@ async function submit() {
 
   const body: StudioTryonSubmitReq = {
     model_image_urls: [...modelImages.value],
-    garment_images: garmentImages,
+    garment_images: garmentImages.value.map((gi) => ({ ...gi })),
     items: [...g.selected],
     set_mode: g.isTogether ? 'one' : 'two',
     count_per_model: form.count_per_model,
@@ -279,6 +328,10 @@ async function submit() {
     ...(Object.keys(lengthsOut).length ? { lengths: lengthsOut } : {}),
     ...(Object.keys(sleevesOut).length ? { sleeves: sleevesOut } : {}),
     color_fix: colorFix.value,
+    ...(fineRead.value ? { fine_read: true } : {}),
+    ...(detailManual.value
+      ? { detail_crops_manual: true, detail_crops: detailCrops.value.map((c) => ({ ...c, box: [...c.box] })) }
+      : {}),
   }
 
   submitting.value = true
@@ -319,10 +372,10 @@ function onReedit(payload: Record<string, unknown>) {
     .slice(0, MAX_ITEMS)
 
   // 服装图按 role 归组；整套图收进合影，认不出的角色挂到第一件单品下，避免静默丢图
-  const garmentImages = Array.isArray(p.garment_images) ? p.garment_images : []
+  const snapGarments = Array.isArray(p.garment_images) ? p.garment_images : []
   let look = ''
   const photos: { url: string; role: string; angle: string }[] = []
-  for (const gi of garmentImages) {
+  for (const gi of snapGarments) {
     const url = gi?.url ?? ''
     if (!url) continue
     if (gi.role === '整套') {
@@ -373,6 +426,16 @@ function onReedit(payload: Record<string, unknown>) {
   form.count_per_model = Math.min(9, Math.max(1, Math.round(Number(p.count_per_model) || 1)))
   // 默认校色跟着快照走（老快照没有这个字段 = 没开）
   colorFix.value = p.color_fix === true
+  fineRead.value = p.fine_read === true
+  // 找过细节的批次：细节框按回填的服装图原样恢复（服装图回填会触发一次指纹变化，跳过那次清空）
+  const restored = p.detail_crops_manual === true && Array.isArray(p.detail_crops) ? p.detail_crops : null
+  keepCropsOnce = true
+  detailCrops.value = (restored ?? []).filter((c) => c && Array.isArray(c.box) && c.box.length === 4)
+  detailManual.value = !!restored
+  // 服装图没变（指纹不变、watch 不触发）时也别把这次跳过留到下一次真正的改动
+  void nextTick(() => {
+    keepCropsOnce = false
+  })
   // 回填是一次全新的提交：bindForm 的深度 watch 会作废旧 key，这里再兜一道
   idem.invalidate()
 }
@@ -398,9 +461,11 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
         :garment="g"
         :upload-fn="studioUpload"
         :garment-note="GARMENT_NOTE"
+        :max-garments="garmentMax"
         :disabled="submitting"
       >
         <!-- 补充说明（原型 .dm-notes：卡面上无框 textarea 13/20；底行左计数 11px、右「默认校色」开关，上外边距 2） -->
+        <p v-if="refCapHint" class="m-0 text-12px leading-18px text-muted" role="note">{{ refCapHint }}</p>
         <div class="flex min-h-0 flex-[1_1_auto] flex-col gap-6px">
           <label for="tryon-prompt" class="sr-only">补充说明</label>
           <textarea
@@ -421,6 +486,21 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
             <ColorFixToggle v-model="colorFix" :disabled="submitting" />
           </div>
         </div>
+
+        <!-- 精细读图 + AI 找细节 / 裁切缩略图 / 重新裁切（F7 / F10） -->
+        <TryonDetailCrops
+          v-if="g.selected.length"
+          v-model:crops="detailCrops"
+          v-model:manual="detailManual"
+          v-model:fine-read="fineRead"
+          :garments="garmentImages"
+          :items="g.selected"
+          :set-mode="g.isTogether ? 'one' : 'two'"
+          :fabric="fabricText"
+          :prompt="form.prompt.trim()"
+          :budget="detailBudget"
+          :disabled="submitting"
+        />
 
         <!-- 各单品参数（原型 .dm-params：段距 7、上内边距 5；标题 12·600）：按件一行
              （32 缩略 + 悬停删除 / 放大 + 名称 36 + 面料 + 长度 / 袖长）；鞋子 / 配饰 / 文胸 / 内裤只有面料；没填显示「按图」 -->

@@ -86,4 +86,44 @@ video::-webkit-media-controls-panel {
 /* 选择菜单：选项圆角 6（容器 r10 由主题给，二者共用同一变量） */
 .n-base-select-option::before {
   border-radius: 6px;
+  /* 内缩已由选项自身 margin 承担，伪元素满铺，避免叠成 8px */
+  left: 0;
+  right: 0;
+}
+/* 下拉 / 选择菜单材质（原型 v3-theme.css:243-290）：菜单 1px 线描边；选择菜单选中行 = 藤紫描边 + 白到浅紫渐变，
+   藤紫墨字、不要对勾；hover / pending 取 surface-3 */
+/* 带 .fusion-dropdown 的面板外层已自带描边（dropdown.less），内层菜单不再描一次，免得双线 */
+.n-dropdown-menu.n-dropdown:not(.fusion-dropdown) {
+  border: 1px solid #e5e7eb;
+}
+/* 选项整体内缩 4、圆角 6：选中 / hover 底色是缩进的圆角块 */
+.n-base-select-option {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  margin: 0 4px;
+}
+.n-base-select-option--pending::before,
+.n-base-select-option--pending::after {
+  background-color: transparent;
+}
+.n-base-select-option:hover,
+.n-base-select-option--pending {
+  background: #f3f4f5;
+}
+.n-base-select-option.n-base-select-option--selected {
+  border-color: #d9c7e3;
+  background: linear-gradient(180deg, #ffffff 0%, #f8f3fc 100%);
+  box-shadow: 0 1px 2px rgba(31, 35, 41, 0.05);
+  color: #6b487c;
+  font-weight: 600;
+}
+.n-base-select-option.n-base-select-option--selected::before {
+  background-color: transparent;
+}
+/* 对勾只在单选菜单里藏（选中行已有描边底色）；多选菜单要靠它表示勾选 */
+.n-base-select-menu:not(.n-base-select-menu--multiple) .n-base-select-option__check {
+  display: none;
+}
+.n-base-select-option__content {
+  padding-right: 0;
 }

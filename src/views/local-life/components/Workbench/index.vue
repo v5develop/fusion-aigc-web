@@ -13,7 +13,8 @@
  *   托盘内边距 pt12 px12 pb14（同电商 Container 段二）；
  * - 页脚：#settings 设置行（模型 / 生成设置两颗药丸，44 高）+ 56 高藤紫提交按钮，间距 8，上沿细线（同电商 Container 段三）。
  *
- * 本地生活网关暂无询价接口，按钮上只放生成动作本身。
+ * 提交按钮第二行「消耗 N 点」（原型 ToolSubmitBar ml .v3-submitbar__ml-cost，同工具页）：页面经 useLLQuote 调
+ * POST /local-life/quote 拿后端报价后传 `estimate`；没报出价时数字位显示「—」，不传 estimate 则不显示这一行。
  *
  * <p>三栏模式（2026-11-07，原型 ToolWorkspaceColumns ml：左操作 / 中历史 / 右预览）——**按页选用**：
  * 页面填了 `#history` 插槽才进入三栏，结果区改放 `#preview`（没填 `#preview` 时退回 `#right`）；
@@ -29,6 +30,8 @@ import { nextTick, provide, ref, useId } from 'vue'
 import { NConfigProvider } from 'naive-ui'
 import { llFormSkin, llTheme } from '../../theme.ts'
 import { LL_WORKBENCH_KEY } from './context.ts'
+import { LL_INTRO } from './introData.ts'
+import type { LLEstimate } from './useLLQuote.ts'
 import { provideUploadBusy } from '@/components/uploadBusy'
 
 const {
@@ -38,6 +41,7 @@ const {
   submitText = '立即生成',
   showSubmit = true,
   submitHint,
+  estimate,
 } = defineProps<{
   title: string
   submit?: () => void
@@ -48,6 +52,8 @@ const {
   submitHint?: string
   /** 三栏模式：<1440 分段切换里「历史记录」后面的条数；不传不显示 */
   historyCount?: number
+  /** 按钮第二行「消耗 N 点」；points=null 显示「—」，不传不显示（见 useLLQuote） */
+  estimate?: LLEstimate
 }>()
 
 defineSlots<{
@@ -91,6 +97,10 @@ const onTabKeydown = (e: KeyboardEvent) => {
 provide(LL_WORKBENCH_KEY, {
   revealPreview: () => {
     pane.value = 'preview'
+  },
+  // 右栏空态（ResultPreview 无记录时）读取：功能介绍 / 适用场景
+  get intro() {
+    return LL_INTRO[title]
   },
 })
 </script>
@@ -144,6 +154,10 @@ provide(LL_WORKBENCH_KEY, {
               aria-hidden="true"
             />
             <span class="text-16px font-600 leading-22px tracking-[0.04em] whitespace-nowrap">{{ submitText }}</span>
+            <span v-if="estimate" class="text-11px leading-11px text-white/74 whitespace-nowrap" aria-live="polite"
+              >{{ estimate.label ?? '消耗' }} <b class="font-600 tabular-nums">{{ estimate.points ?? '—' }}</b>
+              {{ estimate.suffix ?? '点' }}</span
+            >
           </button>
         </div>
       </section>

@@ -106,6 +106,41 @@ export function plazaTemplateTags() {
   return get<string[]>('/api/v1/plaza-templates/tags')
 }
 
+// ---------------- 本周头条 ----------------
+
+/**
+ * 本周头条项（GET /api/v1/plaza-headlines，Java PlazaHeadlineController）：运营从广场模板里挑的本周爆款样本。
+ * 模板字段与 IPlazaTemplate 同形（payload 已摘 prompt），可直接当模板选中；另带推荐语与近 7 天复刻统计。
+ */
+export interface IPlazaHeadline extends IPlazaTemplate {
+  headlineId: number
+  /** 过滤后的名次，从 1 开始 */
+  rank: number
+  /** 一句推荐语（≤60 字） */
+  why: string
+  /** 近 7 天用该模板做同款的智能体轮次数 */
+  uses: number
+  /** 再往前 7 天的轮次数 */
+  previousUses: number
+  /** (uses − previousUses) / max(previousUses, 1) 取整百分比，可为负；previousUses = 0 时为 null（显示「新上榜」） */
+  trend: number | null
+  isNew: boolean
+  startDate: string
+  endDate: string
+}
+
+export interface IPlazaHeadlineList {
+  /** 统计窗口（yyyy-MM-dd，近 7 天） */
+  statsFrom: string
+  statsTo: string
+  items: IPlazaHeadline[]
+}
+
+/** 本周头条（需登录）：tag 同模板页分类 chip，keyword 在标题 / 说明 / 标签 / 推荐语里搜；不分页 */
+export function plazaHeadlineList(params: { tag?: string; keyword?: string }) {
+  return get<IPlazaHeadlineList>('/api/v1/plaza-headlines', params)
+}
+
 // ---------------- 素材广场 ----------------
 
 export interface IPublicDisplayPage {

@@ -8,7 +8,8 @@
  * 展开时描边 #b9c0c8、底 #f3f4f5→#f7f8f9、内凹。图标 13（模型 16）violet；标签 11/16 muted；
  * 取值 11/16·500 ink-2 右对齐省略；箭头绝对定位距右 8。
  * 弹层（原型 SettingsPopover）：宽默认 = 整行（popoverWidth=trigger 时 = 按钮宽），r18 squircle，默认在按钮上方 8px（放不下时 Naive 自动翻到下方），
- * 最大高 min(520, 视口 − 24)；白底、line 描边、shadow-pop（入场沿用 Naive 弹层过渡，不另写关键帧）；
+ * 最大高 min(520, 视口 − 24)；白底、line 描边、shadow-pop；出现 / 收起都是淡入 + 4px 上移 120ms（与工具页功能面板 op-pop 同档，
+ * 覆盖 Naive 默认的 scale .85 过渡，见文末样式；减少动效时直接出现）；
  * 头部高 44、内边距 0 8 0 14、标题 14，关闭钮 26 / r4；内容区内边距 4 14 10。内容来自同名插槽 #key
  * （模型页放 CreationModelPicker、图片设置放 CreationImageSettings）。
  */
@@ -86,6 +87,7 @@ const ICON_PATHS: Record<CreationSettingsIcon, string[]> = {
       v-for="(item, index) in items"
       :key="item.key"
       raw
+      class="creation-settings-pop"
       trigger="click"
       :width="popWidth"
       :placement="index === items.length - 1 ? 'top-end' : 'top-start'"
@@ -171,3 +173,32 @@ const ICON_PATHS: Record<CreationSettingsIcon, string[]> = {
     </NPopover>
   </div>
 </template>
+
+<style>
+/*
+ * 弹层出现 / 收起：120ms 淡入 + 4px 上移（工具页功能面板同一档），替换 Naive popover-transition 的 scale(.85)。
+ * Naive 的过渡类挂在弹层根（.n-popover-shared）上，class 也落在同一节点，故用复合选择器提高优先级；不加 scoped（弹层被传送到 body）。
+ */
+.n-popover-shared.creation-settings-pop.popover-transition-enter-active,
+.n-popover-shared.creation-settings-pop.popover-transition-leave-active {
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+.n-popover-shared.creation-settings-pop.popover-transition-enter-from,
+.n-popover-shared.creation-settings-pop.popover-transition-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.n-popover-shared.creation-settings-pop.popover-transition-enter-to,
+.n-popover-shared.creation-settings-pop.popover-transition-leave-from {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .n-popover-shared.creation-settings-pop.popover-transition-enter-active,
+  .n-popover-shared.creation-settings-pop.popover-transition-leave-active {
+    transition: none;
+  }
+}
+</style>

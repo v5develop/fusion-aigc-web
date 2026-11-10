@@ -1,6 +1,6 @@
 /** 商拍工作室套件共享常量与展示辅助 */
 
-import type { StudioKind, StudioTask } from '@/api/studioTypes.ts'
+import type { StudioBatch, StudioKind, StudioPosePayload, StudioTask } from '@/api/studioTypes.ts'
 
 // ---------------- 选项 ----------------
 
@@ -172,10 +172,22 @@ export const KIND_LABEL: Record<StudioKind, string> = {
   imagegen: '图片生成',
 }
 
+/** 多人姿态：该姿势配对的人数 > 1 时追加「 · N 人」（取自 batch.payload.mappings[].pose_person_count；没有 / 解析失败不加） */
+function poseCountSuffix(task: StudioTask, batch?: Pick<StudioBatch, 'payload'>) {
+  if (!batch?.payload) return ''
+  try {
+    const p = JSON.parse(batch.payload) as StudioPosePayload
+    const n = p.mappings?.find((m) => m.pose_index === task.pose_index)?.pose_person_count ?? 0
+    return n > 1 ? ` · ${n} 人` : ''
+  } catch {
+    return ''
+  }
+}
+
 /** 任务备注行：商拍=模特 N · 第 M 张；姿态=「姿态复刻 · 姿势 N」（s1.1 E6）；图片生成=第 N 张 */
-export function taskCaption(task: StudioTask) {
+export function taskCaption(task: StudioTask, batch?: Pick<StudioBatch, 'payload'>) {
   if (task.kind === 'tryon') return `模特${task.model_index + 1} · 第${task.shot_index + 1}张`
-  if (task.kind === 'pose') return `姿态复刻 · 姿势 ${task.pose_index + 1}`
+  if (task.kind === 'pose') return `姿态复刻 · 姿势 ${task.pose_index + 1}${poseCountSuffix(task, batch)}`
   return `第${task.shot_index + 1}张`
 }
 

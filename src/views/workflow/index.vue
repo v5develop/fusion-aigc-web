@@ -31,6 +31,7 @@ import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
 import CreationActionBar from '@/components/creation/CreationActionBar.vue'
 import CreationHistoryHeader from '@/components/creation/CreationHistoryHeader.vue'
 import WorkflowTemplateHead from './WorkflowTemplateHead.vue'
+import { TAGLINES } from './taglines'
 import WorkflowFlowBoard, { type WorkflowFlowInput } from './WorkflowFlowBoard.vue'
 import {
   creationSettingsSummary,
@@ -91,11 +92,11 @@ const categoryLabel = computed(() =>
   schema.value ? workflowCategoryLabel(schema.value.flow, schema.value.category) || schema.value.name : '',
 )
 const headDesc = computed(() =>
-  schema.value ? `${workflowFlowLabels[schema.value.flow]} · ${categoryLabel.value}` : '',
+  schema.value ? (TAGLINES[schema.value.name] ?? `${workflowFlowLabels[schema.value.flow]} · ${categoryLabel.value}`) : '',
 )
 const actionHint = computed(() => {
   const n = schema.value?.uploads.length ?? 0
-  return n ? `线已连好 · 上传 ${n} 个素材即可生成` : '无需上传素材 · 选好模板选项直接生成'
+  return n ? `线已连好 · 上传 ${n} 个素材即可生成` : '无需本地上传 · 选好模板选项直接生成'
 })
 
 // ---------------- 表单状态 ----------------
@@ -262,6 +263,14 @@ function setUploads(slot: number, urls: string[]) {
 function clampNumber(f: WorkflowField) {
   const n = Math.round(Number(values[f.key]))
   values[f.key] = Math.min(f.max ?? Infinity, Math.max(f.min ?? -Infinity, Number.isFinite(n) ? n : (f.min ?? 1)))
+}
+
+/** 只把模板选项恢复默认（不动素材）：先清掉这些字段的当前值，再回填 schema 默认值 */
+function resetOptions() {
+  for (const f of formFields.value) {
+    delete values[f.key]
+    if (f.default !== undefined) values[f.key] = f.default
+  }
 }
 
 function resetForm(s: WorkflowSchema) {
@@ -725,6 +734,12 @@ const headBtn =
               asset-picker
               @update:model-value="setUploads(u.slot, $event)"
             />
+            <p
+              v-if="u.itemNote && !(uploads[u.slot]?.length)"
+              class="m-0 mt-10px text-11px leading-16px text-muted"
+            >
+              上传图片后可逐张填写规格参数
+            </p>
             <!-- 逐张备注（SKU替换「特殊需求」）：每张图一格、两列，选填（原型 WorkflowNotesList.vue:159-258） -->
             <div v-if="hasNotes(u)" class="mt-12px flex flex-col gap-8px">
               <div class="flex items-baseline gap-8px">
@@ -748,7 +763,7 @@ const headBtn =
                     type="text"
                     :maxlength="u.itemNote!.maxLength"
                     :disabled="submitting"
-                    :placeholder="`第 ${i + 1} 张（选填）`"
+                    placeholder="单张特殊需求…"
                     :aria-label="`第 ${i + 1} 张${u.label}的${u.itemNote!.label}`"
                     :class="noteInputCls"
                   />
@@ -767,6 +782,18 @@ const headBtn =
                   schema.contentSource === 'template-prompt' ? '提示词由模板内置，这里不用填' : '这个模板没有其它选项'
                 }}
               </p>
+              <div v-if="schema.flow === 'fashion' && formFields.length" class="flex items-center gap-8px">
+                <span class="text-12px font-600 leading-18px text-ink-2">模板选项</span>
+                <span class="text-11px leading-16px text-muted">{{ formFields.length }} 项</span>
+                <button
+                  type="button"
+                  class="ml-auto m-0 px-8px min-h-32px border-none bg-transparent text-12px leading-16px text-violet cursor-pointer hover:underline outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
+                  :disabled="submitting"
+                  @click="resetOptions"
+                >
+                  恢复默认
+                </button>
+              </div>
               <template v-for="f in formFields" :key="`${schema.schemaId}-${f.key}`">
                 <div v-if="f.type === 'chips'">
                   <div :id="`wf-field-${f.key}-label`" class="ll-label">
@@ -901,7 +928,7 @@ const headBtn =
               !mapped ? '即将开放' : history.loading.value ? '加载中…' : '还没有生成记录'
             }}</span>
             <span v-if="mapped && !history.loading.value" class="text-11px leading-16px text-muted"
-              >上传素材、点底部按钮，结果会落在这一列</span
+              >按当前模板本地上传、点底部按钮，结果会落在这一列</span
             >
           </span>
         </div>

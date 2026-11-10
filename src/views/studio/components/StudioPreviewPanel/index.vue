@@ -71,6 +71,7 @@ import {
   saveTaskColorFix,
 } from '../../colorfix/persist.ts'
 import { STUDIO_INTRO } from './intro.ts'
+import StudioPromptCard from './StudioPromptCard.vue'
 import { batchColorFix, canRetryTask, compareBefore, retrySupported, unitPoints } from './compare.ts'
 
 const props = defineProps<{
@@ -170,6 +171,16 @@ async function retryTask(task: StudioTask) {
   }
 }
 
+/** 编辑提示词后重新生成已提交（服务端已冻结点数）：钉住这张、刷新批次；刷新失败只提示，不报成失败 */
+async function onRegenerated() {
+  pinSelected()
+  try {
+    await ctl.refresh()
+  } catch {
+    message.warning('已重新提交，刷新失败，请稍后查看')
+  }
+}
+
 // ---------------- 展示辅助 ----------------
 
 /** 任务态是否展示为进行中（0 排队 / 1 生成中 / 5 交付中） */
@@ -218,6 +229,8 @@ const summary = computed(() => {
     progress: batchProgress(d.batch),
     running: !isBatchTerminal(d.batch.status),
     reason: d.batch.error_reason,
+    // 读图 / 参考图提示（验收 F12 / B2）：新网关下发 batch.warnings；老网关没有时按任务 warnings 去重合并
+    warnings: d.batch.warnings ?? [...new Set(d.tasks.flatMap((t) => t.warnings ?? []))],
   }
 })
 
@@ -269,7 +282,7 @@ const fileTitle = computed(() => {
   const t = selectedTask.value
   if (!d || !t) return 'result'
   const kind = KIND_LABEL[d.batch.kind] ?? d.batch.kind
-  const caption = taskCaption(t).replace(/^姿态复刻 · /, '')
+  const caption = taskCaption(t, props.detail?.batch).replace(/^姿态复刻 · /, '')
   return `${kind}-${d.batch.id}-${caption}`.replace(/[\\/:*?"<>|\s·]+/g, '-').replace(/-+/g, '-')
 })
 
@@ -277,7 +290,7 @@ const fileTitle = computed(() => {
 const headerName = computed(() => {
   const t = selectedTask.value
   if (!t) return summary.value?.title ?? ''
-  const caption = taskCaption(t)
+  const caption = taskCaption(t, props.detail?.batch)
   const kind = KIND_LABEL[t.kind] ?? ''
   return !kind || caption.startsWith(kind) ? caption : `${kind} · ${caption}`
 })
@@ -629,7 +642,7 @@ const lbItems = computed<LightboxItem[]>(() =>
   tasks.value.filter(isTaskSuccess).map((t) => ({
     // 选中的那张给烘好的校色图（还在烘 / 烘失败时给原图）
     url: t.task_id === selectedSuccess.value?.task_id && !liveFilter.value ? displaySrc.value : t.result_url,
-    name: taskCaption(t),
+    name: taskCaption(t, props.detail?.batch),
   })),
 )
 
@@ -856,7 +869,7 @@ const pillCls =
               v-else
               :src="displaySrc"
               :crossorigin="cfTool ? corsAttr(displaySrc) : undefined"
-              :alt="taskCaption(selectedSuccess)"
+              :alt="taskCaption(selectedSuccess, props.detail?.batch)"
               class="absolute inset-0 block m-auto max-w-full max-h-full object-contain cursor-zoom-in"
               :class="focusRing"
               :style="liveFilter ? { filter: liveFilter } : undefined"
@@ -946,6 +959,16 @@ const pillCls =
           </div>
         </div>
 
+        <!-- 这张图的读图 / 参考图提示（验收 F12 / B2：结果里就地展示，不只 toast） -->
+        <ul
+          v-if="selectedTask?.warnings?.length"
+          class="flex-none m-0 pl-0 list-none flex flex-col gap-4px p-8px box-border rounded-6px bg-warning-soft text-12px leading-18px text-warning"
+          role="note"
+          aria-label="这张图的提示"
+        >
+          <li v-for="w in selectedTask.warnings" :key="w" class="break-all">{{ w }}</li>
+        </ul>
+
         <!-- 候选 4 列、gap 6，方形 r4；选中 1px violet 描边 + 1px 光晕；悬停 / 聚焦看大图 -->
         <div v-if="tasks.length > 1" class="flex-none grid gap-6px grid-cols-4" role="group" aria-label="候选结果">
           <div v-for="(task, i) in tasks" :key="task.task_id" class="group relative">
@@ -958,7 +981,7 @@ const pillCls =
                   ? 'border-violet shadow-[0_0_0_1px_#875f9a]'
                   : 'border-line hover:border-#c9cfd6',
               ]"
-              :aria-label="`${taskCaption(task)} · ${taskChip(task.status).label}`"
+              :aria-label="`${taskCaption(task, props.detail?.batch)} · ${taskChip(task.status).label}`"
               :aria-pressed="selectedTask?.task_id === task.task_id"
               @click="selectTask(task)"
             >
@@ -966,7 +989,7 @@ const pillCls =
                 v-if="isTaskSuccess(task)"
                 :src="task.result_url"
                 :crossorigin="cfTool ? corsAttr(task.result_url) : undefined"
-                :alt="taskCaption(task)"
+                :alt="taskCaption(task, props.detail?.batch)"
                 class="block w-full h-full object-cover"
                 loading="lazy"
                 draggable="false"
@@ -1006,6 +1029,14 @@ const pillCls =
             </div>
           </div>
         </div>
+
+        <!-- 当前任务的提示词：姿态可编辑 / 复制 / 复制全部 / 编辑后重新生成；商拍只读（C2 / C4 / C16） -->
+        <StudioPromptCard
+          v-if="selectedTask && (detail!.batch.kind === 'pose' || selectedTask.prompt_text)"
+          :detail="detail!"
+          :task="selectedTask"
+          @regenerated="onRegenerated"
+        />
 
         <p
           v-if="runningTotal && !(selectedTask && isTaskRunning(selectedTask))"
@@ -1047,6 +1078,14 @@ const pillCls =
             </div>
           </div>
           <div v-if="summary!.reason" class="mt-6px text-12px text-danger break-all">{{ summary!.reason }}</div>
+          <ul
+            v-if="summary!.warnings.length"
+            class="mt-6px mb-0 pl-0 list-none flex flex-col gap-2px text-12px leading-18px text-warning"
+            role="note"
+            aria-label="本批提示"
+          >
+            <li v-for="w in summary!.warnings" :key="w" class="break-all">提示：{{ w }}</li>
+          </ul>
           <div class="flex flex-wrap gap-6px justify-end mt-8px">
             <n-popconfirm v-if="summary!.running" @positive-click="cancelBatch(detail!)">
               <template #trigger

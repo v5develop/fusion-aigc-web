@@ -36,6 +36,18 @@ export function stashRefill(handoff: Omit<RefillHandoff, 'at'>) {
   }
 }
 
+/** 只看不取：有没有发给这个页面、还没过期的交接（路由守卫用来决定要不要放行到简版工具页） */
+export function hasRefill(kind: RefillKind, key: string): boolean {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    if (!raw) return false
+    const h = JSON.parse(raw) as RefillHandoff
+    return h?.kind === kind && h.key === key && typeof h.at === 'number' && Date.now() - h.at <= TTL_MS
+  } catch {
+    return false
+  }
+}
+
 /** 取走发给这个页面的交接；不是给它的不动，过期的顺手清掉 */
 export function takeRefill(kind: RefillKind, key: string): RefillHandoff | null {
   let raw: string | null = null

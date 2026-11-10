@@ -173,7 +173,7 @@ export const themeOverrides: GlobalThemeOverrides = {
   InternalSelectMenu: {
     // 原型 v3-theme.css:252-292：选项 36 高、容器 r10 + 内边距 6；选项圆角 6 在 base.css（Naive 与容器共用同一变量）
     optionHeightMedium: '36px',
-    optionFontSizeMedium: '13px',
+    optionFontSizeMedium: '12px',
     optionTextColor: C.ink,
     optionTextColorActive: C.violetDeep,
     optionTextColorPressed: C.violetDeep,
@@ -273,10 +273,26 @@ export const themeOverrides: GlobalThemeOverrides = {
       },
     },
   },
+  Dropdown: {
+    // 原型 v3-theme.css:243-290：r10 白卡 + 6 内边距 + 浮层影，行 36、字 12（§10 下限）、hover 取 surface-3
+    color: C.white,
+    borderRadius: '10px',
+    padding: '6px',
+    boxShadow: popShadow,
+    optionHeightMedium: '36px',
+    fontSizeMedium: '12px',
+    optionTextColor: C.ink,
+    optionTextColorHover: C.ink,
+    optionTextColorActive: C.violetDeep,
+    optionColorHover: C.surface3,
+    optionColorActive: C.violetSoft,
+    groupHeaderTextColor: C.muted,
+  },
   Popover: {
     color: C.white,
-    borderRadius: '8px',
-    boxShadow: popShadow,
+    borderRadius: '10px',
+    // Naive 的 Popover 主题没有 border 键：1px 线描边用 0 0 0 1px 的扩散影叠在浮层影之外
+    boxShadow: `0 0 0 1px ${C.line}, ${popShadow}`,
     textColor: C.ink2,
   },
   Dialog: {

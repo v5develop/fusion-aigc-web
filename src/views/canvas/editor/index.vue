@@ -38,9 +38,10 @@ import CanvasColorFixDialog from './CanvasColorFixDialog.vue'
 import { activeColorFix, colorFixSources, openColorFix } from './colorFixAction.ts'
 import EditorAssetPanel from './EditorAssetPanel.vue'
 import TitleModal from '../TitleModal.vue'
-import TemplatePicker from '../TemplatePicker.vue'
+import TemplateInsertDialog from './TemplateInsertDialog.vue'
+import { buildTemplateClipboard } from './templateInsert.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
-import { canvasSaveAs, canvasUploadMedia, type ICanvasCatalogModel } from '@/api/canvasHome.ts'
+import { canvasSaveAs, canvasUploadMedia, type ICanvasCatalogModel, type ICanvasTemplateDetail } from '@/api/canvasHome.ts'
 import { downloadImage } from '@/utils/download.ts'
 import { takeCanvasImport } from '@/utils/canvasImportHandoff.ts'
 import { isGroupPlate, normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
@@ -916,8 +917,25 @@ async function doSaveAs(newTitle: string) {
 
 const showTemplates = ref(false)
 
-function onCreatedFromTemplate(id: string) {
-  if (id) void router.push({ name: 'canvas-editor', params: { id } })
+/**
+ * 从模板插入（templateInsert.ts）：模板整块放到现有节点下方（空画布放视口左上），节点 / 连线换新 id，
+ * 插入后视口对准插入的那一块。画布首页的「从模板新建画布」不走这里。
+ */
+function onInsertTemplate(template: ICanvasTemplateDetail) {
+  if (!store.ready.value) return
+  const rect = stageRef.value?.getBoundingClientRect()
+  const emptyAt = rect
+    ? screenToFlowCoordinate({ x: rect.left + Math.max(80, rect.width / 2 - 260), y: rect.top + 120 })
+    : undefined
+  const clip = buildTemplateClipboard(template.snapshot, store.nodes.value, template.title, emptyAt)
+  if (!clip) {
+    editorMessage.warning('这个模板没有可插入的节点')
+    return
+  }
+  const ids = store.pasteClipboard(clip, 0)
+  if (!ids.length) return
+  editorMessage.success(`已插入模板「${template.title}」`)
+  void nextTick(() => fitView({ nodes: ids, padding: 0.2, duration: 220, minZoom: 0.2, maxZoom: 1 }))
 }
 
 // ---------------- 资产栏 / 素材库 ----------------
@@ -2033,7 +2051,16 @@ const promptAnchorEl = ref<HTMLElement | null>(null)
 function insertPrompt(text: string) {
   const node = selectedNode.value
   if (!node) {
-    editorMessage.warning('先选中一个节点（文字 / 生成 / 工具），提示词会插进去')
+    // 没选中节点：在视口中心新建一个「提示词」文字节点并填入
+    const rect = stageRef.value?.getBoundingClientRect()
+    const at = rect
+      ? screenToFlowCoordinate({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
+      : undefined
+    const created = store.addNode('text', undefined, at)
+    if (!created) return
+    store.updateNodeData(created.id, { title: '提示词', text: text.slice(0, 3000) })
+    store.selectNode(created.id)
+    editorMessage.success('已新建文字节点并插入提示词')
     return
   }
   const key = node.type === 'text' ? 'text' : 'prompt'
@@ -2330,7 +2357,7 @@ async function onStageDrop(event: DragEvent) {
           <button
             type="button"
             :class="TOP_BTN"
-            title="模板库：从模板新建一张画布（不改动当前画布）"
+            title="模板库：套用现成画布结构"
             @click="showTemplates = true"
           >
             <EditorIcon name="card" :size="16" /> 模板
@@ -2874,7 +2901,7 @@ async function onStageDrop(event: DragEvent) {
                   <EditorIcon name="copy" :size="14" /> 粘贴<span class="ctx-kbd">{{ MOD_KEY }} V</span>
                 </button>
                 <button type="button" class="ctx-item" role="menuitem" @click="ctxMenuTemplates">
-                  <EditorIcon name="card" :size="14" /> 从模板新建…
+                  <EditorIcon name="card" :size="14" /> 从模板插入
                 </button>
               </div>
               <span class="ctx-sep" aria-hidden="true" />
@@ -2984,7 +3011,7 @@ async function onStageDrop(event: DragEvent) {
         :loading="savingAs"
         @confirm="doSaveAs"
       />
-      <TemplatePicker v-model:show="showTemplates" @created="onCreatedFromTemplate" />
+      <TemplateInsertDialog v-model:show="showTemplates" @insert="onInsertTemplate" />
       <AssetPickerModal v-model:show="showAssetPicker" :limit="10" @select="addLibraryImages" />
       <TitleModal
         v-model:show="renameShow"
@@ -2999,6 +3026,7 @@ async function onStageDrop(event: DragEvent) {
         :anchor="promptAnchorEl"
         heading="提示词库"
         show-counts
+        keep-open
         @select="(item) => insertPrompt(item.prompt)"
       />
     </div>

@@ -10,27 +10,10 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import { toolCover } from '@/views/image/toolCovers.ts'
+import { TAGLINES } from '../taglines'
 import { isWorkflowListed, workflowRouteOf, workflowSchemas, workflowTree, type WorkflowSchema } from '../schemas'
 
 defineOptions({ name: 'workflow-home' })
-
-/** 原型 next-directory.ts WF_DESC（只摘本仓库有 schema 的模板） */
-const TAGLINES: Record<string, string> = {
-  模特替换: '替换模特',
-  模特换脸: '只换人脸',
-  背景替换: '更换背景',
-  模特换脸换背景: '脸景同换',
-  模特试穿: '服装试穿',
-  服装上身: '衣穿模特',
-  双人换衣: '双人同款',
-  鞋子上脚: '鞋款上脚',
-  配饰穿戴: '配饰上身',
-  单图复制: '同款复制',
-  SKU替换: '批量换货',
-  模特带货: '模特卖货',
-  商品替换: '原片换品',
-  口播带货: '产品口播',
-}
 
 /** 模板名 → 封面（public/images/tool-covers；名称相同的取 toolCover，其余按下表） */
 const TEMPLATE_COVERS: Record<string, string> = {

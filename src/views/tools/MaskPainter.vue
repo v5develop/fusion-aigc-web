@@ -29,7 +29,8 @@ interface Stroke {
   points: { x: number; y: number }[]
 }
 
-const MASK_COLOR = 'rgb(222, 72, 72)'
+// 原型 MaskCanvas 同值：rgb(239, 68, 68)、半透明 .5
+const MASK_COLOR = 'rgb(239, 68, 68)'
 const MASK_OPACITY = 0.5
 const MAX_VIEWPORT_H = 520
 

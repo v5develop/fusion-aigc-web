@@ -22,10 +22,12 @@ export type UploadKind = 'image' | 'video'
  * - `single`：单图，空态只有 48 云影球，卡 434×742，球在卡正中（智能消除 / 智能抠图 / 文字替换；视频单槽同用）；
  * - `ml`：单角色参考图槽，60×100 叠片，片下不写说明、数量写在槽头（首屏主图 / 场景生成）；
  * - `material`：一叠片就是入口，片下两行说明（名称 11/15·500、数量 10/15），无数字角标（产品替换素材、单图复刻 / SKU 替换）；
+ * - `anchor`：产品替换「替换素材」定稿版（原型 ProductPipeSlots）：96 见方单图格，名字在上，压在底图片格上方，
+ *   每张底图各有一条浅色连线回到它（与 `pipe` 同在一块产品替换图台里，见 index.vue productStage / ToolPipeLinks）；
  * - `video`：新版原型视频高清的上传卡：卡片撑满操作栏余高、1px 描边圆角 6，文案靠上居中（大字 / 说明 / 格式行 / 「资产添加」），
  *   没有云影球；用了这个版式的工具页，底部设置行与提交按钮也换成同一原型的样子（见 index.vue 的 compact）。
  */
-export type UploadLayout = 'batch' | 'pipe' | 'single' | 'ml' | 'material' | 'video'
+export type UploadLayout = 'batch' | 'pipe' | 'single' | 'ml' | 'material' | 'video' | 'anchor'
 
 export interface ToolUpload {
   /** 槽位序号（与契约 uploads[].slot 一致） */
@@ -115,6 +117,11 @@ export interface ToolField {
   placeholder?: string
   /** 字段下方的一行辅助说明（原型 typo-assist，如输入润色） */
   description?: string
+  /**
+   * 照原型 ChoiceFieldButton picker 版摆在提交按钮正上方的字段卡（图片翻译 / 视频翻译的目标语言、配音音色），
+   * 不进「图片设置 / 视频设置」弹层；取值与出网口径不变
+   */
+  choiceCard?: boolean
   /**
    * 选项由服务端下发（GET /api/v1/features/video-model-configs），不写死在 schema：
    * 模型 → 该模型的清晰度 → 该清晰度的比例；时长取该模型的 duration:[min,max] 逐秒。
@@ -282,7 +289,7 @@ export const toolSchemas: ToolSchema[] = [
     media: 'image',
     uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     fields: [],
-    submit: { label: '开始精修', costUnit: '张', costSource: '未显示（桌面 1.0.17 未给该工具报价）' },
+    submit: { label: '开始精修', costUnit: '张', costSource: '未显示（桌面 1.0.17 未给该工具报价）', countLabel: true },
     actions: [],
   },
   {
@@ -301,7 +308,7 @@ export const toolSchemas: ToolSchema[] = [
     uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     // v1 AIImageUpscalerRequest.resolution 必填，故给默认值
     fields: [{ ...resolutionField('清晰度', '1K'), required: true }],
-    submit: { label: '开始放大', costUnit: '张', costSource: '工具单价（upscale）× 张数' },
+    submit: { label: '开始放大', costUnit: '张', costSource: '工具单价（upscale）× 张数', countLabel: true },
     actions: [],
   },
   {
@@ -315,7 +322,7 @@ export const toolSchemas: ToolSchema[] = [
     steps: ['上传 1 张原图', '用画笔涂抹要去掉的区域', '点击「开始消除」'],
     intro: '涂抹选中区域后去除水印、杂物与多余元素，自动补全背景，让画面更干净自然。',
     scenarios: ['商品图上的水印 / logo 去除', '画面里多余杂物的清理', '路人 / 反光等瑕疵的修补'],
-    hint: '涂红的区域会被抹掉，结果回到下方历史记录',
+    hint: '涂红的区域会被抹掉，结果回到历史记录',
     media: 'image',
     uploads: [
       {
@@ -353,7 +360,7 @@ export const toolSchemas: ToolSchema[] = [
     steps: ['上传 1–2 张原图', '在每张图上拖出要重绘的区域', '描述框内要出现的内容', '选择张数，点击「开始重绘」'],
     intro: '在图上框出要改的区域并描述想要的内容，只重画框内部分，框外画面保持不变。',
     scenarios: ['替换画面里的局部物件', '给空白处补上新元素', '修掉瑕疵并换成想要的内容'],
-    hint: '结果按所选张数回到下方历史记录',
+    hint: '结果按所选张数回到历史记录',
     media: 'image',
     uploads: [
       {
@@ -406,7 +413,7 @@ export const toolSchemas: ToolSchema[] = [
     resultTitle: '抠图结果',
     intro: '识别图片主体并去除背景，快速生成透明背景的商品图，适合电商展示与素材制作。',
     scenarios: ['电商商品图去背景', '透明底素材制作', '海报 / 拼图的主体提取'],
-    hint: '通常当场出图，处理较久时转入下方历史记录',
+    hint: '通常当场出图，处理较久时转入历史记录',
     media: 'image',
     uploads: [
       {
@@ -440,6 +447,7 @@ export const toolSchemas: ToolSchema[] = [
         label: '目标语言',
         type: 'select',
         required: true,
+        choiceCard: true,
         default: '英语',
         options: [
           '中文',
@@ -468,7 +476,7 @@ export const toolSchemas: ToolSchema[] = [
         note: '中文语言名能否被执行方识别待联调确认',
       },
     ],
-    submit: { label: '开始翻译', costUnit: '张', costSource: '未显示（按张逐张提交，整批同一语言）' },
+    submit: { label: '开始翻译', costUnit: '张', costSource: '未显示（按张逐张提交，整批同一语言）', countLabel: true },
     actions: [],
   },
   {
@@ -581,6 +589,7 @@ export const toolSchemas: ToolSchema[] = [
       label: '开始转换',
       costUnit: '张',
       costSource: '预设比例：工具单价（ratioConvert）× 张数；自定义尺寸不显示',
+      countLabel: true,
     },
     actions: [],
   },
@@ -599,10 +608,10 @@ export const toolSchemas: ToolSchema[] = [
     media: 'image',
     uploads: [
       { ...imageSlot('底图', 20, 'originalImageUrl'), layout: 'pipe' },
-      { ...imageSlot('替换素材', 1, 'productImageUrl', true, 1), layout: 'material' },
+      { ...imageSlot('替换素材', 1, 'productImageUrl', true, 1), layout: 'anchor' },
     ],
     fields: [],
-    submit: { label: '开始替换', costUnit: '张', costSource: '未显示（桌面 1.0.17 未给该工具报价）' },
+    submit: { label: '开始替换', costUnit: '张', costSource: '未显示（桌面 1.0.17 未给该工具报价）', countLabel: true },
     actions: [],
   },
   {
@@ -733,7 +742,7 @@ export const toolSchemas: ToolSchema[] = [
     steps: ['上传 1 段视频（2–300 秒，≤500M）', '选择目标分辨率', '点击「开始提升画质」'],
     intro: '上传视频后选择目标分辨率，提升视频清晰度与细节表现，支持 720P 到 4K。',
     scenarios: ['老素材 / 低码率视频的画质提升', '投放前的成片规格升级', '拉伸放大前的清晰度补齐'],
-    hint: '视频任务耗时较长，完成后回到下方历史记录',
+    hint: '视频任务耗时较长，完成后回到历史记录',
     media: 'video',
     uploads: [
       {
@@ -783,7 +792,7 @@ export const toolSchemas: ToolSchema[] = [
     steps: ['上传 1 段视频（2–300 秒，≤500M）', '选择目标语言与配音音色', '按需开启字幕选项', '点击「开始翻译」'],
     intro: '上传视频后选择目标语言与音色，自动识别语音并翻译，生成配音视频。',
     scenarios: ['跨境电商视频广告本地化', '多语言课程视频制作', '社交媒体内容跨语言传播'],
-    hint: '视频任务耗时较长，完成后回到下方历史记录',
+    hint: '视频任务耗时较长，完成后回到历史记录',
     media: 'video',
     uploads: [
       {
@@ -810,6 +819,7 @@ export const toolSchemas: ToolSchema[] = [
         label: '目标语言',
         type: 'select',
         required: true,
+        choiceCard: true,
         default: '英语',
         options: ['中文（普通话）', '英语', '法语', '德语', '俄语', '意大利语', '西班牙语', '葡萄牙语', '日语', '韩语'],
         javaKey: 'language',
@@ -822,6 +832,7 @@ export const toolSchemas: ToolSchema[] = [
         label: '配音音色',
         type: 'voice',
         required: true,
+        choiceCard: true,
         // 契约 voice → Java voiceModel + voiceKey（均必填）；选项取 GET /api/v1/voices/list 的 model / voiceKey
         javaKey: ['voiceModel', 'voiceKey'],
         verified: true,
@@ -874,7 +885,7 @@ export const toolSchemas: ToolSchema[] = [
     media: 'image',
     uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
     fields: [],
-    submit: { label: '开始去皱', costUnit: '张', costSource: '未显示（价目接口未给该工具报价）' },
+    submit: { label: '开始去皱', costUnit: '张', costSource: '未显示（价目接口未给该工具报价）', countLabel: true },
     actions: [],
   },
   {
@@ -959,9 +970,14 @@ export const toolSchemas: ToolSchema[] = [
     javaRoute: '/api/v1/tools/ai-image-generator',
     historyTitle: 'ai-image-generator',
     title: '图片生成',
-    description: '输入提示词并按需上传参考图，自定义清晰度、比例与出图数量，快速生成目标画面。',
-    steps: ['（选填）上传 1–9 张参考图', '填写画面描述', '选择清晰度、比例与张数', '点击「开始生成」'],
-    intro: '输入提示词并按需上传参考图，自定义清晰度、比例与出图数量，快速生成目标画面。',
+    description: '输入提示词并按需上传参考图，选择模型并自定义清晰度、比例与出图数量，快速生成目标画面。',
+    steps: [
+      '（选填）上传参考图（张数上限随所选模型）',
+      '填写画面描述',
+      '选择模型、清晰度、比例与张数',
+      '点击「开始生成」',
+    ],
+    intro: '输入提示词并按需上传参考图，选择模型并自定义清晰度、比例与出图数量，快速生成目标画面。',
     scenarios: ['无素材时的概念图快速产出', '同一描述的多版本比稿', '参考图风格延展'],
     hint: '不传参考图即纯文字生成；结果按所选张数回到历史记录',
     submitLabel: '立即生成',
@@ -1012,7 +1028,7 @@ export const toolSchemas: ToolSchema[] = [
     steps: ['（选填）上传参考视频与参考图', '填写画面描述', '选择模型、清晰度、比例与时长', '点击「开始生成」'],
     intro: '输入提示词后按需上传参考视频与多张参考图，快速生成短视频内容。',
     scenarios: ['商品短视频的快速成片', '静态素材转动态展示', '创意脚本的画面试拍'],
-    hint: '参考视频与参考图都选填；视频任务耗时较长，完成后回到下方历史记录',
+    hint: '参考视频与参考图都选填；视频任务耗时较长，完成后回到历史记录',
     media: 'video',
     uploads: [
       {
@@ -1094,6 +1110,7 @@ export const toolSchemas: ToolSchema[] = [
         type: 'switch',
         required: false,
         default: true,
+        description: '为成片配上模型生成的声音',
         javaKey: 'generateAudio',
         verified: true,
       },
@@ -1119,23 +1136,24 @@ export const toolSchemas: ToolSchema[] = [
     apiTool: 'ai-video-clone',
     // 复用视频工作流 POST /api/v1/workflows/video（title=video-clone，Java VIDEO_CLONE_TITLE）：原片必填（受理面拒缺片）、
     // 参考图选填 ≤9、content ≥5 字；模型 / 清晰度 / 比例 / 时长与视频生成同源（video-model-configs）。
-    // 原型的「解析十一维 → 标保持 / 替换」依赖独立解析服务，后端没有，这一版只做原片 + 参考图 + 描述直接出片。
+    // 主路径是「解析、标注」（views/tools/videoClone：POST /api/v1/video-clone/analyses 解析十一维 → 标保持 / 替换 / 描述，
+    // 提交体多带 videoClone，描述 / 清晰度 / 比例 / 时长可省，跟随原片）；下面的字段是「直接出片」退路的简单表单。
     javaRoute: '/api/v1/workflows/video',
     historyTitle: 'video-clone',
     historyKind: 'workflow',
     constants: { title: 'video-clone' },
     title: '视频复刻',
-    description: '上传一条现成的短视频，配上参考图，写清改成什么样，选好模型与清晰度，直接生成新视频。',
+    description: '上传一条现成的短视频，机器先认画面；你只标哪几项保持、哪几项替换，选好模型与清晰度，直接生成新视频。',
     steps: [
-      '上传 1 段原片（2–300 秒，≤500M）',
-      '（选填）上传参考图',
-      '写清改成什么样',
-      '选择模型、清晰度、比例与时长',
+      '上传 1 段原片（2–300 秒，≤500M），自动解析画面',
+      '确认片子目的，按需上传参考图',
+      '在十一维里标保持 / 替换 / 描述',
+      '选择模型、清晰度与音频',
       '点击「开始生成」',
     ],
-    intro: '上传一条现成的短视频，配上参考图，写清改成什么样，选好模型与清晰度，直接生成新视频。',
+    intro: '上传一条现成的短视频，机器先认画面；你只标哪几项保持、哪几项替换，选好模型与清晰度，直接生成新视频。',
     scenarios: ['换装片逐套换衣服', '同一条片子换人换场景', '保留原动作与运镜的二次创作'],
-    hint: '视频任务耗时较长，完成后回到下方历史记录',
+    hint: '视频任务耗时较长，完成后回到历史记录',
     media: 'video',
     uploads: [
       {

@@ -160,6 +160,18 @@ export function useTryonGarment(spec: () => UploadSpec, options: ToolImageUpload
   const look = ref('')
   let seq = 0
 
+  /**
+   * 服装图合计上限：默认 MAX_GARMENT（9）；页面可按模型收紧（商拍工作室 = min(9, 模型参考图上限 − 1)），
+   * 经 ToolTryonMaterials 的 maxGarments 写进来（setMaxGarments），roomOf / 拖入 / 资产库都按它拦
+   */
+  const capOverride = ref<number | null>(null)
+  const maxGarments = computed(() => {
+    const n = capOverride.value
+    return typeof n === 'number' && Number.isFinite(n) ? Math.max(1, Math.min(MAX_GARMENT, Math.floor(n))) : MAX_GARMENT
+  })
+  function setMaxGarments(n: number | null | undefined) {
+    capOverride.value = typeof n === 'number' ? n : null
+  }
   const isTogether = computed(() => selected.value.length >= 2 && mode.value === 'together')
   const photosOf = (key: string) => photos.value.filter((p) => p.role === key)
   /** 参与本次的服装图：一套合影 = 那一张；分别上传 = 所选单品的图（没选上的单品图留着，只是不参与） */
@@ -200,9 +212,9 @@ export function useTryonGarment(spec: () => UploadSpec, options: ToolImageUpload
 
   /** 这一件还能放几张：每件上限与合计上限取小，到顶给原型同一句 */
   function roomOf(key: string) {
-    const totalRoom = MAX_GARMENT - allPhotos.value.length
+    const totalRoom = maxGarments.value - allPhotos.value.length
     if (totalRoom <= 0) {
-      message.warning(`服装图最多 ${MAX_GARMENT} 张`)
+      message.warning(`服装图最多 ${maxGarments.value} 张`)
       return 0
     }
     const room = Math.min(MAX_PHOTOS - photosOf(key).length, totalRoom)
@@ -294,8 +306,8 @@ export function useTryonGarment(spec: () => UploadSpec, options: ToolImageUpload
       message.warning('先选单品，再拖服装图')
       return
     }
-    if (allPhotos.value.length >= MAX_GARMENT) {
-      message.warning(`服装图最多 ${MAX_GARMENT} 张`)
+    if (allPhotos.value.length >= maxGarments.value) {
+      message.warning(`服装图最多 ${maxGarments.value} 张`)
       return
     }
     const target = selected.value.find((key) => photosOf(key).length < MAX_PHOTOS) ?? selected.value[0]!
@@ -308,8 +320,8 @@ export function useTryonGarment(spec: () => UploadSpec, options: ToolImageUpload
       message.warning('先选单品，再挑对应的服装图')
       return null
     }
-    if (allPhotos.value.length >= MAX_GARMENT) {
-      message.warning(`服装图最多 ${MAX_GARMENT} 张`)
+    if (allPhotos.value.length >= maxGarments.value) {
+      message.warning(`服装图最多 ${maxGarments.value} 张`)
       return null
     }
     const key = selected.value.find((item) => photosOf(item).length < MAX_PHOTOS) ?? selected.value[0]!
@@ -317,7 +329,7 @@ export function useTryonGarment(spec: () => UploadSpec, options: ToolImageUpload
       message.warning(`每件最多 ${MAX_PHOTOS} 张`)
       return null
     }
-    return { key, room: Math.min(MAX_PHOTOS - photosOf(key).length, MAX_GARMENT - allPhotos.value.length) }
+    return { key, room: Math.min(MAX_PHOTOS - photosOf(key).length, maxGarments.value - allPhotos.value.length) }
   }
 
   return reactive({
@@ -327,6 +339,8 @@ export function useTryonGarment(spec: () => UploadSpec, options: ToolImageUpload
     look,
     isTogether,
     allPhotos,
+    maxGarments,
+    setMaxGarments,
     photosOf,
     photoAt,
     toggleItem,

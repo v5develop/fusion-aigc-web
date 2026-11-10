@@ -229,12 +229,16 @@ export interface ModelConfig {
   weight?: number
   supportedModes?: string[]
   duration?: number[]
-  /** 仅视频：该模型参考素材上限；maxImages 缺省按 9，maxVideos = 0 表示不支持参考视频 */
+  /**
+   * 该模型参考素材上限（视频与图片生成都下发）：maxImages 缺省按 9；maxVideos 仅视频，0 表示不支持参考视频
+   */
   refs?: { maxImages?: number; maxVideos?: number }
+  /** 仅图片生成：运营设的默认模型（进页初始选中它；都没标时取第一项） */
+  default?: boolean
 }
 
 /**
- * 图片生成（/tools/ai-image-generator）的模型与价目：第一项是默认模型，运营启用后才有后续项；
+ * 图片生成（/tools/ai-image-generator）的模型与价目：default=true 的是默认模型（没标时第一项），运营启用后才有多项；
  * 每项 size[] 是该模型的分辨率 / 比例与单价。提交可带 model（不带或带第一项 = 默认行为）。
  */
 export function imageModelConfigs() {

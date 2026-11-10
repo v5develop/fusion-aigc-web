@@ -6,7 +6,7 @@
  * 不能提交的原因写在按钮上方一行小字（warning 色，aria-live）。
  *
  * <p>传 form 时按钮是 type=submit 并挂到该表单（工具页 / 工作流页的 &lt;form&gt; 提交）；
- * 不传时是 type=button，点击发 submit 事件（工作室页面）。加载中按钮文案换成「提交中…」并转圈。
+ * 不传时是 type=button，点击发 submit 事件（工作室页面）。加载中按钮保留原文案，左侧加 12px 转圈（原型 ToolSubmitBar）。
  * #extra 插槽放在按钮上方，用于页面自己的补充说明（如幂等重试提示）。
  */
 import { useId } from 'vue'
@@ -66,7 +66,7 @@ function onClick() {
         aria-hidden="true"
       />
       <span class="text-16px font-600 leading-22px tracking-[0.04em] whitespace-nowrap group-disabled:text-white/80">
-        {{ loading ? '提交中…' : label }}
+        {{ label }}
       </span>
       <span
         v-if="costText"

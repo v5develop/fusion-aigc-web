@@ -8,6 +8,7 @@
 // 返回键回不到「做同款」所在的页面。
 import type { RouteLocationNormalized } from 'vue-router'
 import { useHomeStore } from '@/stores/home'
+import { hasRefill } from '@/utils/refillHandoff'
 
 const GENERATOR_QUERY_KEYS = ['entryCode', 'sameStyleId', 'sameStyleSource'] as const
 const TARGET: Record<string, string> = { image: '/image/generate', video: '/video/generate' }
@@ -25,4 +26,18 @@ export function generatorRedirect(to: RouteLocationNormalized) {
     return { path: target, query: to.query, hash: to.hash }
   }
   return true
+}
+
+// 工具页里的商拍换装 / 姿态复刻是简版，商拍工作室的完整版才是正式页面：老链接原样（query + hash）转过去。
+// 例外：任务中心对这两个工具的老任务「做同款 / 参数回填」交接的是简版工具的提交体，工作室读不了，
+// 这时放行到简版工具页，让它照常回填（交接 2 分钟内有效，过期就照常转走）。
+const STUDIO_TOOL: Record<string, { target: string; historyTitle: string }> = {
+  '/tools/ai-digital-model': { target: '/studio/ai-digital-model', historyTitle: 'ai-model-tryon' },
+  '/tools/ai-posture-fission': { target: '/studio/ai-posture-fission', historyTitle: 'ai-posture-fission' },
+}
+
+export function studioToolRedirect(to: RouteLocationNormalized) {
+  const hit = STUDIO_TOOL[to.path]
+  if (!hit || hasRefill('tool', hit.historyTitle)) return true
+  return { path: hit.target, query: to.query, hash: to.hash }
 }

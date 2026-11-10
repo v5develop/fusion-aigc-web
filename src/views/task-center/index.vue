@@ -16,6 +16,7 @@ import { NConfigProvider, NDatePicker, NPagination, NSelect, useDialog, useMessa
 import { toApiError } from '@/api/index.ts'
 import { toolSchemas } from '@/views/tools/schemas'
 import { workflowRouteOf, workflowSchemas } from '@/views/workflow/schemas'
+import { ENTRY_ROUTE } from '@/utils/sameStyle'
 import { stashRefill, type RefillMode } from '@/utils/refillHandoff'
 import { llTheme } from '@/views/local-life/theme.ts'
 import MediaFallback from '@/components/MediaFallback/index.vue'
@@ -23,6 +24,7 @@ import IconButton from '@/components/IconButton/index.vue'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
 import {
+  taskCenterCancel,
   taskCenterCollect,
   taskCenterDelete,
   taskCenterFilters,
@@ -211,8 +213,8 @@ function confirmDelete(item: ITaskCenterItem) {
     positiveText: '删除',
     negativeText: '取消',
     onNegativeClick: () => deleteBusy.delete(item.taskId),
-    onClose: () => {
-      // 确认框被关掉（遮罩、Esc）且没有确认时释放；确认后由删除流程的 finally 释放
+    // 遮罩 / Esc 关闭不走 onClose，统一在离场动画结束后释放；确认后由删除流程的 finally 释放
+    onAfterLeave: () => {
       if (!confirmed) deleteBusy.delete(item.taskId)
     },
     onPositiveClick: async () => {
@@ -231,6 +233,101 @@ function confirmDelete(item: ITaskCenterItem) {
       } finally {
         deleting.value = ''
         deleteBusy.delete(item.taskId)
+      }
+    },
+  })
+}
+
+// ---------------- 去查看 / 取消 ----------------
+
+/** 电商入口 entryCode → 页面（对照 docs/container-entry-links.md 附录） */
+const ECOMMERCE_ROUTE: Record<string, string> = {
+  productSetImages: '/e-commerce/product-kit',
+  aPlusDetailPage: '/e-commerce/product-detail',
+  hitReplication: '/e-commerce/product-clone',
+  aiGestures: '/e-commerce/product-in-hand',
+  hitVideo: '/e-commerce/video-hot',
+  hitVideoReplication: '/e-commerce/video-clone',
+  productReplacement: '/e-commerce/product-replace',
+  personReplacement: '/e-commerce/model-replace',
+  wearingProductSetImages: '/e-commerce/clothing-kit',
+  aiClothExchange: '/e-commerce/clothing-try',
+  removeWrinkles: '/e-commerce/clothing-remove-wrinkle',
+  shoeSwapping: '/e-commerce/try-shoe',
+  backgroundSwitching: '/e-commerce/change-background',
+  mergeClothes: '/e-commerce/merge-image',
+}
+const VIDEO_ENTRIES = new Set(['actionTransfer', 'firstLastFrames'])
+
+/** 同步可知的来源页；认不出返回空串 */
+function staticRouteOf(item: ITaskCenterItem): string {
+  const code = item.entryCode
+  if (!code) return ''
+  if (ENTRY_ROUTE[code]) return `${ENTRY_ROUTE[code]}?entryCode=${encodeURIComponent(code)}`
+  if (VIDEO_ENTRIES.has(code)) return `/video?entryCode=${encodeURIComponent(code)}`
+  return ECOMMERCE_ROUTE[code] ?? ''
+}
+/** 能显示「去查看」：静态表认得，或属于工具 / 工作流页的任务（点击时按 params 解析） */
+const canView = (item: ITaskCenterItem) => !!staticRouteOf(item) || !!item.canRefill
+
+const viewBusy = ref('')
+async function goView(item: ITaskCenterItem) {
+  const direct = staticRouteOf(item)
+  if (direct) {
+    await router.push(direct)
+    return
+  }
+  if (viewBusy.value) return
+  viewBusy.value = item.taskId
+  try {
+    const p = (await taskCenterParams(item.taskId)).data
+    if (p?.kind === 'workflow' && p.workflowTitle) {
+      const to = workflowRouteOf(p.workflowTitle)
+      if (to) return void (await router.push(to))
+    } else if (p?.kind === 'tool' && p.toolTitle) {
+      const tool = toolSchemas.find((x) => x.historyTitle === p.toolTitle)
+      if (tool) return void (await router.push(`/tools/${encodeURIComponent(tool.homeId)}`))
+    }
+    message.warning('暂时无法定位来源页面')
+  } catch (e) {
+    reportError(e, '打开失败，请重试')
+  } finally {
+    viewBusy.value = ''
+  }
+}
+
+const cancelBusy = new Set<string>()
+const cancelling = ref('')
+/** 只认后端下发的 canCancel：已提交给模型供应商（成本已发生）的任务后端给 false，未下发也不显示 */
+const canCancelRow = (item: ITaskCenterItem) => IN_FLIGHT.has(item.statusBucket) && item.canCancel === true
+
+function confirmCancel(item: ITaskCenterItem) {
+  if (cancelBusy.has(item.taskId)) return
+  cancelBusy.add(item.taskId)
+  let confirmed = false
+  dialog.warning({
+    title: '取消任务',
+    content: '确定取消这个任务？未生成的部分会退回点数。',
+    positiveText: '确定取消',
+    negativeText: '再想想',
+    onNegativeClick: () => cancelBusy.delete(item.taskId),
+    onAfterLeave: () => {
+      if (!confirmed) cancelBusy.delete(item.taskId)
+    },
+    onPositiveClick: async () => {
+      confirmed = true
+      cancelling.value = item.taskId
+      try {
+        await taskCenterCancel(item.taskId)
+        message.success('已取消')
+        await load(true)
+      } catch (e) {
+        // 后端拒绝（如「任务已提交到模型处理，无法取消」）的文案由拦截器弹出；随后刷新，让按钮按最新状态收起
+        reportError(e, '取消失败，请重试')
+        await load(true)
+      } finally {
+        cancelling.value = ''
+        cancelBusy.delete(item.taskId)
       }
     },
   })
@@ -304,8 +401,8 @@ async function openWith(item: ITaskCenterItem, mode: RefillMode) {
       }
       stashRefill({ kind: 'tool', key: tool.historyTitle, mode, taskId: item.taskId, params })
       await router.push(`/tools/${encodeURIComponent(tool.homeId)}`)
-      // 工具页暂未接入交接（views/tools 本次不改）：引导用户用记录上的「重新编辑」
-      message.info(`已打开「${tool.title}」，在右侧记录里点「重新编辑」即可回填原参数`)
+      // 工具页进页自动消费交接
+      message.info(`已打开「${tool.title}」并回填原参数`)
       return
     }
     message.warning(p.reason || '该任务不支持参数回填')
@@ -577,6 +674,26 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
               </div>
 
               <span class="flex-none flex items-center gap-8px">
+                <button
+                  v-if="canView(item)"
+                  type="button"
+                  class="sx-btn-tint !min-h-32px !px-12px !text-13px"
+                  :disabled="viewBusy === item.taskId"
+                  :aria-label="`去查看：${item.title}`"
+                  @click="goView(item)"
+                >
+                  {{ viewBusy === item.taskId ? '打开中…' : '去查看' }}
+                </button>
+                <button
+                  v-if="canCancelRow(item)"
+                  type="button"
+                  class="sx-btn-ghost !min-h-32px !px-12px !text-13px hover:!text-danger"
+                  :disabled="cancelling === item.taskId"
+                  :aria-label="`取消任务 ${item.title}`"
+                  @click="confirmCancel(item)"
+                >
+                  {{ cancelling === item.taskId ? '取消中…' : '取消' }}
+                </button>
                 <!-- 列表接口只给封面：视频任务的封面不是作品本身，不放「查看大图」（点缩略图有预览） -->
                 <a
                   v-if="!isVideo(item) && item.coverUrl && !item.blocked && !brokenCovers.has(item.taskId)"

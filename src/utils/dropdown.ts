@@ -13,16 +13,18 @@ const CHECK_SVG =
   '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.12 7.42L6.3 10.6L11.96 4.94" stroke="#8E66F9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 
 export const DROPDOWN_THEME_OVERRIDES = {
+  // 与全局 Dropdown 主题（theme/naive.ts）同一套令牌；行高 40 / 字 14 是这些面板自己的命中尺寸，保持不变
   color: '#FFFFFF',
   padding: '8px 4px',
-  borderRadius: '8px',
+  borderRadius: '10px',
+  boxShadow: '0 12px 24px rgba(31,35,41,.14), 0 2px 6px rgba(31,35,41,.06)',
   optionHeightMedium: '40px',
   fontSizeMedium: '14px',
-  optionTextColor: '#3A3A3A',
-  optionTextColorHover: '#3A3A3A',
-  optionTextColorActive: '#3A3A3A',
-  optionColorHover: '#F5F6F8',
-  groupHeaderTextColor: '#8F8F8F',
+  optionTextColor: '#1F2329',
+  optionTextColorHover: '#1F2329',
+  optionTextColorActive: '#1F2329',
+  optionColorHover: '#F3F4F5',
+  groupHeaderTextColor: '#5F6673',
 }
 
 /** 面板宽度：设计稿中比例/时长为 156px，其余为 194px */

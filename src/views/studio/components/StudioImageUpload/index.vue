@@ -8,7 +8,7 @@
  * - 悬停 500ms 摊开、离开 2s 收回（键盘聚焦立即摊开）：步长 81，放不下按同排可用宽度压缩（最密 8），width / margin 走
  *   220ms cubic-bezier(.25,.8,.25,1)（减少动态效果时瞬时），不动透明度；
  * - 摊开时行尾多一格 78×130 虚线「+ 点击添加」（有云钮时格内右下角放「资产添加」小圆钮）；每张悬停出 22 圆「替换」钮（命中 ≥32，
- *   只换这一张；picker 模式由页面管增删，不出替换）；
+ *   只换这一张；picker 模式只发 replace(index)，由页面按自己的校验上传后原位替换）；
  * - 空态是同一张白边浮片：图标 18 + 文案 12/16；
  * - 右上角删除钮只删最上面（最后）一张，与徽标同位、悬停才出现；清空整组改为面板头部 / 行尾的「清空」文字钮并二次确认；
  *   右下角外沿 -12/-12 是云钮（在调用方传 cloud / onCloud 时出现）；
@@ -78,6 +78,8 @@ const emit = defineEmits<{
   pick: []
   remove: [url: string, index: number]
   clear: []
+  /** picker 模式点某张的「替换」：页面选文件、校验、上传后原位换掉第 index 张 */
+  replace: [index: number]
 }>()
 
 /** 图片地址列表（v-model） */
@@ -205,9 +207,9 @@ const entryWidth = computed(() => `${PLATE_W + (n.value - 1) * (expanded.value ?
 const plateGap = computed(() => `${(expanded.value ? step.value : STACK) - PLATE_W}px`)
 /** 最上面一张的删除钮：最后一张片内右上角 4/4（与张数徽标同位） */
 const delLeft = computed(() => `${PLATE_W + (n.value - 1) * (expanded.value ? step.value : STACK) - 24}px`)
-/** 摊开时每张片子左上角的「替换」钮（picker 模式不出：增删由页面管） */
+/** 摊开时每张片子左上角的「替换」钮（picker 模式发 replace 事件，由页面换图） */
 const plateReplaces = computed(() =>
-  expanded.value && count.value && !picker && !disabled
+  expanded.value && count.value && !disabled
     ? plates.value.map((url, i) => ({
         url,
         index: count.value - plates.value.length + i,
@@ -323,7 +325,11 @@ async function addFiles(files: File[]) {
 /** 替换：选中的那一张位置不变，只换图 */
 let replaceIndex = -1
 function startReplace(index: number) {
-  if (disabled || uploading.value || picker) return
+  if (disabled || uploading.value) return
+  if (picker) {
+    emit('replace', index)
+    return
+  }
   replaceIndex = index
   fileInput.value?.click()
 }

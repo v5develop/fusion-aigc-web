@@ -44,8 +44,8 @@ const list = usePagedList<IPlazaTemplate>(async (page) => {
   const res = await plazaTemplateList({ page, size: PAGE_SIZE, tags: activeTag.value || undefined })
   const d = res.data
   return { items: d?.data ?? [], hasMore: (d?.current ?? page) < (d?.pages ?? 0) }
-})
-const { items, hasMore, loading, loadingMore, failed, reload, loadMore, onScroll } = list
+}, { silenced: true })
+const { items, hasMore, loading, loadingMore, failed, errorMsg, reload, loadMore, onScroll } = list
 
 function pickTag(t: string) {
   activeTag.value = t
@@ -183,6 +183,7 @@ function replicate(t: IPlazaTemplate) {
         :loading="loading"
         :loading-more="loadingMore"
         :failed="failed"
+        :error-text="errorMsg"
         :empty="empty"
         :has-more="hasMore"
         :empty-text="filtering ? '没有匹配的模板，换个分类或词试试' : '暂无模板'"

@@ -13,9 +13,12 @@ withDefaults(
     emptyText: string
     emptyDescription?: string
     gridClass?: string
+    /** 失败说明（后端原话）；空则用 PageLoadError 默认文案 */
+    errorText?: string
   }>(),
   {
     emptyDescription: '',
+    errorText: '',
     gridClass: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-14px',
   },
 )
@@ -27,7 +30,7 @@ const emit = defineEmits<{ retry: []; 'load-more': [] }>()
   <div v-loading="loading" :class="['grid min-h-240px', gridClass]">
     <slot />
     <div v-if="failed && !loading" class="col-span-full py-24px">
-      <PageLoadError compact retryable @retry="emit('retry')" />
+      <PageLoadError compact retryable :subtitle="errorText || undefined" @retry="emit('retry')" />
     </div>
     <div v-else-if="empty" class="col-span-full py-24px">
       <PageEmpty compact :text="emptyText" :description="emptyDescription" />

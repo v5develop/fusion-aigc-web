@@ -10,6 +10,7 @@ import { computed, nextTick, ref } from 'vue'
 import { RouterLink, type RouteLocationRaw } from 'vue-router'
 import { NPopover } from 'naive-ui'
 import { workflowTree, type WorkflowSchema } from './schemas'
+import { TAGLINES } from './taglines'
 
 const props = defineProps<{
   titleId: string
@@ -168,7 +169,13 @@ function close(refocus = false) {
                     class="col-span-full truncate text-11px leading-16px"
                     :class="s.schemaId === current.schemaId ? 'text-#8a6d99' : 'text-muted'"
                   >
-                    {{ s.uploads.map((u) => u.label).join(' · ') || '无需上传素材' }}
+                    {{ s.uploads.map((u) => u.label).join(' · ') || '无需本地上传' }}
+                  </span>
+                  <span
+                    v-if="TAGLINES[s.name]"
+                    class="col-span-full truncate text-11px leading-14px text-placeholder"
+                  >
+                    {{ TAGLINES[s.name] }}
                   </span>
                 </RouterLink>
               </li>

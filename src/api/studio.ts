@@ -39,6 +39,16 @@ export function studioPosePreview(data: types.StudioPosePreviewReq) {
   return post<types.StudioPosePreviewResp>(`${PREFIX}/pose/preview`, data, undefined, POSE_PREVIEW_TIMEOUT)
 }
 
+/**
+ * 商拍「AI 找细节」（免费只读、不要 Idempotency-Key）：回每张服装图的细节框（归一化 [x,y,w,h]）与部位名；
+ * 前端按框在原图上本地显示裁切缩略图（不调裁图接口），删减 / 重新裁切后随提交带回 detail_crops。
+ * 读图慢（单次可达 1–3 分钟），超时同配对预览；同一用户同时只能跑一个、按用户限频（都是 4002）。
+ */
+export const TRYON_DETAILS_TIMEOUT = POSE_PREVIEW_TIMEOUT
+export function studioTryonDetails(data: types.StudioDetailsReq) {
+  return post<types.StudioDetailsResp>(`${PREFIX}/tryon/details`, data, undefined, TRYON_DETAILS_TIMEOUT)
+}
+
 /** 图片生成（count 张拆任务） */
 export function studioSubmitImageGen(
   data: types.StudioImageGenSubmitReq,
@@ -62,6 +72,16 @@ export function studioQuoteImageGen(data: types.StudioImageGenQuoteReq) {
   return post<types.StudioQuoteResp>(`${PREFIX}/image-generate/quote`, data)
 }
 
+// ---------------- 模型档能力 ----------------
+
+/**
+ * 模型档能力（只读）：每个模型档的展示名、实际可用的分辨率 / 比例、参考图上限；with_price 附单张点数。
+ * kind 影响参考图上限与是否有「自动」比例；不传 = imagegen。
+ */
+export function studioModels(params: { kind?: types.StudioKind; with_price?: boolean } = {}) {
+  return get<types.StudioModelsResp>(`${PREFIX}/models`, params)
+}
+
 // ---------------- 批次 ----------------
 
 /** 批次详情 + 全部子任务（生成中每 2 秒轮询这个） */
@@ -82,6 +102,14 @@ export function studioCancelBatch(id: number) {
  */
 export function studioRetryTask(taskId: string) {
   return post<types.StudioBatchDetail>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}/retry`, {})
+}
+
+/**
+ * 编辑提示词后重新生成单张（POST /tasks/{task_id}/regenerate，仅姿态复刻）：用改过的提示词重跑这一张的生图，
+ * 计费同重试（重新冻结 1 张点数）；失败 / 成功的任务都可以；同一提示词重复提交幂等。回批次详情，之后照常轮询批次。
+ */
+export function studioRegenerateTask(taskId: string, prompt: string) {
+  return post<types.StudioBatchDetail>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}/regenerate`, { prompt })
 }
 
 /**

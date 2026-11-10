@@ -28,6 +28,7 @@ import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
 import ResultPreview from '../components/ResultPreview/index.vue'
+import { useLLQuote } from '../components/Workbench/useLLQuote.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import { useAgreement, useLLList, usePollingWhile } from '../hooks.ts'
 import { VIDEO_STATUS_MAP, formatBytes, isVideoRunning } from '../constants.ts'
@@ -214,6 +215,13 @@ function onSelectItem(item: ILVideoCreation) {
 
 // ---------------- 动作 ----------------
 
+// 提交前报价：解析不收费，确认复刻时按档位 × 原片时长冻结。左栏按钮是「新建」（新视频还没解析、时长未知），
+// 后端只报每秒单价（显示「N 点/秒」）；不带右栏选中记录的 id——带了会按旧记录的时长 / 档位算出与本次提交无关的精确价
+const { estimate } = useLLQuote(
+  () => ({ tool: 'videoRemake', model: remakeModel.value || undefined }),
+  () => '复刻消耗',
+)
+
 const submitting = ref(false)
 
 async function submit() {
@@ -298,7 +306,7 @@ async function confirmGenerate() {
 </script>
 
 <template>
-  <Workbench title="爆款视频复刻" :submit="submit" :loading="submitting" submit-text="解析视频" :history-count="listCtl.total.value">
+  <Workbench title="爆款视频复刻" :submit="submit" :loading="submitting" submit-text="解析视频" :estimate="estimate" :history-count="listCtl.total.value">
     <template #default>
       <div ref="sourceFieldRef" class="scroll-mt-12px">
       <FormCard title="视频来源" required :hint="source === 'upload' ? '最多 1 个' : ''">

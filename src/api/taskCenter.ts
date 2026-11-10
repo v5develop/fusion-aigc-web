@@ -4,7 +4,7 @@
  * <p>状态桶、状态文案、进度都由后端算好，页面直接展示，不要自己推导；
  * 封面只用 coverUrl（已脱敏 / 预签名），不要碰 result_url。
  */
-import { del, get, put } from './index.ts'
+import { del, get, post, put } from './index.ts'
 
 /** 状态桶：queued / processing / success / failed / cancelled */
 export type TaskStatusBucket = 'queued' | 'processing' | 'success' | 'failed' | 'cancelled'
@@ -61,6 +61,7 @@ export interface ITaskCenterItem {
   width: number | null
   height: number | null
   failReason: string | null
+  /** 能否取消：仅排队 / 生成中、且尚未提交给模型供应商（已产生成本的不给取消），以后端为准 */
   canCancel: boolean | null
   assetGroupId: string | null
   blocked: boolean | null
@@ -157,4 +158,9 @@ export function taskCenterTask(taskId: string) {
 /** 任务的原始提交参数（只能查自己的任务） */
 export function taskCenterParams(taskId: string) {
   return get<ITaskCenterParams>(`/api/v1/creation/task-center/tasks/${encodeURIComponent(taskId)}/params`)
+}
+
+/** 用户取消自己的在途任务（Java CreationController POST /api/v1/creation/{taskId}/cancel）；退款由后端提交后处理 */
+export function taskCenterCancel(taskId: string) {
+  return post<boolean>(`/api/v1/creation/${encodeURIComponent(taskId)}/cancel`, {})
 }

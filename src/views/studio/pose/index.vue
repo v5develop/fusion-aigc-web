@@ -253,6 +253,7 @@ function onReedit(payload: Record<string, unknown>) {
           v-model:resolution="form.resolution"
           v-model:aspect-ratio="form.aspect_ratio"
           auto-ratio
+          kind="pose"
           :disabled="submitting"
         />
         <StudioSubmitBar

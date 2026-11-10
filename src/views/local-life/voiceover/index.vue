@@ -29,6 +29,7 @@ import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
 import ResultPreview from '../components/ResultPreview/index.vue'
+import { useLLQuote } from '../components/Workbench/useLLQuote.ts'
 import { useAgreement, useLLList } from '../hooks.ts'
 import { CREATION_STATUS_MAP, isCreationRunning } from '../constants.ts'
 
@@ -38,7 +39,7 @@ const message = useMessage()
 const { ensureAgreed } = useAgreement()
 
 const BG_SEGMENTS = [
-  { key: 'AI', label: 'AI智能匹配' },
+  { key: 'AI', label: 'AI 智能匹配' },
   { key: 'PRESET', label: '预设背景' },
   { key: 'UPLOAD', label: '上传背景' },
 ] as const
@@ -105,13 +106,16 @@ function pickCopy(c: { id: number; body: string }) {
   showCopyPicker.value = false
 }
 
+// 提交前报价：按档位 × 时长计，提交即冻结
+const { estimate } = useLLQuote(() => ({ tool: 'voiceover', model: form.model || undefined, duration: form.duration }))
+
 // ---------------- 提交 ----------------
 
 const submitting = ref(false)
 
 async function submit() {
   if (submitting.value) return
-  if (!form.content.trim()) return message.warning('请输入口播文案')
+  if (!form.content.trim()) return message.warning('请先填写口播文案')
   if (portraitSource.value === 'UPLOAD' && !personImage.value) return message.warning('请上传人物照片')
   if (portraitSource.value === 'PUBLIC' && !personPublicId.value) return message.warning('请选择一位公共数字人')
   if (bgSource.value === 'PRESET' && !bgId.value) return message.warning('请选择一个背景')
@@ -180,7 +184,7 @@ watch(bgSource, () => {
 </script>
 
 <template>
-  <Workbench title="数字人口播" :submit="submit" :loading="submitting" submit-text="生成口播视频" submit-hint="人物形象建议用清晰的正面照，也可选一位公共数字人" :history-count="listCtl.total.value">
+  <Workbench title="数字人口播" :submit="submit" :loading="submitting" submit-text="生成口播视频" submit-hint="人物形象建议用清晰的正面照，也可选一位公共数字人" :estimate="estimate" :history-count="listCtl.total.value">
     <template #default>
       <FormCard title="口播文案" required>
         <PromptBox v-model="form.content" label="口播文案" size="lg" placeholder="数字人要播报的内容，字数不限">

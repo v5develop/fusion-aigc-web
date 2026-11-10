@@ -17,6 +17,7 @@ export const TOOL_COVERS: Record<string, string> = {
   首屏主图: '/images/tool-covers/first-screen.jpg',
   场景生成: '/images/tool-covers/scene-generate.jpg',
   单图复刻: '/images/tool-covers/single-copy.jpg',
+  单图复制: '/images/tool-covers/single-copy.jpg',
   SKU替换: '/images/tool-covers/sku-replace.jpg',
   服装去皱: '/images/tool-covers/wrinkle.jpg',
   商拍换装: '/images/tool-covers/product-garment.jpg',

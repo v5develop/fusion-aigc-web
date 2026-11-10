@@ -344,7 +344,8 @@ function normalizeNodeData(node: CanvasEditorNode): void {
   }
 }
 
-function migrateNodes(raw: unknown): CanvasEditorNode[] {
+/** 快照节点 → 编辑器节点（加载画布与「从模板插入」templateInsert.ts 共用） */
+export function migrateNodes(raw: unknown): CanvasEditorNode[] {
   if (!Array.isArray(raw)) return []
   const out: CanvasEditorNode[] = []
   for (const item of raw) {
@@ -367,7 +368,7 @@ function migrateNodes(raw: unknown): CanvasEditorNode[] {
   return out
 }
 
-function migrateEdges(raw: unknown, nodeIds: Set<string>): CanvasEditorEdge[] {
+export function migrateEdges(raw: unknown, nodeIds: Set<string>): CanvasEditorEdge[] {
   if (!Array.isArray(raw)) return []
   const out: CanvasEditorEdge[] = []
   for (const item of raw) {

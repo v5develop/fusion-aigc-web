@@ -15,7 +15,7 @@
  * 当前版本本身是校色版本时以它的 sourceImage 为底图，免得在校色结果上再叠一层。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { NCollapse, NCollapseItem, NInput, NModal, NSelect, useMessage } from 'naive-ui'
+import { NButton, NCollapse, NCollapseItem, NInput, NModal, NSelect, useMessage } from 'naive-ui'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import IconButton from '@/components/IconButton/index.vue'
 import {
@@ -47,9 +47,19 @@ import { useAssetsInCanvas } from '../useInCanvas.ts'
 
 const assetId = defineModel<number | null>({ required: true })
 
-const props = withDefaults(defineProps<{ hasPrev?: boolean; hasNext?: boolean }>(), { hasPrev: false, hasNext: false })
+const props = withDefaults(
+  defineProps<{
+    hasPrev?: boolean
+    hasNext?: boolean
+    /** 删除预留位：后端支持后列表页传 true 并监听 delete；本组件不自己删 */
+    canDelete?: boolean
+    /** 不可删时按钮显示为禁用，悬停给原因；空则不显示按钮 */
+    deleteDisabledReason?: string
+  }>(),
+  { hasPrev: false, hasNext: false, canDelete: false, deleteDisabledReason: '' },
+)
 
-const emit = defineEmits<{ changed: []; prev: []; next: [] }>()
+const emit = defineEmits<{ changed: []; prev: []; next: []; delete: [id: number] }>()
 
 const message = useMessage()
 const { opening: openingCanvas, openAssetsInCanvas } = useAssetsInCanvas()
@@ -113,6 +123,7 @@ async function load(id: number) {
     miniThumbFailed.value = {}
     previewFailed.value = false
     editingTitle.value = false
+    tagEditing.value = false
     resetDrafts()
   } catch {
     detail.value = null
@@ -140,6 +151,15 @@ watch(assetId, (id) => {
 })
 
 const asset = computed<IAssetLibAsset | null>(() => detail.value?.asset ?? null)
+
+/** 「日期 · 分类 [· 视频]」 */
+const metaLine = computed(() => {
+  const a = asset.value
+  if (!a) return ''
+  const date = a.created_at ? formatTime(a.created_at).slice(0, 10) : ''
+  const kind = KIND_OPTIONS.find((k) => k.value === a.kind)?.label ?? '其他分类'
+  return [date, kind, a.media === 'video' ? '视频' : ''].filter(Boolean).join(' · ')
+})
 
 // ---------------- 翻页（← / →）、下载、复制提示词 ----------------
 
@@ -280,6 +300,8 @@ async function saveTitle() {
 
 const myTags = ref<IAssetLibTag[]>([])
 const newTagName = ref('')
+const tagEditing = ref(false)
+const moreOpen = ref(false)
 
 async function loadMyTags() {
   try {
@@ -660,14 +682,29 @@ async function removeRelation(relatedId: number) {
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" title="资产详情" style="width: 960px; max-width: calc(100vw - 32px)">
-    <div v-loading="loading" class="min-h-320px max-h-74vh overflow-auto">
+  <n-modal v-model:show="show" :auto-focus="false" transform-origin="center">
+    <section
+      class="asset-dlg relative flex overflow-hidden bg-white sx-squircle rounded-18px border border-solid border-line shadow-[0_24px_64px_rgba(31,35,41,0.22)]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="资产详情"
+    >
+      <IconButton
+        label="关闭"
+        variant="overlay"
+        class="!absolute right-10px top-10px z-3"
+        @click="show = false"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </IconButton>
+      <div v-if="loading && !asset" class="flex-1 flex items-center justify-center text-13px text-placeholder">加载中…</div>
       <template v-if="asset">
-        <!-- relative：校色参数台相对这一行定位（贴右缘，压在右侧信息栏上，不挡大图） -->
-        <div class="relative flex gap-16px">
-          <ColorFixResultPanel :cf="cf" title="资产校色" />
+        <!-- relative：校色参数台相对这一行定位（压在右侧信息栏上，不挡大图） -->
+        <ColorFixResultPanel :cf="cf" title="资产校色" />
           <div
-            class="relative w-400px shrink-0 self-start h-420px flex items-center justify-center bg-sunken rounded-10px overflow-hidden"
+            class="relative flex-1 min-w-0 h-full flex items-center justify-center bg-sunken overflow-hidden"
           >
             <!-- 校色对比：左原图右校色后（下载按钮在右侧操作区） -->
             <ColorFixCompare
@@ -766,9 +803,10 @@ async function removeRelation(relatedId: number) {
             </div>
           </div>
 
-          <div class="flex-1 min-w-0">
-            <div class="mb-12px">
-              <div class="ll-label">标题</div>
+
+        <aside class="w-360px shrink-0 min-w-0 flex flex-col border-l border-l-solid border-line-soft max-md:w-300px">
+          <div v-loading="loading" class="flex-1 min-h-0 overflow-auto px-18px pt-18px pb-14px">
+            <header class="mb-14px pr-28px">
               <div v-if="editingTitle" class="flex items-center gap-8px">
                 <n-input
                   v-model:value="titleDraft"
@@ -782,77 +820,97 @@ async function removeRelation(relatedId: number) {
                 <n-button size="small" type="primary" :loading="saving" @click="saveTitle">保存</n-button>
                 <n-button size="small" quaternary @click="editingTitle = false">取消</n-button>
               </div>
-              <div v-else class="flex items-center gap-10px cursor-pointer" @click="startEditTitle">
-                <span
-                  class="text-16px font-600 text-ink whitespace-nowrap overflow-hidden text-ellipsis"
-                  :title="asset.title"
-                  >{{ asset.title || '未命名资产' }}</span
-                >
-                <span class="ll-link">编辑</span>
+              <div v-else class="group flex items-center gap-8px">
+                <h2 class="m-0 text-18px leading-26px font-600 text-ink break-all line-clamp-2" :title="asset.title">
+                  {{ asset.title || '未命名资产' }}
+                </h2>
+                <button type="button" class="ll-link relative after:(content-empty absolute -inset-x-6px -inset-y-8px rounded-[inherit]) shrink-0 border-none bg-transparent p-0 cursor-pointer text-12px" @click="startEditTitle">编辑</button>
               </div>
-              <div class="flex flex-wrap items-center gap-8px mt-10px">
-                <!-- 校色开着：下载给校色后的 PNG，另留「下载原图」 -->
-                <template v-if="cf.active.value">
-                  <button type="button" class="sx-btn" @click="downloadColorFixed">
-                    <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
-                    </svg>
-                    下载校色后
-                  </button>
-                  <button type="button" class="sx-btn" @click="downloadColorFixOriginal">下载原图</button>
-                  <button
-                    type="button"
-                    class="sx-btn"
-                    :disabled="savingColorFix"
-                    :aria-busy="savingColorFix || undefined"
-                    title="追加一个「校色后」版本并设为当前版本；同参数的版本已存在时直接切过去"
-                    @click="saveFixVersion"
-                  >
-                    {{ savingColorFix ? '保存中…' : '存为校色版本' }}
-                  </button>
-                  <button
-                    type="button"
-                    class="sx-btn"
-                    :aria-pressed="fixMode === 'compare'"
-                    @click="fixMode = fixMode === 'compare' ? 'result' : 'compare'"
-                  >
-                    {{ fixMode === 'compare' ? '退出对比' : '校色对比' }}
-                  </button>
-                </template>
-                <a
-                  v-else-if="downloadHref"
-                  class="sx-btn no-underline"
-                  :href="downloadHref"
-                  :download="downloadName(asset.title, asset.media === 'video')"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
-                  </svg>
-                  下载
-                </a>
-                <button v-if="asset.prompt" type="button" class="sx-btn" @click="copyText(asset.prompt, message)">
-                  复制提示词
-                </button>
+              <div class="mt-4px flex items-center gap-8px text-12px text-placeholder">
+                <span class="min-w-0 truncate">{{ metaLine }}</span>
                 <button
-                  v-if="downloadHref"
                   type="button"
-                  class="sx-btn"
-                  :disabled="openingCanvas"
-                  :aria-busy="openingCanvas || undefined"
-                  title="新建一张画布，把这个素材放进去"
-                  @click="openAssetsInCanvas([asset])"
+                  class="relative after:(content-empty absolute -inset-x-6px -inset-y-8px rounded-[inherit]) shrink-0 border-none bg-transparent p-0 text-12px cursor-pointer"
+                  :class="asset.favorite ? 'text-violet' : 'text-ink-2'"
+                  :disabled="saving"
+                  @click="patchAsset({ favorite: !asset.favorite })"
                 >
-                  <svg class="w-14px h-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <rect x="3.5" y="4.5" width="17" height="12" rx="2" />
-                    <path d="M8 20.5 12 16.5l4 4" />
-                  </svg>
-                  {{ openingCanvas ? '正在创建画布…' : '用于画布' }}
+                  {{ asset.favorite ? '★ 已收藏' : '☆ 收藏' }}
                 </button>
+              </div>
+            </header>
+
+            <!-- 提示词：藤紫描边渐变卡，完整内容可滚动，不截断 -->
+            <section class="asset-dlg-prompt mb-14px rounded-12px border border-solid border-violet-line">
+              <header class="flex items-center justify-between px-12px pt-8px">
+                <span class="text-12px font-600 text-violet-ink">提示词</span>
+                <button
+                  v-if="asset.prompt"
+                  type="button"
+                  class="relative after:(content-empty absolute -inset-x-6px -inset-y-8px rounded-[inherit]) inline-flex items-center gap-4px border-none bg-transparent p-0 text-12px text-violet-ink cursor-pointer hover:underline"
+                  @click="copyText(asset.prompt, message)"
+                >
+                  复制
+                </button>
+              </header>
+              <pre
+                v-if="asset.prompt"
+                class="m-0 px-12px pt-6px pb-10px max-h-200px overflow-auto whitespace-pre-wrap break-words font-sans text-13px leading-20px text-ink-2"
+                >{{ asset.prompt }}</pre
+              >
+              <div v-else class="px-12px pt-6px pb-10px text-12px text-placeholder">这个资产没有提示词</div>
+            </section>
+
+            <!-- 标签 + 管理 -->
+            <div class="mb-14px">
+              <div class="flex flex-wrap items-center gap-6px">
+                <span class="text-12px text-placeholder">标签</span>
+                <span
+                  v-for="t in currentTags"
+                  :key="t"
+                  class="inline-flex items-center px-8px py-3px rounded-4px text-12px bg-violet-soft-2 text-violet-ink border border-solid border-violet-line"
+                  :class="tagEditing && 'cursor-pointer'"
+                  :title="tagEditing ? '点击移除' : undefined"
+                  @click="tagEditing && removeTag(t)"
+                >
+                  {{ t }}<template v-if="tagEditing">&nbsp;×</template>
+                </span>
+                <span v-if="!currentTags.length" class="text-12px text-placeholder">未分类</span>
+                <button
+                  type="button"
+                  class="relative after:(content-empty absolute -inset-x-6px -inset-y-8px rounded-[inherit]) border-none bg-transparent p-0 text-12px text-violet cursor-pointer hover:underline"
+                  :aria-expanded="tagEditing"
+                  @click="tagEditing = !tagEditing"
+                >
+                  {{ tagEditing ? '完成' : '管理' }}
+                </button>
+              </div>
+              <div v-if="tagEditing" class="mt-8px">
+                <n-input
+                  v-model:value="newTagName"
+                  size="small"
+                  maxlength="20"
+                  :placeholder="`输入后回车，没有的会自动建（${currentTags.length}/10）`"
+                  @keydown.enter="addTag"
+                />
+                <div v-if="dictOptions.length" class="flex flex-wrap items-center gap-6px mt-8px">
+                  <span class="text-12px text-placeholder">我的标签：</span>
+                  <span v-for="t in dictOptions" :key="t.id" class="ll-tag" @click="toggleDictTag(t.name)">{{ t.name }}</span>
+                </div>
               </div>
             </div>
 
+            <!-- 更多：属性 / 授权与元数据 / 溯源 / 版本 / 相关资产 / 生成结果 -->
+            <button
+              type="button"
+              class="flex items-center gap-6px w-full border-none bg-transparent p-0 mb-4px text-12px text-ink-2 cursor-pointer min-h-32px hover:text-ink"
+              :aria-expanded="moreOpen"
+              @click="moreOpen = !moreOpen"
+            >
+              <span class="inline-block transition-transform motion-reduce:transition-none" :class="moreOpen && 'rotate-90'" aria-hidden="true">›</span>
+              更多信息（属性 · 版本 · 相关资产）
+            </button>
+            <div v-if="moreOpen">
             <!-- 字段网格：分类/授权/收藏与元数据共用同一两列网格（标签列 28px、列距 16px），控件左缘对齐 -->
             <div class="grid grid-cols-2 gap-x-16px gap-y-8px mb-12px">
               <div class="flex items-center gap-8px min-w-0">
@@ -875,45 +933,6 @@ async function removeRelation(relatedId: number) {
                   v-model:value="licenseDraft"
                   :disabled="saving"
                 />
-              </div>
-              <div class="flex items-center gap-8px min-w-0">
-                <span class="shrink-0 w-28px text-12px text-placeholder">收藏</span>
-                <span
-                  class="inline-flex items-center text-13px leading-20px cursor-pointer"
-                  :class="asset.favorite ? 'text-violet' : 'text-ink-2'"
-                  @click="patchAsset({ favorite: !asset.favorite })"
-                >
-                  {{ asset.favorite ? '★ 已收藏' : '☆ 收藏' }}
-                </span>
-              </div>
-            </div>
-
-            <div class="mb-12px">
-              <div class="ll-label">标签（{{ currentTags.length }}/10）</div>
-              <div class="flex flex-wrap items-center gap-6px">
-                <span
-                  v-for="t in currentTags"
-                  :key="t"
-                  class="inline-flex items-center px-8px py-3px rounded-4px text-12px bg-violet-soft-2 text-violet-ink border border-solid border-violet-line cursor-pointer"
-                  title="点击移除"
-                  @click="removeTag(t)"
-                >
-                  {{ t }} ×
-                </span>
-                <n-input
-                  v-model:value="newTagName"
-                  size="small"
-                  maxlength="20"
-                  placeholder="输入后回车，没有的会自动建"
-                  class="flex-1 min-w-180px"
-                  @keydown.enter="addTag"
-                />
-              </div>
-              <div v-if="dictOptions.length" class="flex flex-wrap items-center gap-6px mt-8px">
-                <span class="text-12px text-placeholder">我的标签：</span>
-                <span v-for="t in dictOptions" :key="t.id" class="ll-tag" @click="toggleDictTag(t.name)">{{
-                  t.name
-                }}</span>
               </div>
             </div>
 
@@ -966,9 +985,6 @@ async function removeRelation(relatedId: number) {
                     asset.height
                   }}</span
                 >
-                <span v-if="asset.prompt" class="text-12px text-ink max-w-full line-clamp-2" :title="asset.prompt"
-                  ><i class="not-italic text-placeholder mr-6px after:content-['：']">提示词</i>{{ asset.prompt }}</span
-                >
               </div>
             </div>
 
@@ -982,8 +998,6 @@ async function removeRelation(relatedId: number) {
                 </div>
               </n-collapse-item>
             </n-collapse>
-          </div>
-        </div>
 
         <div class="border-t border-solid border-sunken pt-12px mt-12px">
           <div class="flex items-center gap-10px min-h-20px mb-10px">
@@ -1206,7 +1220,114 @@ async function removeRelation(relatedId: number) {
             <span class="ll-link" @click="loadMoreResults">{{ loadingResults ? '加载中…' : '加载更多' }}</span>
           </div>
         </div>
+            </div>
+          </div>
+
+          <footer class="shrink-0 flex flex-col gap-8px px-18px py-12px border-t border-t-solid border-line-soft">
+            <!-- 校色开着：下载给校色后的 PNG，另留「下载原图」 -->
+            <div v-if="cf.active.value" class="flex flex-wrap items-center gap-8px">
+              <button type="button" class="sx-soft-btn" @click="downloadColorFixed">下载校色后</button>
+              <button type="button" class="sx-soft-btn" @click="downloadColorFixOriginal">下载原图</button>
+              <button
+                type="button"
+                class="sx-soft-btn"
+                :disabled="savingColorFix"
+                :aria-busy="savingColorFix || undefined"
+                title="追加一个「校色后」版本并设为当前版本；同参数的版本已存在时直接切过去"
+                @click="saveFixVersion"
+              >
+                {{ savingColorFix ? '保存中…' : '存为校色版本' }}
+              </button>
+              <button
+                type="button"
+                class="sx-soft-btn"
+                :aria-pressed="fixMode === 'compare'"
+                @click="fixMode = fixMode === 'compare' ? 'result' : 'compare'"
+              >
+                {{ fixMode === 'compare' ? '退出对比' : '校色对比' }}
+              </button>
+            </div>
+            <div class="flex flex-wrap items-center gap-8px">
+              <button
+                v-if="asset.prompt"
+                type="button"
+                class="sx-soft-btn sx-soft-btn-primary"
+                @click="copyText(asset.prompt, message)"
+              >
+                复制提示词
+              </button>
+              <a
+                v-if="!cf.active.value && downloadHref"
+                class="sx-soft-btn no-underline"
+                :href="downloadHref"
+                :download="downloadName(asset.title, asset.media === 'video')"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg class="w-13px h-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
+                </svg>
+                下载
+              </a>
+              <button
+                v-if="downloadHref"
+                type="button"
+                class="sx-soft-btn"
+                :disabled="openingCanvas"
+                :aria-busy="openingCanvas || undefined"
+                title="新建一张画布，把这个素材放进去"
+                @click="openAssetsInCanvas([asset])"
+              >
+                {{ openingCanvas ? '正在创建画布…' : '用于画布' }}
+              </button>
+              <!-- 删除预留位：后端支持后由列表页传 can-delete 并监听 delete；不可删时给原因而不是隐藏 -->
+              <button
+                v-if="canDelete || deleteDisabledReason"
+                type="button"
+                class="sx-soft-btn sx-soft-btn-danger ml-auto"
+                :disabled="!canDelete"
+                :title="canDelete ? undefined : deleteDisabledReason"
+                @click="canDelete && emit('delete', asset.id)"
+              >
+                删除
+              </button>
+            </div>
+          </footer>
+        </aside>
       </template>
-    </div>
+    </section>
   </n-modal>
 </template>
+
+<style scoped lang="less">
+.asset-dlg {
+  width: min(980px, 94vw);
+  height: min(620px, 88vh);
+  animation: asset-dlg-in 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.asset-dlg-prompt {
+  background: linear-gradient(180deg, #fbf8fd 0%, #fff 100%);
+}
+@keyframes asset-dlg-in {
+  from {
+    opacity: 0.86;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .asset-dlg {
+    animation: none;
+  }
+}
+</style>
+
+<style lang="less">
+/* 详情层遮罩：原型 rgba(245,246,248,.72)；NModal 的遮罩在 Teleport 里，scoped 够不着 */
+.n-modal-container:has(.asset-dlg) .n-modal-mask {
+  background-color: rgba(245, 246, 248, 0.72);
+}
+</style>

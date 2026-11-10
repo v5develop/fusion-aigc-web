@@ -9,8 +9,9 @@
  *   空态只有 48 云影球、球心在卡正中，不写「原图」；
  *   batch 有图后是 60×100 白边浮片格（5 列、列距按卡内宽分、行距 72，408×616 在卡内垂直居中；卡宽固定，
  *   原型的 min(1, 宽/408, 高/400) 缩放恒为 1，不另做）；
- * - pipe：同款片格 5 列 × 4 行 = 408×512（产品替换底图）；
- * - ml / material：60×100 叠片入口（StudioImageUpload 的 picker 模式只负责长相，选文件 / 校验 / 上传仍在这里）。
+ * - pipe：同款片格 5 列 × 4 行 = 408×512（产品替换底图）；`bare` 时不画卡壳（外层产品替换图台自己是卡）；
+ * - anchor：产品替换「替换素材」96 见方单图格（名字在上；点格选图 = 换一张，右上删除、右下资产添加）；
+ * - ml / material：78×130 · r12 叠片入口（StudioImageUpload 的 picker 模式只负责长相，选文件 / 校验 / 上传仍在这里）。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
@@ -19,6 +20,7 @@ import { toApiError } from '@/api/index.ts'
 import StudioImageUpload from '@/views/studio/components/StudioImageUpload/index.vue'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
+import MediaLightbox, { type LightboxItem } from '@/components/MediaLightbox/index.vue'
 import type { UploadLayout, UploadSpec } from './schemas'
 import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
@@ -206,6 +208,58 @@ function addAssetUrls(picked: string[]) {
   urls.value = replacing ? valid.slice(0, 1) : [...urls.value, ...valid]
 }
 
+// ---------------- 叠片「替换」（StudioImageUpload picker 模式发 replace(index)） ----------------
+
+const replaceInputRef = ref<HTMLInputElement | null>(null)
+let replaceTarget = ''
+function startReplace(index: number) {
+  if (props.disabled || uploading.value) return
+  const url = urls.value[index]
+  if (url === undefined) return
+  replaceTarget = url
+  replaceInputRef.value?.click()
+}
+/** 与新增同一套校验（格式 / 体积 / 时长）后上传，按旧地址找回位置原位换掉；传的过程中那张被删了就不写 */
+async function onReplaceChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  const old = replaceTarget
+  replaceTarget = ''
+  if (!file || !old) return
+  const err = await validate(file)
+  if (err) {
+    message.error(err)
+    return
+  }
+  uploading.value = true
+  try {
+    const [url] = await upload([file])
+    if (!alive || !url) return
+    const at = urls.value.indexOf(old)
+    if (at < 0) return
+    const next = [...urls.value]
+    next.splice(at, 1, url)
+    urls.value = next
+  } catch (err) {
+    const apiErr = toApiError(err)
+    if (!apiErr || apiErr.code === -1) message.error('上传失败，请检查网络后重试')
+  } finally {
+    uploading.value = false
+  }
+}
+
+// ---------------- 片格点开看大图（batch：高清放大等） ----------------
+
+const zoom = ref<{ show: boolean; index: number }>({ show: false, index: 0 })
+const zoomItems = computed<LightboxItem[]>(() =>
+  urls.value.map((url, i) => ({ url, type: 'image', name: `${props.spec.label} · ${i + 1}` })),
+)
+function openZoom(i: number) {
+  if (!urls.value[i]) return
+  zoom.value = { show: true, index: i }
+}
+
 function remove(i: number) {
   urls.value = urls.value.filter((_, idx) => idx !== i)
 }
@@ -216,7 +270,7 @@ const mode = computed<UploadLayout>(() => props.layout ?? (isVideo.value || prop
 const isPlates = computed(() => mode.value === 'ml' || mode.value === 'material')
 const unit = computed(() => (isVideo.value ? '段' : '张'))
 /** 槽头只在单角色参考图槽（数量写槽头）和产品替换底图显示；其它版式名称只给读屏（s1.1：上传框上方不再写「原图」） */
-const showHeader = computed(() => !props.bare && (mode.value === 'ml' || mode.value === 'pipe'))
+const showHeader = computed(() => (!props.bare && mode.value === 'ml') || mode.value === 'pipe')
 
 /** 叠片入口点击：满额先给同一句提示，不弹文件框（单张槽 = 换一张，照常弹） */
 function pickFromPlates() {
@@ -314,7 +368,9 @@ const seamCls = [
           ? ['w-full flex justify-center', !(urls.length && mode === 'single') && 'flex-[1_0_auto]']
           : mode === 'video'
             ? 'flex-1 min-h-[300px] flex'
-            : ''
+            : mode === 'anchor'
+              ? 'relative z-2 flex flex-col items-center gap-4px'
+              : ''
     "
   >
     <div :class="showHeader ? 'll-label' : 'sr-only'">
@@ -336,7 +392,24 @@ const seamCls = [
       :aria-labelledby="`${id}-label`"
       @change="onChange"
     />
+    <input
+      v-if="isPlates"
+      ref="replaceInputRef"
+      type="file"
+      class="hidden"
+      :accept="spec.accept"
+      tabindex="-1"
+      aria-hidden="true"
+      @change="onReplaceChange"
+    />
 
+    <MediaLightbox
+      v-if="mode === 'batch' && !isVideo"
+      v-model:show="zoom.show"
+      v-model:index="zoom.index"
+      :items="zoomItems"
+      pannable
+    />
     <AssetPickerModal
       v-if="canPickAsset"
       v-model:show="assetShow"
@@ -345,7 +418,7 @@ const seamCls = [
       @select="addAssetUrls"
     />
 
-    <!-- 参考图槽 / 材料片：一叠 60×100 白边浮片就是入口（长相由 StudioImageUpload 的 picker 模式画） -->
+    <!-- 参考图槽 / 材料片：一叠 78×130 · r12 白边浮片就是入口（长相由 StudioImageUpload 的 picker 模式画） -->
     <StudioImageUpload
       v-if="isPlates"
       :model-value="urls"
@@ -359,6 +432,7 @@ const seamCls = [
       :on-drop-files="addFiles"
       @pick="pickFromPlates"
       @remove="(_url: string, index: number) => remove(index)"
+      @replace="startReplace"
       @clear="urls = []"
     />
     <div v-if="canPickAsset && isPlates" :class="bare ? 'flex' : 'flex justify-end mt-6px'">
@@ -500,7 +574,7 @@ const seamCls = [
     <!-- 有图（batch / pipe）：60×100 白边浮片格；pipe 空态也走这里（4 个底图占位 + 添加格） -->
     <div
       v-else-if="mode === 'batch' || mode === 'pipe'"
-      :class="[cardCls, mode === 'batch' ? 'flex-1 min-h-[640px]' : '', dragging && 'sx-drop']"
+      :class="[bare && mode === 'pipe' ? 'relative w-full' : cardCls, mode === 'batch' ? 'flex-1 min-h-[640px]' : '', dragging && 'sx-drop']"
     >
       <span :id="`${id}-hint`" class="sr-only">{{ hint }}</span>
       <button
@@ -523,11 +597,26 @@ const seamCls = [
         ]"
         :aria-labelledby="`${id}-label`"
       >
-        <li v-for="(url, i) in urls" :key="url + i" class="group relative" :class="plateSizeCls">
+        <li
+          v-for="(url, i) in urls"
+          :key="url + i"
+          class="group relative z-2"
+          :class="plateSizeCls"
+          :data-pr-base="mode === 'pipe' ? '' : undefined"
+        >
+          <!-- 点片（或回车 / 空格）开共用灯箱看原图：滚轮缩放 0.5–4×、放大后拖动平移、双击复位 -->
           <div
-            :class="[plateCls, focusRing]"
+            :class="[plateCls, focusRing, mode === 'batch' ? 'cursor-zoom-in' : '']"
             tabindex="0"
-            :aria-label="`${spec.label} 第 ${i + 1} 张，按 Delete 删除`"
+            :role="mode === 'batch' ? 'button' : undefined"
+            :aria-label="
+              mode === 'batch'
+                ? `${spec.label} 第 ${i + 1} 张，按回车放大查看，按 Delete 删除`
+                : `${spec.label} 第 ${i + 1} 张，按 Delete 删除`
+            "
+            @click="mode === 'batch' && openZoom(i)"
+            @keydown.enter.prevent="mode === 'batch' && openZoom(i)"
+            @keydown.space.prevent="mode === 'batch' && openZoom(i)"
             @keydown.delete.prevent="!disabled && remove(i)"
           >
             <img :src="url" alt="" class="block w-full h-full object-cover rounded-4px" />
@@ -568,13 +657,21 @@ const seamCls = [
         <li
           v-for="n in placeholders"
           :key="`ph-${n}`"
-          class="w-60px h-100px box-border rounded-5px border border-dashed border-line bg-surface2 cursor-pointer"
+          class="relative z-2 w-60px h-100px box-border rounded-5px border border-dashed border-line bg-surface2 cursor-pointer"
+          data-pr-base
+          data-pr-hint
           aria-hidden="true"
           @click="pickFromPlaceholder"
         />
 
         <!-- 待上传：同尺寸白边浮片，图标 18 + 文案 9/13（间距 4），已选数写在片里 -->
-        <li v-if="room > 0" class="relative" :class="plateSizeCls">
+        <li
+          v-if="room > 0"
+          class="relative z-2"
+          :class="plateSizeCls"
+          :data-pr-base="mode === 'pipe' ? '' : undefined"
+          :data-pr-hint="mode === 'pipe' ? '' : undefined"
+        >
           <button
             type="button"
             :class="[
@@ -609,6 +706,65 @@ const seamCls = [
         </li>
       </ul>
     </div>
+
+    <!--
+      产品替换「替换素材」（原型 ProductPipeSlots 定稿）：名字 11/16 在上，96 见方格 r12 白边浮片；空态 + 图标与「上传替换素材」；
+      点格 = 选图（单张槽 = 换一张）；有图时右上删除（悬停 / 聚焦出现，触屏常显），右下资产添加；data-pr-anchor 供连线定位
+    -->
+    <template v-else-if="mode === 'anchor'">
+      <span class="relative z-2 px-6px bg-white text-11px leading-16px text-ink-2" aria-hidden="true">
+        {{ spec.label }}<span v-if="spec.required" class="text-danger" aria-hidden="true"> *</span>
+      </span>
+      <span :id="`${id}-hint`" class="sr-only">{{ hint }}</span>
+      <div class="group relative w-96px h-96px" data-pr-anchor>
+        <button
+          type="button"
+          class="sx-squircle relative block w-full h-full box-border p-0 overflow-hidden rounded-12px border border-solid cursor-pointer disabled:cursor-not-allowed [transition:border-color_160ms_ease,box-shadow_160ms_ease] motion-reduce:transition-none"
+          :class="[
+            focusRing,
+            urls.length
+              ? 'border-white bg-white shadow-[0_1px_3px_rgba(31,35,41,0.16)] hover:shadow-[0_2px_6px_rgba(31,35,41,0.2)]'
+              : 'border-#d7dbe0 bg-[linear-gradient(#fff,#f9fafb)] text-placeholder hover:border-violet-line',
+            dragging && 'sx-drop-ring',
+          ]"
+          :disabled="disabled || uploading"
+          :aria-label="urls.length ? `更换${spec.label}` : `上传${spec.label}`"
+          :aria-describedby="`${id}-hint`"
+          @click="pick"
+        >
+          <img v-if="urls[0]" :src="urls[0]" :alt="spec.label" class="block w-full h-full object-cover rounded-11px" draggable="false" />
+          <span v-else class="flex flex-col items-center justify-center gap-4px w-full h-full">
+            <svg class="w-18px h-18px text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span class="text-11px leading-14px">{{ uploading ? '上传中…' : `上传${spec.label}` }}</span>
+          </span>
+          <span v-if="urls.length && uploading" class="absolute inset-0 grid place-items-center bg-white/60 text-11px text-ink-2">上传中…</span>
+        </button>
+        <StudioMedBtn
+          v-if="urls.length"
+          :label="`移除${spec.label}`"
+          class="top-4px right-4px opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity duration-160 motion-reduce:transition-none disabled:(opacity-45 cursor-not-allowed)"
+          :disabled="disabled"
+          @click="remove(0)"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
+          </svg>
+        </StudioMedBtn>
+        <StudioMedBtn
+          v-if="canPickAsset"
+          :label="`从资产库添加${spec.label}`"
+          class="right-4px bottom-4px disabled:(opacity-45 cursor-not-allowed)"
+          :disabled="disabled || uploading"
+          @click="openAssetPicker"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 0 0 7 18.5z" stroke-linejoin="round" transform="translate(0 -0.5)" />
+          </svg>
+        </StudioMedBtn>
+      </div>
+    </template>
 
     <!-- 有图（single）：在上传卡里看图，图高封顶 340；右上删除，下方换一张 -->
     <div v-else :class="[cardCls, dragging && 'sx-drop']">

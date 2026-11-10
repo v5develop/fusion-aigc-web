@@ -35,6 +35,7 @@ import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
 import ResultPreview from '../components/ResultPreview/index.vue'
+import { useLLQuote } from '../components/Workbench/useLLQuote.ts'
 import { useAgreement, useLLList } from '../hooks.ts'
 import { DH_STATUS_MAP, isDhRunning } from '../constants.ts'
 
@@ -139,6 +140,15 @@ function pickCopy(c: { id: number; body: string }) {
   showCopyPicker.value = false
 }
 
+// 提交前报价：按配音实际时长计费，提交前时长未知——后端给最短时长的价（显示「N 点起」），配音出来后才冻结
+const { quote, estimate } = useLLQuote(() => ({ tool: 'digitalHuman', model: scriptModel.value || undefined }))
+// 余额够最低价、但不够该档最长配音的价（sufficient_max=false）：只轻提示，不拦提交（配音短的话照样够）
+const balanceHint = computed(() => {
+  const q = quote.value
+  if (!q || !q.available || !q.charged || !q.balance_known || q.sufficient_max !== false) return undefined
+  return '余额可能不足以覆盖较长配音'
+})
+
 // ---------------- 提交 ----------------
 
 const submitting = ref(false)
@@ -211,7 +221,7 @@ async function removeItem(item: ILDigitalHuman) {
 </script>
 
 <template>
-  <Workbench title="AI数字人" :submit="submit" :loading="submitting" submit-text="生成数字人" :history-count="listCtl.total.value">
+  <Workbench title="AI数字人" :submit="submit" :loading="submitting" submit-text="生成数字人" :submit-hint="balanceHint" :estimate="estimate" :history-count="listCtl.total.value">
     <template #default>
       <PersonSource
         v-model:source="portraitSource"

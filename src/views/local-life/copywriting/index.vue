@@ -35,6 +35,7 @@ import type { ILCopywriting, ILCopywritingOptions, ILDerivative } from '@/api/lo
 import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import ResultPreview from '../components/ResultPreview/index.vue'
+import { useLLQuote } from '../components/Workbench/useLLQuote.ts'
 import { useAgreement, useLLList, usePollingWhile } from '../hooks.ts'
 import { COPY_STATUS_MAP, DERIVATIVE_KIND_MAP, formatTime, isCopyRunning } from '../constants.ts'
 
@@ -106,6 +107,10 @@ async function aiWriteDraft() {
     aiWriting.value = false
   }
 }
+
+// 提交前报价：只挂在「生成文案」提交上——AI帮写（source=AI_WRITE）/ 爆款仿写一次生成按一次计（重新生成算新的一次）。
+// 不挂价：手动输入只是保存；自主撰写里的「AI帮写」润色按钮（aiWriteDraft → /copywriting/ai-write）是免费的同步辅助
+const { estimate } = useLLQuote(() => (mode.value === 'MANUAL' ? null : { tool: 'copywriting' }))
 
 const submitting = ref(false)
 
@@ -330,6 +335,7 @@ function openDerivative(d: ILDerivative) {
     :submit="submit"
     :loading="submitting"
     :submit-text="mode === 'MANUAL' ? '保存文案' : '生成文案'"
+    :estimate="estimate"
     :history-count="listCtl.total.value"
   >
     <template #default>

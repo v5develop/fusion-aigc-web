@@ -34,6 +34,7 @@ import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
 import ResultPreview from '../components/ResultPreview/index.vue'
+import { useLLQuote } from '../components/Workbench/useLLQuote.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import { useAgreement, useLLList, usePollingWhile } from '../hooks.ts'
 import { VIDEO_STATUS_MAP, formatTime, isVideoRunning, parseScript } from '../constants.ts'
@@ -225,6 +226,13 @@ function onSelectItem(item: ILVideoCreation) {
 
 // ---------------- 动作 ----------------
 
+// 提交前报价：构思剧本不收费，确认出片时按档位 × 时长冻结——按钮上写「出片消耗」，数字与出片冻结同一套算价
+// 左栏按钮是「新建」：按表单参数报价，不带右栏选中记录的 id（带了会按旧记录的档位 / 时长算）
+const { estimate } = useLLQuote(
+  () => ({ tool: props.kind, model: form.model || undefined, duration: form.duration }),
+  () => '出片消耗',
+)
+
 const submitting = ref(false)
 
 async function submit() {
@@ -319,7 +327,7 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
 </script>
 
 <template>
-  <Workbench :title="pageTitle" :submit="submit" :loading="submitting" submit-text="生成分镜剧本" :history-count="listCtl.total.value">
+  <Workbench :title="pageTitle" :submit="submit" :loading="submitting" submit-text="生成分镜剧本" :estimate="estimate" :history-count="listCtl.total.value">
     <template #default>
       <FormCard :title="isExplore ? '视频文案' : '短剧主题'" required>
         <PromptBox

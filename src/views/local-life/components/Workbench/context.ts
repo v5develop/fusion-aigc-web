@@ -1,4 +1,5 @@
 import type { InjectionKey } from 'vue'
+import type { LLIntro } from './introData.ts'
 
 /**
  * Workbench 三栏模式向子树提供的控制口。
@@ -7,6 +8,8 @@ import type { InjectionKey } from 'vue'
  */
 export interface LLWorkbenchContext {
   revealPreview: () => void
+  /** 右栏空态的功能介绍（按页面标题取，没有对应文案时为 undefined） */
+  intro?: LLIntro
 }
 
 export const LL_WORKBENCH_KEY: InjectionKey<LLWorkbenchContext> = Symbol('llWorkbench')

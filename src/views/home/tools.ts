@@ -222,7 +222,7 @@ export const tools: ToolItem[] = [
     category: 'edit',
     description: '选单品、传服装与模特，AI 把衣服穿到模特身上；细节裁切与提示词由系统完成。',
     inputShape: 'dual-image',
-    // 完整版在商拍工作室；/tools/ai-digital-model 仍可深链（共用工具页 schema），但不再从目录进入
+    // 完整版在商拍工作室；/tools/ai-digital-model（共用工具页 schema）由路由守卫转到工作室，只有任务中心参数回填时放行，不再从目录进入
     route: '/studio/ai-digital-model',
     icon: ICONS.changeClothes,
   },
@@ -292,7 +292,7 @@ export const tools: ToolItem[] = [
     icon: ICONS.videoGenerate,
   },
   {
-    // 工具页 /tools/ai-video-clone：复用视频工作流 POST /api/v1/workflows/video（title=video-clone），原片 + 参考图 + 描述直接出片。
+    // 工具页 /tools/ai-video-clone：复用视频工作流 POST /api/v1/workflows/video（title=video-clone），先解析原片（/api/v1/video-clone/analyses）再按维度标注出片；解析失败或跳过时退回「原片 + 参考图 + 描述」直接出片。
     // 原型的「识别画面 → 标保持 / 替换」依赖独立解析服务，后端没有，暂不做
     id: 'ai-video-clone',
     name: '视频复刻',

@@ -3,7 +3,7 @@
  * 结果灯箱（原型 MediaPreview）：z 3000，深色全屏底；顶部工具栏 px24 py12（名称 + 序号，缩小 / 比例 / 放大 / 重置 /
  * 下载 / 关闭，按钮 32 / r8）；左右切换 44 圆、离边 24；多张时底部缩略条（56 / r8，当前项 2px 藤紫描边）。
  *
- * <p>键盘：Esc 关闭、← → 切换、+ / - 缩放、0 重置。打开时焦点移到关闭钮，关闭后还给打开前的元素；Tab 限制在灯箱内。
+ * <p>键盘：Esc 关闭、← → 切换、+ / - 缩放、0 重置、R 右转 / Shift+R 左转。打开时焦点移到关闭钮，关闭后还给打开前的元素；Tab 限制在灯箱内。
  * 下载沿用页面原来的 `<a download target=_blank>` 方式（跨域时浏览器会新开标签页）。
  */
 import { computed, nextTick, ref, watch } from 'vue'
@@ -21,6 +21,16 @@ const index = defineModel<number>('index', { default: 0 })
 const container = ref<HTMLElement | null>(null)
 const closeBtn = ref<HTMLButtonElement | null>(null)
 const scale = ref(1)
+/** 旋转角度（左转 -90 / 右转 +90，不取模以免过渡倒转一整圈） */
+const rotate = ref(0)
+/** 重置那一帧关掉过渡：角度累计过（如 450°）时直接动画回 0 会倒转好几圈 */
+const noAnim = ref(false)
+function resetView() {
+  noAnim.value = rotate.value !== 0
+  scale.value = 1
+  rotate.value = 0
+  if (noAnim.value) void nextTick(() => requestAnimationFrame(() => (noAnim.value = false)))
+}
 let restoreFocus: HTMLElement | null = null
 
 const SCALES = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
@@ -33,6 +43,7 @@ watch(open, async (v) => {
   if (v) {
     restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     scale.value = 1
+    rotate.value = 0
     await nextTick()
     closeBtn.value?.focus()
   } else {
@@ -40,7 +51,10 @@ watch(open, async (v) => {
     restoreFocus = null
   }
 })
-watch(clamped, () => (scale.value = 1))
+watch(clamped, () => {
+  scale.value = 1
+  rotate.value = 0
+})
 
 function close() {
   open.value = false
@@ -55,12 +69,15 @@ function zoom(dir: 1 | -1) {
 }
 
 function onKeydown(e: KeyboardEvent) {
+  const mod = e.metaKey || e.ctrlKey || e.altKey // Cmd/Ctrl+R/0 等留给浏览器
   if (e.key === 'Escape') close()
   else if (e.key === 'ArrowLeft') go(clamped.value - 1)
   else if (e.key === 'ArrowRight') go(clamped.value + 1)
-  else if (!isVideo.value && (e.key === '+' || e.key === '=')) zoom(1)
-  else if (!isVideo.value && e.key === '-') zoom(-1)
-  else if (!isVideo.value && e.key === '0') scale.value = 1
+  else if (!mod && !isVideo.value && (e.key === '+' || e.key === '=')) zoom(1)
+  else if (!mod && !isVideo.value && e.key === '-') zoom(-1)
+  else if (!mod && !isVideo.value && e.key === '0') resetView()
+  // shiftKey 定方向：大写锁定时 e.key 大小写是反的
+  else if (!mod && !isVideo.value && e.key.toLowerCase() === 'r') rotate.value += e.shiftKey ? -90 : 90
   else if (e.key === 'Tab') trapTab(e)
   else return
   if (e.key !== 'Tab') e.preventDefault()
@@ -136,7 +153,25 @@ const iconAttrs = {
             >
               <svg class="w-16px h-16px" v-bind="iconAttrs"><path d="M12 5v14M5 12h14" /></svg>
             </button>
-            <button type="button" :class="toolCls" aria-label="重置" :disabled="scale === 1" @click="scale = 1">
+            <button type="button" :class="toolCls" aria-label="左转 90 度" title="左转 90 度（Shift+R）" @click="rotate -= 90">
+              <svg class="w-16px h-16px -scale-x-100" v-bind="iconAttrs">
+                <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+                <path d="M21 3v5h-5" />
+              </svg>
+            </button>
+            <button type="button" :class="toolCls" aria-label="右转 90 度" title="右转 90 度（R）" @click="rotate += 90">
+              <svg class="w-16px h-16px" v-bind="iconAttrs">
+                <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+                <path d="M21 3v5h-5" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              :class="toolCls"
+              aria-label="重置"
+              :disabled="scale === 1 && rotate % 360 === 0"
+              @click="resetView"
+            >
               <svg class="w-16px h-16px" v-bind="iconAttrs">
                 <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
                 <path d="M3 3v5h5" />
@@ -178,7 +213,7 @@ const iconAttrs = {
           :src="current.src"
           :alt="current.name || '结果图'"
           class="block max-w-[calc(100%-144px)] max-h-full object-contain origin-center [transition:transform_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
-          :style="{ transform: `scale(${scale})` }"
+          :style="{ transform: `scale(${scale}) rotate(${rotate}deg)`, ...(noAnim ? { transition: 'none' } : {}) }"
           draggable="false"
         />
       </div>

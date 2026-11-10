@@ -60,6 +60,8 @@ import PollingOfflineBanner from './PollingOfflineBanner.vue'
 import ToolImageCompare from './ToolImageCompare.vue'
 import ToolMediaPreview, { type PreviewItem } from './ToolMediaPreview.vue'
 import CreationSettingsRow from '@/components/creation/CreationSettingsRow.vue'
+import ToolChoiceField, { type ToolChoiceOption } from './ToolChoiceField.vue'
+import ToolPipeLinks from './ToolPipeLinks.vue'
 import CreationPromptInput from '@/components/creation/CreationPromptInput.vue'
 import CreationModelPicker from '@/components/creation/CreationModelPicker.vue'
 import CreationOptionPills from '@/components/creation/CreationOptionPills.vue'
@@ -67,6 +69,11 @@ import NumberStepper from '@/components/creation/NumberStepper.vue'
 import MediaLightbox, { type LightboxItem } from '@/components/MediaLightbox/index.vue'
 import type { PromptWriteBizType } from '@/api/promptWrite.ts'
 import type { CreationOption, CreationSettingsRowItem } from '@/components/creation/types'
+import VideoClonePanel from './videoClone/VideoClonePanel.vue'
+import { useVideoCloneState } from './videoClone/useVideoClone'
+import { VC_MAX_REFS } from './videoClone/constants'
+import { useWorkflowVideoQuote } from './videoClone/useWorkflowVideoQuote'
+import type { VideoCloneAnnotations } from '@/api/videoClone'
 
 /** Java 同步抠图「等不及」的专用码（ErrorCode.TASK_PROCESSING） */
 const TASK_PROCESSING_CODE = 3010
@@ -368,8 +375,8 @@ const currentVideoModel = computed<ModelConfigExt | undefined>(() =>
   videoModels.value.find((m) => m.model === values.model),
 )
 const VIDEO_RATIO_LABELS: Record<string, string> = { adaptive: '自适应' }
-/** 清晰度显示名：超分档（1440p-esr / 2160p-esr）写成 2K / 4K，其余大写 */
-const VIDEO_RESOLUTION_LABELS: Record<string, string> = { '1440p-esr': '2K', '2160p-esr': '4K' }
+/** 清晰度显示名：超分档（1440p-esr / 2160p-esr / 4k-esr）写成 2K / 4K，其余大写 */
+const VIDEO_RESOLUTION_LABELS: Record<string, string> = { '1440p-esr': '2K', '2160p-esr': '4K', '4k-esr': '4K' }
 const videoResolutionLabel = (r: string) => VIDEO_RESOLUTION_LABELS[r.toLowerCase()] ?? r.toUpperCase()
 const modelName = (m: ModelConfigExt) => m.displayName?.trim() || m.model
 
@@ -398,9 +405,25 @@ const imageModelChoices = computed<ModelConfigExt[]>(() =>
 )
 /** 多于一个模型才让用户选；只有一个时照旧按它报价、不传 model */
 const imageModelSelectable = computed(() => schema.value?.price === 'image-model-configs' && imageModelChoices.value.length > 1)
-const currentImageModel = computed<ModelConfigExt | undefined>(
-  () => imageModelChoices.value.find((m) => m.model === values[IMAGE_MODEL_KEY]) ?? imageModelChoices.value[0],
+/** 默认模型：运营标了 default=true 的那项，没标取第一项 */
+const defaultImageModel = computed<ModelConfigExt | undefined>(
+  () => imageModelChoices.value.find((m) => m.default === true) ?? imageModelChoices.value[0],
 )
+const currentImageModel = computed<ModelConfigExt | undefined>(
+  () => imageModelChoices.value.find((m) => m.model === values[IMAGE_MODEL_KEY]) ?? defaultImageModel.value,
+)
+/**
+ * 图片生成参考图上限：所选模型 refs.maxImages（缺省 9）；null = 不是图片生成或模型表没到（按 schema 的 max）。
+ * 0 = 该模型不支持参考图（槽位换成说明）。
+ */
+const imageRefCap = computed<number | null>(() => {
+  if (schema.value?.price !== 'image-model-configs' || !currentImageModel.value) return null
+  const n = currentImageModel.value.refs?.maxImages
+  return typeof n === 'number' && n >= 0 ? Math.floor(n) : 9
+})
+/** 图片生成的参考图槽（ml 版式的图片槽） */
+const isImageRefSlot = (u: ToolUpload) =>
+  schema.value?.price === 'image-model-configs' && u.kind === 'image' && u.javaKey === 'imageUrls'
 /** 图片生成工具且模型表已到：分辨率 / 比例按所选（默认第一项）模型的 size[] 出 */
 const imageModelDriven = computed(() => schema.value?.price === 'image-model-configs' && !!currentImageModel.value?.size?.length)
 /** 所选图片模型的分辨率档（原样大小写）；没建模返回 null = 用 schema 选项 */
@@ -481,6 +504,7 @@ const refVideoBlocked = computed(() => videoRefs.value?.maxVideos === 0)
 const refImageBlocked = computed(() => videoRefs.value?.maxImages === 0)
 /** 上传槽的实际上限：视频模型的参考素材槽（needsMode）按 refs 收紧 */
 function slotMax(u: ToolUpload) {
+  if (isImageRefSlot(u) && imageRefCap.value !== null) return Math.min(u.max, imageRefCap.value)
   if (!u.needsMode || !currentVideoModel.value) return u.max
   if (u.kind === 'video') {
     const cap = videoRefs.value?.maxVideos
@@ -506,6 +530,7 @@ const refLimitText = computed(() => {
 
 /** 视频模型支不支持这个上传槽（supportedModes 为空 = 服务端没建模，按都支持） */
 function uploadEnabled(u: ToolUpload) {
+  if (isImageRefSlot(u) && imageRefCap.value === 0) return false
   if (!u.needsMode) return true
   if (u.kind === 'video' && refVideoBlocked.value) return false
   if (u.kind !== 'video' && refImageBlocked.value) return false
@@ -541,6 +566,44 @@ function setUploading(key: string, busy: boolean) {
 }
 const anyUploading = computed(() => Object.keys(uploadingSlots).length > 0)
 
+// ---------------- 视频复刻：解析、标注（/tools/ai-video-clone 主路径；「直接出片」退回原来的简单表单） ----------------
+
+const VIDEO_CLONE_ID = 'ai-video-clone'
+/** 用户选了「不解析，直接写描述出片」（或回填了没有标注的老记录） */
+const cloneSimple = ref(false)
+const cloneMode = computed(() => schema.value?.homeId === VIDEO_CLONE_ID && !cloneSimple.value)
+const cloneVideoSlot = computed(() => (cloneMode.value ? schema.value?.uploads.find((u) => u.javaKey === 'videoUrl') : undefined))
+const cloneRefSlot = computed(() => (cloneMode.value ? schema.value?.uploads.find((u) => u.javaKey === 'imageUrls') : undefined))
+/** 参考图上限：@1–@9，再按当前模型 refs.maxImages 收紧 */
+const cloneRefMax = computed(() => Math.min(VC_MAX_REFS, refImageCap.value))
+const cloneModelMaxSeconds = computed(() => {
+  const max = currentVideoModel.value?.duration?.[1]
+  return Number.isInteger(max) && max! > 0 ? max! : null
+})
+const cloneModelResolutions = computed(() => {
+  const list = (currentVideoModel.value?.size ?? []).map((x) => x.resolution?.toLowerCase()).filter((r): r is string => !!r)
+  return list.length ? list : null
+})
+const vc = useVideoCloneState({
+  videoUrl: () => (cloneVideoSlot.value ? (uploads[cloneVideoSlot.value.slot]?.[0] ?? '') : ''),
+  refs: () => (cloneRefSlot.value ? (uploads[cloneRefSlot.value.slot] ?? []) : []),
+  modelMaxSeconds: () => cloneModelMaxSeconds.value,
+  modelResolutions: () => cloneModelResolutions.value,
+})
+/** 「换一条」：清掉原片回到上传（参考图保留，换片后还能接着用） */
+function cloneReplaceVideo() {
+  vc.clearRestore()
+  if (cloneVideoSlot.value) uploads[cloneVideoSlot.value.slot] = []
+}
+/** 改用直接出片：原片与参考图原样带过去，描述 / 清晰度等用简单表单 */
+function cloneSkip() {
+  vc.clearRestore()
+  cloneSimple.value = true
+}
+function cloneBack() {
+  cloneSimple.value = false
+}
+
 /**
  * 「重新编辑」换上的单图：下面两个 singleImage 监听见到它时不清空回填的识别结果、也不自动识别
  * （识别单独计费，回填不能替用户花钱）。用户换图后照常清空并自动识别。
@@ -559,6 +622,8 @@ function resetForm(s: ToolSchema) {
   syncResultUrl.value = ''
   selectedId.value = null
   progressText.value = ''
+  cloneSimple.value = false
+  vc.clearRestore()
 }
 
 watch(
@@ -583,7 +648,13 @@ watch(
   { immediate: true },
 )
 
-const visibleFields = computed(() => (schema.value?.fields ?? []).filter((f) => isFieldVisible(f, values)))
+const visibleFields = computed(() =>
+  (schema.value?.fields ?? []).filter(
+    // 视频复刻解析标注模式：描述 / 清晰度 / 比例 / 时长由标注面板接管（画幅时长跟随原片），只留模型卡
+    (f) => isFieldVisible(f, values) && (!cloneMode.value || f.dynamic === 'videoModel'),
+  ),
+)
+
 
 /**
  * 服务端下发的选项：模型表到了、换了模型 / 清晰度后，不再合法的取值落到第一档（按 schema 顺序逐个对齐，
@@ -606,6 +677,7 @@ watch(
     for (const u of s.uploads) {
       if (!uploadEnabled(u) && uploads[u.slot]?.length) uploads[u.slot] = []
       // 换到参考素材上限更小的模型：多出来的从后往前裁掉
+      if (isImageRefSlot(u)) continue // 图片生成参考图交给下面带提示的裁剪
       const cap = slotMax(u)
       if ((uploads[u.slot]?.length ?? 0) > cap) uploads[u.slot] = uploads[u.slot]!.slice(0, cap)
     }
@@ -631,12 +703,46 @@ watch(
   { immediate: true },
 )
 
+/**
+ * 图片生成换模型（或回填）后参考图超过该模型上限：保留前 N 张并明说，不静默带着超额去提交（后端会 400）。
+ * 上限 0 = 该模型不支持参考图：清空并提示。
+ */
+watch(
+  () => [imageRefCap.value, ...(schema.value?.uploads ?? []).filter(isImageRefSlot).map((u) => uploads[u.slot]?.length ?? 0)],
+  () => {
+    const cap = imageRefCap.value
+    if (cap === null) return
+    for (const u of schema.value?.uploads ?? []) {
+      if (!isImageRefSlot(u)) continue
+      const list = uploads[u.slot] ?? []
+      if (list.length <= cap) continue
+      uploads[u.slot] = list.slice(0, cap)
+      message.warning(cap ? `当前模型最多 ${cap} 张参考图，已保留前 ${cap} 张` : '当前模型不支持参考图，已移除参考图')
+    }
+  },
+)
+
 /** 上传槽位的显示顺序：s1.1 产品替换「替换素材」在上、底图片格在下（只换显示顺序，校验与提交仍按 schema 顺序） */
 const displayUploads = computed(() =>
-  [...(schema.value?.uploads ?? [])]
+  [...(cloneMode.value ? [] : (schema.value?.uploads ?? []))]
     .filter((u) => !mlPromptUploads.value.includes(u))
+    .filter((u) => !productStage.value || (u !== productStage.value.anchor && u !== productStage.value.base))
     .sort((a, b) => Number(b.layout === 'material') - Number(a.layout === 'material')),
 )
+/**
+ * 产品替换图台（原型 ProductPipeSlots 定稿）：替换素材（anchor，96 见方）在上、底图片格（pipe）在下，同在一张卡里，
+ * 每个底图格一条浅色连线回到素材（ToolPipeLinks）。只是排版，上传 / 校验 / 提交仍走各自的槽位。
+ */
+const productStage = computed(() => {
+  const list = schema.value?.uploads ?? []
+  const anchor = list.find((u) => u.layout === 'anchor')
+  const base = list.find((u) => u.layout === 'pipe')
+  return anchor && base ? { anchor, base } : null
+})
+const productStageEl = ref<HTMLElement | null>(null)
+function setProductStageEl(el: unknown) {
+  productStageEl.value = (el as HTMLElement | null) ?? null
+}
 /**
  * 原型 ml 一体框：有提示词、且有 ml 版式参考图槽的工具，参考图槽收进提示词框顶部（计数「0/9」+ 我的提示词书本钮一行）。
  * 局部重绘 / 消除不收：框选与涂抹要先有图，图槽得留在它们上面。
@@ -670,7 +776,8 @@ const compact = computed(() => !!schema.value?.uploads.some((u) => u.layout === 
  * - 模型（视频模型 dynamic=videoModel，或图片生成多模型时的模型卡）单独一张 44 高卡，点开 CreationModelPicker；
  * - 其余所有「非模型、非提示词」的参数（分辨率 / 比例 / 张数 / 语言 / 目标语言 / 时长 / 开关 / 下拉 / 预设与自定义尺寸）
  *   一律收进「图片设置 / 视频设置」弹层，按钮上拼摘要（比例 · 分辨率 · N 张 · 语言 · 时长）；
- * - 需要醒目可见的留在表单里：涂抹蒙版、框选区域、识别结果、配音音色（带试听）。
+ * - 需要醒目可见的留在表单里：涂抹蒙版、框选区域、识别结果；
+ * - 图片翻译 / 视频翻译的必选项（目标语言、配音音色，schema choiceCard）照原型摆成提交按钮正上方的字段卡（ToolChoiceField）。
  * 取值仍写回 values[key]，请求体不变。
  */
 const FORM_ONLY_TYPES = new Set(['textarea', 'mask', 'region-list', 'inpaint-region', 'voice'])
@@ -679,12 +786,17 @@ const rewriteField = computed(
   () => visibleFields.value.find((f) => f.type === 'switch' && f.key === 'rewritePrompt') ?? null,
 )
 const modelField = computed(() => visibleFields.value.find((f) => f.dynamic === 'videoModel') ?? null)
+/** 提交按钮上方的字段卡（原型 ChoiceFieldButton picker）：schema 标了 choiceCard 的字段，配音音色一律走这里 */
+const isChoiceField = (f: ToolField) => !!f.choiceCard || f.type === 'voice'
+const choiceFields = computed(() => visibleFields.value.filter(isChoiceField))
 const isPopoverField = (f: ToolField) =>
-  !FORM_ONLY_TYPES.has(f.type) && f !== rewriteField.value && f.dynamic !== 'videoModel'
+  !FORM_ONLY_TYPES.has(f.type) && !isChoiceField(f) && f !== rewriteField.value && f.dynamic !== 'videoModel'
 const settingFields = computed(() => visibleFields.value.filter(isPopoverField))
 /** 表单里渲染的字段：设置字段改由底部设置行承载，模型改由模型卡承载，润色开关进提示词框 */
 const promptFields = computed(() =>
-  visibleFields.value.filter((f) => !isPopoverField(f) && f !== rewriteField.value && f.dynamic !== 'videoModel'),
+  visibleFields.value.filter(
+    (f) => !isPopoverField(f) && !isChoiceField(f) && f !== rewriteField.value && f.dynamic !== 'videoModel',
+  ),
 )
 const rewriteValue = computed({
   get: () => (rewriteField.value ? !!values[rewriteField.value.key] : false),
@@ -841,22 +953,45 @@ async function loadVoices() {
 const selectedVoice = computed(() => voices.value.find((v) => v.voiceId === values.voice))
 
 /** 音色 meta 结构未定（待联调）：只认里面形如音频地址的字符串作为试听源 */
-const auditionUrl = computed(() => {
-  const meta = selectedVoice.value?.meta
+function auditionOf(v: VoiceItem | undefined) {
+  const meta = v?.meta
   if (!meta || typeof meta !== 'object') return ''
   const hit = Object.values(meta as Record<string, unknown>).find(
-    (v) => typeof v === 'string' && /^https?:\/\/.+\.(mp3|wav|m4a|aac|ogg)(\?|$)/i.test(v),
+    (x) => typeof x === 'string' && /^https?:\/\/.+\.(mp3|wav|m4a|aac|ogg)(\?|$)/i.test(x),
   )
   return (hit as string) ?? ''
-})
+}
+const auditionUrl = computed(() => auditionOf(selectedVoice.value))
+/** schema 声明了「试听」动作才给试听入口 */
+const auditionEnabled = computed(() => !!schema.value?.actions.includes('试听'))
 
 let audio: HTMLAudioElement | null = null
-function playAudition() {
-  if (!auditionUrl.value) return
+function playAudition(voiceId?: string | number) {
+  const url = voiceId === undefined ? auditionUrl.value : auditionOf(voices.value.find((v) => v.voiceId === voiceId))
+  if (!url) return
   audio?.pause()
-  audio = new Audio(auditionUrl.value)
+  audio = new Audio(url)
   void audio.play().catch(() => message.error('试听播放失败'))
 }
+
+/** 音色卡选项：「晓柔 · 女声」（性别从标签里认，认不出只写名字），其余标签作副标题 */
+function voiceGender(v: VoiceItem) {
+  const tags = v.tags ?? []
+  if (tags.some((t) => t.includes('女'))) return '女声'
+  if (tags.some((t) => t.includes('男'))) return '男声'
+  return ''
+}
+const voiceOptions = computed<ToolChoiceOption[]>(() =>
+  voices.value.map((v) => {
+    const gender = voiceGender(v)
+    return {
+      label: gender ? `${v.voiceName} · ${gender}` : v.voiceName,
+      value: v.voiceId,
+      description: (v.tags ?? []).filter((t) => !/^(女|男)声?$/.test(t)).join(' · ') || undefined,
+      audition: auditionEnabled.value && !!auditionOf(v),
+    }
+  }),
+)
 onBeforeUnmount(() => {
   audio?.pause()
   audio = null
@@ -901,6 +1036,7 @@ async function runOcr() {
         }
       })
     if (!regions.value.length) message.warning('没有识别到可替换的文字')
+    else message.success(`识别到 ${regions.value.length} 处文字`)
   } catch (err) {
     if (singleImage.value === url) reportError(err, '文字识别失败')
   } finally {
@@ -927,21 +1063,39 @@ watch(singleImage, (url) => {
 
 // ---------------- 就绪判定 ----------------
 
-const disabledReason = computed(() => {
+/** 主图槽未上传时的提示（原型各工具页 emptyHint；没列的工具走「还没上传{槽名}」） */
+const EMPTY_UPLOAD_HINTS: Record<string, string> = {
+  高清放大: '请先上传至少一张需要放大的图片',
+  图片翻译: '请先上传至少一张需要翻译的图片',
+  比例转换: '请先上传至少一张需要转换比例的图片',
+  商品精修: '请先上传至少一张商品图片',
+  服装去皱: '请先上传至少一张需要去皱的衣服图片',
+  产品替换: '请先上传至少一张底图',
+  智能抠图: '请先上传一张需要抠图的图片',
+  智能消除: '请先上传一张图片',
+  文字替换: '请先上传一张图片',
+  视频高清: '请先上传一段视频',
+  视频翻译: '请先上传一段视频',
+}
+
+/** 前端本地能判的不可提交原因；后端报价给的原因（视频复刻页）见下方 disabledReason */
+const localDisabledReason = computed(() => {
   const s = schema.value
   if (!s) return ''
-  if (anyUploading.value) return '图片上传中'
+  if (anyUploading.value) return '原图还在上传中，请稍候'
   for (const u of s.uploads) {
-    if (u.required && uploadEnabled(u) && !uploads[u.slot]?.length) return `还没上传${u.label.replace(/（.*）/, '')}`
+    if (u.required && uploadEnabled(u) && !uploads[u.slot]?.length) {
+      return (u.slot === 0 && EMPTY_UPLOAD_HINTS[s.title]) || `还没上传${u.label.replace(/（.*）/, '')}`
+    }
   }
   for (const f of visibleFields.value) {
     if (!f.required || f.uiOnly) continue
     if (f.type === 'mask') {
-      if (!maskHasStroke.value) return '请先涂抹要消除的区域'
+      if (!maskHasStroke.value) return '请先在图上涂抹要消除的区域'
       continue
     }
     if (f.type === 'region-list') {
-      if (!regions.value.length) return ocrLoading.value ? '正在识别图片中的文字' : '请先识别图片中的文字'
+      if (!regions.value.length) return ocrLoading.value ? '图片识别中，请稍候' : '请先识别图片中的文字'
       if (!changedRegions.value.length) return '请至少修改一处文案再提交'
       continue
     }
@@ -951,7 +1105,7 @@ const disabledReason = computed(() => {
       continue
     }
     if (f.type === 'voice') {
-      if (!selectedVoice.value) return voicesLoaded.value && !voices.value.length ? '暂无可用音色' : '请选择配音音色'
+      if (!selectedVoice.value) return voicesLoaded.value && !voices.value.length ? '暂无可用音色' : '请先选择配音音色'
       continue
     }
     if (sizePair.value && SIZE_KEYS.includes(f.key)) {
@@ -968,6 +1122,13 @@ const disabledReason = computed(() => {
     if (f.minLength && typeof v === 'string' && [...v.trim()].length < f.minLength) {
       return `${f.label}至少 ${f.minLength} 个字`
     }
+  }
+  if (cloneMode.value) {
+    const refCount = cloneRefSlot.value ? (uploads[cloneRefSlot.value.slot]?.length ?? 0) : 0
+    if (refCount > cloneRefMax.value) {
+      return cloneRefMax.value ? `当前模型最多 ${cloneRefMax.value} 张参考图，请先移除多出的` : '当前模型不支持参考图，请先移除参考图'
+    }
+    if (vc.blockReason) return vc.blockReason
   }
   return ''
 })
@@ -1018,6 +1179,50 @@ bizPoints()
 const BIZ_POINTS_SOURCE = /^features\/biz-points\.(\w+)(?:\[([^\]]+)\])?/
 const POINT_UNITS: Record<string, string> = { second: '秒', minute: '分钟' }
 
+/**
+ * 视频槽（slot 0）当前那段视频的时长（秒）：按秒计价的工具（视频高清 / 视频翻译）据此把单价乘成总价。
+ * 地址可能来自本地上传或资产库，统一读远端元数据；读不到（跨域 / 失败）保持 null，退回「N 点/秒」。
+ */
+const inputVideoSeconds = ref<number | null>(null)
+let metaSeq = 0
+let metaEl: HTMLVideoElement | null = null
+function releaseMetaEl() {
+  if (!metaEl) return
+  metaEl.onloadedmetadata = null
+  metaEl.onerror = null
+  metaEl.removeAttribute('src')
+  metaEl.load()
+  metaEl = null
+}
+watch(
+  () => (schema.value?.uploads[0]?.kind === 'video' ? (uploads[0]?.[0] ?? '') : ''),
+  (url) => {
+    const seq = ++metaSeq
+    releaseMetaEl()
+    inputVideoSeconds.value = null
+    if (!url || typeof document === 'undefined') return
+    const el = document.createElement('video')
+    metaEl = el
+    el.preload = 'metadata'
+    el.muted = true
+    el.onloadedmetadata = () => {
+      const d = el.duration
+      if (seq === metaSeq) inputVideoSeconds.value = Number.isFinite(d) && d > 0 ? d : null
+      if (metaEl === el) releaseMetaEl()
+    }
+    el.onerror = () => {
+      if (seq === metaSeq) inputVideoSeconds.value = null
+      if (metaEl === el) releaseMetaEl()
+    }
+    el.src = url
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => {
+  metaSeq += 1
+  releaseMetaEl()
+})
+
 /** 只在价目表给出该工具的数字时返回 { 点数, 计价单位 }（单位空 = 按次）；其余返回 null */
 const estimate = computed<{ points: number; unit: string } | null>(() => {
   const s = schema.value
@@ -1035,12 +1240,13 @@ const estimate = computed<{ points: number; unit: string } | null>(() => {
   if (!item || typeof item !== 'object') return null
   const { points, unit } = item as { points?: unknown; unit?: unknown }
   if (typeof points !== 'number') return null
-  return { points, unit: typeof unit === 'string' ? (POINT_UNITS[unit] ?? unit) : '' }
+  const unitText = typeof unit === 'string' ? (POINT_UNITS[unit] ?? unit) : ''
+  return { points, unit: unitText }
 })
 
 /**
  * 图片生成 / 视频生成的预计消耗（schema.price）：取该路由自己的 model-configs，
- * 图片 = 所选分辨率单价 × 张数，视频 = 所选模型该档每秒单价 × 时长；没报价的档返回 null（保持原文案）。
+ * 图片 = 所选分辨率单价 × 张数，视频 = 所选模型该档每秒单价（总价按所选时长标估算）；没报价的档返回 null（保持原文案）。
  */
 const modelEstimate = computed<{ points: number; unit: string } | null>(() => {
   const s = schema.value
@@ -1057,10 +1263,25 @@ const modelEstimate = computed<{ points: number; unit: string } | null>(() => {
     const unit = videoSizeOf(currentVideoModel.value, values.resolution)?.points
     const seconds = Number(values.duration)
     if (typeof unit !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return null
-    return { points: unit * seconds, unit: '' }
+    // 视频没有后端报价：只给「N 点/秒」，总数由 secondsEstimate 按所选时长标成估算，不当作精确扣费
+    return { points: unit, unit: '秒' }
   }
   return null
 })
+
+/** 按秒计价且已读到视频时长：仅作粗略估算（不足 1 秒按 1 秒向上取整），不是实际扣费 */
+const secondsEstimate = computed<{ points: number; seconds: number } | null>(() => {
+  const e = estimate.value
+  if (!e || e.unit !== '秒') return null
+  const formSeconds = Number(values.duration)
+  const raw = schema.value?.price === 'video-model-configs' ? formSeconds : inputVideoSeconds.value
+  if (!raw || !Number.isFinite(raw) || raw <= 0) return null
+  const seconds = Math.ceil(raw)
+  return { points: e.points * seconds, seconds }
+})
+const secondsEstimateText = computed(() =>
+  secondsEstimate.value ? `约 ${secondsEstimate.value.points} 点（按 ${secondsEstimate.value.seconds} 秒估）` : '',
+)
 
 /** 「N 点」/「N 点/分钟」；价目表没给时为空串 */
 const estimatedPoints = computed(() => {
@@ -1073,7 +1294,7 @@ const costText = computed(() => {
   const s = schema.value
   if (!s) return ''
   const unit = estimatedPoints.value
-    ? `预计消耗 ${estimatedPoints.value}，提交即扣点`
+    ? `预计消耗 ${estimatedPoints.value}${secondsEstimateText.value ? `（${secondsEstimateText.value}，仅为估算）` : ''}，提交即扣点`
     : `按${s.submit.costUnit}计费，提交即扣点`
   return fanOutCount.value > 1 ? `将提交 ${fanOutCount.value} 个任务 · ${unit}` : unit
 })
@@ -1082,11 +1303,16 @@ const costText = computed(() => {
  * compact 版式按钮第二行：原型「消耗 30 点」（数字 900 粗）。点数取真实价目表；按时长计价的工具价目只有单价，
  * 总价要等视频时长，这里如实写成「消耗 N 点/分钟」。价目表没给 / 正在逐个提交时退回原来的整句。
  */
-const costLine = computed<{ num: string; suffix: string } | { text: string }>(() => {
+const costLine = computed<{ num: string; suffix: string; note?: string } | { text: string }>(() => {
   if (progressText.value) return { text: progressText.value }
+  // 视频复刻页（解析标注 / 直接出片）：数字取后端报价（= 提交时冻结的点数），报不出来显示「—」
+  if (isVideoClonePage.value) {
+    const points = videoCloneQuote.points.value
+    return { num: points === null ? '—' : String(points), suffix: ' 点' }
+  }
   const e = estimate.value
   if (!e || fanOutCount.value > 1) return { text: costText.value }
-  return { num: String(e.points), suffix: e.unit ? ` 点/${e.unit}` : ' 点' }
+  return { num: String(e.points), suffix: e.unit ? ` 点/${e.unit}` : ' 点', note: secondsEstimateText.value || undefined }
 })
 
 // ---------------- 组装请求体 ----------------
@@ -1117,16 +1343,13 @@ function fieldEntries(f: ToolField): [string, unknown][] {
   return value === undefined || typeof f.javaKey !== 'string' ? [] : [[f.javaKey, value]]
 }
 
-async function buildBodies(s: ToolSchema): Promise<Record<string, unknown>[]> {
+/**
+ * 表单 → 请求体里同步可得的部分（字段、上传地址、视频复刻标注、图片模型）；fan = 要逐张拆开提交的槽。
+ * 蒙版要先导出上传，留给 {@link buildBodies}。视频复刻页的提交前报价用同一份（报价 = 提交时冻结的点数）。
+ */
+function formBase(s: ToolSchema): { base: Record<string, unknown>; fan: { key: string; urls: string[]; asArray: boolean } | null } {
   const base: Record<string, unknown> = { ...s.constants }
   for (const f of visibleFields.value) for (const [k, v] of fieldEntries(f)) base[k] = v
-
-  if (s.fields.some((f) => f.type === 'mask')) {
-    const file = await maskRef.value?.exportMask()
-    if (!file) throw new Error('蒙版生成失败，请重新涂抹')
-    const [maskUrl] = await upload([file], undefined, { compress: false })
-    base.maskUrl = maskUrl
-  }
 
   let fan: { key: string; urls: string[]; asArray: boolean } | null = null
   for (const u of s.uploads) {
@@ -1134,14 +1357,54 @@ async function buildBodies(s: ToolSchema): Promise<Record<string, unknown>[]> {
     if (!urls.length || !uploadEnabled(u)) continue
     if (u.javaKey === 'images') continue // 局部重绘：地址已随区域进了 images
     if (u.javaKey === 'imageUrls' && s.perItemSubmit && urls.length > 1) fan = { key: u.javaKey, urls, asArray: true }
-    else if (u.javaKey === 'imageUrls') base.imageUrls = [...urls]
+    else if (u.javaKey === 'imageUrls') base.imageUrls = urls.slice(0, slotMax(u))
     else if (u.max > 1) fan = { key: u.javaKey, urls, asArray: false }
     else base[u.javaKey] = urls[0]
   }
+  // 视频复刻标注：videoClone + 选填 content；参考图编号按本次实际提交的 imageUrls（@n = 下标 + 1）
+  if (cloneMode.value) {
+    const refs = ((base.imageUrls as string[] | undefined) ?? []).slice(0, cloneRefMax.value)
+    if (refs.length) base.imageUrls = refs
+    else delete base.imageUrls
+    Object.assign(base, vc.buildPayload(refs))
+  }
   // 图片生成多模型：只有让用户选了模型时才传 model（CoreToolSubmissionRequest.model）
-  if (imageModelSelectable.value && currentImageModel.value) base.model = currentImageModel.value.model
+  if (imageModelSelectable.value && currentImageModel.value && currentImageModel.value.model !== defaultImageModel.value?.model)
+    base.model = currentImageModel.value.model
+  return { base, fan }
+}
+
+async function buildBodies(s: ToolSchema): Promise<Record<string, unknown>[]> {
+  const { base, fan } = formBase(s)
+  if (s.fields.some((f) => f.type === 'mask')) {
+    const file = await maskRef.value?.exportMask()
+    if (!file) throw new Error('蒙版生成失败，请重新涂抹')
+    const [maskUrl] = await upload([file], undefined, { compress: false })
+    base.maskUrl = maskUrl
+  }
   return fan ? fan.urls.map((url) => ({ ...base, [fan!.key]: fan!.asArray ? [url] : url })) : [base]
 }
+
+// ---------------- 视频复刻页：提交前报价（POST /api/v1/workflows/video/quote） ----------------
+
+/** 视频复刻页（解析标注与「直接出片」两种模式都用同一个报价接口，请求体与提交相同） */
+const isVideoClonePage = computed(() => schema.value?.homeId === VIDEO_CLONE_ID)
+const videoCloneQuote = useWorkflowVideoQuote(() => {
+  const s = schema.value
+  // 本地还不能提交（没传片、解析没完成、没标维度…）就不问：那时的禁用原因由前端给
+  if (!s || !isVideoClonePage.value || localDisabledReason.value) return null
+  try {
+    const { base, fan } = formBase(s)
+    return fan ? null : base
+  } catch {
+    return null
+  }
+})
+
+/** 提交按钮的禁用原因：前端本地判定优先；视频复刻页再加后端报价判的「此刻提交会被拒」（与提交时同一句） */
+const disabledReason = computed(
+  () => localDisabledReason.value || (isVideoClonePage.value ? videoCloneQuote.blockReason.value : ''),
+)
 
 // ---------------- 提交 ----------------
 
@@ -1178,7 +1441,7 @@ async function onSubmit() {
     submitting.value = false
     progressText.value = ''
     if (done > 0) {
-      message.success(done === total ? `已提交 ${done} 个任务` : `已提交 ${done} / ${total} 个任务，其余未提交`)
+      message.success(done === total ? (total === 1 ? '已提交，可在历史记录查看进度' : `已提交 ${done} 个${s.title}任务`) : `已提交 ${done} / ${total} 个任务，其余未提交`)
     }
     if (!s.sync) {
       // 失败也刷新一次：超时 / 断网时任务可能已在服务端创建
@@ -1266,6 +1529,16 @@ async function restoreFrom(item: ToolHistoryItem) {
     if (imageModelChoices.value.some((m) => m.model === params.model)) values[IMAGE_MODEL_KEY] = params.model
     else pendingImageModel = params.model
   }
+  // 视频复刻：带标注的记录回到解析标注（同一原片复用原解析，完成后套上当时的标注）；没有标注的老记录走直接出片
+  if (s.homeId === VIDEO_CLONE_ID) {
+    const ann = params.videoClone as VideoCloneAnnotations | undefined
+    if (ann && typeof ann === 'object' && typeof ann.analysisId === 'string') {
+      const refSlot = s.uploads.find((u) => u.javaKey === 'imageUrls')
+      vc.queueRestore(ann, refSlot ? (uploads[refSlot.slot] ?? []) : [], typeof params.content === 'string' ? params.content : '')
+    } else {
+      cloneSimple.value = true
+    }
+  }
   const lost: string[] = []
   if (r.voice) {
     const hit = voices.value.find((v) => v.model === r.voice!.voiceModel && v.voiceKey === r.voice!.voiceKey)
@@ -1292,7 +1565,8 @@ async function restoreFrom(item: ToolHistoryItem) {
     form.scrollIntoView({ block: 'start', behavior })
     form.focus({ preventScroll: true })
   }
-  if (lost.length) message.warning(`已回填原参数，${lost.join('、')}需要重新设置`)
+  if (r.needsMask && lost.length === 1) message.info('已恢复原图，涂抹区域需要重新画')
+  else if (lost.length) message.warning(`已回填原参数，${lost.join('、')}需要重新设置`)
   else message.success(`已回填原参数，确认后点「${s.submit.label}」提交`)
 }
 
@@ -2126,6 +2400,53 @@ const plateBtnCls =
           @submit.prevent="onSubmit"
           @keydown.enter="blockImplicitSubmit"
         >
+          <!-- 视频复刻：解析、标注（原片上传槽仍是 ToolUploadSlot，从 #upload 插进去） -->
+          <VideoClonePanel
+            v-if="cloneMode && cloneVideoSlot && cloneRefSlot"
+            :refs="uploads[cloneRefSlot.slot] ?? []"
+            :state="vc"
+            :video-url="uploads[cloneVideoSlot.slot]?.[0] ?? ''"
+            :disabled="submitting"
+            :ref-max="cloneRefMax"
+            :ref-max-bytes="cloneRefSlot.maxBytes"
+            :ref-accept="cloneRefSlot.accept"
+            :model-resolutions="cloneModelResolutions"
+            :model-label="modelOptions.find((o) => o.value === pickedModel)?.label"
+            :model-max-seconds="cloneModelMaxSeconds"
+            :content-max="schema.fields.find((f) => f.javaKey === 'content')?.maxLength ?? 5000"
+            @update:refs="setUploads(cloneRefSlot.slot, $event)"
+            @replace="cloneReplaceVideo"
+            @skip="cloneSkip"
+            @update:uploading="setUploading('vc-refs', $event)"
+          >
+            <template #upload>
+              <ToolUploadSlot
+                :id="`tool-upload-${cloneVideoSlot.slot}`"
+                :model-value="uploads[cloneVideoSlot.slot] ?? []"
+                :spec="specOf(cloneVideoSlot)"
+                :layout="cloneVideoSlot.layout"
+                :disabled="submitting"
+                asset-picker
+                @update:uploading="setUploading(`slot-${cloneVideoSlot.slot}`, $event)"
+                @update:model-value="setUploads(cloneVideoSlot.slot, $event)"
+              />
+            </template>
+          </VideoClonePanel>
+          <p
+            v-else-if="schema.homeId === VIDEO_CLONE_ID"
+            class="sx-squircle m-0 flex flex-wrap items-center gap-x-8px gap-y-4px min-h-36px box-border px-10px py-4px rounded-12px border border-solid border-violet-line bg-info-soft text-12px leading-18px text-violet-ink"
+          >
+            <span>直接出片：不解析原片，按描述生成</span>
+            <button
+              type="button"
+              class="ml-auto inline-flex items-center h-28px px-6px rounded-8px border-none bg-transparent text-12px font-600 text-violet-ink cursor-pointer hover:underline"
+              :class="focusRing"
+              :disabled="submitting"
+              @click="cloneBack"
+            >
+              改回解析标注（推荐）
+            </button>
+          </p>
           <!-- 商拍换装：服装图 / 模特图并排在一块素材板里（服装图点开弹窗选单品与角度）；仍写回 slot 0 / slot 1 -->
           <ToolTryonMaterials
             v-if="schema.uploadsView === 'tryon' && tryonSlots"
@@ -2139,6 +2460,28 @@ const plateBtnCls =
             @update:cloth="setUploads(tryonSlots.cloth.slot, $event)"
             @update:models="setUploads(tryonSlots.models.slot, $event)"
           />
+          <!-- 产品替换图台：素材在上、底图格在下、连线压在卡壳之上底图片之下 -->
+          <div
+            v-if="productStage"
+            :ref="setProductStageEl"
+            class="relative isolate w-full max-w-[434px] mx-auto flex flex-col items-center gap-14px box-border p-12px rounded-6px border border-solid border-line bg-white shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)]"
+          >
+            <ToolUploadSlot
+              v-for="u in [productStage.anchor, productStage.base]"
+              :id="`tool-upload-${u.slot}`"
+              :key="`${schema.homeId}-${u.slot}`"
+              :model-value="uploads[u.slot] ?? []"
+              :spec="specOf(u)"
+              :layout="u.layout"
+              :disabled="submitting"
+              asset-picker
+              bare
+              class="w-full"
+              @update:uploading="setUploading(`slot-${u.slot}`, $event)"
+              @update:model-value="setUploads(u.slot, $event)"
+            />
+            <ToolPipeLinks :root="productStageEl" />
+          </div>
           <template
             v-for="u in schema.uploadsView === 'tryon' && tryonSlots ? [] : displayUploads"
             :key="`${schema.homeId}-${u.slot}`"
@@ -2311,30 +2654,6 @@ const plateBtnCls =
               </template>
             </div>
 
-            <!-- 配音音色 -->
-            <div v-else-if="f.type === 'voice'">
-              <div class="ll-label">
-                <label :for="`tool-field-${f.key}`"
-                  >{{ f.label }}<span class="text-danger" aria-hidden="true"> *</span></label
-                >
-                <button
-                  v-if="schema.actions.includes('试听') && auditionUrl"
-                  type="button"
-                  class="ll-link border-none bg-transparent p-0"
-                  :class="focusRing"
-                  @click="playAudition"
-                >
-                  试听
-                </button>
-              </div>
-              <select :id="`tool-field-${f.key}`" v-model="values[f.key]" :class="inputCls" :disabled="!voices.length">
-                <option v-if="!voices.length" :value="undefined">
-                  {{ voicesLoaded ? '暂无可用音色' : '加载中…' }}
-                </option>
-                <option v-for="v in voices" :key="v.voiceId" :value="v.voiceId">{{ v.voiceName }}</option>
-              </select>
-            </div>
-
             <!-- 多行文本（原型 .op-prompt__field 一体框）：生成类工具带「我的提示词」入口与「AI帮写」；
                  ml 版式的参考图槽收进框顶（计数 + 书本钮一行），字段名只给读屏；schema 的 rewritePrompt 开关收进框底行 -->
             <CreationPromptInput
@@ -2383,7 +2702,7 @@ const plateBtnCls =
         <!--
           底部固定栏（原型参数行 + ToolSubmitBar ml 版）：栏内边距 12（上 12）、gap 8。
           只有一个档位字段时照原型 ChoiceFieldButton inline（r14 卡 + 分段片）；否则「模型卡 | 设置」两列（没有模型时设置占满整行），
-          设置弹层宽 = 按钮宽。提交按钮 sx-submit（56 高、r14），下面一行 schema.hint（12 muted，同时作按钮悬停提示）。
+          设置弹层宽 = 按钮宽。提交按钮 sx-submit（56 高、r14）；schema.hint 只作按钮悬停提示（title）+ 读屏描述，不再单独占一行。
         -->
         <div class="flex-none flex flex-col gap-8px pt-12px px-12px pb-12px">
           <p
@@ -2514,12 +2833,16 @@ const plateBtnCls =
 
                   <!-- 开关 -->
                   <div v-else-if="f.type === 'switch'" :class="[setRowCls, '!flex-row items-center justify-between']">
-                    <span :id="`tool-set-${f.key}-label`" class="text-12px leading-18px text-ink-2">{{ f.label }}</span>
+                    <span class="flex min-w-0 flex-col">
+                      <span :id="`tool-set-${f.key}-label`" class="text-12px leading-18px text-ink-2">{{ f.label }}</span>
+                      <span v-if="f.description" :id="`tool-set-${f.key}-desc`" class="text-12px leading-18px text-muted">{{ f.description }}</span>
+                    </span>
                     <button
                       type="button"
                       role="switch"
                       :aria-checked="!!values[f.key]"
                       :aria-labelledby="`tool-set-${f.key}-label`"
+                      :aria-describedby="f.description ? `tool-set-${f.key}-desc` : undefined"
                       :disabled="submitting"
                       class="relative after:(content-empty absolute -inset-x-4px -inset-y-6px rounded-[inherit]) [@media(pointer:coarse)]:after:-inset-y-10px flex-none w-34px h-20px box-border p-0 rounded-full border border-solid cursor-pointer [transition:background_180ms_cubic-bezier(0.2,0.7,0.2,1),border-color_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none disabled:(opacity-50 cursor-not-allowed)"
                       :class="[
@@ -2602,6 +2925,43 @@ const plateBtnCls =
               </div>
             </template>
           </CreationSettingsRow>
+          <!-- 提交按钮正上方的字段卡（原型 ChoiceFieldButton picker）：目标语言（长列表三列 + 搜索）、配音音色（带试听） -->
+          <template v-for="f in choiceFields" :key="`${schema.homeId}-choice-${f.key}`">
+            <div v-if="f.type === 'voice'" class="flex items-center gap-8px">
+              <div class="flex-1 min-w-0">
+                <ToolChoiceField
+                  v-model="values[f.key]"
+                  :options="voiceOptions"
+                  :label="f.label"
+                  icon="voice"
+                  layout="list"
+                  :required="f.required"
+                  :disabled="submitting || !voices.length"
+                  :placeholder="voicesLoaded ? '暂无可用音色' : '加载中…'"
+                  @audition="playAudition"
+                />
+              </div>
+              <button
+                v-if="auditionEnabled && auditionUrl"
+                type="button"
+                class="sx-btn flex-none !h-44px !px-12px"
+                :aria-label="`试听${selectedVoice?.voiceName ?? '音色'}`"
+                @click="playAudition()"
+              >
+                试听
+              </button>
+            </div>
+            <ToolChoiceField
+              v-else
+              v-model="values[f.key]"
+              :options="fieldOptions(f)"
+              :label="f.label"
+              icon="language"
+              layout="grid"
+              :required="f.required"
+              :disabled="submitting"
+            />
+          </template>
           <p v-if="disabledReason" :id="reasonId" class="sr-only" aria-live="polite">{{ disabledReason }}</p>
           <button
             type="submit"
@@ -2624,17 +2984,18 @@ const plateBtnCls =
               aria-hidden="true"
             />
             <span class="text-16px font-600 leading-22px tracking-[0.04em] whitespace-nowrap">
-              {{ submitting ? (schema.sync ? '正在抠图，请稍候…' : '提交中…') : submitLabel }}
+              {{ submitLabel }}
             </span>
             <span class="text-11px leading-11px text-white/74 whitespace-nowrap" aria-live="polite">
               <template v-if="'num' in costLine"
                 >消耗 <b class="font-600 tabular-nums">{{ costLine.num }}</b
-                >{{ costLine.suffix }}</template
+                >{{ costLine.suffix }}<template v-if="costLine.note"> · {{ costLine.note }}</template></template
               >
               <template v-else>{{ costLine.text }}</template>
             </span>
           </button>
-          <p v-if="schema.hint" :id="hintId" class="m-0 text-center text-12px leading-18px text-muted">{{ schema.hint }}</p>
+          <!-- schema.hint 照原型只放进按钮 title；读屏经 aria-describedby 读这段视觉隐藏文字 -->
+          <span v-if="schema.hint" :id="hintId" class="sr-only">{{ schema.hint }}</span>
         </div>
       </section>
 
@@ -3197,11 +3558,10 @@ const plateBtnCls =
 
           <!-- 候选 4 列、gap 6，方形 r4；选中 1px violet 描边 + 1px 光晕 -->
           <div v-if="products.length > 1" class="flex-none grid gap-6px grid-cols-4" role="group" aria-label="候选结果">
+            <div v-for="(item, i) in products" :key="`${item.src}-${i}`" class="group relative min-w-0">
             <button
-              v-for="(item, i) in products"
-              :key="`${item.src}-${i}`"
               type="button"
-              class="relative overflow-hidden aspect-square box-border p-0 rounded-4px border border-solid bg-surface3 cursor-pointer"
+              class="relative block w-full overflow-hidden aspect-square box-border p-0 rounded-4px border border-solid bg-surface3 cursor-pointer"
               :class="[
                 focusRing,
                 selectedIndex === i ? 'border-violet shadow-[0_0_0_1px_#875f9a]' : 'border-line hover:border-#c9cfd6',
@@ -3228,6 +3588,21 @@ const plateBtnCls =
                 class="block w-full h-full object-cover"
               />
             </button>
+            <!--
+              悬停看大图（原型 ToolPreviewPanel v-hover-preview，与 ToolUploadSlot 同一套）：媒体 240 宽、卡内边距 4、r8、最大高 312；
+              延迟 320ms、入场 120ms + 4px 上浮；只在能悬停的指针上出现（触屏 / 键盘不出，点选照旧），纯看不挡点击；往上展开，后两列靠右
+            -->
+            <div
+              v-if="item.type === 'image'"
+              class="hidden [@media(hover:hover)]:group-hover:block absolute bottom-[calc(100%+8px)] z-30 w-248px box-border p-4px rounded-8px border border-solid border-line bg-white shadow-[0_12px_28px_rgba(31,35,41,0.16),0_2px_6px_rgba(31,35,41,0.06)] pointer-events-none animate-[tus-preview-in_120ms_ease_320ms_both] motion-reduce:animate-none"
+              :class="i % 4 >= 2 ? 'right-0' : 'left-0'"
+              aria-hidden="true"
+            >
+              <div class="grid place-items-center w-240px max-h-[312px] overflow-hidden rounded-6px bg-surface2">
+                <img :src="item.src" alt="" class="block max-w-full max-h-[312px] object-contain" />
+              </div>
+            </div>
+            </div>
           </div>
 
           <p
@@ -3275,7 +3650,7 @@ const plateBtnCls =
             </ol>
           </div>
           <p v-if="history.running.value" class="m-0 text-11px leading-16px text-violet-ink" role="status">
-            {{ history.running.value }} 个任务处理中，完成后会更新到下方历史记录
+            {{ history.running.value }} 个任务处理中，完成后会更新到历史记录
           </p>
         </section>
       </div>

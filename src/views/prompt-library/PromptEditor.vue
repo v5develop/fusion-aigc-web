@@ -13,6 +13,10 @@ const show = defineModel<boolean>('show', { required: true })
 const props = defineProps<{
   /** 非 null = 编辑该条；null = 新建 */
   editing: IPromptLibItem | null
+  createTitle?: string
+  editTitle?: string
+  /** 浮层里打开时需高于浮层（6000） */
+  zIndex?: number
 }>()
 
 const emit = defineEmits<{ saved: [] }>()
@@ -83,7 +87,13 @@ async function save() {
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" :title="editing ? '编辑提示词' : '新建提示词'" style="width: 560px">
+  <n-modal
+    v-model:show="show"
+    preset="card"
+    :title="editing ? (editTitle ?? '编辑提示词') : (createTitle ?? '新建提示词')"
+    :z-index="zIndex"
+    style="width: 560px; max-width: calc(100vw - 24px)"
+  >
     <div>
       <div class="mb-14px">
         <div class="text-13px text-ink mb-6px flex justify-between">

@@ -47,6 +47,8 @@ export interface LandingBanner {
   route?: string
   /** 第三张藤紫卡 */
   accent?: boolean
+  /** banner 右侧主图（原型 AiExploreView HERO_IMAGE）；缺省回落工具封面 */
+  image?: string
 }
 
 export interface LandingPageData {
@@ -189,6 +191,7 @@ export const pictureLanding: LandingPageData = {
   banners: [
     {
       id: 'ai-digital-model',
+      image: '/images/landing/model-1.jpg',
       title: '商拍换装',
       desc: '整套换装，保留原来的姿势',
       cta: '去看看',
@@ -196,6 +199,7 @@ export const pictureLanding: LandingPageData = {
     },
     {
       id: 'ai-posture-fission',
+      image: '/images/landing/model-3.jpg',
       title: '姿态复刻',
       desc: '同一个人，换一个姿势',
       cta: '去看看',
@@ -203,6 +207,7 @@ export const pictureLanding: LandingPageData = {
     },
     {
       id: 'image-generate',
+      image: '/images/landing/result-1.jpg',
       title: '图片生成',
       desc: '输入一句话，生成第一张可用的图',
       cta: '开始生成',
@@ -295,6 +300,7 @@ export const videoLanding: LandingPageData = {
   banners: [
     {
       id: 'model-sell',
+      image: '/images/landing/model-3.jpg',
       title: '模特带货',
       desc: '模特穿上商品，直接出带货视频',
       cta: '去看看',
@@ -302,6 +308,7 @@ export const videoLanding: LandingPageData = {
     },
     {
       id: 'video-product-replace',
+      image: '/images/landing/result-2.jpg',
       title: '商品替换',
       desc: '原片换商品，场景和运镜不动',
       cta: '去看看',
@@ -309,6 +316,7 @@ export const videoLanding: LandingPageData = {
     },
     {
       id: 'ai-video-generator',
+      image: '/images/landing/scene-1.jpg',
       title: '视频生成',
       desc: '一句话生成一段可用的短视频',
       cta: '开始生成',

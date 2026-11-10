@@ -5,8 +5,9 @@
 // 这里只处理 naive 变量覆盖不到的结构性差异。
 
 .fusion-dropdown.n-dropdown {
-  border-radius: 12px;
-  box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.12);
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 12px 24px rgba(31, 35, 41, 0.14), 0 2px 6px rgba(31, 35, 41, 0.06);
   // 面板 8px(padding) + 36px(标题) + 320px(8 行 × 40px) + 8px(padding)
   max-height: 372px;
   overflow-x: hidden;
@@ -73,7 +74,7 @@
 }
 
 .fusion-dropdown-option--selected .n-dropdown-option-body::before {
-  background-color: #f5f6f8;
+  background: linear-gradient(180deg, #ffffff 0%, #f8f3fc 100%);
 }
 
 .fusion-dropdown-row {

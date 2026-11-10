@@ -75,6 +75,13 @@ useDebounce(reactiveObj, callback, 300)
 - 可点文字 ≥ 12–13px、高 ≥ 28–32px；纯说明文字保留 11px；货币一律叫「点数」
 - 设计规范与 5185 对齐记录见 `docs/design/ui-design-spec.md` §10
 
+### 共用组件与钩子（2026-11-10 补）
+- **空态 / 失败态**：整块无数据用 `src/components/PageEmpty`（`text` + `description` + 默认插槽放一个主操作，`compact` 用于栏内）；整块取不到用 `src/components/PageLoadError`（`retryable` + `@retry`）。字段级错误不用它们
+- **大图预览** `src/components/MediaLightbox`：需要看细节的入口（高清放大等）传 `pannable`，开滚轮缩放 0.5–4× 与放大后拖动平移；不传时行为不变
+- **工具页**：「选一项」字段（目标语言 / 音色）用 `src/views/tools/ToolChoiceField`（`grid` 长列表带搜索，`list` 行尾可带试听）；产品替换图台的连线用 `ToolPipeLinks`，只认 DOM 标记 `data-pr-anchor` / `data-pr-base`（/ `data-pr-hint`）
+- **提交前报价**：本地生活 `useLLQuote`（Workbench）、视频复刻 `useWorkflowVideoQuote`；防抖 300ms、只认最后一次响应、卸载即丢。报价中 / 失败 / 不可提交一律显示「—」，**不拿旧值或前端估算顶上**，点数只来自后端
+- **回填守卫**：`/tools/ai-digital-model`、`/tools/ai-posture-fission` 默认转商拍工作室完整版（`studioToolRedirect`）；只有 `hasRefill` 发现 2 分钟内发给简版工具的「做同款 / 参数回填」交接时才放行。新增这类转向要同样先看交接
+
 ### 路由要点
 - **主导航隐藏四项（2026-11-09）**：「工作流」「AI 电商」「AI 商拍」「本地生活」在 `src/views/layout/Navigation` 里标 `hidden: true`（去掉即恢复），路由与页面都在、深链照开。子功能按图片 / 视频并进 `src/views/image/landing.ts` 的分组（AI 图片：图片处理 / 商拍 / 电商 / 服装 / 本地生活；AI 视频：视频处理 / 电商 / 本地生活），工具页目录 `src/views/tools/catalog.ts` 除处理组外直接取这份；新增这几个模块的功能要在这里登记，否则没有入口。停在隐藏模块页上时按媒介高亮「AI 图片」/「AI 视频」（`mediaKindOf`）。模块内「回首页」类按钮回对应总览页（电商标签条已改；商拍 `StudioWorkspaceColumns` 返回键的兜底仍是 `{ name: 'studio' }`）
 - `/image`、`/video` 是 AI 图片 / AI 视频总览页（对齐原型 /ai/image；不保留 `/picture` 旧地址）。「图片生成」「视频生成」卡片指向原型同名工具页 `/tools/image-generate`、`/tools/ai-video-generator`（与左侧导航目录同一页面）。原通用生图 / 生视频在 `/image/generate`、`/video/generate`，原型没有、不放卡片，只承接老链接 `?entryCode=…`、`?sameStyleId=…`（`src/router/generator.ts` 全局守卫原样转过去，不加 replace，返回键正常）

@@ -4,6 +4,7 @@ import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
 import { refreshToken, getAuthToken } from '@/api/union'
 import { adoptSession, isAccountVerified, markAccountVerified, saveTokens } from '@/utils/authSession'
+import { clearRecentAssets } from '@/utils/assetRecent'
 import { resolveUnionToken } from '@/utils/unionBridge'
 import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billingGuide'
 
@@ -212,12 +213,24 @@ async function handleTokenExpired(config: InternalAxiosRequestConfig, httpStatus
 
 // 业务失败(code!==0)不弹全局 toast 的接口白名单：由调用方自行降级展示（如询价预览失败显示「获取失败」）
 const SILENT_ERROR_URLS = [
+  // 创意广场模板列表 / 标签 / 本周头条：失败由页内 PageLoadError 展示后端原话（加载更多失败由调用方补 toast），不再叠全局 toast
+  '/plaza-templates/list',
+  '/plaza-templates/tags',
+  '/plaza-headlines',
   '/billing/quote/preview',
   '/studio/tryon/quote',
   '/studio/pose/quote',
   '/studio/image-generate/quote',
+  // 本地生活八个工具提交前报价：失败就显示「—」
+  '/local-life/quote',
+  // 商拍工作室模型档能力：拿不到就用前端写死的选项兜底
+  '/studio/models',
   // 姿态复刻「识别人物与配对」：失败原因（4002 并发、未成年、无人物）由面板就地展示，不再弹全局 toast
   '/studio/pose/preview',
+  // 商拍「AI 找细节」：失败原因（4002 繁忙等）由细节裁切面板就地展示
+  '/studio/tryon/details',
+  // 视频复刻解析（开始 / 轮询）：失败原因（限频 1004、无权 4001 等）由解析面板就地展示
+  '/video-clone/analyses',
   // 智能体出图报价 / 批量托管估价：失败就隐藏点数行，不打扰
   '/agent/image-quote',
   // 校色「自动识别」选区：失败由参数台就地提示，不弹全局 toast
@@ -225,6 +238,10 @@ const SILENT_ERROR_URLS = [
   '/batch-hosting/ecom-image/quote',
   // 商拍工作室保存校色参数（PATCH /studio/tasks/{id}/color-fix）：后台防抖保存，失败本机 localStorage 兜底，不打扰
   '/color-fix',
+  // 视频工作流提交前报价（视频复刻页「消耗 N 点」）：失败就显示「—」，不打扰
+  '/workflows/video/quote',
+  // 素材库批量删除：分块删，失败时由调用方合并成一条（原因 + 已删几个），免得弹两条
+  '/assets/batch-delete',
 ]
 
 // 走「引导购买」弹框而非 toast 的接口白名单：前端在用的全部创作提交口。
@@ -303,6 +320,7 @@ function logoutToLogin() {
   // 「要不要清缓存」这个决策唯一收敛在 authSession 的指纹比对上——下次冷启动拿新 token
   // 的身份跟留下来的 fusion_identity 一比，同人就留、换人才清，比「登出即清」精确得多。
   // 指纹留着正是为了那次比对：清了它就等于把唯一的判据丢了，换号也比不出来
+  clearRecentAssets() // 要在 token 移除前：key 由 token 里的账号指纹算出
   localStorage.removeItem('fusion_accessToken')
   localStorage.removeItem('fusion_refreshToken')
   localStorage.removeItem('union_token')

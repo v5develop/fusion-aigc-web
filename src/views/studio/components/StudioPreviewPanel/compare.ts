@@ -84,7 +84,7 @@ export function batchColorFix(d: StudioBatchDetail): boolean {
 
 /** 对照组：输入图 → 成品；index 指向成品 */
 export function compareItems(d: StudioBatchDetail, task: StudioTask): { items: LightboxItem[]; index: number } {
-  const items = [...sourceItems(d, task), { url: task.result_url, name: `结果 · ${taskCaption(task)}` }]
+  const items = [...sourceItems(d, task), { url: task.result_url, name: `结果 · ${taskCaption(task, d.batch)}` }]
   return { items, index: items.length - 1 }
 }
 

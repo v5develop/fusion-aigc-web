@@ -35,6 +35,7 @@ import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
 import ResultPreview from '../components/ResultPreview/index.vue'
+import { useLLQuote } from '../components/Workbench/useLLQuote.ts'
 import { ColorFixItem, ColorFixPill, ColorFixStage, provideColorFixHost } from '@/components/ColorFix'
 import { useAgreement, useLLList, usePollingWhile } from '../hooks.ts'
 import { NOTE_STATUS_MAP, formatTime, isNoteRunning } from '../constants.ts'
@@ -193,6 +194,8 @@ async function openDetail(id: number, opts: { silent?: boolean } = {}) {
     if (res.data?.status === 1) {
       fillEditForm(res.data)
       genCount.value = res.data.image_count
+    } else {
+      genCount.value = null // 别带着上一条笔记的张数去重试生成 / 报价：不传即按这条记录的张数
     }
     if (res.data && isNoteRunning(res.data)) startNotePoll()
   } catch {
@@ -240,12 +243,37 @@ function onSelectItem(item: ILNote) {
 
 // ---------------- 动作 ----------------
 
+// 提交前报价：构思不收费，确认配图时按张冻结——按钮上写「配图消耗」，数字与配图冻结同一套算价
+const { estimate } = useLLQuote(
+  () => ({ tool: 'imageTextNote', image_count: form.image_count }),
+  () => '配图消耗',
+)
+
+// 配图阶段（方案已出：待确认 / 生成失败可重试）按这条笔记报价：带 id，后端按记录张数（genCount 覆盖）算，
+// 并与出图同口径校验不超过方案张数——参数与 confirmGenerate 发的一致，报价 = 冻结
+const { quote: planQuote, estimate: planEstimate } = useLLQuote(
+  () => {
+    const note = activeNote.value
+    if (!note || (note.status !== 1 && note.status !== 5)) return null
+    return { tool: 'imageTextNote', id: note.id, image_count: genCount.value ?? undefined }
+  },
+  () => '配图消耗',
+)
+/** 确认生成 / 重试生成按钮旁的「配图消耗 N 点」；报不出价时显示后端给的原因 */
+const planCostText = computed(() => {
+  const e = planEstimate.value
+  if (!e) return ''
+  const q = planQuote.value
+  if (q && !q.available && q.reason) return q.reason
+  return `${e.label ?? '消耗'} ${e.points ?? '—'} ${e.suffix ?? '点'}`
+})
+
 const submitting = ref(false)
 
 async function submit() {
   if (submitting.value) return
   if (!form.note_type) return message.warning('请选择笔记类型')
-  if (!form.topic.trim()) return message.warning('请输入主题')
+  if (!form.topic.trim()) return message.warning('请先填写笔记主题')
   if (form.materials.length && form.materials.length > (noteOptions.value?.max_materials ?? 3)) {
     return message.warning(`素材最多 ${noteOptions.value?.max_materials} 张`)
   }
@@ -391,7 +419,7 @@ watch(
 </script>
 
 <template>
-  <Workbench title="图文笔记" :submit="submit" :loading="submitting" submit-text="开始构思" submit-hint="先出文案；确认后再按文案配图" :history-count="listCtl.total.value">
+  <Workbench title="图文笔记" :submit="submit" :loading="submitting" submit-text="开始构思" submit-hint="先出文案；确认后再按文案配图" :estimate="estimate" :history-count="listCtl.total.value">
     <template #default>
       <FormCard title="笔记类型">
         <ChipGroup
@@ -408,7 +436,7 @@ watch(
           label="主题"
           size="lg"
           :max-length="noteOptions?.max_topic_len || 500"
-          placeholder="这条笔记想写什么"
+          placeholder="这条笔记想写什么：地点、品类、人均、体验感受"
         >
           <template #actions>
             <PromptActions :loading="aiWriting" @ai="aiWriteTopic" @pick="showCopyPicker = true" />
@@ -573,6 +601,7 @@ watch(
           >
             {{ activeNote.status === 2 ? '重新构思' : '重试生成' }}
           </n-button>
+          <span v-if="activeNote.status === 5 && planCostText" class="text-12px text-muted">{{ planCostText }}</span>
         </div>
 
         <!-- 待确认：规划页 -->
@@ -628,6 +657,7 @@ watch(
           <div class="flex gap-8px mt-14px">
             <n-button size="medium" :loading="replanning" @click="replan">重新构思</n-button>
             <n-button size="medium" type="primary" :loading="generating" @click="confirmGenerate">确认生成</n-button>
+            <span v-if="planCostText" class="self-center text-12px text-muted">{{ planCostText }}</span>
           </div>
         </template>
 

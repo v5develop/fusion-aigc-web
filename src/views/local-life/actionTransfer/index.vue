@@ -27,6 +27,7 @@ import HistoryList from '../components/HistoryList/index.vue'
 import HistoryCard from '../components/HistoryList/HistoryCard.vue'
 import { useHistorySelection } from '../components/HistoryList/selection.ts'
 import ResultPreview from '../components/ResultPreview/index.vue'
+import { useLLQuote } from '../components/Workbench/useLLQuote.ts'
 import { useAgreement, useLLList } from '../hooks.ts'
 import { CREATION_STATUS_MAP, isCreationRunning } from '../constants.ts'
 
@@ -106,6 +107,9 @@ const modelSetting = reactive({
   },
 })
 
+// 提交前报价：按档位计（动作视频时长提交时也未知，后端按档位默认时长计价，与冻结一致）
+const { estimate } = useLLQuote(() => ({ tool: 'actionTransfer', model: model.value || undefined }))
+
 // ---------------- 提交 ----------------
 
 const submitting = ref(false)
@@ -171,7 +175,7 @@ async function removeItem(item: ILCreation) {
 </script>
 
 <template>
-  <Workbench title="动作迁移" :submit="submit" :loading="submitting" submit-text="开始迁移" :history-count="listCtl.total.value">
+  <Workbench title="动作迁移" :submit="submit" :loading="submitting" submit-text="开始迁移" :estimate="estimate" :history-count="listCtl.total.value">
     <template #default>
       <PersonSource
         v-model:source="portraitSource"
