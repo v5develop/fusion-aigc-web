@@ -9,7 +9,7 @@ import type { ICreationSubmit } from '@/api/types.ts'
 import { entryCodeOps, modelOps, ratioOps, numOps } from './constants.ts'
 import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
-import { useInitCheckTaskStatus } from './hooks.ts'
+import { mergeLiveTasks, useInitCheckTaskStatus } from './hooks.ts'
 import { useQuotePreview } from '@/utils/hooks'
 import { useEntryCodeFromQuery } from '@/utils/hooks/useEntryCodeFromQuery'
 import { useSameStyleRecipe } from '@/utils/hooks/useSameStyleRecipe'
@@ -19,7 +19,7 @@ import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
 import { downloadImage, downloadImagesAsZip, getDownloadableUrls, zipNameOf } from '@/utils/download'
-import { withWatermark } from '@/utils/oss'
+import { ossResize, withWatermark } from '@/utils/oss'
 import { mediaAspectRatio } from '@/utils/ratio'
 import { isTimeout, displayContents } from '@/utils/utils'
 import downloadSingleIcon from '@/assets/icons/download-single.svg'
@@ -208,7 +208,14 @@ const getData = (isReplace?: boolean) => {
 }
 getData(true)
 
-const { execute } = useInitCheckTaskStatus({ type: 'picture', loading, getData, pagingData })
+// 逐条出图：会话轮询每轮把已出的产出并回列表，不等整批跑完
+const { execute } = useInitCheckTaskStatus({
+  type: 'picture',
+  loading,
+  getData,
+  pagingData,
+  onTasks: (tasks) => mergeLiveTasks(messages, tasks),
+})
 
 // 生成中不拦截：新任务并入当前会话，轮询按会话整体判终态，两批任务都会被跟进
 const generateAgain = (item: any) => {
@@ -316,7 +323,10 @@ const generateAgainSingle = async (item: any, key: string) => {
                   <MediaFallback v-if="jtem.blocked" type="image" reason="blocked" />
                   <n-image
                     v-else-if="jtem.resultUrl"
-                    :src="withWatermark(jtem.resultUrl)"
+                    :src="ossResize(withWatermark(jtem.resultUrl), 320)"
+                    :preview-src="withWatermark(jtem.resultUrl)"
+                    :fallback-src="withWatermark(jtem.resultUrl)"
+                    :img-props="{ loading: 'lazy', decoding: 'async' }"
                     alt=""
                     width="100%"
                     height="100%"

@@ -1081,6 +1081,9 @@ interface IPoller {
 }
 
 const POLL_INTERVAL = 1200
+/** 页面隐藏时放慢 run 轮询（切回前台的下一轮即恢复 1.2s；超时按墙钟算，不受影响） */
+const POLL_HIDDEN_INTERVAL = 5000
+const pollDelay = () => (document.visibilityState === 'hidden' ? POLL_HIDDEN_INTERVAL : POLL_INTERVAL)
 const pollers = new Map<string, IPoller>()
 
 const runningCount = computed(
@@ -1389,7 +1392,7 @@ function startPolling(node: CanvasEditorNode): void {
         if (!live) return
         live.errors = 0
         if (applyRunResult(live.nodeId, res.data)) stopPolling(requestId)
-        else live.timer = setTimeout(tick, POLL_INTERVAL)
+        else live.timer = setTimeout(tick, pollDelay())
       })
       .catch(() => {
         const live = pollers.get(requestId)

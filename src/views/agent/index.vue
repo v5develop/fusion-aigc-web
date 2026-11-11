@@ -1954,6 +1954,8 @@ function thinkingOpen(item: ChatItem): boolean {
 
 /** 还没出图的任务：每 5 秒回读一次消息（只读、不计费），把最新任务状态并回已加载的结果卡 */
 const RESULT_POLL_MS = 5000
+/** 页面隐藏时的回读间隔 */
+const RESULT_POLL_HIDDEN_MS = 15000
 /** 一次进入会话最多回读的次数（约 10 分钟），之后停在当前状态，重新打开会话再继续 */
 const RESULT_POLL_MAX = 120
 let resultTimer: ReturnType<typeof setTimeout> | null = null
@@ -1971,8 +1973,21 @@ function scheduleResultPoll(reset = false) {
   stopResultPoll()
   if (disposed || !activeId.value || resultPolls >= RESULT_POLL_MAX || !hasPendingResults()) return
   const id = activeId.value
-  resultTimer = setTimeout(() => void refreshResults(id), RESULT_POLL_MS)
+  // 页面在后台时放慢（切回前台由 onResultPollVisibility 立即补一轮）
+  const delay = document.visibilityState === 'hidden' ? RESULT_POLL_HIDDEN_MS : RESULT_POLL_MS
+  resultTimer = setTimeout(() => void refreshResults(id), delay)
 }
+
+/** 切回前台：有还没出图的任务就立即回读一次，不用干等下一个 5 秒 */
+function onResultPollVisibility() {
+  if (!resultTimer) return
+  if (document.visibilityState === 'visible' && activeId.value) {
+    stopResultPoll()
+    void refreshResults(activeId.value)
+  } else scheduleResultPoll()
+}
+document.addEventListener('visibilitychange', onResultPollVisibility)
+onUnmounted(() => document.removeEventListener('visibilitychange', onResultPollVisibility))
 
 /** 回读已加载范围内的消息页，按 taskId 把任务状态与出图地址并回各结果卡 */
 async function refreshResults(id: string) {
@@ -1985,10 +2000,11 @@ async function refreshResults(id: string) {
     const first = await agentMessages(id, { page: 1, size: MSG_SIZE })
     const pages = first.data?.pages ?? 0
     const rows = [...(first.data?.data ?? [])]
-    for (let p = Math.max(2, msgPage.value || 1); p <= pages; p++) {
-      const res = await agentMessages(id, { page: p, size: MSG_SIZE })
-      rows.push(...(res.data?.data ?? []))
-    }
+    // 其余已加载的页互不依赖：并发拉（原来逐页串行，页多时一轮要等 n 个往返），按页序拼回
+    const rest: number[] = []
+    for (let p = Math.max(2, msgPage.value || 1); p <= pages; p++) rest.push(p)
+    const more = await Promise.all(rest.map((p) => agentMessages(id, { page: p, size: MSG_SIZE })))
+    for (const res of more) rows.push(...(res.data?.data ?? []))
     if (seq !== msgSeq || id !== activeId.value) return
     const latest = new Map<string, IAgentGenTask>()
     for (const m of rows) {
@@ -4549,6 +4565,7 @@ onUnmounted(() => {
     <!-- 上传素材：820×600、白瓷胶囊页签、虚线投放区；本地上传走商拍工作室同一条直传，资产页签复用资产选择器 -->
     <n-modal v-model:show="imageDialogShow" @after-leave="imagePillEl?.focus()">
       <div
+        ref="imageDialogEl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="agent-image-dialog-title"
@@ -4565,7 +4582,6 @@ onUnmounted(() => {
               stroke="currentColor"
               stroke-width="2"
               aria-hidden="true"
-        ref="imageDialogEl"
             >
               <path :d="ICON.x" />
             </svg>

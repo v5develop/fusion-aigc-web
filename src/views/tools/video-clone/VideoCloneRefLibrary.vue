@@ -5,6 +5,7 @@
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useMessage } from 'naive-ui'
+import { DROP_PASTE_HINT, useFileDropPaste } from '@/composables/useFileDropPaste'
 import { upload } from '@/api/oss-upload.ts'
 import { toApiError } from '@/api/index.ts'
 import IconButton from '@/components/IconButton/index.vue'
@@ -57,10 +58,15 @@ function acceptable(file: File) {
   return true
 }
 
-async function onFiles(e: Event) {
+function onFiles(e: Event) {
   const input = e.target as HTMLInputElement
   const files = [...(input.files ?? [])]
   input.value = ''
+  void addFiles(files)
+}
+
+/** 选文件 / 拖入 / 粘贴共用：余量、格式、体积校验后上传 */
+async function addFiles(files: File[]) {
   if (!files.length) return
   if (files.length > room.value) message.warning(`参考图最多 ${props.max} 张，已保留前 ${room.value} 张`)
   const ok = files.slice(0, room.value).filter(acceptable)
@@ -82,6 +88,15 @@ async function onFiles(e: Event) {
   }
 }
 
+const rootEl = ref<HTMLElement | null>(null)
+const { dragging } = useFileDropPaste(rootEl, {
+  accept: 'image',
+  multiple: true,
+  full: () => !room.value,
+  disabled: () => !!props.disabled || uploading.value,
+  onFiles: (files) => void addFiles(files),
+})
+
 function addAssets(picked: string[]) {
   const fresh = picked.filter((u) => !urls.value.includes(u))
   if (fresh.length > room.value) message.warning(`参考图最多 ${props.max} 张，已保留前 ${room.value} 张`)
@@ -98,7 +113,7 @@ function open(i: number) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6px">
+  <div ref="rootEl" class="flex flex-col gap-6px rounded-8px" :class="dragging && 'sx-drop-ring'">
     <div class="flex items-center justify-between gap-8px min-h-24px">
       <span id="vc-refs-label" class="text-12px font-500 leading-18px text-ink-2">
         参考图<span class="ml-4px text-11px font-400 text-placeholder tabular-nums">{{ urls.length }}/{{ max }}</span>
@@ -179,7 +194,7 @@ function open(i: number) {
       </li>
     </ul>
     <p class="m-0 text-11px leading-16px text-muted">
-      最多 {{ max }} 张；在下面的维度里点编号挂图，@n 就是后端读图的顺序
+      最多 {{ max }} 张，{{ DROP_PASTE_HINT }}；在下面的维度里点编号挂图，@n 就是后端读图的顺序
     </p>
     <input ref="fileInput" type="file" :accept="accept" multiple hidden @change="onFiles" />
     <AssetPickerModal v-model:show="assetShow" :limit="Math.max(room, 1)" media="image" @select="addAssets" />

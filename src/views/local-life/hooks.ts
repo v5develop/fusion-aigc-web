@@ -4,6 +4,7 @@ import { computed, onUnmounted, ref } from 'vue'
 import { createDiscreteApi } from 'naive-ui'
 import { llAcceptAgreement, llGetAgreement } from '@/api/local-life.ts'
 import { useUserInfoStore } from '@/stores/user-info.ts'
+import { POLL_HIDDEN_MIN, POLL_RAMP } from '@/utils/hooks/usePolling.ts'
 
 // ---------------- 使用约定 ----------------
 
@@ -81,6 +82,20 @@ export function useAgreement() {
  * <p>同一时刻只有一条轮询链：链还活着（等下一轮或请求在途）时再 start() 不另起一条；
  * stop() 之后在途请求回来的结果直接丢弃，不会再进 onTick（三栏页切换记录时靠它防止上一条的详情写回当前）。
  */
+/** 页面隐藏时的轮询间隔：常规的 3 倍、至少 10 秒（切回前台由 useVisibleResume 立即补一轮） */
+function hiddenAware(interval: number) {
+  return document.visibilityState === 'hidden' ? Math.max(interval * 3, POLL_HIDDEN_MIN) : interval
+}
+
+/** 页面切回前台时回调；组件卸载自动解绑 */
+function useVisibleResume(fn: () => void) {
+  const onVisibility = () => {
+    if (document.visibilityState === 'visible') fn()
+  }
+  document.addEventListener('visibilitychange', onVisibility)
+  onUnmounted(() => document.removeEventListener('visibilitychange', onVisibility))
+}
+
 export function usePollingWhile<T>(
   fetcher: () => Promise<{ data?: T }>,
   onTick: (data: T | undefined) => boolean,
@@ -111,7 +126,7 @@ export function usePollingWhile<T>(
       keep = true
     }
     if (gen !== generation) return
-    if (keep) timer = setTimeout(() => void run(gen), interval)
+    if (keep) timer = setTimeout(() => void run(gen), hiddenAware(interval))
     else alive = false
   }
 
@@ -120,6 +135,13 @@ export function usePollingWhile<T>(
     alive = true
     void run(generation)
   }
+  // 切回前台：正在等下一轮的立即补一轮（请求在途时不另起）
+  useVisibleResume(() => {
+    if (!alive || !timer) return
+    clearTimeout(timer)
+    timer = null
+    void run(generation)
+  })
   return { start, stop }
 }
 
@@ -193,14 +215,29 @@ export function useLLList<T extends { id: number }>(
     items.value = pages.flat()
   }
 
+  /** 刚提交后的快查（1.5s、2s，再回常规间隔） */
+  let rampStep: number = POLL_RAMP.length
+  function nextDelay() {
+    if (document.visibilityState === 'hidden') return hiddenAware(interval)
+    return rampStep < POLL_RAMP.length ? Math.min(POLL_RAMP[rampStep++]!, interval) : interval
+  }
+
   function startPollingIfNeeded() {
     const running = hasRunning.value
     if (lastRunning && !running) updateUserInfo()
     lastRunning = running
     if (running && !timer) {
-      timer = setTimeout(loop, interval)
+      timer = setTimeout(loop, nextDelay())
     }
   }
+
+  // 切回前台：有在等的下一轮就立即补
+  useVisibleResume(() => {
+    if (!timer) return
+    clearTimeout(timer)
+    timer = null
+    void loop()
+  })
 
   async function loop() {
     timer = null
@@ -231,7 +268,10 @@ export function useLLList<T extends { id: number }>(
     loadMore,
     /** 提交成功后由页面手动调用：立即刷一次列表并按需进入轮询 */
     refresh: async () => {
+      rampStep = 0
       await silentRefresh().catch(() => {})
+      // 已排着常规间隔的下一轮：改排到快查节奏
+      stopPolling()
       startPollingIfNeeded()
     },
   }

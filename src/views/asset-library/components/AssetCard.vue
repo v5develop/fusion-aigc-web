@@ -10,6 +10,7 @@ import { NCheckbox } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
 import type { IAssetLibAsset } from '@/api/asset-library.ts'
 import { downloadName } from '../ui.ts'
+import { ossResize, thumbFallback } from '@/utils/oss'
 
 const props = defineProps<{
   asset: IAssetLibAsset
@@ -85,10 +86,10 @@ function onCard() {
       <video
         v-if="isVideo && !videoFailed"
         :src="asset.videoUrl"
-        :poster="asset.image || undefined"
+        :poster="asset.image ? ossResize(asset.image, 240) : undefined"
         class="block w-full h-full object-contain"
         muted
-        preload="metadata"
+        :preload="asset.image ? 'none' : 'metadata'"
         @error="videoFailed = true"
       />
       <img
@@ -96,12 +97,12 @@ function onCard() {
         :key="retryStamp"
         class="block w-full h-full object-contain transition-[opacity,transform] duration-240 ease-sx group-hover:scale-102 motion-reduce:transition-none"
         :class="loaded ? 'opacity-100' : 'opacity-0'"
-        :src="asset.image"
+        :src="ossResize(asset.image, 240)"
         alt=""
         loading="lazy"
         decoding="async"
         @load="loaded = true"
-        @error="imageFailed = true"
+        @error="(e: Event) => thumbFallback(e, asset.image) || (imageFailed = true)"
       />
       <div v-else class="flex flex-col items-center justify-center gap-6px w-full h-full text-muted">
         <span v-if="isVideoAsset" class="text-24px leading-none text-placeholder" aria-hidden="true">▶</span>

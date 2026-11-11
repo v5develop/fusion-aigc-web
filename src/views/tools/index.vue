@@ -76,6 +76,7 @@ import { useVideoCloneState } from './video-clone/useVideoClone'
 import { VC_MAX_REFS } from './video-clone/constants'
 import { useWorkflowVideoQuote } from './video-clone/useWorkflowVideoQuote'
 import type { VideoCloneAnnotations } from '@/api/video-clone'
+import { ossResize, thumbFallback } from '@/utils/oss'
 
 /** Java 同步抠图「等不及」的专用码（ErrorCode.TASK_PROCESSING） */
 const TASK_PROCESSING_CODE = 3010
@@ -779,7 +780,6 @@ const mlPrompt = computed(() => mlPromptUploads.value.length > 0)
 const promptStripOwned = computed(() => mlPromptUploads.value.some((u) => u.strip === 'prototype'))
 /** 画框顶计数行的那个槽：第一个可用的原型图条；模型不支持参考图时没有，退回一体框自己的顶行（只剩书本钮） */
 const stripHeadSlot = computed(() => mlPromptUploads.value.find((u) => u.strip === 'prototype' && uploadEnabled(u)))
-/** 商拍换装素材板的两个槽位：服装图（clothImageUrl）/ 模特图（modelImageUrl）；缺一个就退回通用槽位 */
 /**
  * 本页主粘贴槽：Ctrl/⌘+V 没悬停在哪一槽、焦点也不在提示词框里时进它（useFileDropPaste 路由规则 5）——
  * 显示顺序里第一个可用的槽；商拍换装素材板两块并排，按悬停分，不设主槽
@@ -794,6 +794,7 @@ const pastePrimarySlot = computed(() => {
   ]
   return order.find((u) => uploadEnabled(u))?.slot
 })
+/** 商拍换装素材板的两个槽位：服装图（clothImageUrl）/ 模特图（modelImageUrl）；缺一个就退回通用槽位 */
 const tryonSlots = computed(() => {
   const list = schema.value?.uploads ?? []
   const cloth = list.find((u) => u.javaKey === 'clothImageUrl')
@@ -1715,6 +1716,34 @@ const current = computed<ToolHistoryItem | null>(() => {
   return history.items.value.find(isOwnNew) ?? null
 })
 
+/**
+ * 逐条出结果：一次提交拆成多个任务时，中间列默认盯最新那条；它还在跑、而同批别的任务先出了结果，
+ * 就把先出的那条选上，不让用户对着转圈等整批。只在「没手动选过、中间列正在转圈」时接管，已在看结果时不跳。
+ */
+/** 上面自动选上的那条（用户手点的不记）：最新那条到终态时交还给默认跟随，不把中间列钉在先出的那条上 */
+let autoPickedId: number | null = null
+watch(
+  () => history.items.value.find((i) => isOwnNew(i) && i.status === 'SUCCEED')?.aiToolHistoryId ?? null,
+  (firstDone) => {
+    if (firstDone == null || selectedId.value != null || showSync.value) return
+    if (current.value && !isTerminal(current.value.status)) {
+      selectedId.value = firstDone
+      autoPickedId = firstDone
+    }
+  },
+)
+watch(
+  () => {
+    const newest = history.items.value.find(isOwnNew)
+    return newest && isTerminal(newest.status) ? newest.aiToolHistoryId : null
+  },
+  (newestDone) => {
+    if (newestDone == null || autoPickedId == null) return
+    if (selectedId.value === autoPickedId) selectedId.value = null
+    autoPickedId = null
+  },
+)
+
 const isVideoUrl = (u: string) => /\.(mp4|webm|mov)(\?|#|$)/i.test(u)
 
 function outputsOf(item: ToolHistoryItem) {
@@ -2505,6 +2534,7 @@ const plateBtnCls =
                 :spec="specOf(cloneVideoSlot)"
                 :layout="cloneVideoSlot.layout"
                 :disabled="submitting"
+                paste-primary
                 asset-picker
                 @update:uploading="setUploading(`slot-${cloneVideoSlot.slot}`, $event)"
                 @update:model-value="setUploads(cloneVideoSlot.slot, $event)"
@@ -2534,7 +2564,6 @@ const plateBtnCls =
             :models="uploads[tryonSlots.models.slot] ?? []"
             :cloth-spec="tryonSlots.cloth"
             :model-spec="tryonSlots.models"
-                paste-primary
             :disabled="submitting"
             @update:uploading="setUploading('tryon', $event)"
             @update:cloth="setUploads(tryonSlots.cloth.slot, $event)"
@@ -2554,6 +2583,7 @@ const plateBtnCls =
               :spec="specOf(u)"
               :layout="u.layout"
               :disabled="submitting"
+              :paste-primary="u.slot === pastePrimarySlot"
               asset-picker
               bare
               class="w-full"
@@ -2576,6 +2606,7 @@ const plateBtnCls =
               :titled="u.titled"
               :unsupported-hint="uploadEnabled(u) ? '' : unsupportedUploadHint(u)"
               :disabled="submitting || !uploadEnabled(u)"
+              :paste-primary="u.slot === pastePrimarySlot"
               asset-picker
               @update:uploading="setUploading(`slot-${u.slot}`, $event)"
               @update:model-value="setUploads(u.slot, $event)"
@@ -2583,7 +2614,6 @@ const plateBtnCls =
             <div v-else>
               <div class="ll-label">
                 <span>{{ u.label }}</span>
-              :paste-primary="u.slot === pastePrimarySlot"
               </div>
               <p class="m-0 ll-empty py-12px">{{ unsupportedUploadHint(u) }}</p>
             </div>
@@ -2606,7 +2636,6 @@ const plateBtnCls =
                   class="block w-28px h-28px box-border rounded-full border-2 border-solid border-violet-soft border-t-violet animate-spin [animation-duration:800ms] motion-reduce:animate-none"
                   aria-hidden="true"
                 />
-              :paste-primary="u.slot === pastePrimarySlot"
                 正在抠图，请稍候…
               </div>
               <template v-else-if="syncResultUrl">
@@ -2789,6 +2818,7 @@ const plateBtnCls =
                       :spec="specOf(u)"
                       :layout="u.layout"
                       :disabled="submitting"
+                      :paste-primary="u.slot === pastePrimarySlot"
                       asset-picker
                       bare
                       :strip-head="u === stripHeadSlot"
@@ -2818,7 +2848,6 @@ const plateBtnCls =
             v-if="hasRegionField && changedRegions.length"
             class="sx-squircle m-0 flex items-center gap-6px min-h-32px box-border px-10px rounded-12px border border-solid border-violet-line bg-info-soft text-12px leading-18px text-violet-ink"
             role="status"
-                      :paste-primary="u.slot === pastePrimarySlot"
           >
             本次将替换 {{ changedRegions.length }} 处文字
           </p>
@@ -3270,8 +3299,11 @@ const plateBtnCls =
                   >
                     <img
                       v-if="stackOf(item)[0]"
-                      :src="stackOf(item)[0]"
+                      :src="ossResize(stackOf(item)[0], 44, 44)"
                       alt=""
+                      loading="lazy"
+                      decoding="async"
+                      @error="(e: Event) => thumbFallback(e, stackOf(item)[0])"
                       class="absolute inset-0 block h-full w-full rounded-13px object-cover object-center"
                       draggable="false"
                     />

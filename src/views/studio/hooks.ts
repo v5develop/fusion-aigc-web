@@ -20,6 +20,7 @@ import type {
 import { createSafeUuid } from '@/utils/utils.ts'
 import { isBatchTerminal } from './constants.ts'
 import { toApiError } from '@/api'
+import { POLL_RAMP } from '@/utils/hooks/usePolling.ts'
 
 /** 失败类型：network = 断网 / 超时；system = 5001 等服务端异常 */
 export type PollFailure = 'network' | 'system'
@@ -52,9 +53,14 @@ export function useStudioPolling(
 
   const isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
 
+  // 提交后的快查阶段（POLL_RAMP：1.5s、2s，再回常规间隔）；start({ soon: true }) 开启
+  let rampStep: number = POLL_RAMP.length
+
   function delay(): number {
     if (isHidden()) return hiddenInterval
-    return failures ? Math.min(interval * 2 ** (failures - 1), maxBackoff) : interval
+    if (failures) return Math.min(interval * 2 ** (failures - 1), maxBackoff)
+    if (rampStep < POLL_RAMP.length) return Math.min(POLL_RAMP[rampStep++]!, interval)
+    return interval
   }
 
   function clear() {
@@ -101,8 +107,15 @@ export function useStudioPolling(
     schedule()
   }
 
-  /** 开始 / 续上轮询（已有定时器或请求在飞则不重复） */
-  function start() {
+  /**
+   * 开始 / 续上轮询（已有定时器或请求在飞则不重复）。
+   * soon = 刚提交：头两轮按 1.5s、2s 快查，再回常规间隔（已有定时器时改排到快查节奏）
+   */
+  function start(opts: { soon?: boolean } = {}) {
+    if (opts.soon) {
+      rampStep = 0
+      if (timer && !inflight) return schedule()
+    }
     if (disposed || offline.value || timer || inflight) return
     schedule()
   }
@@ -249,14 +262,18 @@ export function useStudioHistory(
   }
 
   let lastRunning = false
+  /** 刚提交：下一次进入轮询走快查节奏（1.5s 起） */
+  let soonNext = false
 
   function startPollingIfNeeded() {
     const running = hasRunning.value
     // 从有到无的那一刻说明有批次到终态（扣点 / 退点），刷一次积分
     if (lastRunning && !running) updateUserInfo()
     lastRunning = running
-    if (running) poller.start()
-    else poller.stop()
+    if (running) {
+      poller.start({ soon: soonNext })
+      soonNext = false
+    } else poller.stop()
   }
 
   /** 一轮：各在跑批次并发拉详情；返回本轮结果给轮询器做退避 / 停止判断 */
@@ -316,6 +333,7 @@ export function useStudioHistory(
     retryPolling: poller.retry,
     /** 提交成功后由页面手动调用：立即刷一次列表并按需进入轮询 */
     refresh: async () => {
+      soonNext = true
       await reload().catch(() => {})
     },
   }

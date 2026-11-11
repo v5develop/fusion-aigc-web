@@ -44,7 +44,7 @@ export function useOfflineBanner(pollerOffline: Ref<boolean>) {
  * 工具历史：GET /api/v1/tools/{toolTitle}/histories 第一页。
  *
  * <p>异步工具提交只回任务号，产物要从历史接口取（Java 控制器口径），所以轮询的就是它：
- * 有未到终态的记录、或刚提交还在宽限期内时每 3 秒拉一次，全部到终态后自动停。
+ * 有未到终态的记录、或刚提交还在宽限期内时每 3 秒拉一次（刚提交先按 1.5s、2s 快查），全部到终态后自动停。
  * 调度复用创作页的 useStudioPolling：隐藏页降频、失败退避，连续 3 次网络失败暂停并置 offline
  * （页面显示断网提示条，「重试」恢复）。拉取失败由请求层 toast。
  */
@@ -147,7 +147,7 @@ export function useToolHistory(toolTitle: () => string, pageSize = 20) {
     try {
       await fetchPage()
     } finally {
-      start()
+      start({ soon: true })
     }
   }
 

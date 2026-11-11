@@ -53,3 +53,65 @@ export function ossThumbnail(url: string | undefined, w: number, h: number = w):
   // m_fill：服务端按目标宽高居中裁剪填满，与展示层 object-fit:cover 居中裁剪一致
   return `${base}?x-oss-process=image/resize,m_fill,w_${pw},h_${ph}/format,webp/quality,q_90`
 }
+
+/** 额外允许做 OSS 图片处理的主机（自定义 CDN 域名，逗号分隔）；*.aliyuncs.com 默认认 */
+const EXTRA_OSS_HOSTS = String(import.meta.env.VITE_OSS_IMAGE_HOSTS ?? '')
+  .split(',')
+  .map((h) => h.trim().toLowerCase())
+  .filter(Boolean)
+
+/** 带签名的地址（OSS v1/v4、S3、TOS 等）：参数在签名里，多拼一个 x-oss-process 就 403，一律不动 */
+const SIGNED_QUERY =
+  /[?&](signature|x-oss-signature|x-oss-credential|x-amz-signature|x-tos-signature|expires|ossaccesskeyid|security-token|auth_key)=/i
+
+function isOssImageHost(host: string) {
+  const h = host.toLowerCase()
+  return h.endsWith('.aliyuncs.com') || EXTRA_OSS_HOSTS.some((x) => h === x || h.endsWith(`.${x}`))
+}
+
+/**
+ * 列表 / 网格 / 历史卡用的缩略图地址：按宽等比缩小（m_lfit，不裁切、不放大）+ webp。
+ *
+ * <p>只对「公有、未签名的阿里云 OSS 图片」生效，其余一律原样返回，保证不会把能看的图变成裂图：
+ * 视频、data: / blob:、非 OSS 主机（可用 VITE_OSS_IMAGE_HOSTS 补自定义域名）、带签名参数的地址都不动。
+ * 地址已带 `x-oss-process=image/...`（如展示水印）时把缩放接在同一条处理链后面，不另起第二个参数。
+ *
+ * ⚠️ 只用于【展示】；预览大图、下载、提交给后端一律用原地址。
+ * @param url 原图地址
+ * @param w   展示宽（CSS 像素），内部按 devicePixelRatio（封顶 2）换算
+ * @param h   给了就按「短边铺满」缩（m_mfit，配合 object-fit:cover 的方格缩略，横图竖图都不糊）；不给只限宽
+ */
+export function ossResize(url: string | undefined | null, w: number, h?: number): string {
+  if (!url) return ''
+  if (isVideoUrl(url) || !/^https?:\/\//i.test(url) || SIGNED_QUERY.test(url)) return url
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return url
+  }
+  if (!isOssImageHost(parsed.hostname)) return url
+  const dpr = Math.min(Math.ceil(globalThis.devicePixelRatio || 1), 2)
+  const pw = Math.max(16, Math.round(w * dpr))
+  const box = h ? `m_mfit,w_${pw},h_${Math.max(16, Math.round(h * dpr))}` : `m_lfit,w_${pw}`
+  const resize = `resize,${box},limit_1/format,webp/quality,q_85`
+  const existing = parsed.searchParams.get('x-oss-process')
+  if (existing == null) return `${url}${url.includes('?') ? '&' : '?'}x-oss-process=image/${resize}`
+  // 已有处理链：只接图片处理；样式（style/…）等别的写法不敢动
+  // 已有缩放 / 格式转换的链不再叠第二遍（重复的 format 操作 OSS 处理结果不可控）
+  if (!existing.startsWith('image/') || /(^|\/)(resize|format),/.test(existing)) return url
+  return url.replace(/([?&]x-oss-process=)([^&#]*)/, (_m, k: string, v: string) => `${k}${v}/${resize}`)
+}
+
+/**
+ * 缩略图加载失败时退回原图（个别格式 / 主机不支持处理参数）：已退过一次或本来就是原图时返回 false，交给调用方走失败态。
+ * 用法：`@error="(e) => thumbFallback(e, url) || markBroken()"`
+ */
+export function thumbFallback(e: Event, original?: string | null): boolean {
+  const img = e.target as HTMLImageElement | null
+  // 记的是「为哪张原图退过」而不是一个布尔：虚拟列表复用 <img> 换了别的图时，新图仍能退一次
+  if (!img || !original || img.dataset.thumbRetried === original || img.src === original) return false
+  img.dataset.thumbRetried = original
+  img.src = original
+  return true
+}

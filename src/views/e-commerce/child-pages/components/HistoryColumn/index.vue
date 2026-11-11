@@ -8,7 +8,7 @@
  */
 import { computed, inject, ref, unref, useId, watch, type Ref } from 'vue'
 import CreationHistoryHeader from '@/components/Creation/CreationHistoryHeader.vue'
-import { withWatermark } from '@/utils/oss'
+import { ossResize, withWatermark } from '@/utils/oss'
 import { formatFullTime, formatShortTime } from '@/utils/time.ts'
 import { isVideoUrl } from '@/utils/utils'
 import { EC_SELECTED_TASK_KEY, selectedGroupOf } from '../../../child-pages/components/HistoryColumn/selection'
@@ -139,8 +139,10 @@ const EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都
           >
             <img
               v-if="stackOf(item)[0] && !isVideoUrl(stackOf(item)[0])"
-              :src="withWatermark(stackOf(item)[0])"
+              :src="ossResize(withWatermark(stackOf(item)[0]), 44, 44)"
               alt=""
+              loading="lazy"
+              decoding="async"
               class="absolute inset-0 block h-full w-full rounded-13px object-cover object-center"
             />
             <span v-else class="text-11px">{{ groupMediaType === 'video' ? '视频' : '—' }}</span>

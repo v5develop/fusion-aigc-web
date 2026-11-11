@@ -8,11 +8,13 @@
  * 有摘要时标题行高收到 17、状态行收到 20，三行正好塞进 74 高的卡（内容区 52），不撑高卡片。不传则与之前完全一致。
  *
  * <p>整卡选中用铺满的透明按钮（卡内还有操作钮，按钮里不能再套按钮）；选中后通知 Workbench 在 <1440 时切回「生成结果」。
- * 本地生活列表没有真实进度：不传 progress 时按 startedAt + etaSec 外推，夹在 6–95%（只是估算）。
+ * 本地生活列表没有真实进度：不传 progress 时按 startedAt + etaSec 渐近外推（6% 起、永远 < 90%），文字标「约」，
+ * 超过预计耗时改说「仍在生成」（只是估算，不冲到 95% 卡住）。
  */
 import { computed, inject, ref, watchEffect } from 'vue'
 import { formatFullTime, formatShortTime } from '@/utils/time.ts'
 import { LL_WORKBENCH_KEY } from '../Workbench/context.ts'
+import { ossResize, thumbFallback } from '@/utils/oss'
 
 type Status = 'running' | 'success' | 'error' | 'warning'
 
@@ -80,11 +82,25 @@ watchEffect((onCleanup) => {
   onCleanup(() => clearInterval(id))
 })
 
+/** 没有真实进度、只能按耗时估 */
+const estimated = computed(() => progress === undefined)
+/** 已用时 / 预计耗时 */
+const elapsedRatio = computed(() => (time ? (now.value - time) / (Math.max(1, etaSec) * 1000) : 0))
+
+/**
+ * 估算进度走渐近曲线 6 + 84·(1 − e^(−t/eta))：到预计耗时约 59%、两倍约 79%，越往后越慢、永远到不了 90，
+ * 不会冲到 95% 后一动不动（那种「卡在 95」比慢更让人以为坏了）。真实进度原样显示。
+ */
 const percent = computed(() => {
   if (progress !== undefined) return Math.min(100, Math.max(0, Math.round(progress)))
   if (!time) return 6
-  const ratio = (now.value - time) / (Math.max(1, etaSec) * 1000)
-  return Math.min(95, Math.max(6, Math.round(ratio * 100)))
+  return Math.round(6 + 84 * (1 - Math.exp(-Math.max(0, elapsedRatio.value))))
+})
+
+/** 进度旁的字：真实进度写百分比；估算的写「约 n%」，超过预计耗时改说「仍在生成」，不假装快好了 */
+const percentText = computed(() => {
+  if (!estimated.value) return `${percent.value}%`
+  return elapsedRatio.value > 1 ? '仍在生成' : `约 ${percent.value}%`
 })
 
 /** 历史卡空间窄：今天 HH:mm / 同年 MM-DD / 跨年 YYYY-MM-DD，完整时间放悬停提示 / 读屏名 */
@@ -144,9 +160,11 @@ const DOT: Record<Status, string> = {
       >
         <img
           v-if="thumb"
-          :src="thumb"
+          :src="ossResize(thumb, 44, 44)"
           alt=""
           loading="lazy"
+          decoding="async"
+          @error="(e: Event) => thumbFallback(e, thumb)"
           class="absolute inset-0 block h-full w-full rounded-13px object-cover object-center"
         />
         <span v-else class="text-11px">{{ placeholder }}</span>
@@ -175,6 +193,7 @@ const DOT: Record<Status, string> = {
               :aria-valuenow="percent"
               aria-valuemin="0"
               aria-valuemax="100"
+              :aria-valuetext="estimated ? `估算进度，${percentText}` : undefined"
               :aria-label="statusLabel"
             >
               <span
@@ -182,9 +201,9 @@ const DOT: Record<Status, string> = {
                 :style="{ width: `${percent}%` }"
               />
             </span>
-            <span class="flex-none text-11px font-600 leading-16px text-violet-ink tabular-nums pointer-events-none"
-              >{{ percent }}%</span
-            >
+            <span class="flex-none text-11px font-600 leading-16px text-violet-ink tabular-nums pointer-events-none">{{
+              percentText
+            }}</span>
           </template>
           <span
             v-else-if="status === 'success'"

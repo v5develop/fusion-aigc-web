@@ -9,7 +9,7 @@ import { useHomeStore } from '@/stores/home'
 import { storeToRefs } from 'pinia'
 import type { ICreationSubmit } from '@/api/types.ts'
 import { creationHistory } from '@/api/methods.ts'
-import { useInitCheckTaskStatus } from '@/views/image/hooks.ts'
+import { mergeLiveTasks, useInitCheckTaskStatus } from '@/views/image/hooks.ts'
 import { useQuotePreview } from '@/utils/hooks'
 import { useEntryCodeFromQuery } from '@/utils/hooks/useEntryCodeFromQuery'
 import { videoModelOpsFor } from '@/utils/model-catalog'
@@ -23,6 +23,7 @@ import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
 import { isTimeout, displayContents } from '@/utils/utils'
 import { isPortraitMedia } from '@/utils/ratio'
+import { ossResize } from '@/utils/oss'
 import regenerateIcon from '@/assets/icons/regenerate.svg'
 import downloadAllIcon from '@/assets/icons/download-all.svg'
 
@@ -312,7 +313,14 @@ const getData = (isReplace?: boolean) => {
 }
 getData(true)
 
-const { execute } = useInitCheckTaskStatus({ type: 'video', loading, getData, pagingData })
+// 逐条出图：会话轮询每轮把已出的产出并回列表，不等整批跑完
+const { execute } = useInitCheckTaskStatus({
+  type: 'video',
+  loading,
+  getData,
+  pagingData,
+  onTasks: (tasks) => mergeLiveTasks(messages, tasks),
+})
 
 // 生成中不拦截：新任务并入当前会话，轮询按会话整体判终态，两批任务都会被跟进
 const generateAgain = (item: any) => {
@@ -423,8 +431,8 @@ const getSourceVideo = (inputParams: any): string => {
                     class="video"
                     :style="useContain(jtem, item) ? { objectFit: 'contain' } : undefined"
                     :src="jtem.watermarkUrl || jtem.resultUrl"
-                    :poster="jtem.coverUrl || undefined"
-                    preload="metadata"
+                    :poster="jtem.coverUrl ? ossResize(jtem.coverUrl, 480) : undefined"
+                    :preload="jtem.coverUrl ? 'none' : 'metadata'"
                     controls
                     @error="videoErrorSet.add(jtem.resultUrl)"
                   />

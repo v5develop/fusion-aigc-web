@@ -22,6 +22,7 @@ import type { useStudioHistory } from '../../hooks.ts'
 import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal } from '../../constants.ts'
 import HistoryActionRow from '@/components/HistoryActionRow/index.vue'
 import { formatFullTime, formatShortTime } from '@/utils/time.ts'
+import { ossResize, thumbFallback } from '@/utils/oss'
 
 const props = defineProps<{
   /** useStudioHistory 实例（游标分页 + 在跑批次轮询） */
@@ -359,9 +360,12 @@ function prevPage() {
                 >
                   <img
                     v-if="stackOf(d)[0]"
-                    :src="stackOf(d)[0]"
+                    :src="ossResize(stackOf(d)[0], 44, 44)"
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     class="block w-full h-full rounded-13px object-cover"
+                    @error="(e: Event) => thumbFallback(e, stackOf(d)[0])"
                   />
                   <span v-else>{{ (KIND_LABEL[d.batch.kind] ?? '批次').slice(0, 2) }}</span>
                   <span
@@ -374,8 +378,9 @@ function prevPage() {
               </template>
               <img
                 v-if="stackOf(d)[0]"
-                :src="stackOf(d)[0]"
+                :src="ossResize(stackOf(d)[0], 220)"
                 alt=""
+                decoding="async"
                 class="block max-w-220px max-h-280px rounded-8px border border-solid border-line bg-white object-contain shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)]"
               />
             </NPopover>

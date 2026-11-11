@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
+import type { AxiosResponse, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
 import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
 import { refreshToken, getAuthToken } from '@/api/union'
@@ -287,12 +287,16 @@ service.interceptors.response.use(
         // 这里刻意不 toast 后端 msg —— 一是它是内部定位串（带 modelId/entryCode），
         // 二是弹框已经把话说清楚了，再叠一条 toast 只是噪音
         emitBillingBlock(data.code)
-      } else if (!SILENT_ERROR_URLS.some((u) => res.config.url?.includes(u))) {
+      } else if (
+        !(res.config as { silent?: boolean }).silent &&
+        !SILENT_ERROR_URLS.some((u) => res.config.url?.includes(u))
+      ) {
         // 静默接口（如询价预览）业务失败不弹全局 toast，交由调用方自行降级展示
         message.error(data.msg)
       }
       return Promise.reject(fromBody(data, data.msg))
     }
+    if (isTaskSubmit(res.config)) announceTaskSubmitted()
     return data as unknown as AxiosResponse<ApiResponse<unknown>>
   },
   (error: AxiosError<ApiResponse>) => {
@@ -350,6 +354,28 @@ function logoutToLogin() {
   sessionStorage.setItem('fusion_logout_reload_at', String(Date.now()))
   // 留出 toast 展示时间
   setTimeout(() => window.location.reload(), 500)
+}
+
+/**
+ * 生成类提交成功（POST 到创作 / 工具 / 工作流 / 商拍 / 画布 / 本地生活 / 智能体等模块，排除报价、预览、取消这类不产生任务的）：
+ * 广播 `xq:task-submitted`，全站完成提醒（utils/taskWatcher）据此 1.5s 后快查一次任务中心。
+ * 用事件而不是直接 import，避免 api 层反向依赖业务模块；多播几次也只是多查一轮。
+ */
+export const TASK_SUBMITTED_EVENT = 'xq:task-submitted'
+const TASK_MODULES = /^\/api\/v[12]\/(creation|tools|workflows|studio|canvas|local-life|batch-hosting|agent)\//
+const NOT_A_TASK =
+  /(quote|preview|cancel|accept|presign|masks|share|identify|details|plan|ai-write|select-candidate|confirm|collect|delete|histories|color-fix|rename|save-as|from-template|face-recognition|optimize|prompt)/
+function isTaskSubmit(config: InternalAxiosRequestConfig) {
+  const url = (config.url ?? '').replace(baseURL ?? '', '').split('?')[0] ?? ''
+  return config.method?.toLowerCase() === 'post' && TASK_MODULES.test(url) && !NOT_A_TASK.test(url)
+}
+function announceTaskSubmitted() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(TASK_SUBMITTED_EVENT))
+}
+
+/** 后台静默 GET：业务失败不弹全局 toast（后台轮询用，失败下一轮再试，不打扰用户） */
+export function getQuiet<T = any>(url: string, params?: any): Promise<ApiResponse<T>> {
+  return service.request({ method: 'get', url, params, silent: true } as AxiosRequestConfig)
 }
 
 export function post<T = any>(url: string, data: any, headers?: any, timeout?: number): Promise<ApiResponse<T>> {

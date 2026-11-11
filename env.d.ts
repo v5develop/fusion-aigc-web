@@ -15,6 +15,11 @@ interface ImportMetaEnv {
    * 跨域时该目录需返回 CORS 头。见 src/components/ColorFix/pointSegment.ts modelSources()。
    */
   readonly VITE_POINT_SEGMENT_MODEL_BASE?: string
+  /**
+   * 可选：除 *.aliyuncs.com 外允许拼 OSS 图片缩放参数的自定义域名（公有桶 CDN），逗号分隔，如 img.example.com。
+   * 列表 / 历史卡缩略图（utils/oss.ts ossResize）只对这些主机生效；不配则自定义域名一律用原图。
+   */
+  readonly VITE_OSS_IMAGE_HOSTS?: string
 }
 
 interface ImportMeta {

@@ -11,10 +11,15 @@ interface IProps {
   loading: Ref<boolean>
   pagingData: any
   getData: (isReplace?: boolean) => Promise<any> | undefined
+  /**
+   * 每轮会话轮询回来的主任务（结构与 /creation/history 的列表项一致，含 contents 逐条产出）。
+   * 页面据此把已出的图 / 视频逐条并回列表，不必等整批到终态再刷新。
+   */
+  onTasks?: (tasks: any[]) => void
 }
 
 export function useInitCheckTaskStatus(props: IProps) {
-  const { type, loading, getData, pagingData } = props
+  const { type, loading, getData, pagingData, onTasks } = props
 
   const { updateUserInfo } = useUserInfoStore()
   const { useSessionId } = useSessionIdStore()
@@ -26,8 +31,8 @@ export function useInitCheckTaskStatus(props: IProps) {
     } catch {}
   }
 
-  // AIGC 生成速度无法保证，页面打开期间轮询持续进行：错误不停止（stopOnError: false）、
-  // 任务完成也不停止，仅组件卸载时停止。完成副作用通过 loading 状态只触发一次。
+  // AIGC 生成速度无法保证：错误不停止（stopOnError: false），直到本批全部到终态（含宽限轮）才停；
+  // 节奏走 usePolling 统一口径（提交后 1.5s 快查、隐藏页降频、切回立即补一轮）。完成副作用通过 loading 状态只触发一次。
   // graceLeft：提交后的宽限轮数，刚提交的任务可能尚未写入会话，宽限期内"无未完成任务"不视为完成
   let graceLeft = 0
   // submitting：提交请求期间旧会话仍在空闲轮询，屏蔽完成副作用误触发
@@ -45,6 +50,7 @@ export function useInitCheckTaskStatus(props: IProps) {
     stopOnError: false,
     autoStop: (res) => {
       const tasks = res?.data?.tasks ?? []
+      if (tasks.length) onTasks?.(tasks)
 
       if (!isAllTasksTerminal(tasks)) {
         graceLeft = 0
@@ -57,7 +63,7 @@ export function useInitCheckTaskStatus(props: IProps) {
       }
 
       if (loading.value && !submitting && !completing) {
-        // 本批任务全部到终态：轮换会话并刷新数据（每批只进入一次），轮询继续
+        // 本批任务全部到终态：轮换会话并刷新数据（每批只进入一次）
         completing = true
         clearSessionId()
         pagingData.page = 1
@@ -68,9 +74,13 @@ export function useInitCheckTaskStatus(props: IProps) {
           completing = false
         })
         updateUserInfo()
+        // 本批已收尾：停掉轮询（会话已轮换，下次提交 startPolling 会按新会话重新开始），
+        // 免得对一个已结束的会话每 3 秒空转到页面关闭
+        return true
       }
 
-      return false // 页面打开期间持续轮询，永不自动停止
+      // 宽限期已过、本批也不在等待中（进页时会话里本就全是终态）：同样没有继续的理由
+      return !loading.value && !submitting && !completing
     },
   })
 
@@ -148,4 +158,34 @@ export function useInitCheckTaskStatus(props: IProps) {
   }
 
   return { execute }
+}
+
+/** 产出层面会变的字段：只在这些变了时才替换列表项，免得每轮都让虚拟列表重新测量 */
+function liveSignature(task: any): string {
+  return JSON.stringify([
+    task?.status,
+    task?.blocked,
+    (task?.contents ?? []).map((c: any) => [
+      c.status,
+      c.resultUrl,
+      c.resultUrls,
+      c.coverUrl,
+      c.watermarkUrl,
+      c.blocked,
+      c.errorMsg,
+    ]),
+  ])
+}
+
+/**
+ * 把会话轮询拿到的主任务按 taskId 并回历史列表（逐条出图）：只替换已在列表里的项，
+ * 还没进列表的新任务交给提交后的历史刷新补进来；列表顺序不动。
+ */
+export function mergeLiveTasks(list: Ref<any[]>, tasks: any[]) {
+  if (!tasks?.length || !list.value.length) return
+  const byId = new Map(tasks.filter((t) => t?.taskId).map((t) => [t.taskId, t]))
+  list.value.forEach((item, i) => {
+    const live = item?.taskId ? byId.get(item.taskId) : undefined
+    if (live && liveSignature(live) !== liveSignature(item)) list.value.splice(i, 1, { ...item, ...live })
+  })
 }

@@ -70,7 +70,7 @@ export function useWorkflowHistory(workflowTitle: () => string, pageSize = 20) {
     try {
       await fetchPage()
     } finally {
-      start()
+      start({ soon: true })
     }
   }
 

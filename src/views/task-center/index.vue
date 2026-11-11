@@ -23,6 +23,13 @@ import MediaFallback from '@/components/MediaFallback/index.vue'
 import IconButton from '@/components/IconButton/index.vue'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
+import { ossResize, thumbFallback } from '@/utils/oss'
+import {
+  desktopNotifyDenied,
+  desktopNotifyEnabled,
+  desktopNotifySupported,
+  setDesktopNotify,
+} from '@/utils/taskWatcher'
 import {
   taskCenterCancel,
   taskCenterCollect,
@@ -180,23 +187,63 @@ watch(page, () => void load())
 
 const hasInFlight = computed(() => items.value.some((i) => IN_FLIGHT.has(i.statusBucket)))
 let timer: ReturnType<typeof setTimeout> | null = null
+/** 卸载后在途那一轮回来不再续排（否则离开页面后还会一直轮询） */
+let unmounted = false
 function schedule() {
   if (timer) clearTimeout(timer)
+  if (unmounted) return
   timer = setTimeout(async () => {
     if (hasInFlight.value && document.visibilityState === 'visible' && !loading.value) await load(true)
     schedule()
   }, POLL_MS)
 }
 
+// 切回前台：有在途任务立即补一次（隐藏期间不刷新，回来不用干等下一个 8 秒）
+function onVisibility() {
+  if (document.visibilityState === 'visible' && hasInFlight.value && !loading.value) {
+    void load(true)
+    schedule()
+  }
+}
+
 onMounted(() => {
   void loadFilters()
   void load()
   schedule()
+  document.addEventListener('visibilitychange', onVisibility)
 })
 onBeforeUnmount(() => {
+  unmounted = true
   if (timer) clearTimeout(timer)
   timer = null
+  document.removeEventListener('visibilitychange', onVisibility)
 })
+
+// ---------------- 桌面提醒开关（全站完成提醒 utils/taskWatcher 用） ----------------
+
+const desktopSupported = desktopNotifySupported()
+const desktopOn = ref(desktopNotifyEnabled())
+const desktopTip = computed(() =>
+  desktopOn.value
+    ? '任务在后台完成时发浏览器通知，点击关闭'
+    : desktopNotifyDenied()
+      ? '浏览器已禁止通知，请在浏览器的网站设置里允许后再开启'
+      : '任务在后台完成时发浏览器通知（需要浏览器授权）',
+)
+async function toggleDesktop() {
+  if (desktopOn.value) {
+    desktopOn.value = await setDesktopNotify(false)
+    message.info('已关闭桌面提醒')
+    return
+  }
+  if (desktopNotifyDenied()) {
+    message.warning('浏览器已禁止通知，请在浏览器的网站设置里允许后再开启')
+    return
+  }
+  desktopOn.value = await setDesktopNotify(true)
+  if (desktopOn.value) message.success('已开启：任务在后台完成时会发桌面通知')
+  else message.warning('没有获得通知授权，未开启')
+}
 
 // ---------------- 操作 ----------------
 
@@ -471,6 +518,18 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
             class="w-240px"
           />
           <button type="button" class="sx-btn" :disabled="loading" @click="load()">刷新</button>
+          <!-- 桌面提醒：只在用户点这里时才请求浏览器授权；已拒绝时说明去浏览器设置里改 -->
+          <button
+            v-if="desktopSupported"
+            type="button"
+            class="sx-btn"
+            :class="desktopOn && 'sx-btn-tint'"
+            :aria-pressed="desktopOn"
+            :title="desktopTip"
+            @click="toggleDesktop"
+          >
+            {{ desktopOn ? '桌面提醒：开' : '完成时桌面提醒' }}
+          </button>
         </div>
       </header>
 
@@ -590,11 +649,12 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
                     class="block w-full h-full rounded-5px"
                   >
                     <img
-                      :src="item.coverUrl"
+                      :src="ossResize(item.coverUrl, 44, 44)"
                       alt=""
                       loading="lazy"
+                      decoding="async"
                       class="block w-full h-full object-cover"
-                      @error="brokenCovers.add(item.taskId)"
+                      @error="(e: Event) => thumbFallback(e, item.coverUrl) || brokenCovers.add(item.taskId)"
                     />
                     <span
                       v-if="isVideo(item)"
