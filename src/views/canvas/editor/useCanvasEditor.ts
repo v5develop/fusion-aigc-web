@@ -3,7 +3,7 @@
  *
  * <p>职责：加载 / 乐观锁保存（含 4002 冲突）/ 节点增删连线 / 单节点执行（幂等提交 +
  * 1.2s 轮询 + 取消）/ 候选选择。快照节点 data 内部 camelCase 原样收发（契约 1.4），
- * 接口外层 snake_case 由 src/api/canvasHome.ts 处理。
+ * 接口外层字段同为 camelCase（Go 网关兼容），封装在 src/api/canvas-home.ts。
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { createDiscreteApi } from 'naive-ui'

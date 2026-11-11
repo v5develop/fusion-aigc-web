@@ -3,13 +3,12 @@
  *
  * <p>与其它接口共用同一个域名与令牌（网关按 /api/v1/studio 前缀转发给 Go），
  * 复用 api/index.ts 的实例：token 注入、401 刷新、业务错误 toast 全部沿用。
- * 字段 snake_case 原样收发，契约见 fusion_aigc_go/docs/api/api-studio.md。
+ * 前端字段一律 camelCase（Java 原生 camelCase；Go 网关请求体 / query / 响应均兼容 camelCase），契约见 fusion_aigc_go/docs/api/api-studio.md。
  *
  * <p>幂等：三个提交接口必须带 Idempotency-Key（UUID），每次点「生成」新生成一个；
  * 重新编辑后的再提交是新的一次提交，自然拿到新 key。
  */
-import { post, patch, authorizedFetch } from './index.ts'
-import { goGet, goDel } from './go-http'
+import { post, patch, authorizedFetch, get, del } from './index.ts'
 import type * as types from './studio-types.ts'
 import { llIdempotencyHeaders } from './local-life.ts'
 
@@ -80,14 +79,14 @@ export function studioQuoteImageGen(data: types.StudioImageGenQuoteReq) {
  * kind 影响参考图上限与是否有「自动」比例；不传 = imagegen。
  */
 export function studioModels(params: { kind?: types.StudioKind; withPrice?: boolean } = {}) {
-  return goGet<types.StudioModelsResp>(`${PREFIX}/models`, params)
+  return get<types.StudioModelsResp>(`${PREFIX}/models`, params)
 }
 
 // ---------------- 批次 ----------------
 
 /** 批次详情 + 全部子任务（生成中每 2 秒轮询这个） */
 export function studioBatchDetail(id: number) {
-  return goGet<types.StudioBatchDetail>(`${PREFIX}/batches/${id}`)
+  return get<types.StudioBatchDetail>(`${PREFIX}/batches/${id}`)
 }
 
 /** 取消批次：只取消还在排队的任务（点数立即退回），生成中的会继续跑完 */
@@ -136,14 +135,14 @@ export function studioSaveTaskColorFixKeepalive(taskId: string, data: types.Stud
 
 /** 删除批次（逻辑删除；生成中不能删，code=4002） */
 export function studioDeleteBatch(id: number) {
-  return goDel(`${PREFIX}/batches/${id}`)
+  return del(`${PREFIX}/batches/${id}`)
 }
 
 // ---------------- 历史 ----------------
 
 /** 生成历史（游标分页，按创建时间倒序）；next_cursor 空 = 没有下一页 */
 export function studioHistory(params: types.StudioHistoryParams = {}) {
-  return goGet<types.StudioHistoryResp>(`${PREFIX}/history`, {
+  return get<types.StudioHistoryResp>(`${PREFIX}/history`, {
     kind: params.kind || undefined,
     cursor: params.cursor || undefined,
     limit: params.limit ?? 20,

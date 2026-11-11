@@ -2,7 +2,7 @@
  * 画布编辑器 —— 快照结构类型。
  *
  * <p>快照是前端私有文档（Vue Flow 的 {nodes, edges}），服务端只校验不翻译：
- * 节点 data 内部保持 camelCase，接口外层字段才是 snake_case（契约 1.4 / 第 5 章）。
+ * 节点 data 内部保持 camelCase（快照原样存，服务端不翻译）；接口外层字段也用 camelCase，Go 网关兼容（契约 1.4 / 第 5 章）。
  * 运行态字段（status/progress/candidates/image/video/runId/requestId/…）不随快照存储：
  * 保存时服务端剥离，GET 时按最近一次 run 回填，前端不必清理。
  *

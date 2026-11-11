@@ -6,8 +6,7 @@
  *
  * <p>幂等：所有提交生成接口必须带 Idempotency-Key（UUID，网络重试时沿用同一个）。
  */
-import { post, put } from './index.ts'
-import { goGet, goDel } from './go-http'
+import { post, put, get, del } from './index.ts'
 import type * as types from './local-life-types.ts'
 import { createSafeUuid } from '@/utils/utils'
 
@@ -19,7 +18,7 @@ export const llIdempotencyHeaders = () => ({ 'Idempotency-Key': createSafeUuid()
 // ---------------- 使用约定 ----------------
 
 export function llGetAgreement() {
-  return goGet<types.ILAgreement>(`${PREFIX}/agreements/aigc`)
+  return get<types.ILAgreement>(`${PREFIX}/agreements/aigc`)
 }
 
 export function llAcceptAgreement() {
@@ -29,7 +28,7 @@ export function llAcceptAgreement() {
 // ---------------- 店铺档案 ----------------
 
 export function llShopProfileList(params: { page?: number; pageSize?: number } = {}) {
-  return goGet<types.ILShopProfileList>(`${PREFIX}/shop-profiles`, { page: 1, pageSize: 50, ...params })
+  return get<types.ILShopProfileList>(`${PREFIX}/shop-profiles`, { page: 1, pageSize: 50, ...params })
 }
 
 export function llShopProfileCreate(data: types.ILShopProfileForm) {
@@ -37,7 +36,7 @@ export function llShopProfileCreate(data: types.ILShopProfileForm) {
 }
 
 export function llShopProfileGet(id: number) {
-  return goGet<types.ILShopProfile>(`${PREFIX}/shop-profiles/${id}`)
+  return get<types.ILShopProfile>(`${PREFIX}/shop-profiles/${id}`)
 }
 
 export function llShopProfileSave(id: number, data: types.ILShopProfileForm) {
@@ -45,13 +44,13 @@ export function llShopProfileSave(id: number, data: types.ILShopProfileForm) {
 }
 
 export function llShopProfileRemove(id: number) {
-  return goDel(`${PREFIX}/shop-profiles/${id}`)
+  return del(`${PREFIX}/shop-profiles/${id}`)
 }
 
 // ---------------- AI文案 ----------------
 
 export function llCopywritingOptions() {
-  return goGet<types.ILCopywritingOptions>(`${PREFIX}/copywriting/options`)
+  return get<types.ILCopywritingOptions>(`${PREFIX}/copywriting/options`)
 }
 
 /** AI帮写（同步，几秒返回） */
@@ -74,12 +73,12 @@ export function llCopywritingSave(data: { title?: string; body: string }) {
 }
 
 export function llCopywritingList(params: types.ILCopywritingListReq = {}) {
-  return goGet<types.ILCopywritingList>(`${PREFIX}/copywriting`, { status: -1, page: 1, pageSize: 20, ...params })
+  return get<types.ILCopywritingList>(`${PREFIX}/copywriting`, { status: -1, page: 1, pageSize: 20, ...params })
 }
 
 /** 文案详情（生成中轮询这个） */
 export function llCopywritingDetail(id: number) {
-  return goGet<types.ILCopywriting>(`${PREFIX}/copywriting/${id}`)
+  return get<types.ILCopywriting>(`${PREFIX}/copywriting/${id}`)
 }
 
 export function llCopywritingPut(id: number, data: { title?: string; body: string }) {
@@ -87,22 +86,22 @@ export function llCopywritingPut(id: number, data: { title?: string; body: strin
 }
 
 export function llCopywritingRemove(id: number) {
-  return goDel(`${PREFIX}/copywriting/${id}`)
+  return del(`${PREFIX}/copywriting/${id}`)
 }
 
 /** 生成历史：这条文案被拿去生成过哪些成品（只返回已完成的） */
 export function llCopywritingDerivatives(id: number, params: { kind?: string; page?: number; pageSize?: number } = {}) {
-  return goGet<types.ILDerivativesList>(`${PREFIX}/copywriting/${id}/derivatives`, { page: 1, pageSize: 50, ...params })
+  return get<types.ILDerivativesList>(`${PREFIX}/copywriting/${id}/derivatives`, { page: 1, pageSize: 50, ...params })
 }
 
 // ---------------- AI数字人 ----------------
 
 export function llPublicDigitalHumans() {
-  return goGet<{ list: types.ILPublicDigitalHuman[] }>(`${PREFIX}/digital-humans/public`)
+  return get<{ list: types.ILPublicDigitalHuman[] }>(`${PREFIX}/digital-humans/public`)
 }
 
 export function llDhOptions() {
-  return goGet<types.ILDhOptions>(`${PREFIX}/digital-humans/options`)
+  return get<types.ILDhOptions>(`${PREFIX}/digital-humans/options`)
 }
 
 /** AI 定制形象：提交生成（出 4 张 9:16 图，轮询 llPortraitDetail） */
@@ -111,7 +110,7 @@ export function llCreatePortrait(data: types.ILCreatePortraitReq, headers: any =
 }
 
 export function llPortraitDetail(id: number) {
-  return goGet<types.ILPortrait>(`${PREFIX}/digital-humans/portraits/${id}`)
+  return get<types.ILPortrait>(`${PREFIX}/digital-humans/portraits/${id}`)
 }
 
 export function llRegeneratePortrait(id: number, headers: any = llIdempotencyHeaders()) {
@@ -119,11 +118,11 @@ export function llRegeneratePortrait(id: number, headers: any = llIdempotencyHea
 }
 
 export function llVoiceCategories() {
-  return goGet<{ list: types.ILLOption[] }>(`${PREFIX}/voices/categories`)
+  return get<{ list: types.ILLOption[] }>(`${PREFIX}/voices/categories`)
 }
 
 export function llVoices(category?: string) {
-  return goGet<{ list: types.ILVoice[] }>(`${PREFIX}/voices`, { category })
+  return get<{ list: types.ILVoice[] }>(`${PREFIX}/voices`, { category })
 }
 
 export function llCreateDigitalHuman(data: types.ILCreateDigitalHumanReq, headers: any = llIdempotencyHeaders()) {
@@ -131,22 +130,22 @@ export function llCreateDigitalHuman(data: types.ILCreateDigitalHumanReq, header
 }
 
 export function llDigitalHumanList(params: { status?: number; page?: number; pageSize?: number } = {}) {
-  return goGet<types.ILDigitalHumanList>(`${PREFIX}/digital-humans`, { status: -1, page: 1, pageSize: 20, ...params })
+  return get<types.ILDigitalHumanList>(`${PREFIX}/digital-humans`, { status: -1, page: 1, pageSize: 20, ...params })
 }
 
 /** 数字人详情（生成中轮询这个） */
 export function llDigitalHumanDetail(id: number) {
-  return goGet<types.ILDigitalHuman>(`${PREFIX}/digital-humans/${id}`)
+  return get<types.ILDigitalHuman>(`${PREFIX}/digital-humans/${id}`)
 }
 
 export function llDigitalHumanRemove(id: number) {
-  return goDel(`${PREFIX}/digital-humans/${id}`)
+  return del(`${PREFIX}/digital-humans/${id}`)
 }
 
 // ---------------- AI图文笔记 ----------------
 
 export function llNoteOptions() {
-  return goGet<types.ILNoteOptions>(`${PREFIX}/notes/options`)
+  return get<types.ILNoteOptions>(`${PREFIX}/notes/options`)
 }
 
 export function llNotePlan(data: types.ILPlanNoteReq, headers: any = llIdempotencyHeaders()) {
@@ -155,7 +154,7 @@ export function llNotePlan(data: types.ILPlanNoteReq, headers: any = llIdempoten
 
 /** 笔记详情（构思中 / 生成中都轮询这个） */
 export function llNoteDetail(id: number) {
-  return goGet<types.ILNote>(`${PREFIX}/notes/${id}`)
+  return get<types.ILNote>(`${PREFIX}/notes/${id}`)
 }
 
 /** 重新构思（可换套图数量） */
@@ -178,7 +177,7 @@ export function llNoteGenerate(
 }
 
 export function llNoteList(params: { status?: number; page?: number; pageSize?: number } = {}) {
-  return goGet<types.ILNoteList>(`${PREFIX}/notes`, { status: -1, page: 1, pageSize: 20, ...params })
+  return get<types.ILNoteList>(`${PREFIX}/notes`, { status: -1, page: 1, pageSize: 20, ...params })
 }
 
 /** 编辑笔记：标题、正文、话题、图片（整组提交，保留原图 + 新增直传图） */
@@ -190,18 +189,18 @@ export function llNoteUpdate(
 }
 
 export function llNoteRemove(id: number) {
-  return goDel(`${PREFIX}/notes/${id}`)
+  return del(`${PREFIX}/notes/${id}`)
 }
 
 // ---------------- 海报 / 长图 / 动作迁移 / 数字人口播 ----------------
 
 export function llCreationOptions(kind: types.ILCreationKind) {
-  return goGet<types.ILCreationOptions>(`${PREFIX}/creations/options`, { kind })
+  return get<types.ILCreationOptions>(`${PREFIX}/creations/options`, { kind })
 }
 
 /** 模板列表（海报可按类型筛；kind=voiceover 返回预设背景） */
 export function llCreationTemplates(kind: types.ILCreationKind, posterType?: string) {
-  return goGet<{ list: types.ILCreationTemplate[] }>(`${PREFIX}/creations/templates`, {
+  return get<{ list: types.ILCreationTemplate[] }>(`${PREFIX}/creations/templates`, {
     kind,
     ...(posterType ? { posterType: posterType } : {}),
   })
@@ -215,20 +214,20 @@ export function llCreationList(
   kind: types.ILCreationKind | '',
   params: { status?: number; page?: number; pageSize?: number } = {},
 ) {
-  return goGet<types.ILCreationList>(`${PREFIX}/creations`, { kind, status: -1, page: 1, pageSize: 20, ...params })
+  return get<types.ILCreationList>(`${PREFIX}/creations`, { kind, status: -1, page: 1, pageSize: 20, ...params })
 }
 
 /** 生成中轮询这个 */
 export function llCreationDetail(id: number) {
-  return goGet<types.ILCreation>(`${PREFIX}/creations/${id}`)
+  return get<types.ILCreation>(`${PREFIX}/creations/${id}`)
 }
 
 export function llCreationRemove(id: number) {
-  return goDel(`${PREFIX}/creations/${id}`)
+  return del(`${PREFIX}/creations/${id}`)
 }
 
 export function llActionVideos() {
-  return goGet<{ presets: types.ILActionVideo[]; mine: types.ILActionVideo[] }>(`${PREFIX}/action-videos`)
+  return get<{ presets: types.ILActionVideo[]; mine: types.ILActionVideo[] }>(`${PREFIX}/action-videos`)
 }
 
 /** 导入动作视频（前端直传后回传地址），自动命名「我的动作N」 */
@@ -237,13 +236,13 @@ export function llActionVideoImport(data: { url: string; coverUrl?: string; name
 }
 
 export function llActionVideoRemove(id: number) {
-  return goDel(`${PREFIX}/action-videos/${id}`)
+  return del(`${PREFIX}/action-videos/${id}`)
 }
 
 // ---------------- 探店视频 / 带货短剧 / 爆款视频复刻 ----------------
 
 export function llVideoOptions(kind: types.ILVideoKind) {
-  return goGet<types.ILVideoOptions>(`${PREFIX}/video-creations/options`, { kind })
+  return get<types.ILVideoOptions>(`${PREFIX}/video-creations/options`, { kind })
 }
 
 export function llVideoCreate(data: types.ILCreateVideoReq, headers: any = llIdempotencyHeaders()) {
@@ -252,7 +251,7 @@ export function llVideoCreate(data: types.ILCreateVideoReq, headers: any = llIde
 
 /** 详情（构思中、生成中都轮询这个） */
 export function llVideoDetail(id: number) {
-  return goGet<types.ILVideoCreation>(`${PREFIX}/video-creations/${id}`)
+  return get<types.ILVideoCreation>(`${PREFIX}/video-creations/${id}`)
 }
 
 export function llVideoReplan(id: number, headers: any = llIdempotencyHeaders()) {
@@ -272,7 +271,7 @@ export function llVideoList(
   kind: types.ILVideoKind | '',
   params: { status?: number; page?: number; pageSize?: number } = {},
 ) {
-  return goGet<types.ILVideoCreationList>(`${PREFIX}/video-creations`, {
+  return get<types.ILVideoCreationList>(`${PREFIX}/video-creations`, {
     kind,
     status: -1,
     page: 1,
@@ -282,5 +281,5 @@ export function llVideoList(
 }
 
 export function llVideoRemove(id: number) {
-  return goDel(`${PREFIX}/video-creations/${id}`)
+  return del(`${PREFIX}/video-creations/${id}`)
 }

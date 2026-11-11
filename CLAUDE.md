@@ -92,7 +92,7 @@ useDebounce(reactiveObj, callback, 300)
 
 ## 本地生活模块（src/views/local-life）
 
-对接 Go 网关 `/api/v1/local-life`（fusion_aigc_go），API 封装在 src/api/localLife.ts（snake_case 字段原样收发）。
+对接 Go 网关 `/api/v1/local-life`（fusion_aigc_go），API 封装在 src/api/local-life.ts（字段 camelCase，见下方「字段命名」）。
 入口页 /local-life（主导航已隐藏，深链可开；功能从 AI 图片 / AI 视频总览进）+ 11 个功能页（AI文案 / 店铺档案 / AI数字人 / 图文笔记 / AI海报 / AI长图 / 数字人口播 / 动作迁移 / 探店视频 / 带货短剧 / 爆款视频复刻）。
 关键约定：提交生成带 `Idempotency-Key`；首次生成前走 useAgreement 约定弹窗；列表用 useLLList（有在跑任务自动轮询、跑完刷积分）；详情轮询用 usePollingWhile。
 
@@ -104,6 +104,10 @@ useDebounce(reactiveObj, callback, 300)
 - **画布 src/views/canvas**（/api/v1/canvas）：画布列表 / 从模板创建 / 重命名 / 另存为 / 删除 / 运行历史；节点编辑器（剪贴板、成组、对齐分布、锁定、小地图、快捷键、导出 JSON/PNG、执行前费用确认）
 - **姿态复刻多人配对**（/api/v1/studio/pose/preview）：提交前「识别人物与配对」，免费但慢（20 秒–2 分钟，前端超时 260 秒）；换图即失效；单人照片提交体与以前一致
 - 左侧导航（src/views/layout/Navigation）现渲染：首页 / AI 创作（智能体、画布、AI 图片、AI 视频）/ 我的资产 / 任务中心 / 创意广场 / 提示词库；工作流、AI 电商、AI 商拍、本地生活为 `hidden`；无 iconfont 的入口用内联 SVG path
+
+### 字段命名
+- 前端字段一律 camelCase（Java 原生 camelCase；Go 网关请求体 / query / 响应均兼容 camelCase）。不要再写 snake_case 转换（原 `toSnakeKeys` / `goGet` 已删除）：Go 网关的 `pkg/jsoncase` 中间件把白名单内的 camelCase 请求体键与 query 参数名补成 snake，响应每个 snake 键双写 camelCase 别名
+- 例外：creaft v1 兼容接口字段冻结，按其原样收发；Go 的 SSE 事件不经中间件改写（见各模块说明）
 
 ### 文件命名
 - 组件目录使用 PascalCase，入口文件为 index.vue/index.ts

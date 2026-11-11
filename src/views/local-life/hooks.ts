@@ -159,7 +159,7 @@ export function usePollingWhile<T>(
  * @param pageSize  每页条数
  */
 export function useLLList<T extends { id: number }>(
-  fetcher: (params: { page: number; page_size: number }) => Promise<{ data?: { list?: T[]; total?: number } | null }>,
+  fetcher: (params: { page: number; pageSize: number }) => Promise<{ data?: { list?: T[]; total?: number } | null }>,
   isRunning: (item: T) => boolean,
   interval = 3000,
   pageSize = 20,
@@ -179,7 +179,7 @@ export function useLLList<T extends { id: number }>(
   let timer: ReturnType<typeof setTimeout> | null = null
 
   async function loadPage(page: number): Promise<T[]> {
-    const res = await fetcher({ page, page_size: pageSize })
+    const res = await fetcher({ page, pageSize })
     total.value = res.data?.total ?? 0
     return res.data?.list ?? []
   } /** 首屏 / 手动刷新。加载完按需进入轮询 */

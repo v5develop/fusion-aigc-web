@@ -2,13 +2,12 @@
  * 资产库增强（Go 网关 /api/v1/asset-library）接口封装。
  *
  * <p>对 Java 素材库（/api/v1/asset）的增强视图：分类条计数、资产级收藏、标签字典、
- * 版本、相关资产与详情。字段与 app/gateway/api/gateway.api 的 assetlib 组逐字段对应，
- * snake_case 原样收发；时间均为 unix 毫秒。
+ * 版本、相关资产与详情。字段与 app/gateway/api/gateway.api 的 assetlib 组逐字段对应；
+ * 前端字段一律 camelCase（Java 原生 camelCase；Go 网关请求体 / query / 响应均兼容 camelCase）；时间均为 unix 毫秒。
  *
  * <p>复用 api/index.ts 的实例（token 注入、401 刷新、业务错误 toast 全部沿用）。
  */
-import { post, put, patch } from './index.ts'
-import { goGet, goDel } from './go-http'
+import { post, put, patch, get, del } from './index.ts'
 
 const PREFIX = '/api/v1/asset-library'
 
@@ -230,22 +229,22 @@ export interface IAssetLibDeleteResp {
 // ---------------- 资产 ----------------
 
 export function assetLibList(params: IAssetLibListParams) {
-  return goGet<IAssetLibListResp>(`${PREFIX}/assets`, params)
+  return get<IAssetLibListResp>(`${PREFIX}/assets`, params)
 }
 
 /** 分类条计数：固定返回 all + 5 kind + uncategorized，计数随 source / media 变化 */
 export function assetLibCategories(params: { source?: string; media?: string } = {}) {
-  return goGet<IAssetLibCategoriesResp>(`${PREFIX}/assets/categories`, params)
+  return get<IAssetLibCategoriesResp>(`${PREFIX}/assets/categories`, params)
 }
 
 /** 我的资产分类树（Java 素材库接口，同一请求实例带用户 token） */
 export function assetCategoryTree() {
-  return goGet<IAssetCategoryNode[]>('/api/v1/asset/categories')
+  return get<IAssetCategoryNode[]>('/api/v1/asset/categories')
 }
 
-/** 详情：版本 / 相关资产 / 生成结果三组子列表各自分页，共用 page_size（默认 6） */
+/** 详情：版本 / 相关资产 / 生成结果三组子列表各自分页，共用 pageSize（默认 6） */
 export function assetLibDetail(id: number, params: IAssetLibDetailParams = {}) {
-  return goGet<IAssetLibDetail>(`${PREFIX}/assets/${id}`, { pageSize: 6, ...params })
+  return get<IAssetLibDetail>(`${PREFIX}/assets/${id}`, { pageSize: 6, ...params })
 }
 
 /** 改标题 / 分类 / 收藏 / 标签 / 元数据 / 授权 / 当前版本（只改带了的字段），返回改后的完整资产 */
@@ -268,7 +267,7 @@ export function assetLibAddRelation(id: number, relatedAssetId: number, relation
 
 /** 删除资产关系（reference 两个方向都删） */
 export function assetLibRemoveRelation(id: number, relatedAssetId: number, relationType = 'reference') {
-  return goDel(`${PREFIX}/assets/${id}/relations`, { relatedAssetId: relatedAssetId, relationType: relationType })
+  return del(`${PREFIX}/assets/${id}/relations`, { relatedAssetId: relatedAssetId, relationType: relationType })
 }
 
 /**
@@ -276,7 +275,7 @@ export function assetLibRemoveRelation(id: number, relatedAssetId: number, relat
  * 不存在 / 不属于本人 4001；官方素材 2005「官方素材不可删除」。
  */
 export function assetLibDelete(id: number) {
-  return goDel<IAssetLibDeleteResp>(`${PREFIX}/assets/${id}`)
+  return del<IAssetLibDeleteResp>(`${PREFIX}/assets/${id}`)
 }
 
 /**
@@ -291,7 +290,7 @@ export function assetLibBatchDelete(assetIds: number[]) {
 
 /** 我的标签字典（含每个标签的资产数），按名字排序 */
 export function assetLibTags() {
-  return goGet<IAssetLibTagListResp>(`${PREFIX}/tags`)
+  return get<IAssetLibTagListResp>(`${PREFIX}/tags`)
 }
 
 /** 新建标签（≤20 字，每用户 ≤200 个）。重名 4002 */
@@ -306,7 +305,7 @@ export function assetLibTagRename(id: number, name: string) {
 
 /** 删除标签，同时从所有资产上摘掉 */
 export function assetLibTagDelete(id: number) {
-  return goDel(`${PREFIX}/tags/${id}`)
+  return del(`${PREFIX}/tags/${id}`)
 }
 
 /** 批量给资产加标签（追加，已有的跳过）。一次 ≤100 资产、≤10 标签，返回新增关联数 */

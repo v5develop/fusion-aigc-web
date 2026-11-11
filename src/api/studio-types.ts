@@ -2,8 +2,8 @@
  * 商拍工作室（Go 网关 /api/v1/studio）类型定义。
  *
  * <p>契约：docs/api/api-studio.md（fusion_aigc_go）。
- * 请求体 / 响应字段一律 snake_case 原样收发，不做 camelCase 改写。
- * 时间字段均为 unix 毫秒；task_id 是字符串，batch_id / id 是数字。
+ * 前端字段一律 camelCase（Java 原生 camelCase；Go 网关请求体 / query / 响应均兼容 camelCase）。
+ * 时间字段均为 unix 毫秒；taskId 是字符串，batchId / id 是数字。
  */
 
 /** 三个功能共用 kind：商拍换装 / 姿态复刻 / 图片生成 */

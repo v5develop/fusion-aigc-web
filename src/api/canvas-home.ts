@@ -1,11 +1,10 @@
 /**
  * 画布（Go 网关 /api/v1/canvas）接口封装：管理页 + 节点编辑器。
  *
- * <p>类型与字段对齐 fusion_aigc_go gateway.api 的 canvas 段，snake_case 原样收发，
+ * <p>类型与字段对齐 fusion_aigc_go gateway.api 的 canvas 段；前端字段一律 camelCase（Java 原生 camelCase；Go 网关请求体 / query / 响应均兼容 camelCase），
  * 契约见 fusion_aigc_go/docs/api/api-canvas.md。
  */
-import { post, put, toApiError } from './index.ts'
-import { goGet, goDel } from './go-http'
+import { post, put, toApiError, get, del } from './index.ts'
 
 const PREFIX = '/api/v1/canvas'
 
@@ -119,7 +118,7 @@ export interface ICanvasTemplateDetail extends ICanvasTemplate {
 
 /** 画布列表（updated_at 倒序） */
 export function canvasList(params: { page?: number; pageSize?: number } = {}) {
-  return goGet<ICanvasList>(`${PREFIX}/canvases`, { page: 1, pageSize: 20, ...params })
+  return get<ICanvasList>(`${PREFIX}/canvases`, { page: 1, pageSize: 20, ...params })
 }
 
 /** 新建空白画布（title 空 = 未命名画布） */
@@ -134,7 +133,7 @@ export function canvasFromTemplate(data: { templateId: number; title?: string })
 
 /** 画布详情（含 snapshot） */
 export function canvasGet(id: string) {
-  return goGet<ICanvasDetail>(`${PREFIX}/canvases/${id}`)
+  return get<ICanvasDetail>(`${PREFIX}/canvases/${id}`)
 }
 
 /**
@@ -153,7 +152,7 @@ export async function canvasRename(id: string, title: string) {
 
 /** 删除（逻辑删除） */
 export function canvasRemove(id: string) {
-  return goDel(`${PREFIX}/canvases/${id}`)
+  return del(`${PREFIX}/canvases/${id}`)
 }
 
 /** 另存为：复制已保存的快照（title 空 = 原标题 + 「 - 副本」） */
@@ -163,17 +162,17 @@ export function canvasSaveAs(id: string, title?: string) {
 
 /** 画布的执行记录（新的在前）；nodeId 只看该节点 */
 export function canvasRuns(id: string, limit = 50, nodeId?: string) {
-  return goGet<ICanvasRuns>(`${PREFIX}/canvases/${id}/runs`, { limit, ...(nodeId ? { nodeId: nodeId } : {}) })
+  return get<ICanvasRuns>(`${PREFIX}/canvases/${id}/runs`, { limit, ...(nodeId ? { nodeId: nodeId } : {}) })
 }
 
 /** 模板列表（不带快照） */
 export function canvasTemplates(scope: 'official' | 'user' | 'all' = 'official') {
-  return goGet<ICanvasTemplates>(`${PREFIX}/templates`, { scope })
+  return get<ICanvasTemplates>(`${PREFIX}/templates`, { scope })
 }
 
 /** 模板详情（含快照）：编辑器「从模板插入」取结构用；官方模板 + 本人模板可见，其余 4001 */
 export function canvasTemplateDetail(id: number) {
-  return goGet<ICanvasTemplateDetail>(`${PREFIX}/templates/${id}`)
+  return get<ICanvasTemplateDetail>(`${PREFIX}/templates/${id}`)
 }
 
 // ==================== 节点编辑器 ====================
@@ -286,7 +285,7 @@ export interface ICanvasCatalog {
 
 /** 模型 / 参数目录（替代前端写死；面板字段按 capabilities 动态显示） */
 export function canvasCatalog() {
-  return goGet<ICanvasCatalog>(`${PREFIX}/catalog`)
+  return get<ICanvasCatalog>(`${PREFIX}/catalog`)
 }
 
 /** 执行单个节点；幂等键 = run_id，必须与 body.runId 一致 */
@@ -298,7 +297,7 @@ export function canvasNodeRun(canvasId: string, nodeId: string, data: ICanvasRun
 
 /** 查询一次执行（轮询用，1.2s 间隔） */
 export function canvasRunGet(requestId: string) {
-  return goGet<ICanvasRunResult>(`${PREFIX}/runs/${requestId}`)
+  return get<ICanvasRunResult>(`${PREFIX}/runs/${requestId}`)
 }
 
 /** 取消执行（gateway 退点 / studio 取消批次 / Java 工具调 Java 取消；无请求体） */

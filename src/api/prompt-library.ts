@@ -4,10 +4,9 @@
  * <p>与 Java 接口共用同一个域名与令牌（网关按前缀转发给 Go），复用 api/index.ts
  * 的实例：token 注入、401 刷新、业务错误 toast 全部沿用。
  *
- * <p>类型与字段对齐 fusion_aigc_go gateway.api 的 promptlib 段，snake_case 原样收发。
+ * <p>类型与字段对齐 fusion_aigc_go gateway.api 的 promptlib 段；前端字段一律 camelCase（Java 原生 camelCase；Go 网关请求体 / query / 响应均兼容 camelCase）。
  */
-import { post, put } from './index.ts'
-import { goGet, goDel } from './go-http'
+import { post, put, get, del } from './index.ts'
 
 const PREFIX = '/api/v1/prompt-library'
 
@@ -56,7 +55,7 @@ export interface IPromptLibUpsertReq {
 
 /** 提示词列表：官方（启用）+ 我的 */
 export function promptLibList(params: IPromptLibListReq = {}) {
-  return goGet<IPromptLibList>(`${PREFIX}/prompts`, { page: 1, pageSize: 20, ...params })
+  return get<IPromptLibList>(`${PREFIX}/prompts`, { page: 1, pageSize: 20, ...params })
 }
 
 /** 新增我的提示词（每人 ≤500 条） */
@@ -71,5 +70,5 @@ export function promptLibUpdate(id: number, data: IPromptLibUpsertReq) {
 
 /** 删除我的提示词（官方项 code=4002，界面只对 mine 放出入口） */
 export function promptLibRemove(id: number) {
-  return goDel(`${PREFIX}/prompts/${id}`)
+  return del(`${PREFIX}/prompts/${id}`)
 }
