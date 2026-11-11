@@ -18,6 +18,12 @@
  */
 const DEVICE_SCOPED_KEYS = new Set(['union_deviceId'])
 
+/**
+ * 按账号分开存的 key 前缀：key 里已带账号指纹，换号不会串，清掉反而让 A→B→A 丢掉 A 的设置。
+ * 目前只有「字体显示」偏好（src/utils/textPrefs.ts 的 TEXT_PREFS_KEY_PREFIX，这里写字面量避免依赖）。
+ */
+const ACCOUNT_KEYED_PREFIXES = ['xq-text-prefs:']
+
 /** 上一次登录成功时记下的账号指纹，用来判断宿主是不是换了人 */
 const IDENTITY_KEY = 'fusion_identity'
 
@@ -119,6 +125,7 @@ export function adoptSession(data: { accessToken: string; refreshToken: string }
 function resetAccountScope() {
   for (const key of Object.keys(localStorage)) {
     if (DEVICE_SCOPED_KEYS.has(key)) continue
+    if (ACCOUNT_KEYED_PREFIXES.some((p) => key.startsWith(p))) continue
     localStorage.removeItem(key)
   }
   sessionStorage.removeItem(LOGOUT_RELOAD_KEY)

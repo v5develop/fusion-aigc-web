@@ -25,6 +25,21 @@ body {
   font-size: 14px;
 }
 
+/*
+ * 「字体显示」偏好（src/utils/textPrefs.ts）：
+ * 字号由构建期改写成 calc(Npx * var(--xq-fs, 1))，字体栈改写成 var(--xq-font-family, 原栈)，<html> 上的变量一改全站生效。
+ * 「更易读」额外加宽字距；显式写了 tracking 的元素保持自己的值。
+ */
+html[data-xq-font='readable'] body {
+  letter-spacing: 0.02em;
+  word-spacing: 0.05em;
+}
+
+/* 画布节点区有自己的缩放（用户在画布里放大缩小），节点里的字保持设计字号，免得撑破固定尺寸的节点卡片 */
+.vue-flow {
+  --xq-fs: 1;
+}
+
 /* 键盘焦点：可点元素统一 2px 藤紫环（原型 v3-theme.css:75-78）；:where 零特异性，组件自己的焦点样式优先 */
 :where(button, [role='button'], a[href], summary, [tabindex]:not([tabindex='-1'])):focus-visible {
   outline: 2px solid #875f9a;

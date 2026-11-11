@@ -1,5 +1,6 @@
 // @unocss-include
 import type { GlobalThemeOverrides } from 'naive-ui'
+import { textScaleTheme } from '@/utils/textPrefs.ts'
 
 /**
  * 本地生活表单材质（挂在页面根节点上，作用于其中的 naive 控件），对齐电商功能页的控件语汇：
@@ -36,7 +37,7 @@ export const llFormSkin = [
  * <p>必须显式给 Button textColor*：全局 App.vue 的 common.baseColor 是 'red'，
  * naive 会拿它推导彩色底上的文字色，藤紫按钮会被配出红字。
  */
-export const llTheme: GlobalThemeOverrides = {
+const baseLlTheme: GlobalThemeOverrides = {
   common: {
     primaryColor: '#875f9a',
     primaryColorHover: '#9a6fae',
@@ -85,3 +86,6 @@ export const llTheme: GlobalThemeOverrides = {
     },
   },
 }
+
+/** 字号随「字体显示」档位缩放（见 src/utils/textPrefs.ts） */
+export const llTheme: GlobalThemeOverrides = textScaleTheme(baseLlTheme)

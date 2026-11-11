@@ -1,6 +1,7 @@
 import { h, type VNodeChild } from 'vue'
 import type { DropdownOption } from 'naive-ui'
 import type { DropdownMenuProps } from 'naive-ui/es/dropdown/src/interface'
+import { textScaleTheme } from '@/utils/textPrefs.ts'
 
 /**
  * 下拉面板的统一配置，对齐设计稿「PC桌面端-下拉弹窗」
@@ -12,7 +13,7 @@ import type { DropdownMenuProps } from 'naive-ui/es/dropdown/src/interface'
 const CHECK_SVG =
   '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.12 7.42L6.3 10.6L11.96 4.94" stroke="#8E66F9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 
-export const DROPDOWN_THEME_OVERRIDES = {
+export const DROPDOWN_THEME_OVERRIDES = textScaleTheme({
   // 与全局 Dropdown 主题（theme/naive.ts）同一套令牌；行高 40 / 字 14 是这些面板自己的命中尺寸，保持不变
   color: '#FFFFFF',
   padding: '8px 4px',
@@ -25,7 +26,7 @@ export const DROPDOWN_THEME_OVERRIDES = {
   optionTextColorActive: '#1F2329',
   optionColorHover: '#F3F4F5',
   groupHeaderTextColor: '#5F6673',
-}
+})
 
 /** 面板宽度：设计稿中比例/时长为 156px，其余为 194px */
 export function dropdownMenuProps(width?: number): DropdownMenuProps {

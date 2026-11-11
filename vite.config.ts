@@ -19,6 +19,42 @@ const SUPPORTED_MODES = ['test', 'production']
 // OSS 前缀缺失时图片 src 变成 undefined/xxx.png——所以在这里当场把构建打挂。
 const REQUIRED_ENV = ['VITE_FUSION_API_BASE', 'VITE_UNION_API_BASE', 'VITE_OSS_ASSET_URL']
 
+/**
+ * 「字体显示」偏好的构建期改写（运行时只改 <html> 上的 CSS 变量，见 src/utils/textPrefs.ts）：
+ * - `font-size: 13px` / `0.875rem`（含组件里改写的 `--n-*font-size` 变量）→ `calc(13px * var(--xq-fs, 1))`：
+ *   字号随用户档位缩放，盒子尺寸与坐标不变；
+ * - 站点字体栈 → `var(--xq-font-family, 原字体栈)`：用户可换字体，没设置时与原来完全一致。
+ * 不碰 em / % / clamp / calc（已是相对值或另有意图）、等宽与图标字体、node_modules 与 iconfont.css。
+ * 不引 postcss 包：PostCSS 插件就是一个带 postcssPlugin 的对象，Vite 内置的 PostCSS 会执行它。
+ */
+const FONT_SIZE_ABS = /^(-?\d*\.?\d+)(px|rem)(\s*!important)?$/
+const SITE_FONT_HINT = /Smartisan Compact|PingFang SC|Noto Sans SC|Microsoft YaHei|Source Han Sans SC/
+interface CssDecl {
+  prop: string
+  value: string
+  source?: { input?: { file?: string } }
+}
+function skipTextScale(decl: CssDecl): boolean {
+  const file = decl.source?.input?.file ?? ''
+  return file.includes('node_modules') || /iconfont/i.test(file)
+}
+const textScalePostcss = {
+  postcssPlugin: 'xq-text-scale',
+  Declaration(decl: CssDecl) {
+    if (skipTextScale(decl)) return
+    const prop = decl.prop.toLowerCase()
+    const value = decl.value.trim()
+    // 组件样式里直接改写 Naive 的 CSS 变量（--n-font-size、--n-option-font-size…）的，同样缩放
+    if (prop === 'font-size' || /^--n-[\w-]*font-size$/.test(prop)) {
+      const m = FONT_SIZE_ABS.exec(value)
+      if (m && Number(m[1]) !== 0) decl.value = `calc(${m[1]}${m[2]} * var(--xq-fs, 1))${m[3] ?? ''}`
+    } else if (prop === 'font-family') {
+      if (value.includes('var(') || /mono|iconfont/i.test(value) || !SITE_FONT_HINT.test(value)) return
+      decl.value = `var(--xq-font-family, ${value})`
+    }
+  },
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // 裸跑 vite 会落到 development，那个 mode 已经没有对应的 .env 文件了；
@@ -68,6 +104,8 @@ export default defineConfig(({ mode }) => {
       format: 'es',
     },
     css: {
+      // 内联 postcss 配置后 Vite 不再找 postcss.config.*（仓库里本来也没有）
+      postcss: { plugins: [textScalePostcss] },
       preprocessorOptions: {
         less: {
           resolve: {

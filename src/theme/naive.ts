@@ -8,6 +8,7 @@
  * <p>Naive 只接纯色：主按钮的藤紫渐变不在这里，需要渐变的地方用 uno 的 `sx-btn-primary`。
  */
 import type { GlobalThemeOverrides } from 'naive-ui'
+import { textScaleTheme } from '@/utils/textPrefs.ts'
 
 const fontFamily =
   "'Smartisan Compact', 'Noto Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif"
@@ -45,7 +46,7 @@ const focusRing = '0 0 0 3px rgba(135,95,154,.14)'
 const insetInput = 'inset 0 1px 2px rgba(31,35,41,.055), inset 0 0 0 1px rgba(255,255,255,.7)'
 const popShadow = '0 12px 24px rgba(31,35,41,.14), 0 2px 6px rgba(31,35,41,.06)'
 
-export const themeOverrides: GlobalThemeOverrides = {
+const baseThemeOverrides: GlobalThemeOverrides = {
   common: {
     primaryColor: C.violet,
     primaryColorHover: C.violetTop,
@@ -333,3 +334,6 @@ export const themeOverrides: GlobalThemeOverrides = {
     fontSizeMedium: '13px',
   },
 }
+
+/** 字号随「字体显示」档位缩放、字体可被偏好覆盖（见 src/utils/textPrefs.ts） */
+export const themeOverrides: GlobalThemeOverrides = textScaleTheme(baseThemeOverrides)

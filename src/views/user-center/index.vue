@@ -1,28 +1,34 @@
 <script setup lang="ts">
 /**
- * 用户中心：左侧竖向菜单（基本资料 / 账户安全 / 账户信息），右侧白卡展示选中分区。
+ * 用户中心：左侧竖向菜单（基本资料 / 账户安全 / 账户信息 / 字体显示），右侧白卡展示选中分区。
+ * 「字体显示」可用 /user-center?section=display 直达。
  * 资料字段（昵称、邮箱、账号、注册时间、状态）store 未暴露，本页直接调 GET /api/v1/auth/user-info。
  */
 import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRoute } from 'vue-router'
 import { getUserInfo } from '@/api/methods.ts'
 import { useUserInfoStore } from '@/stores/user-info.ts'
 import ProfileSection from './ProfileSection.vue'
 import SecuritySection from './SecuritySection.vue'
 import AccountSection from './AccountSection.vue'
+import DisplaySection from './DisplaySection.vue'
 import type { IUserCenterInfo } from './shared.ts'
 
 defineOptions({ name: 'user-center' })
 
-type SectionKey = 'profile' | 'security' | 'account'
+type SectionKey = 'profile' | 'security' | 'account' | 'display'
 
 const MENU: { key: SectionKey; label: string }[] = [
   { key: 'profile', label: '基本资料' },
   { key: 'security', label: '账户安全' },
   { key: 'account', label: '账户信息' },
+  { key: 'display', label: '字体显示' },
 ]
 
-const active = ref<SectionKey>('profile')
+const route = useRoute()
+const initialSection = MENU.find((m) => m.key === route.query.section)?.key
+const active = ref<SectionKey>(initialSection ?? 'profile')
 
 const userStore = useUserInfoStore()
 const { userInfo } = storeToRefs(userStore)
@@ -74,7 +80,8 @@ onMounted(load)
       <div class="min-w-0 flex-1 p-24px sx-card">
         <ProfileSection v-if="active === 'profile'" :info="info" :loading="loading" @saved="onSaved" />
         <SecuritySection v-else-if="active === 'security'" />
-        <AccountSection v-else :info="info" :points="userInfo?.availablePoints" />
+        <AccountSection v-else-if="active === 'account'" :info="info" :points="userInfo?.availablePoints" />
+        <DisplaySection v-else />
       </div>
     </div>
   </div>
