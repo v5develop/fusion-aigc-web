@@ -27,7 +27,10 @@ export type TextFont = 'default' | 'system' | 'readable' | 'rounded' | 'local'
 export interface TextPrefs {
   scale: TextScale
   font: TextFont
-  /** font === 'local' 时的字体族名（来自本机字体列表） */
+  /**
+   * 选过的本机字体族名。只在 font === 'local' 时生效；切到别的预设也保留，切回「本机字体」直接恢复，
+   * 不用重新挑（早先切走就清空，存档里只剩 font，用户以为选过的本机字体刷新后就找不回了）
+   */
   family: string
 }
 
@@ -100,7 +103,7 @@ function normalize(raw: unknown): TextPrefs {
     ? (r.font as TextFont)
     : 'default'
   if (font === 'local' && !family) font = 'default'
-  return { scale, font, family: font === 'local' ? family : '' }
+  return { scale, font, family }
 }
 
 /* ---------------- 账号身份（同 asset-recent：后端用户 id，见 auth-session 的 currentAccountId） ---------------- */

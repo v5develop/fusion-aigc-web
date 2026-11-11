@@ -79,11 +79,12 @@ function pickScale(v: TextScale) {
 function pickFont(v: TextFont) {
   fontChoice.value = v
   if (v === 'local') {
-    // 之前选过本机字体就直接恢复；否则等用户在下拉里挑
+    // 之前选过本机字体就直接恢复；否则等用户在下拉里挑（界面上有「尚未生效」提示）
     if (textPrefs.value.family) setTextPrefs({ font: 'local' })
     return
   }
-  setTextPrefs({ font: v, family: '' })
+  // 不清 family：切回「本机字体」时恢复上次挑的那个
+  setTextPrefs({ font: v })
 }
 
 function pickFamily(family: string | null) {
@@ -103,6 +104,10 @@ function onReset() {
 const isDefault = computed(
   () => textPrefs.value.scale === DEFAULT_TEXT_PREFS.scale && textPrefs.value.font === DEFAULT_TEXT_PREFS.font,
 )
+
+/** 选了「本机字体」但还没挑具体字体：什么都没生效、也没保存，界面要明说 */
+const localPending = computed(() => fontChoice.value === 'local' && textPrefs.value.font !== 'local')
+const appliedFontLabel = computed(() => FONT_CHOICES.find((f) => f.value === textPrefs.value.font)?.label ?? '默认')
 
 const familyValue = computed(() => (textPrefs.value.font === 'local' ? textPrefs.value.family : null))
 
@@ -215,7 +220,10 @@ const segItem = (on: boolean) => [
             {{ loadingFonts ? '读取中…' : '读取本机字体' }}
           </button>
         </div>
-        <p class="m-0 sx-hint" role="status">
+        <p v-if="localPending" class="m-0 text-12px leading-18px text-warning" role="status">
+          还没选择字体，当前仍使用「{{ appliedFontLabel }}」。在上方下拉中选一个字体后才会生效并保存。
+        </p>
+        <p class="m-0 sx-hint" :role="localPending ? undefined : 'status'">
           <template v-if="fontsNotice">{{ fontsNotice }}</template>
           <template v-else-if="fontsSource === 'api'"
             >已读取本机全部字体（{{ fonts.length }} 个），中文字体排在前面</template
