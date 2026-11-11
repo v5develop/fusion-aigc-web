@@ -3106,7 +3106,7 @@ onUnmounted(() => {
                     :class="[
                       'absolute right-0 top-4px z-2 grid h-16px w-16px place-items-center rounded-3px border border-solid p-0 text-white cursor-pointer after:(content-empty absolute -inset-8px) sx-focus',
                       shareTurns.includes(turnNoOf(turn) ?? 0)
-                        ? 'border-violet bg-violet'
+                        ? 'border-violet bg-violet-solid'
                         : 'border-control bg-white hover:border-violet-line',
                     ]"
                     @click="pickRound(turnNoOf(turn) ?? 0)"
@@ -3480,7 +3480,7 @@ onUnmounted(() => {
                                   :class="[
                                     'grid h-13px w-13px flex-none place-items-center rounded-3px border border-solid',
                                     optionPicked(item, q, o)
-                                      ? 'border-violet bg-violet text-white'
+                                      ? 'border-violet bg-violet-solid text-white'
                                       : 'border-control bg-white',
                                   ]"
                                   aria-hidden="true"
@@ -3702,7 +3702,7 @@ onUnmounted(() => {
                                   :class="[
                                     'pointer-events-none absolute right-8px top-8px z-3 grid h-20px w-20px place-items-center rounded-full border border-solid backdrop-blur-4px [transition:background_.12s,border-color_.12s]',
                                     multiPicks.includes(tile.url)
-                                      ? 'border-violet bg-violet text-white'
+                                      ? 'border-violet bg-violet-solid text-white'
                                       : 'border-#fff/90 bg-[rgba(20,20,24,0.34)] text-transparent',
                                   ]"
                                   aria-hidden="true"

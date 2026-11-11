@@ -27,7 +27,7 @@ const GLASS =
   'border border-solid border-white/70 bg-white/90 backdrop-blur-[8px] shadow-[0_4px_14px_rgba(31,35,41,0.16)]'
 const SEG_ITEM =
   'h-28px box-border px-12px rounded-full border-none text-12px cursor-pointer whitespace-nowrap sx-focus [transition:background_140ms,color_140ms] motion-reduce:transition-none'
-const SEG_ON = 'bg-violet text-white font-600'
+const SEG_ON = 'bg-violet-solid text-white font-600'
 const SEG_OFF = 'bg-transparent text-ink-2 hover:(bg-surface3 text-ink)'
 
 const VIEW_MODES = [

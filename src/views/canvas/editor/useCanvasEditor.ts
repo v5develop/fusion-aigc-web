@@ -14,6 +14,7 @@ import {
   canvasNodeRun,
   canvasRunCancel,
   canvasRunGet,
+  canvasRunLibraryRetry,
   canvasRuns,
   canvasSaveWithLock,
   canvasSelectCandidate,
@@ -1745,6 +1746,24 @@ function refreshNodeMedia(nodeId: string): void {
   void fetchProductMedia(nodeId)
 }
 
+/**
+ * 「重新存入素材库」（契约 3.4.3）：只对转存失败的节点产物有意义。成功后按返回 run 写回（一般是 pending），
+ * writeProduct → syncLibraryWatch 接上原有的低频转存轮询；失败原样抛出，由按钮提示（4002 = 太频繁）。
+ * 返回的 run 已不是 failed（幂等：已在转存 / 已入库）也照样写回，界面跟着服务端走。
+ */
+async function retryLibrary(nodeId: string): Promise<void> {
+  const node = findNode(nodeId)
+  if (!node || node.data.libraryStatus !== 'failed') return
+  const targetId = canvasId
+  const requestId = await resolveProductRequestId(nodeId)
+  if (!requestId || targetId !== canvasId) throw new Error('找不到这条产物的运行记录，请刷新后再试')
+  const res = await canvasRunLibraryRetry(requestId)
+  if (targetId !== canvasId || !res.data) return
+  // 先清掉旧的 watch 记录（failed 时已停），保证 pending 时会重新起轮询
+  stopLibraryWatch(nodeId)
+  applyProductRefresh(nodeId, res.data)
+}
+
 /** 加载后：转存中的节点接着低频跟到状态变空 */
 function resumeLibraryWatches(): void {
   const targetId = canvasId
@@ -2050,6 +2069,7 @@ export function useCanvasEditor() {
     hiddenCandidatesOf,
     /** 产物现签地址过期（加载失败 / 403）时换一次签名（限流） */
     refreshNodeMedia,
+    retryLibrary,
     /** 产物地址能否复制进别的节点内容：转存中返回提示文案，可用返回空串 */
     mediaBlockReason,
     reorderReference,

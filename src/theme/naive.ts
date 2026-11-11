@@ -272,7 +272,11 @@ function buildOverrides(theme: ThemeName): GlobalThemeOverrides {
       closeColorPressed: C.sunken,
       borderColor: C.line,
       paddingMedium: '14px',
+      // 其余档位 Naive 写死 px（不随 common 推导），不列出来就不跟「字体显示」缩放；值取 Naive 默认，外观不变
+      titleFontSizeSmall: '16px',
       titleFontSizeMedium: '14px',
+      titleFontSizeLarge: '18px',
+      titleFontSizeHuge: '18px',
       titleFontWeight: '600',
       color: C.white,
       colorModal: C.overlay,
@@ -347,6 +351,37 @@ function buildOverrides(theme: ThemeName): GlobalThemeOverrides {
       titleFontSize: '16px',
       titleTextColor: C.ink,
       textColor: C.ink2,
+    },
+    /*
+     * 下面几项只为字号缩放：Naive 这些组件的字号在自身主题里写死 px（不从 common.fontSize* 推导），
+     * 不在覆盖里出现就不经 textScaleTheme，用户调大字号时标题 / 正文不跟着变。值 = Naive 默认，1× 时外观不变。
+     */
+    Drawer: {
+      titleFontSize: '18px',
+    },
+    Notification: {
+      titleFontSize: '16px',
+      metaFontSize: '12px',
+      descriptionFontSize: '12px',
+    },
+    Tabs: {
+      tabFontSizeSmall: '14px',
+      tabFontSizeMedium: '14px',
+      tabFontSizeLarge: '16px',
+    },
+    Form: {
+      feedbackFontSizeSmall: '13px',
+      feedbackFontSizeMedium: '14px',
+      feedbackFontSizeLarge: '14px',
+      labelFontSizeLeftSmall: '14px',
+      labelFontSizeLeftMedium: '14px',
+      labelFontSizeLeftLarge: '15px',
+      labelFontSizeTopSmall: '13px',
+      labelFontSizeTopMedium: '14px',
+      labelFontSizeTopLarge: '14px',
+    },
+    Badge: {
+      fontSize: '12px',
     },
     Modal: {
       color: C.overlay,

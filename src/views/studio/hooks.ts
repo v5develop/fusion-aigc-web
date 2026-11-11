@@ -7,6 +7,7 @@ import {
   studioBatchDetail,
   studioHistory,
   studioTaskDetail,
+  studioTaskLibraryRetry,
   studioQuoteImageGen,
   studioQuotePose,
   studioQuoteTryon,
@@ -306,6 +307,28 @@ export function useStudioHistory(
     }
   }
 
+  /**
+   * 「重新存入素材库」（§5.2.3）：只对 libraryStatus=failed 的成功任务调用。成功后用返回的任务替换列表里那条
+   * （一般是 pending，显示「入库中」），awaitsLibrary 让批次重新进入原有的入库轮询，直到变空或再次 failed。
+   * 失败原样抛出，由按钮提示（4002 = 太频繁）。
+   */
+  async function retryLibrary(taskId: string): Promise<void> {
+    const fresh = (await studioTaskLibraryRetry(taskId)).data
+    if (!fresh) return
+    const i = items.value.findIndex((d) => d.tasks.some((t) => t.taskId === taskId))
+    if (i < 0) return
+    const d = items.value[i]!
+    const merged = adoptTask(
+      d.tasks.find((t) => t.taskId === taskId),
+      fresh,
+      Date.now(),
+    )
+    items.value[i] = { ...d, tasks: d.tasks.map((t) => (t.taskId === taskId ? merged : t)) }
+    // 重新开始等入库：清掉该批次旧的等待起点，否则按「已等很久」的慢节奏（10s / 30s）才查
+    libraryWaitSince.delete(d.batch.id)
+    startPollingIfNeeded()
+  }
+
   async function fetchPage(cursor: string): Promise<{ list: StudioBatchDetail[]; next: string }> {
     const res = await studioHistory({ kind: kind || undefined, cursor: cursor || undefined, limit })
     return { list: res.data?.list ?? [], next: res.data?.nextCursor ?? '' }
@@ -481,6 +504,7 @@ export function useStudioHistory(
     ensure,
     replace,
     refreshTask,
+    retryLibrary,
     /** 是否是本会话里用户自己删掉的批次 */
     wasDropped: (id: number) => dropped.has(id),
     stopPolling,

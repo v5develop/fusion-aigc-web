@@ -920,7 +920,7 @@ onUnmounted(() => {
                       :class="[
                         'absolute left-10px top-10px grid h-20px w-20px place-items-center rounded-4px border border-solid p-0 cursor-pointer sx-hit after:-inset-6px [@media(pointer:coarse)]:after:-inset-10px',
                         selectedItems.includes(itemId(it))
-                          ? 'border-violet bg-violet text-white'
+                          ? 'border-violet bg-violet-solid text-white'
                           : 'border-control bg-white/90',
                         FOCUS,
                       ]"

@@ -104,6 +104,25 @@ export function ossResize(url: string | undefined | null, w: number, h?: number)
 }
 
 /**
+ * 卡片缩略图：优先用后端下发的缩略图（Java `coverThumbnailUrl`，私有桶签名封面由服务端把缩放接在处理链末尾后重签，
+ * 客户端自己拼参数会 403），否则回到 {@link ossResize}（公有未签名的 OSS 图前端拼缩放，其余原样）。
+ *
+ * <p>后端缩略图与原地址相同 = 服务端没能派生（公有直链、非阿里云、视频、占位图），此时仍按原逻辑前端拼。
+ * ⚠️ 只用于展示；预览大图 / 下载仍用原地址；加载失败用 {@link thumbFallback} 退回原地址。
+ * @param original    原地址（coverUrl / cover）
+ * @param serverThumb 后端缩略图（coverThumbnailUrl），旧后端不下发时为空
+ */
+export function cardThumb(
+  original: string | undefined | null,
+  serverThumb: string | undefined | null,
+  w: number,
+  h?: number,
+): string {
+  if (serverThumb && serverThumb !== original) return serverThumb
+  return ossResize(original || serverThumb, w, h)
+}
+
+/**
  * 缩略图加载失败时退回原图（个别格式 / 主机不支持处理参数）：已退过一次或本来就是原图时返回 false，交给调用方走失败态。
  * 用法：`@error="(e) => thumbFallback(e, url) || markBroken()"`
  */

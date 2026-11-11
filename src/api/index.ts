@@ -214,6 +214,8 @@ async function handleTokenExpired(config: InternalAxiosRequestConfig, httpStatus
 
 // 业务失败(code!==0)不弹全局 toast 的接口白名单：由调用方自行降级展示（如询价预览失败显示「获取失败」）
 const SILENT_ERROR_URLS = [
+  // 画布 run / 商拍任务「重新存入素材库」：4002（太频繁）等由调用方就地提示，不叠全局 toast
+  '/library-retry',
   // 创意广场模板列表 / 标签 / 本周头条：失败由页内 PageLoadError 展示后端原话（加载更多失败由调用方补 toast），不再叠全局 toast
   '/plaza-templates/list',
   '/plaza-templates/tags',
@@ -365,7 +367,7 @@ function logoutToLogin() {
 export const TASK_SUBMITTED_EVENT = 'xq:task-submitted'
 const TASK_MODULES = /^\/api\/v[12]\/(creation|tools|workflows|studio|canvas|local-life|batch-hosting|agent)\//
 const NOT_A_TASK =
-  /(quote|preview|cancel|accept|presign|masks|share|identify|details|plan|ai-write|select-candidate|confirm|collect|delete|histories|color-fix|rename|save-as|from-template|face-recognition|optimize|prompt)/
+  /(quote|preview|cancel|accept|presign|masks|share|identify|details|plan|ai-write|select-candidate|confirm|collect|delete|histories|color-fix|rename|save-as|from-template|face-recognition|optimize|prompt|library-retry)/
 function isTaskSubmit(config: InternalAxiosRequestConfig) {
   const url = (config.url ?? '').replace(baseURL ?? '', '').split('?')[0] ?? ''
   return config.method?.toLowerCase() === 'post' && TASK_MODULES.test(url) && !NOT_A_TASK.test(url)

@@ -187,7 +187,7 @@ const SEG =
             role="radio"
             :aria-checked="mode === m.key"
             :title="m.hint"
-            :class="[SEG, mode === m.key ? 'bg-violet text-white font-600' : 'bg-transparent text-white/75 hover:(bg-white/10 text-white)']"
+            :class="[SEG, mode === m.key ? 'bg-violet-solid text-white font-600' : 'bg-transparent text-white/75 hover:(bg-white/10 text-white)']"
             @click="mode = m.key"
           >
             {{ m.label }}

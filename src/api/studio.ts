@@ -97,6 +97,14 @@ export function studioTaskDetail(taskId: string) {
   return get<types.StudioTask>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}`)
 }
 
+/**
+ * 重新存入素材库（§5.2.3）：只对 libraryStatus=failed 的成功任务有意义；成功返回该任务（libraryStatus=pending），
+ * 之后照常轮询到变空或再次 failed。不扣点；4002 = 距上次失败不到 1 分钟。业务失败不弹全局 toast，调用方自己提示。
+ */
+export function studioTaskLibraryRetry(taskId: string) {
+  return post<types.StudioTask>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}/library-retry`, {})
+}
+
 /** 取消批次：只取消还在排队的任务（点数立即退回），生成中的会继续跑完 */
 export function studioCancelBatch(id: number) {
   return post<types.StudioCancelResp>(`${PREFIX}/batches/${id}/cancel`, {})

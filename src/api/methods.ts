@@ -54,7 +54,7 @@ export function pollingSingleTask(taskId: string) {
 }
 
 export function assetAll(params: types.IAssetAll, headers?: any) {
-  return get('/api/v1/asset/all', params, headers)
+  return get<types.IAssetGalleryPage>('/api/v1/asset/all', params, headers)
 }
 
 /** 批量删除资产：ids 为资产 id 列表 */

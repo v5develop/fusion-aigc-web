@@ -27,7 +27,7 @@ import MediaFallback from '@/components/MediaFallback/index.vue'
 import IconButton from '@/components/IconButton/index.vue'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
-import { ossResize, thumbFallback } from '@/utils/oss'
+import { cardThumb, thumbFallback } from '@/utils/oss'
 import { useTaskEta } from '@/utils/task-eta'
 import {
   desktopNotifyDenied,
@@ -251,6 +251,7 @@ async function refetchRow(taskId: string) {
       etaSeconds: d.etaSeconds ?? null,
       progressSource: d.progressSource ?? null,
       coverUrl: d.coverUrl || null,
+      coverThumbnailUrl: d.coverThumbnailUrl || null,
       blocked: d.blocked,
     })
   } catch {
@@ -817,7 +818,7 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
                     class="block w-full h-full rounded-5px"
                   >
                     <img
-                      :src="ossResize(item.coverUrl, 44, 44)"
+                      :src="cardThumb(item.coverUrl, item.coverThumbnailUrl, 44, 44)"
                       alt=""
                       loading="lazy"
                       decoding="async"

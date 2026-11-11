@@ -39,7 +39,7 @@ const ROW =
   'flex items-center gap-12px p-8px pr-10px rounded-14px border border-solid transition-colors duration-fast'
 const ROW_ON = 'border-violet-line bg-violet-soft'
 const ROW_OFF = 'border-line bg-white hover:border-line-strong'
-const CURRENT_CHIP = 'inline-flex items-center h-22px px-8px rounded-11px text-11px font-600 bg-violet text-white'
+const CURRENT_CHIP = 'inline-flex items-center h-22px px-8px rounded-11px text-11px font-600 bg-violet-solid text-white'
 const SET_BTN = 'sx-btn !h-32px !px-10px !text-12px shrink-0'
 </script>
 

@@ -296,7 +296,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
             </span>
             <span
               v-if="chosen.includes(r.url)"
-              class="absolute top-4px right-4px grid place-items-center w-18px h-18px rounded-full bg-violet text-white text-11px"
+              class="absolute top-4px right-4px grid place-items-center w-18px h-18px rounded-full bg-violet-solid text-white text-11px"
               >{{ chosen.indexOf(r.url) + 1 }}</span
             >
           </button>
@@ -346,7 +346,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
             >
             <span
               v-if="chosen.includes(pickUrl(a))"
-              class="absolute top-4px right-4px grid place-items-center w-18px h-18px rounded-full bg-violet text-white text-11px"
+              class="absolute top-4px right-4px grid place-items-center w-18px h-18px rounded-full bg-violet-solid text-white text-11px"
               >{{ chosen.indexOf(pickUrl(a)) + 1 }}</span
             >
           </button>

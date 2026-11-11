@@ -121,6 +121,8 @@ export default defineConfig({
         DEFAULT: c('violet'),
         // 文字用藤紫：text-violet 由 shortcuts 转到这里（深色提亮到 ≥ 4.5，浅色与 DEFAULT 同值）
         fg: c('violet-fg'),
+        // 压白字的实色底（徽标 / 角标 / 选中分段）：两套主题白字都 ≥ 4.5，深色比 DEFAULT 略深
+        solid: c('violet-solid'),
         top: c('violet-top'),
         bottom: c('violet-bottom'),
         deep: c('violet-deep'),

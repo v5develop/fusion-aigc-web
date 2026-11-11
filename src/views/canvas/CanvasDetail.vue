@@ -5,8 +5,8 @@ import { modelLabelOf } from '@/utils/model-label'
  * + 快照节点数 + 运行历史（最近 50 条，状态徽标）。
  * 只读展示：画布编辑器规划中，本抽屉不做节点编辑。
  */
-import { ref, watch } from 'vue'
-import { canvasGet, canvasRuns } from '@/api/canvas-home.ts'
+import { onBeforeUnmount, ref, watch } from 'vue'
+import { canvasGet, canvasRunGet, canvasRunLibraryRetry, canvasRuns } from '@/api/canvas-home.ts'
 import type { ICanvasDetail, ICanvasRunResult } from '@/api/canvas-home.ts'
 import LibraryStatusHint from './editor/LibraryStatusHint.vue'
 
@@ -22,6 +22,8 @@ const runs = ref<ICanvasRunResult[]>([])
 const loading = ref(false)
 
 watch(show, (v) => {
+  stopLibraryPolls()
+  session++
   if (!v) return
   detail.value = null
   runs.value = []
@@ -39,6 +41,70 @@ async function load(id: string) {
   } finally {
     loading.value = false
   }
+}
+
+// ---------------- 重新存入素材库（契约 3.4.3） ----------------
+
+/** requestId → 轮询定时器：重试后 pending 期间每 3 秒查一次，直到状态变空 / 再次 failed、抽屉关闭 */
+const libraryPolls = new Map<string, ReturnType<typeof setTimeout>>()
+/** 抽屉每开 / 关一次 +1：重试请求在途时关掉（或换了画布）的，回来不再写回、不再起轮询 */
+let session = 0
+const LIBRARY_POLL_MS = 3000
+/** 跟 10 分钟还是 pending 就不跟了（抽屉里只是展示，重新打开会拿到最新状态） */
+const LIBRARY_POLL_LIMIT = 10 * 60_000
+
+function stopLibraryPolls() {
+  for (const t of libraryPolls.values()) clearTimeout(t)
+  libraryPolls.clear()
+}
+onBeforeUnmount(stopLibraryPolls)
+
+function patchRun(next: ICanvasRunResult) {
+  const at = runs.value.findIndex((r) => r.requestId === next.requestId)
+  if (at >= 0) runs.value[at] = { ...runs.value[at], ...next }
+}
+
+function pollLibrary(requestId: string, startedAt = Date.now()) {
+  const prev = libraryPolls.get(requestId)
+  if (prev) clearTimeout(prev)
+  libraryPolls.set(
+    requestId,
+    setTimeout(async () => {
+      if (!libraryPolls.has(requestId)) return
+      let status: string | undefined = 'pending'
+      // 页面在后台不查，下一轮再看（不计入额外时长：仍按 startedAt 封顶 10 分钟）
+      if (document.visibilityState === 'hidden') {
+        if (Date.now() - startedAt < LIBRARY_POLL_LIMIT) pollLibrary(requestId, startedAt)
+        else libraryPolls.delete(requestId)
+        return
+      }
+      const mine = session
+      try {
+        const res = await canvasRunGet(requestId)
+        if (mine !== session || !libraryPolls.has(requestId)) return
+        if (res.data) {
+          patchRun(res.data)
+          status = res.data.libraryStatus
+        }
+      } catch {
+        // 查询失败下一轮再试
+      }
+      // 请求在途时抽屉关了 / 重开：不能再把定时器挂回去
+      if (mine !== session || !libraryPolls.has(requestId)) return
+      if (status === 'pending' && Date.now() - startedAt < LIBRARY_POLL_LIMIT) pollLibrary(requestId, startedAt)
+      else libraryPolls.delete(requestId)
+    }, LIBRARY_POLL_MS),
+  )
+}
+
+/** 按钮回调：失败原样抛给按钮提示（4002 = 太频繁） */
+async function retryLibrary(r: ICanvasRunResult) {
+  if (!r.requestId) throw new Error('找不到这条运行记录，请刷新后再试')
+  const mine = session
+  const res = await canvasRunLibraryRetry(r.requestId)
+  if (mine !== session || !show.value || !res.data) return
+  patchRun(res.data)
+  if (res.data.libraryStatus === 'pending') pollLibrary(r.requestId)
 }
 
 /** 快照里的节点数（snapshot 为前端私有 JSON，结构不保证，解析失败就不展示） */
@@ -131,7 +197,11 @@ function formatTime(ms?: number) {
               <div v-if="r.status === 'failed' && r.error" class="mt-6px text-12px text-danger leading-18px break-all">
                 {{ r.error }}
               </div>
-              <LibraryStatusHint v-if="r.status === 'succeeded'" :status="r.libraryStatus" />
+              <LibraryStatusHint
+                v-if="r.status === 'succeeded'"
+                :status="r.libraryStatus"
+                :retry="() => retryLibrary(r)"
+              />
             </div>
           </div>
           <div v-else class="ll-empty py-40px">还没有运行记录</div>

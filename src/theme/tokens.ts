@@ -67,6 +67,12 @@ const light = {
   violet: '#875f9a',
   /** 文字用的藤紫（`text-violet`）：浅色与 violet 同值，深色提亮到 ≥ 4.5 */
   'violet-fg': '#875f9a',
+  /**
+   * 压白字的实色藤紫底（小徽标 / 计数角标 / 选中分段 / 勾选框，`bg-violet-solid` + `text-white` / `text-on-accent`）：
+   * 白字 ≥ 4.5（浅色 5.08，与 violet 同值）。violet 本身在深色提亮给描边 / 开关用（白字只有 3.81），所以带字的实色底一律用它。
+   * 描边 / 焦点 / 进度条等不带字的仍用 violet。
+   */
+  'violet-solid': '#875f9a',
   'violet-top': '#8a639f',
   'violet-bottom': '#7a548c',
   'violet-deep': '#6b487c',
@@ -185,6 +191,8 @@ const dark = {
 
   violet: '#9677aa',
   'violet-fg': '#c3a6d4',
+  /** 比 violet 略深：白字 4.82；对 surface 3.71 / overlay 3.41，底块在深色面上仍可辨 */
+  'violet-solid': '#856699',
   'violet-top': '#8a659d',
   'violet-bottom': '#77568a',
   'violet-deep': '#c9b0d9',

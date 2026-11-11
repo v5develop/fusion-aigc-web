@@ -63,6 +63,42 @@ export interface IPublicDisplay {
   pageSize?: number
 }
 
+/** GET /api/v1/asset/all 单条资产（只列前端用到的字段，其余后端字段原样透传） */
+export interface IAssetGalleryItem {
+  id: number
+  sourceTaskId?: string | null
+  type?: string
+  mediaType: 'image' | 'video'
+  name?: string | null
+  /** 封面原地址（可能是签名地址：拼参数要保留原 query） */
+  coverUrl?: string
+  /**
+   * 封面缩略图（列表卡片用，只增字段；旧后端不下发）：私有桶签名封面由服务端缩放（最长边 480、webp）后重签，
+   * 客户端追加参数会 403；无法派生时与 coverUrl 相同。只用于展示，预览 / 下载用原地址。
+   */
+  coverThumbnailUrl?: string | null
+  /** 最终产物（图片原图 / 视频 mp4）；不保证非空 */
+  resultUrl: string
+  status: 0 | 1 | 2 | 3
+  [key: string]: unknown
+}
+
+/** GET /api/v1/asset/all 一组（按来源任务聚合） */
+export interface IAssetGalleryGroup {
+  mediaType?: 'image' | 'video'
+  count?: number
+  coverUrl?: string
+  /** 组封面缩略图（同组最新一张的 coverThumbnailUrl，只增字段） */
+  coverThumbnailUrl?: string | null
+  assets: IAssetGalleryItem[]
+  [key: string]: unknown
+}
+
+export interface IAssetGalleryPage {
+  records: IAssetGalleryGroup[]
+  total?: number
+}
+
 /** 推荐流条目 */
 export interface IFeedItem {
   id: number

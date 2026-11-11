@@ -105,7 +105,7 @@ const optionClass = (on: boolean) => [
           </span>
           <span
             v-if="themePrefs.mode === m.value"
-            class="grid place-items-center w-16px h-16px rounded-full bg-violet text-on-accent"
+            class="grid place-items-center w-16px h-16px rounded-full bg-violet-solid text-on-accent"
             aria-hidden="true"
           >
             <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">

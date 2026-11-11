@@ -359,7 +359,11 @@ function onCropUp() {
           <EditorIcon name="tool" :size="20" />
           <span>{{ isRunning ? '处理中…' : isTryon ? '连服装与模特图后执行' : '连一条图片输入后执行' }}</span>
         </div>
-        <LibraryStatusHint v-if="resultImage && !isRunning" :status="data.libraryStatus" />
+        <LibraryStatusHint
+          v-if="resultImage && !isRunning"
+          :status="data.libraryStatus"
+          :retry="() => store.retryLibrary(id)"
+        />
       </template>
 
       <div v-if="isRunning" class="h-3px overflow-hidden rounded-999px bg-violet-soft-2">

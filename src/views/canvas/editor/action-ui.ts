@@ -21,7 +21,7 @@ export const ACTION_BTN = 'sx-btn !h-32px'
 
 /** 区域序号徽标（原型 .identify-box__badge / .identify-chip__badge：藤紫底白字 11px） */
 export const REGION_BADGE =
-  'inline-flex shrink-0 items-center justify-center min-w-16px h-16px px-4px rounded-8px bg-violet text-on-accent text-11px leading-16px font-600'
+  'inline-flex shrink-0 items-center justify-center min-w-16px h-16px px-4px rounded-8px bg-violet-solid text-on-accent text-11px leading-16px font-600'
 
 /** 状态条：进行中 / 失败 / 成功 */
 export const STATUS_INFO =

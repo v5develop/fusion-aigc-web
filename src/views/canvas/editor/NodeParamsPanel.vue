@@ -1144,6 +1144,7 @@ const footHint = computed(() => {
           <LibraryStatusHint
             v-if="node.data.status !== 'running' && node.data.status !== 'queued'"
             :status="node.data.libraryStatus"
+            :retry="() => store.retryLibrary(node.id)"
           />
         </div>
         <div v-if="(node.data as { resultText?: string }).resultText" class="mt-10px">

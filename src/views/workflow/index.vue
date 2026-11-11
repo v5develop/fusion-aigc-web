@@ -58,6 +58,7 @@ import {
 } from './schemas'
 import { isWorkflowTerminal, useWorkflowHistory } from './useWorkflowHistory'
 import { takeRefill } from '@/utils/refill-handoff'
+import { textScaleTheme } from '@/utils/textPrefs.ts'
 
 const route = useRoute()
 const router = useRouter()
@@ -617,8 +618,11 @@ const currentOutputs = computed(() => {
 })
 const stageOutput = computed(() => currentOutputs.value[activeOutput.value] ?? currentOutputs.value[0])
 
-/** 下拉与同面板输入框对齐：高 34、r4、#c9cfd6 描边，聚焦 violet 描边 + 3px 外环 */
-const selectThemeOverrides: NonNullable<SelectProps['themeOverrides']> = {
+/**
+ * 下拉与同面板输入框对齐：高 34、r4、#c9cfd6 描边，聚焦 violet 描边 + 3px 外环。
+ * 字号经 textScaleTheme 改成随「字体显示」缩放的 calc 串（局部主题不经全局覆盖，要自己包一层）
+ */
+const selectThemeOverrides: NonNullable<SelectProps['themeOverrides']> = textScaleTheme({
   peers: {
     InternalSelection: {
       borderRadius: '4px',
@@ -634,7 +638,7 @@ const selectThemeOverrides: NonNullable<SelectProps['themeOverrides']> = {
       caretColor: 'var(--xq-violet)',
     },
   },
-}
+})
 
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 /** 输入框（§4.1）：高 34、r4、#c9cfd6 描边 + 内影，hover #aeb6bf，聚焦 violet 描边 + 3px 外环 */

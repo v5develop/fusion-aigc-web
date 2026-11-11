@@ -67,6 +67,11 @@ export interface ITaskCenterItem {
   /** video / image / text */
   resultType: string | null
   coverUrl: string | null
+  /**
+   * 封面缩略图（列表卡片用，只增字段；旧后端不下发）：私有桶签名封面由服务端缩放（最长边 480、webp）后重签，
+   * 客户端追加处理参数会 403。无法派生时与 coverUrl 相同。只用于缩略展示，预览 / 下载仍用 coverUrl。
+   */
+  coverThumbnailUrl?: string | null
   resultText: string | null
   width: number | null
   height: number | null
@@ -142,6 +147,8 @@ export interface ITaskCenterAssetRef {
   id: number
   image: string
   cover: string
+  /** 封面缩略图（列表卡片用，只增字段）；无法派生时与 cover 相同 */
+  coverThumbnailUrl?: string | null
   /** 带水印副本地址（免费用户在工具页看到的是它；无副本时不下发） */
   watermark?: string | null
 }
@@ -159,6 +166,8 @@ export interface ITaskCenterTask {
   /** 进度来源（旧后端不下发时按 NONE 处理） */
   progressSource?: TaskProgressSource | string | null
   coverUrl: string
+  /** 封面缩略图（只增字段，口径同列表项）；无法派生时与 coverUrl 相同 */
+  coverThumbnailUrl?: string | null
   assetGroupId: string
   blocked: boolean
   assets: ITaskCenterAssetRef[]

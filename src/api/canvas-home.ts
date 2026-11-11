@@ -305,6 +305,14 @@ export function canvasRunCancel(requestId: string) {
   return post<ICanvasCancelResp>(`${PREFIX}/runs/${requestId}/cancel`, {})
 }
 
+/**
+ * 重新存入素材库（契约 3.4.3）：只对 libraryStatus=failed 的成功 run 有意义；成功返回 run（libraryStatus=pending），
+ * 之后照常低频轮询 GET /runs/{request_id}。不扣点；4002 = 距上次失败不到 1 分钟。业务失败不弹全局 toast，调用方自己提示。
+ */
+export function canvasRunLibraryRetry(requestId: string) {
+  return post<ICanvasRunResult>(`${PREFIX}/runs/${encodeURIComponent(requestId)}/library-retry`, {})
+}
+
 /** 选中候选：写回 run.selectedIndex，刷新后保持 */
 export function canvasSelectCandidate(canvasId: string, nodeId: string, data: { runId: string; index: number }) {
   return post<ICanvasRunResult>(`${PREFIX}/canvases/${canvasId}/nodes/${nodeId}/select-candidate`, data)

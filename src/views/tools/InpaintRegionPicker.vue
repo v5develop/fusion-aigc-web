@@ -245,7 +245,7 @@ const pillCls =
               :style="boxStyle"
             >
               <span
-                class="absolute left-0 top-0 px-6px h-18px flex items-center text-11px font-600 leading-none text-white bg-violet rounded-br-4px whitespace-nowrap"
+                class="absolute left-0 top-0 px-6px h-18px flex items-center text-11px font-600 leading-none text-white bg-violet-solid rounded-br-4px whitespace-nowrap"
                 >重绘区域</span
               >
               <span

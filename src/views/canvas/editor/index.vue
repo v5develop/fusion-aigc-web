@@ -23,6 +23,7 @@ import { Background } from '@vue-flow/background'
 import '@vue-flow/core/dist/style.css'
 import { llTheme } from '@/views/local-life/theme.ts'
 import { activeTheme } from '@/utils/themePrefs.ts'
+import { SITE_FONT_STACK, fontStackOf, textPrefs } from '@/utils/textPrefs.ts'
 import { palettes } from '@/theme/tokens.ts'
 import EditorIcon from './EditorIcon.vue'
 import CanvasTip from './CanvasTip.vue'
@@ -2063,6 +2064,7 @@ async function imageToDataUrl(url?: string): Promise<string> {
  * 导出整张画布 PNG（原型 exportCanvasPng 同法）：不克隆 DOM（克隆件不带样式，导出来是裸 HTML），
  * 而是按节点实际尺寸 + 数据重画一张 SVG——底色、分组底板（先画，不盖成员）、连线、节点卡（标题 / 副标题 /
  * 图片或文字或占位），再以 2× 栅格化成 PNG。范围取所有节点外接框外扩 80px，与当前视口无关。
+ * 配色固定浅色（导出图是分享出去的成品，不跟当前主题），文字字体跟用户字体偏好。
  */
 async function exportCanvasPng() {
   if (exportingPng.value) return
@@ -2101,7 +2103,10 @@ async function exportCanvasPng() {
     // 浏览器画布单边上限约 16384：超大画布按比例降低倍率
     const scale = Math.max(0.25, Math.min(2, 16000 / Math.max(width, height)))
     const pos = new Map(items.map((it) => [it.node.id, it]))
-    const font = "'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif"
+    // 字体跟用户的字体偏好（设置 → 文字）；默认 = 站点字体栈。导出图走 <img> 栅格化，只认本机已装字体，
+    // 本机没有的族名按栈依次回落。族名可能带双引号（quoteFamily 产物），写进 SVG 属性前必须转义（fontAttr）
+    const font = fontStackOf(textPrefs.value) || SITE_FONT_STACK
+    const fontAttr = escapeXml(font)
 
     const edgePaths = edges.value
       .map((edge) => {
@@ -2125,7 +2130,7 @@ async function exportCanvasPng() {
       .map(
         ({ node, x, y, w, h }) =>
           `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#875f9a" fill-opacity="0.06" stroke="#875f9a" stroke-opacity="0.35" stroke-dasharray="8 6"/>` +
-          `<text x="${x + 14}" y="${y + 26}" font-family="${font}" font-size="13" font-weight="600" fill="#1f2329" fill-opacity="0.66">${escapeXml(node.data.title || '模块')}</text>`,
+          `<text x="${x + 14}" y="${y + 26}" font-family="${fontAttr}" font-size="13" font-weight="600" fill="#1f2329" fill-opacity="0.66">${escapeXml(node.data.title || '模块')}</text>`,
       )
       .join('')
 
@@ -2149,7 +2154,7 @@ async function exportCanvasPng() {
             .slice(0, maxLines)
             .map(
               (line, i) =>
-                `<text x="${bx + 4}" y="${by + 14 + i * 18}" font-family="${font}" font-size="12" fill="#4b5563">${escapeXml(line)}</text>`,
+                `<text x="${bx + 4}" y="${by + 14 + i * 18}" font-family="${fontAttr}" font-size="12" fill="#4b5563">${escapeXml(line)}</text>`,
             )
             .join('')
         } else {
@@ -2160,11 +2165,11 @@ async function exportCanvasPng() {
               : '空节点'
           body =
             `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="6" fill="#f3f4f5" stroke="#e5e1e4" stroke-dasharray="5 5"/>` +
-            `<text x="${bx + bw / 2}" y="${by + bh / 2 + 4}" text-anchor="middle" font-family="${font}" font-size="12" fill="#8a9099">${escapeXml(label)}</text>`
+            `<text x="${bx + bw / 2}" y="${by + bh / 2 + 4}" text-anchor="middle" font-family="${fontAttr}" font-size="12" fill="#8a9099">${escapeXml(label)}</text>`
         }
         return (
           `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#ffffff" stroke="#e5e1e4" filter="url(#card-shadow)"/>` +
-          `<text x="${x + 10}" y="${y + 23}" font-family="${font}" font-size="13" font-weight="600" fill="#1f2329">${escapeXml(node.data.title || '节点')}</text>` +
+          `<text x="${x + 10}" y="${y + 23}" font-family="${fontAttr}" font-size="13" font-weight="600" fill="#1f2329">${escapeXml(node.data.title || '节点')}</text>` +
           `<line x1="${x}" y1="${y + headerH}" x2="${x + w}" y2="${y + headerH}" stroke="#eef0f2"/>${body}</g>`
         )
       }),
@@ -2637,6 +2642,10 @@ useFileDropPaste(stageRef, {
               >
                 <EditorIcon name="image" :size="14" /> {{ exportingPng ? '正在导出…' : '导出画布 PNG' }}
               </button>
+              <!-- 导出的图是要发给别人的成品：不论当前浅色 / 深色，一律按浅色样式画（见 exportCanvasPng） -->
+              <p class="m-0 mt-2px px-10px pt-6px pb-4px border-t border-solid border-line-soft text-11px leading-16px text-muted">
+                导出的图片始终使用浅色样式，便于分享
+              </p>
             </div>
           </div>
           <button

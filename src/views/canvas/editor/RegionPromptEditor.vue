@@ -26,7 +26,7 @@ let savedRange: Range | null = null
 const CHIP =
   'group relative inline-flex items-center gap-4px max-w-full mx-2px px-6px py-1px rounded-full border border-solid border-line bg-white text-11px leading-16px align-middle select-none'
 const CHIP_BADGE =
-  'flex shrink-0 items-center justify-center min-w-14px h-14px px-3px rounded-7px bg-violet text-white text-11px leading-none'
+  'flex shrink-0 items-center justify-center min-w-14px h-14px px-3px rounded-7px bg-violet-solid text-white text-11px leading-none'
 const CHIP_CROP = 'block shrink-0 w-16px h-16px overflow-hidden rounded-3px bg-no-repeat'
 const CHIP_LABEL = 'max-w-72px overflow-hidden whitespace-nowrap text-ellipsis text-ink-2'
 const CHIP_CLOSE =

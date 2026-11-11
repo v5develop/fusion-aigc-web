@@ -311,7 +311,11 @@ function onColorFix(e: MouseEvent) {
       >
         成功 {{ candidates.length }}/{{ data.requestedCount }} · 只计成功张数
       </div>
-      <LibraryStatusHint v-if="!isRunning && candidates.length" :status="data.libraryStatus" />
+      <LibraryStatusHint
+        v-if="!isRunning && candidates.length"
+        :status="data.libraryStatus"
+        :retry="() => store.retryLibrary(id)"
+      />
 
       <!--
         候选缩略图（原型 .wf-model-node__candidate）：缩略图本身点一下设为输出；悬停出 2×2 操作

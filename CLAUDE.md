@@ -64,6 +64,7 @@ useDebounce(reactiveObj, callback, 300)
 - **浅色 / 深色主题（2026-11-11）**：颜色唯一来源 `src/theme/tokens.ts`（浅色 = 原色值，深色另配），uno preflight 注入成 `--xq-*` 变量，theme.colors / boxShadow 全部指向变量；Naive 主题由 `src/theme/naive.ts` 按 `activeTheme` 响应式生成（深色叠 `darkTheme`）。偏好在 `src/utils/themePrefs.ts`（浅色 / 深色 / 跟随系统 / 按时间，按账号存本机），`index.html` 首帧内联脚本写 `data-theme`（由 vite 插件 `xq-theme-boot` 注入，判定函数与运行时共用 `src/theme/theme-decide.ts` 的 `decideTheme`，必须自包含）；离散 API（`createDiscreteApi`）要传 `discreteConfigProviderProps`，否则深色下弹浅色卡
   - **新代码不写死色**：用令牌类（`bg-surface` `bg-surface2/3` `bg-page` `bg-overlay` `text-ink/ink-2/muted/placeholder` `border-line/control` `shadow-pop`…）或 Less 里 `var(--xq-ink)`、`rgb(var(--xq-ink-rgb) / .5)`；JS 里要真色值用 `palettes[activeTheme.value]`
   - 桥接：`bg-white` / `from-white` / `border-white`（不透明度 ≥ 60）= 卡面 surface，`text-white` 不变；`text-violet` / `text-danger` / `text-success` / `text-warning` / `text-violet-press` 自动取 `*-fg` 文字档（深色提亮）。真要死白写 `bg-#fff`
+  - **压白字的实色藤紫底用 `bg-violet-solid`**（徽标 / 计数角标 / 选中分段 / 勾选框 + `text-white` / `text-on-accent`）：`violet` 在深色提亮给描边 / 开关用，白字只有 3.81；`violet-solid` 白字浅色 5.08 / 深色 4.82。描边、焦点、进度条等不带字的仍用 `violet`
   - 手写 `box-shadow` 里的墨色 / 白色顶光由构建期改写跟主题走（`src/theme/shadow-rewrite.ts`，PostCSS + uno postprocess），不用逐处改
   - 子树可锁定主题：加 `data-theme="dark"`（校色全屏）/ `"light"`（设置页预览卡）；图片 / 视频内容不随主题变
 - 老页面保持亮紫 #8e66f9 与独立 less：全局变量定义在 src/assets/variables.less，页面级样式使用独立 .less 文件，组件样式使用 `<style scoped lang="less">`
@@ -89,6 +90,8 @@ useDebounce(reactiveObj, callback, 300)
 - **资产角钮** `src/components/creation/AssetCornerButton.vue`：「从资产库添加」云钮全站唯一一份（视觉 20 圆、命中 32 / 触屏 40，默认挂宿主右下角外沿 -12/-12，`:corner="false"` 时位置交给调用方）；叠片 / 片格的资产入口一律用它，不再在片旁挂「从资产库添加」文字钮。书本图标统一 `src/components/icons/BookOutlineIcon.vue`（ionicons BookOutline，15）
 - **底部设置行** `CreationSettingsRow` 的 `layout`：grid（默认两列）/ stack（模型、设置各占一整行上下叠放，弹层贴自己那行、与行同宽）/ auto（行宽 < 420 或「标签 + 完整取值」超半宽时叠放）；工具页视频类 stack、其余 auto。设置弹层分段选项 > 4 个时等宽 4 列（视频比例七档 4+3）
 - **柱列滑条** `src/components/creation/BarSlider.vue`（原型 WakeSlider 浮层档：20 柱、柱高 14、值带单位写右侧、无端点刻度；←/→/Home/End、role=slider）：时长这类逐档数值用它，不用原生 range
+- **重新存入素材库** `src/components/LibraryRetryButton`：画布 run / 商拍任务 `libraryStatus=failed` 时渲染，`action` 由调用方给（画布 `store.retryLibrary(nodeId)`、商拍 `useStudioHistory().retryLibrary(taskId)`，写回 pending 并接上原有入库轮询）；按钮自管加载态与 4002 提示（`src/utils/library-retry.ts`）
+- **卡片缩略图**：Java 下发 `coverThumbnailUrl`（任务中心、`/asset/all`）时用 `cardThumb(original, thumb, w, h)`（`src/utils/oss.ts`）；与原地址相同 = 服务端没派生，回到 `ossResize`。预览 / 下载仍用原地址
 - **回填守卫**：`/tools/ai-digital-model`、`/tools/ai-posture-fission` 默认转商拍工作室完整版（`studioToolRedirect`）；只有 `hasRefill` 发现 2 分钟内发给简版工具的「做同款 / 参数回填」交接时才放行。新增这类转向要同样先看交接
 
 ### 路由要点

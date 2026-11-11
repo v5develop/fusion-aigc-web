@@ -12,8 +12,26 @@ const { data } = defineProps<{
     mediaType: 'image' | 'video'
     /** 视频封面。由后端异步抽帧生成后回填，尚未回填时可能缺省或等于 resultUrl（见 videoPoster） */
     coverUrl?: string
+    /** 封面缩略图（Java 服务端派生，只增字段）：与 coverUrl 不同时才是真缩略图 */
+    coverThumbnailUrl?: string | null
   }
 }>()
+
+/** 预览 / 下载用的原图（带展示水印） */
+const originalSrc = computed(() => withWatermark(data.resultUrl))
+/** 缩略图加载失败就退回原图（只退一次；换了资产重置） */
+const thumbFailed = ref(false)
+/**
+ * 卡片展示用：后端给了真缩略图（≠ coverUrl，私有桶签名封面服务端缩放后重签）就用它，
+ * 否则保持原来的展示（原图 + 展示水印）。点开预览始终是原图。
+ */
+const cardSrc = computed(() => {
+  const t = data.coverThumbnailUrl
+  return t && t !== data.coverUrl && !thumbFailed.value ? t : originalSrc.value
+})
+function onImageError() {
+  if (cardSrc.value !== originalSrc.value) thumbFailed.value = true
+}
 
 /**
  * 视频 poster。
@@ -29,7 +47,10 @@ const videoPoster = computed(() => (data.coverUrl && data.coverUrl !== data.resu
 const videoError = ref(false)
 watch(
   () => data.resultUrl,
-  () => (videoError.value = false),
+  () => {
+    videoError.value = false
+    thumbFailed.value = false
+  },
 )
 
 // 管理模式开关 + 已选资产 id 集合（删除按 id、下载按 resultUrl，故选择以 id 为准）
@@ -54,11 +75,13 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
     <template v-if="data.resultUrl">
       <n-image
         v-if="data.mediaType === 'image'"
-        :src="withWatermark(data.resultUrl)"
+        :src="cardSrc"
+        :preview-src="originalSrc"
         alt=""
         width="100%"
         height="100%"
         object-fit="cover"
+        @error="onImageError"
       >
         <template #error>
           <!-- 加载失败：网络原因 -->

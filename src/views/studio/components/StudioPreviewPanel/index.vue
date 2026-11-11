@@ -59,6 +59,7 @@ import { goUploadImage } from '@/api/go-upload.ts'
 import { assetLibAddVersion } from '@/api/asset-library.ts'
 import type { StudioBatchDetail, StudioTask } from '@/api/studio-types.ts'
 import IconButton from '@/components/IconButton/index.vue'
+import LibraryRetryButton from '@/components/LibraryRetryButton/index.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import type { LightboxItem } from '@/components/MediaLightbox/index.vue'
 import ToolImageCompare from '@/views/tools/ToolImageCompare.vue'
@@ -124,6 +125,12 @@ const emit = defineEmits<{
 
 const message = useMessage()
 const ctl = props.history
+
+/** 「重新存入素材库」（§5.2.3）：只在选中成品 libraryStatus=failed 时渲染；失败由按钮提示 */
+async function retrySelectedLibrary() {
+  const task = selectedSuccess.value
+  if (task) await ctl.retryLibrary(task.taskId)
+}
 
 // ---------------- 批次操作 ----------------
 
@@ -1099,13 +1106,15 @@ const pillCls =
             />
             {{ LIBRARY_PENDING_HINT }}
           </div>
-          <div
-            v-else-if="libraryState === 'failed'"
-            class="flex items-center gap-6px text-12px leading-18px text-warning"
-            title="成品仍可查看和下载，但素材库里没有这条，不能存为资产"
-          >
-            <span class="shrink-0 w-6px h-6px rounded-full bg-warning" aria-hidden="true" />
-            {{ LIBRARY_FAILED_HINT }}
+          <div v-else-if="libraryState === 'failed'" class="flex flex-wrap items-center gap-x-10px gap-y-6px">
+            <span
+              class="inline-flex items-center gap-6px text-12px leading-18px text-warning"
+              title="成品仍可查看和下载，但素材库里没有这条，不能存为资产"
+            >
+              <span class="shrink-0 w-6px h-6px rounded-full bg-warning" aria-hidden="true" />
+              {{ LIBRARY_FAILED_HINT }}
+            </span>
+            <LibraryRetryButton :action="retrySelectedLibrary" />
           </div>
         </div>
 
