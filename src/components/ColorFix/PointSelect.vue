@@ -9,7 +9,10 @@
  *       正 / 负点与框一起交给解码器，3 张候选里挑「与提示点最一致、再看 IoU」的一张（见 point-segment.worker.ts）。</li>
  *   <li>钢笔（P）：单击加锚点（直线），按住拖动拉出曲线手柄（三次贝塞尔）；点起点 / 双击 / Enter 闭合，
  *       Backspace 删上一个锚点，Esc 放弃当前路径。</li>
- *   <li>自由（L）：按住拖动画轮廓，松开自动闭合并轻微平滑。</li>
+ *   <li>自由（L）：按住拖动画轮廓，松开自动闭合并轻微平滑。打开「吸附边缘」= 磁性套索（live-wire，见 magnetic-lasso.ts）：
+ *       单击放第一个锚点，移动指针时路径自动沿最近的边缘走；路径稳定一段后自动落锚点，单击手动加锚点，Backspace 删上一个，
+ *       双击 / 点起点 / Enter 闭合（闭合段同样吸附），Esc 放弃；按住 Alt 临时改手绘（拖动 = 自由线，单击 = 直线段）。
+ *       触屏：轻点 = 锚点，按住拖动预览、松手落锚点，第一下长按 = 排除，双击闭合。</li>
  *   <li>魔棒 / 颜色范围（W，2026-11-11）：单击一个颜色，按 OKLab 感知距离选相近颜色（容差滑杆）；「仅连续区域」从点击处泛洪，
  *       关掉 = 全图同色；选中 / 排除与钢笔、自由同口径合成，软边。拖容差滑杆时实时预览最近一次魔棒，松手才记进撤销栈。</li>
  *   <li>画笔（B）：在合成后的选区上直接涂（添加）/ 擦（擦除），大小 + 硬度；[ / ] 调大小。</li>
@@ -63,6 +66,16 @@ import {
   type WandOp,
 } from './selection-session.ts'
 import { markPointSegmentBroken, POINT_UNSUPPORTED_HINT } from './point-support.ts'
+import { disposeEdgeCost, loadEdgeCost } from './edge-cost.ts'
+import {
+  boxAround,
+  coolStable,
+  cooledIndex,
+  LiveWire,
+  smoothGridPath,
+  snapTarget,
+  type EdgeCostMap,
+} from './magnetic-lasso.ts'
 import {
   combineMasks,
   contoursToPath,
@@ -154,7 +167,7 @@ const ALL_TOOLS: { key: Tool; label: string; kbd: string; hint: string; icon: st
     key: 'lasso',
     label: '自由',
     kbd: 'L',
-    hint: '自由：按住拖动画出轮廓，松开自动闭合',
+    hint: '自由：按住拖动画出轮廓，松开自动闭合；打开「吸附边缘」沿物体边缘自动贴合',
     icon: 'M7 22a5 5 0 0 1-2-4M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1M5 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   },
   {
@@ -186,7 +199,7 @@ const TOOL_TIPS: Record<Tool, string> = {
   point: '单击加入选区；切到「排除 −」或按住 Alt / Shift 单击排除；拖动框选；点标记可删除',
   marquee: '拖出选框；Shift 正方形 / 正圆，Alt 从中心拉出；再按 M 在矩形与椭圆间切换',
   pen: '单击加锚点，按住拖动拉出曲线；点起点 / 双击 / Enter 闭合。⌘/Ctrl + 单击路径可选中再编辑：拖锚点 / 手柄（Alt 断开对称），双击路径加锚点，Delete 删锚点',
-  lasso: '按住拖动画出轮廓，松开自动闭合',
+  lasso: '按住拖动画出轮廓，松开自动闭合；打开「吸附边缘」后单击起点、沿物体边缘移动即可自动贴边',
   move: '拖动画面（也可按住空格 / 鼠标中键）；单击选区可选中，Delete 删除；选中钢笔路径后可拖锚点 / 手柄编辑',
 }
 
@@ -238,14 +251,15 @@ const isEmpty = computed(() => {
     !d.post.smooth
   )
 })
-const canUndo = computed(() => penNodes.value.length > 0 || hIndex.value > 0)
-const canRedo = computed(() => !penNodes.value.length && hIndex.value < history.value.length - 1)
-const canClear = computed(() => !isEmpty.value || penNodes.value.length > 0)
+const canUndo = computed(() => penNodes.value.length > 0 || magActive.value || hIndex.value > 0)
+const canRedo = computed(() => !penNodes.value.length && !magActive.value && hIndex.value < history.value.length - 1)
+const canClear = computed(() => !isEmpty.value || penNodes.value.length > 0 || magActive.value)
 /** Esc 先由弹窗内部消化（放弃路径 / 取消选中），这时不让 n-modal 关窗 */
 const escBusy = computed(
   () =>
     penNodes.value.length > 0 ||
     lassoPts.value.length > 0 ||
+    magActive.value ||
     selectedId.value !== null ||
     !!liveStroke.value ||
     !!marqueeDraft.value ||
@@ -255,6 +269,10 @@ const escBusy = computed(
 function undo() {
   if (penNodes.value.length) {
     penNodes.value = penNodes.value.slice(0, -1)
+    return
+  }
+  if (magActive.value) {
+    magBack()
     return
   }
   if (hIndex.value > 0) hIndex.value -= 1
@@ -270,6 +288,7 @@ function redo() {
 function clearAll() {
   penNodes.value = []
   lassoPts.value = []
+  magCancel()
   selectedId.value = null
   if (!isEmpty.value) commit(EMPTY)
 }
@@ -294,6 +313,8 @@ function setTool(t: Tool) {
   if (t === tool.value) return
   // 换工具时，已有 3 个以上锚点的钢笔路径自动闭合，少于 3 个的放弃
   if (penNodes.value.length) closePen()
+  // 磁性路径同理：够闭合就闭合（magClose 自己丢掉太小的）
+  if (magActive.value) magClose()
   tool.value = t
   hover.value = null
   if (t === 'point') ensureModel()
@@ -467,6 +488,18 @@ const status = computed(() => {
     if (decoding.value) return '正在计算选区…'
     if (doc.value.points.length && !hasPositive.value) return '只有排除点：先点选要保留的物体，或用钢笔 / 自由圈出区域'
   }
+  if (tool.value === 'lasso' && magnetic.value) {
+    if (edgeFailed.value) return '这张图片读不了像素，吸附边缘用不了，已按普通自由套索画'
+    if (magActive.value) {
+      if (magAlt.value) return '临时手绘：拖动画自由线，单击画直线；松开 Alt 回到吸附'
+      if (magNearStart.value) return '单击闭合选区'
+      return edgeLoading.value && !edgeMap.value
+        ? '正在分析图片边缘…（先按直线连接）'
+        : '沿边缘移动，路径自动吸附并落锚点；单击加锚点，Backspace 删上一个，双击 / 点起点 / Enter 闭合，Esc 放弃；按住 Alt 临时手绘'
+    }
+    if (edgeLoading.value) return '正在分析图片边缘…'
+    return '吸附边缘：单击物体边缘放下起点，然后沿边缘移动；Alt / Shift + 单击起点 = 排除'
+  }
   if (tool.value === 'pen' && penNodes.value.length) {
     return penNodes.value.length < 3
       ? `已放 ${penNodes.value.length} 个锚点，至少 3 个才能闭合`
@@ -566,6 +599,8 @@ onBeforeUnmount(() => {
   seg.value = null
   if (outlineTimer) clearTimeout(outlineTimer)
   if (sessionPriorUrl) URL.revokeObjectURL(sessionPriorUrl)
+  if (magRaf) cancelAnimationFrame(magRaf)
+  disposeEdgeCost()
 })
 
 // ---------------- 推理：最新优先，进行中有新操作就再跑一轮 ----------------
@@ -1198,6 +1233,7 @@ type Gesture =
   | { kind: 'point'; id: number; cx: number; cy: number; p: Pt; neg: boolean; touch: boolean; marker: number }
   | { kind: 'pen'; id: number; cx: number; cy: number; index: number; dragging: boolean }
   | { kind: 'lasso'; id: number; cx: number; cy: number }
+  | { kind: 'magnetic'; id: number; cx: number; cy: number; touch: boolean; moved: boolean; started: boolean; free: boolean }
   | { kind: 'wand'; id: number; cx: number; cy: number; p: Pt; neg: boolean }
   | { kind: 'brush'; id: number; cx: number; cy: number }
   | { kind: 'marquee'; id: number; cx: number; cy: number; start: Pt; last: Pt; square: boolean; center: boolean }
@@ -1232,6 +1268,13 @@ function capture(e: PointerEvent) {
 function abortGesture() {
   clearTimeout(pressTimer)
   if (gesture?.kind === 'lasso') lassoPts.value = []
+  if (gesture?.kind === 'magnetic') {
+    magFreehand = null
+    // 这一下刚起的路径（只有起点）被捏合打断：不算
+    if (gesture.started && magSeeds.value.length === 1) magCancel()
+    else if (gesture.touch) magLive.value = []
+    else magSchedule()
+  }
   if (gesture?.kind === 'brush') liveStroke.value = null
   if (gesture?.kind === 'marquee') marqueeDraft.value = null
   if (gesture?.kind === 'penEdit') penDraft.value = null
@@ -1383,10 +1426,62 @@ function onPointerDown(e: PointerEvent) {
     gesture = { kind: 'pen', id: e.pointerId, cx: e.clientX, cy: e.clientY, index: nodes.length, dragging: false }
     return
   }
+  // 自由 · 吸附边缘（磁性套索）
+  if (magOn.value) {
+    magDown(e, p, invert, touch)
+    return
+  }
   // 自由
   lassoMode.value = (mode.value === 'sub') !== invert ? 'sub' : 'add'
   lassoPts.value = [p]
   gesture = { kind: 'lasso', id: e.pointerId, cx: e.clientX, cy: e.clientY }
+}
+
+let lastMagDown = { t: 0, x: 0, y: 0 }
+/**
+ * 磁性套索按下：没有路径 = 起点（Alt / Shift 或触屏长按 = 排除）；有路径时——双击 / 点起点 = 闭合，
+ * Alt = 手绘（拖动）/ 直线（单击），鼠标单击 = 在这里落锚点，触屏 = 先预览、松手落锚点。
+ */
+function magDown(e: PointerEvent, p: Pt, invert: boolean, touch: boolean) {
+  ensureEdgeMap()
+  const now = performance.now()
+  const dbl = now - lastMagDown.t < DOUBLE_MS && Math.hypot(e.clientX - lastMagDown.x, e.clientY - lastMagDown.y) < DRAG_PX * 2
+  lastMagDown = { t: now, x: e.clientX, y: e.clientY }
+  magAlt.value = e.altKey
+  const base = { kind: 'magnetic' as const, id: e.pointerId, cx: e.clientX, cy: e.clientY, touch, moved: false }
+  if (!magActive.value) {
+    selectedId.value = null
+    magStart(p, (mode.value === 'sub') !== invert ? 'sub' : 'add')
+    gesture = { ...base, started: true, free: false }
+    clearTimeout(pressTimer)
+    if (touch) {
+      // 触屏第一下长按 = 这条路径按排除（与点选「长按 = 排除」一致）
+      pressTimer = setTimeout(() => {
+        if (gesture?.kind !== 'magnetic' || gesture.moved || magSeeds.value.length !== 1) return
+        magMode.value = mode.value === 'sub' ? 'add' : 'sub'
+        navigator.vibrate?.(10)
+      }, LONG_PRESS_MS)
+    }
+    return
+  }
+  const g = toGrid(p)
+  updateNearStart(g)
+  if (dbl || magNearStart.value) {
+    // 双击的第一下已经落了锚点，这里直接闭合
+    magClose()
+    return
+  }
+  magCursor = g
+  if (e.altKey) {
+    // Alt 拖动 = 手绘：记轨迹，松手成一段
+    magFreehand = []
+    gesture = { ...base, started: false, free: true }
+    magUpdate()
+    return
+  }
+  if (!touch) magAddSeed(p)
+  else magUpdate()
+  gesture = { ...base, started: false, free: false }
 }
 
 function onPointerMove(e: PointerEvent) {
@@ -1397,10 +1492,16 @@ function onPointerMove(e: PointerEvent) {
   }
   const g = gesture
   if (!g) {
-    // 悬停：钢笔橡皮筋 / 标记高亮
+    // 悬停：钢笔橡皮筋 / 标记高亮 / 磁性套索实时路径
     if (e.pointerType === 'mouse') {
       const p = toImage(e)
-      hover.value = tool.value === 'pen' || tool.value === 'brush' ? p : null
+      hover.value = tool.value === 'pen' || tool.value === 'brush' || (tool.value === 'lasso' && magOn.value) ? p : null
+      if (tool.value === 'lasso' && magActive.value && p) {
+        magAlt.value = e.altKey
+        magCursor = toGrid(p)
+        updateNearStart(magCursor)
+        magSchedule()
+      }
       hoverMarker.value = tool.value === 'point' && p ? pointAt(p) : -1
       hoverEdit.value =
         p && selectedPen.value && !penNodes.value.length && (tool.value === 'pen' || tool.value === 'move')
@@ -1425,6 +1526,21 @@ function onPointerMove(e: PointerEvent) {
   if (e.pointerId !== g.id) return
   const far = Math.hypot(e.clientX - g.cx, e.clientY - g.cy) >= DRAG_PX
   if (g.kind === 'wand') return
+  if (g.kind === 'magnetic') {
+    const p = toImage(e)
+    if (!p) return
+    if (far) g.moved = true
+    if (e.pointerType === 'mouse') hover.value = p
+    const c = toGrid(p)
+    magCursor = c
+    updateNearStart(c)
+    if (g.free && magFreehand) {
+      const last = magFreehand[magFreehand.length - 1] ?? lastSeed()
+      if (!last || Math.hypot(last.x - c.x, last.y - c.y) >= 2 * gridPerScreen.value) magFreehand.push(c)
+    } else magAlt.value = e.altKey
+    magSchedule()
+    return
+  }
   if (g.kind === 'marquee') {
     const q = toImage(e, true)
     if (!q) return
@@ -1558,6 +1674,30 @@ function onPointerUp(e: PointerEvent) {
     if (Math.hypot(e.clientX - g.cx, e.clientY - g.cy) < DRAG_PX) addWand(g.p, g.neg ? 'sub' : 'add')
     return
   }
+  if (g.kind === 'magnetic') {
+    if (!magActive.value) return
+    const p = toImage(e, true)
+    if (g.free) {
+      // Alt 手绘 / 直线：轨迹（没拖开 = 一条直线到这里）成一段
+      if (p) {
+        const c = toGrid(p)
+        if (magFreehand) magFreehand.push(c)
+        const seg = [lastSeed()!, ...(magFreehand?.length ? magFreehand : [c])]
+        pushSegment(seg)
+      }
+      // 松在舞台外也要清掉轨迹，否则 Alt 还按着时实时段一直挂着这段旧轨迹
+      magFreehand = null
+      magAlt.value = e.altKey
+      magSchedule()
+      return
+    }
+    // 触屏：松手处落锚点（起点那一下除外：拖开了也落）；鼠标按住拖动后松手同样落锚点
+    if (p && !g.started && g.touch) magAddSeed(p)
+    else if (p && g.moved) magAddSeed(p)
+    if (g.touch) magLive.value = []
+    else magSchedule()
+    return
+  }
   if (g.kind === 'brush') {
     const st = liveStroke.value
     liveStroke.value = null
@@ -1619,6 +1759,344 @@ function cancelPen() {
   hover.value = null
 }
 
+// ================= 磁性套索（自由 + 吸附边缘，live-wire） =================
+
+/** 偏好（开关 / 宽度 / 对比度）按浏览器记住，与查看方式同口径 */
+const MAG_KEY = 'colorfix:lasso-magnetic'
+interface MagPrefs {
+  on: boolean
+  width: number
+  contrast: number
+}
+function readMagPrefs(): MagPrefs {
+  const def: MagPrefs = { on: false, width: 10, contrast: 10 }
+  try {
+    const raw = localStorage.getItem(MAG_KEY)
+    if (!raw) return def
+    const v = JSON.parse(raw) as Partial<MagPrefs>
+    const num = (x: unknown, lo: number, hi: number, d: number) =>
+      typeof x === 'number' && Number.isFinite(x) ? Math.min(hi, Math.max(lo, Math.round(x))) : d
+    return { on: v.on === true, width: num(v.width, 1, 40, def.width), contrast: num(v.contrast, 1, 60, def.contrast) }
+  } catch {
+    return def
+  }
+}
+const magPrefs = readMagPrefs()
+/** 吸附边缘开关 */
+const magnetic = ref(magPrefs.on)
+/** 宽度：指针周围多大范围内找边（网格像素，长边 1024 计） */
+const magWidth = ref(magPrefs.width)
+/** 对比度：梯度低于它（%）当没有边 */
+const magContrast = ref(magPrefs.contrast)
+watch([magnetic, magWidth, magContrast], ([on, width, contrast]) => {
+  try {
+    localStorage.setItem(MAG_KEY, JSON.stringify({ on, width, contrast }))
+  } catch {
+    /* 隐私模式：只是记不住 */
+  }
+})
+
+/** 搜索窗口半径（网格像素）：live-wire 只在锚点周围这么大的方框里展开 */
+const MAG_WINDOW = 192
+/** 指针离锚点超过这么远（网格像素）就强制落锚点，窗口不至于不够用 */
+const MAG_FORCE_DIST = 140
+/** 路径冷却：前缀连续这么多次更新不变即可固化 */
+const MAG_COOL_K = 10
+/** 自动落锚点的最短间距（网格像素） */
+const MAG_MIN_SEG = 28
+/** 闭合段搜索窗口外扩（网格像素） */
+const MAG_CLOSE_MARGIN = 32
+
+const edgeMap = shallowRef<EdgeCostMap | null>(null)
+const edgeLoading = ref(false)
+const edgeFailed = ref(false)
+/** 磁性套索可用（开关开着 + 读得了像素） */
+const magOn = computed(() => magnetic.value && !edgeFailed.value)
+
+function ensureEdgeMap() {
+  if (!magnetic.value || tool.value !== 'lasso' || edgeMap.value || edgeLoading.value || edgeFailed.value) return
+  // 舞台上的图还没加载完：等它的 load（onStageImgLoad）再来
+  const el = imgEl.value
+  if (!el || !el.complete || !el.naturalWidth) return
+  const lg = gridLab()
+  if (!lg) {
+    edgeFailed.value = true
+    return
+  }
+  edgeLoading.value = true
+  loadEdgeCost({ key: src, lab: lg.lab, width: lg.w, height: lg.h })
+    .then((m) => {
+      if (m.width !== lg.w || m.height !== lg.h) return
+      edgeMap.value = m
+      // 地图到之前已经起了路径：给最后一个锚点补上 live-wire
+      if (magSeeds.value.length) {
+        resetWire()
+        magSchedule()
+      }
+    })
+    .catch(() => {
+      edgeFailed.value = true
+    })
+    .finally(() => {
+      edgeLoading.value = false
+    })
+}
+watch([magnetic, tool, natural], ensureEdgeMap)
+
+/** 正在画的磁性路径：锚点（网格坐标）、已固化的段（网格坐标，每段从上一个锚点到下一个锚点）、实时段 */
+const magSeeds = shallowRef<Pt[]>([])
+const magSegs = shallowRef<Pt[][]>([])
+const magLive = shallowRef<Pt[]>([])
+const magMode = ref<ShapeMode>('add')
+const magActive = computed(() => magSeeds.value.length > 0)
+/** 指针（网格坐标）；null = 不在舞台上 */
+let magCursor: Pt | null = null
+/** 按住 Alt：临时手绘 / 直线 */
+const magAlt = ref(false)
+/** Alt + 拖动时记的手绘点（网格坐标） */
+let magFreehand: Pt[] | null = null
+let wire: LiveWire | null = null
+let wirePrev: Pt[] = []
+let wireStable: Uint16Array | null = null
+let magRaf = 0
+/** 最近一次实时路径耗时（ms，性能自查用） */
+const magStats = { lastMs: 0, maxMs: 0, expanded: 0 }
+
+function gridSize() {
+  return gridOf(POINT_SEGMENT_INPUT_SIDE)
+}
+function toGrid(p: Pt): Pt {
+  const { w: nw, h: nh } = natural.value
+  const g = gridSize()
+  return {
+    x: Math.min(g.w - 1, Math.max(0, (p.x / nw) * g.w - 0.5)),
+    y: Math.min(g.h - 1, Math.max(0, (p.y / nh) * g.h - 0.5)),
+  }
+}
+function fromGrid(p: Pt): Pt {
+  const { w: nw, h: nh } = natural.value
+  const g = gridSize()
+  return { x: ((p.x + 0.5) / g.w) * nw, y: ((p.y + 0.5) / g.h) * nh }
+}
+/** 屏幕像素 → 网格像素 */
+const gridPerScreen = computed(() => {
+  const nw = natural.value.w
+  return nw ? imgPerScreen.value * (gridSize().w / nw) : 1
+})
+
+function lastSeed(): Pt | null {
+  const s = magSeeds.value
+  return s.length ? s[s.length - 1]! : null
+}
+
+function resetWire() {
+  const map = edgeMap.value
+  const s = lastSeed()
+  wirePrev = []
+  wireStable = null
+  if (!map || !s) {
+    wire = null
+    return
+  }
+  wire = new LiveWire(map, magContrast.value / 100)
+  const g = { x: Math.round(s.x), y: Math.round(s.y) }
+  wire.start(g.x, g.y, boxAround(g, g, MAG_WINDOW))
+}
+
+/** 实时段：锚点 → 指针（吸附 / Alt 手绘 / 直线） */
+function liveSegmentTo(c: Pt): Pt[] {
+  const s = lastSeed()
+  if (!s) return []
+  if (magAlt.value || !wire || !edgeMap.value) {
+    if (magFreehand && magFreehand.length) return [s, ...magFreehand]
+    return [s, c]
+  }
+  const t = snapTarget(edgeMap.value, c.x, c.y, magWidth.value, magContrast.value / 100)
+  return wire.pathTo(t.x, t.y)
+}
+
+function magUpdate() {
+  const c = magCursor
+  if (!magActive.value || !c) {
+    magLive.value = []
+    return
+  }
+  const t0 = performance.now()
+  let path = liveSegmentTo(c)
+  // 自动落锚点：冷却（前缀稳定）或离锚点太远
+  if (wire && !magAlt.value && path.length > 1) {
+    wireStable = coolStable(wirePrev, wireStable, path)
+    wirePrev = path
+    const s = path[0]!
+    const far = Math.hypot(c.x - s.x, c.y - s.y) > MAG_FORCE_DIST
+    let j = cooledIndex(wireStable, MAG_COOL_K)
+    if (j >= 0 && Math.hypot(path[j]!.x - s.x, path[j]!.y - s.y) < MAG_MIN_SEG) j = -1
+    if (j < 0 && far) j = Math.floor(path.length * 0.6)
+    if (j > 0) {
+      pushSegment(path.slice(0, j + 1))
+      path = liveSegmentTo(c)
+      wirePrev = path
+      wireStable = null
+    }
+  }
+  magLive.value = path
+  const ms = performance.now() - t0
+  magStats.lastMs = ms
+  magStats.maxMs = Math.max(magStats.maxMs, ms)
+  magStats.expanded = wire?.expanded ?? 0
+}
+function magSchedule() {
+  if (magRaf) return
+  magRaf = requestAnimationFrame(() => {
+    magRaf = 0
+    magUpdate()
+  })
+}
+
+/** 固化一段（从当前锚点出发），段尾成为新锚点 */
+function pushSegment(seg: Pt[]) {
+  if (seg.length < 2) return
+  const end = seg[seg.length - 1]!
+  magSegs.value = [...magSegs.value, seg]
+  magSeeds.value = [...magSeeds.value, { x: end.x, y: end.y }]
+  resetWire()
+}
+
+function magStart(p: Pt, m: ShapeMode) {
+  magMode.value = m
+  magSegs.value = []
+  magLive.value = []
+  magFreehand = null
+  const g = toGrid(p)
+  magSeeds.value = [{ x: Math.round(g.x), y: Math.round(g.y) }]
+  magCursor = g
+  resetWire()
+}
+
+/** 在 p 处落锚点：先把实时段算到 p 再固化 */
+function magAddSeed(p: Pt) {
+  const g = toGrid(p)
+  magCursor = g
+  const seg = liveSegmentTo(g)
+  magFreehand = null
+  const s = lastSeed()
+  // 落在锚点原地：不重复加
+  if (!s || seg.length < 2 || Math.hypot(seg[seg.length - 1]!.x - s.x, seg[seg.length - 1]!.y - s.y) < 1) return
+  pushSegment(seg)
+  magLive.value = []
+}
+
+/** 删上一个锚点（连同它那一段）；只剩起点 = 放弃 */
+function magBack() {
+  if (magSeeds.value.length <= 1) {
+    magCancel()
+    return
+  }
+  magSeeds.value = magSeeds.value.slice(0, -1)
+  magSegs.value = magSegs.value.slice(0, -1)
+  resetWire()
+  magSchedule()
+}
+
+function magCancel() {
+  magSeeds.value = []
+  magSegs.value = []
+  magLive.value = []
+  magFreehand = null
+  wire = null
+  wirePrev = []
+  wireStable = null
+  if (magRaf) cancelAnimationFrame(magRaf)
+  magRaf = 0
+}
+
+/** 闭合：最后一个锚点 → 起点再吸附一段，整条路径平滑精简后作为一个形状（添加 / 排除）进撤销栈 */
+function magClose() {
+  const seeds = magSeeds.value
+  if (!seeds.length) return
+  const first = seeds[0]!
+  const last = seeds[seeds.length - 1]!
+  const map = edgeMap.value
+  let closing: Pt[] = [last, first]
+  if (map && !magAlt.value && Math.hypot(first.x - last.x, first.y - last.y) > 1.5) {
+    const w = new LiveWire(map, magContrast.value / 100)
+    // 窗口 = 整条已画路径的外接框再外扩：闭合段可能要绕到另一侧
+    const drawn = magSegs.value.flat()
+    const box = boxAround(last, first, MAG_CLOSE_MARGIN)
+    for (const q of drawn) {
+      box.x0 = Math.min(box.x0, q.x - MAG_CLOSE_MARGIN)
+      box.y0 = Math.min(box.y0, q.y - MAG_CLOSE_MARGIN)
+      box.x1 = Math.max(box.x1, q.x + MAG_CLOSE_MARGIN)
+      box.y1 = Math.max(box.y1, q.y + MAG_CLOSE_MARGIN)
+    }
+    w.start(last.x, last.y, box)
+    // 已画的段设成禁行（两端各留一点口子）：闭合段走「另一半」，不贴着来路折回去
+    w.blockPath(drawn, 2, [first, last], 6)
+    closing = w.pathTo(first.x, first.y)
+    // 被堵死（窗口里绕不过去）：退回不禁行再算一次
+    const end = closing[closing.length - 1]
+    if (!end || Math.round(end.x) !== Math.round(first.x) || Math.round(end.y) !== Math.round(first.y) || closing.length < 2) {
+      w.start(last.x, last.y, box)
+      closing = w.pathTo(first.x, first.y)
+    }
+  }
+  const all: Pt[] = []
+  for (const seg of [...magSegs.value, closing])
+    for (const p of seg) {
+      const q = all[all.length - 1]
+      if (!q || q.x !== p.x || q.y !== p.y) all.push(p)
+    }
+  const m = magMode.value
+  magCancel()
+  if (all.length > 1 && all[0]!.x === all[all.length - 1]!.x && all[0]!.y === all[all.length - 1]!.y) all.pop()
+  if (all.length < 3) return
+  const poly = smoothGridPath(all, 0.6).map(fromGrid)
+  const k = imgPerScreen.value
+  if (poly.length >= 3 && Math.abs(polygonArea(poly)) >= 64 * k * k) addShape('lasso', m, poly)
+}
+
+/** 指针离起点够近（屏幕 HIT_PX 内），且已经走出去一段：再点 = 闭合 */
+const magNearStart = ref(false)
+function updateNearStart(c: Pt | null) {
+  const s = magSeeds.value
+  magNearStart.value =
+    !!c && s.length >= 2 && Math.hypot(s[0]!.x - c.x, s[0]!.y - c.y) <= HIT_PX * gridPerScreen.value
+}
+
+watch(magContrast, () => {
+  if (magActive.value) {
+    resetWire()
+    magSchedule()
+  }
+})
+watch(magnetic, (on) => {
+  if (!on && magActive.value) magClose()
+})
+
+/** 渲染：已固化 + 实时段（原图坐标） */
+const magFixedD = computed(() => {
+  const segs = magSegs.value
+  const seeds = magSeeds.value
+  if (!seeds.length) return ''
+  const pts: Pt[] = [fromGrid(seeds[0]!)]
+  for (const seg of segs) for (let i = 1; i < seg.length; i++) pts.push(fromGrid(seg[i]!))
+  return pts.length > 1 ? polyD(pts, false) : ''
+})
+const magLiveD = computed(() => (magLive.value.length > 1 ? polyD(magLive.value.map(fromGrid), false) : ''))
+/** 白色衬底：两段连成一条 */
+const magHaloD = computed(() => {
+  const a = magFixedD.value
+  const b = magLiveD.value
+  if (!a) return b
+  return b ? a + b.replace(/^M/, 'L') : a
+})
+const magSeedPts = computed(() => magSeeds.value.map(fromGrid))
+/** 宽度圈（原图单位）：吸附范围示意 */
+const magWidthR = computed(() => {
+  const { w: nw } = natural.value
+  return nw ? (magWidth.value / gridSize().w) * nw : 0
+})
+
 // ================= 键盘 =================
 
 /** 不吃字符键的 input（滑杆 / 勾选 / 按钮类）：焦点在上面时工具快捷键照常（方向键仍归滑杆） */
@@ -1637,6 +2115,13 @@ function onKey(e: KeyboardEvent) {
     gesture.square = e.shiftKey
     gesture.center = e.altKey
     updateMarquee()
+    e.preventDefault()
+    return
+  }
+  // 磁性套索：按住 / 松开 Alt 临时切手绘，不等指针动就重画
+  if (e.key === 'Alt' && magActive.value) {
+    magAlt.value = true
+    magSchedule()
     e.preventDefault()
     return
   }
@@ -1670,10 +2155,12 @@ function onKey(e: KeyboardEvent) {
   else if (k === '0') zoomFit()
   else if (k === 'Enter') {
     if (penNodes.value.length) closePen()
+    else if (magActive.value) magClose()
     else handled = false
   } else if (k === 'Backspace' || k === 'Delete') {
     // 都不再冒泡给宿主（画布会当成删除节点）
     if (penNodes.value.length) penNodes.value = penNodes.value.slice(0, -1)
+    else if (magActive.value) magBack()
     else if (selAnchor.value !== null && selectedPen.value) removeAnchor(selAnchor.value)
     else if (selectedId.value !== null) removeShape(selectedId.value)
     // 长按连删锚点删到底时不顺势撤销已完成的形状 / 点
@@ -1681,7 +2168,10 @@ function onKey(e: KeyboardEvent) {
   } else if (k === 'Escape') {
     // 有东西可放弃时自己消化；否则交给 n-modal（close-on-esc 只关最上层弹窗）
     if (penNodes.value.length) cancelPen()
-    else if (gesture?.kind === 'lasso' || gesture?.kind === 'brush' || gesture?.kind === 'marquee' || gesture?.kind === 'penEdit')
+    else if (magActive.value) {
+      if (gesture?.kind === 'magnetic') gesture = null
+      magCancel()
+    } else if (gesture?.kind === 'lasso' || gesture?.kind === 'brush' || gesture?.kind === 'marquee' || gesture?.kind === 'penEdit')
       abortGesture()
     else if (selAnchor.value !== null) selAnchor.value = null
     else if (selectedId.value !== null) selectedId.value = null
@@ -1694,6 +2184,11 @@ function onKey(e: KeyboardEvent) {
 
 function onKeyUp(e: KeyboardEvent) {
   if (e.key === ' ') spaceHeld.value = false
+  if (e.key === 'Alt' && magAlt.value) {
+    magAlt.value = false
+    if (gesture?.kind !== 'magnetic' || !gesture.free) magFreehand = null
+    magSchedule()
+  }
   if (gesture?.kind === 'marquee' && (e.key === 'Shift' || e.key === 'Alt')) {
     gesture.square = e.shiftKey
     gesture.center = e.altKey
@@ -1702,6 +2197,7 @@ function onKeyUp(e: KeyboardEvent) {
 }
 function onBlur() {
   spaceHeld.value = false
+  magAlt.value = false
 }
 
 // ================= 渲染辅助 =================
@@ -1742,6 +2238,7 @@ const stageCursor = computed(() => {
     return embedding.value ? 'progress' : 'crosshair'
   }
   if (tool.value === 'pen' && nearPenStart.value) return 'pointer'
+  if (tool.value === 'lasso' && magActive.value && magNearStart.value) return 'pointer'
   if (restoring.value) return 'progress'
   if (tool.value === 'brush') return 'none'
   return 'crosshair'
@@ -2101,7 +2598,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
       </div>
 
       <div
-        v-if="tool === 'wand' || tool === 'brush' || tool === 'marquee' || hasSelection || doc.post.grow || doc.post.smooth"
+        v-if="tool === 'wand' || tool === 'brush' || tool === 'marquee' || tool === 'lasso' || hasSelection || doc.post.grow || doc.post.smooth"
         class="ps-opts flex flex-wrap items-center gap-x-16px gap-y-8px px-12px py-8px rounded-12px bg-#f7f5f9"
         role="group"
         aria-label="工具与选区选项"
@@ -2155,6 +2652,49 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
             <span class="ps-opt__label !w-auto">仅连续区域</span>
           </label>
         </template>
+        <template v-else-if="tool === 'lasso'">
+          <label class="ps-opt cursor-pointer" title="磁性套索：路径自动贴着物体边缘走（按浏览器记住）">
+            <input
+              v-model="magnetic"
+              type="checkbox"
+              role="switch"
+              class="accent-#875f9a w-14px h-14px m-0"
+              :aria-checked="magnetic"
+            />
+            <span class="ps-opt__label !w-auto">吸附边缘</span>
+          </label>
+          <template v-if="magnetic">
+            <label class="ps-opt" title="指针周围多大范围内找边缘（按长边 1024 像素计）">
+              <span class="ps-opt__label">宽度</span>
+              <input
+                v-model.number="magWidth"
+                type="range"
+                min="1"
+                max="40"
+                step="1"
+                class="ps-opt__range--sm"
+                aria-label="吸附宽度：指针周围多大范围内找边缘"
+              />
+              <b class="ps-opt__num">{{ magWidth }}</b>
+            </label>
+            <label class="ps-opt" title="边缘对比度阈值：越高只贴明显的边，越低连弱边也贴">
+              <span class="ps-opt__label">对比</span>
+              <input
+                v-model.number="magContrast"
+                type="range"
+                min="1"
+                max="60"
+                step="1"
+                class="ps-opt__range--sm"
+                aria-label="边缘对比度阈值（%）"
+              />
+              <b class="ps-opt__num">{{ magContrast }}%</b>
+            </label>
+            <button v-if="magActive" type="button" class="sx-btn" title="闭合选区（Enter / 双击 / 点起点）" @click="magClose">
+              闭合
+            </button>
+          </template>
+        </template>
         <template v-else-if="tool === 'brush'">
           <label class="ps-opt">
             <span class="ps-opt__label">大小</span>
@@ -2167,7 +2707,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
             <b class="ps-opt__num">{{ brushHardness }}</b>
           </label>
         </template>
-        <span v-if="tool === 'wand' || tool === 'brush' || tool === 'marquee'" class="ps-opts__sep" aria-hidden="true" />
+        <span v-if="tool === 'wand' || tool === 'brush' || tool === 'marquee' || tool === 'lasso'" class="ps-opts__sep" aria-hidden="true" />
         <label class="ps-opt" title="整体扩展（正）或收缩（负）选区边缘，按长边 1024 像素计">
           <span class="ps-opt__label">扩展</span>
           <input
@@ -2298,6 +2838,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
               alt="智能选区"
               draggable="false"
               class="block w-full h-full pointer-events-none"
+              @load="ensureEdgeMap"
             />
             <canvas ref="overlay" class="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true" />
             <svg
@@ -2483,6 +3024,52 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
                   />
                 </template>
               </template>
+              <template v-if="magActive">
+                <path :d="magHaloD" fill="none" stroke="#fff" stroke-width="3.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+                <path
+                  :d="magFixedD"
+                  fill="none"
+                  :stroke="magMode === 'add' ? '#e5484d' : '#1f2329'"
+                  stroke-width="1.75"
+                  stroke-linejoin="round"
+                  :stroke-dasharray="magMode === 'sub' ? '6 4' : undefined"
+                  vector-effect="non-scaling-stroke"
+                />
+                <path
+                  :d="magLiveD"
+                  fill="none"
+                  :stroke="magAlt ? '#875f9a' : magMode === 'add' ? '#e5484d' : '#1f2329'"
+                  stroke-width="1.75"
+                  stroke-linejoin="round"
+                  stroke-opacity="0.85"
+                  :stroke-dasharray="magMode === 'sub' ? '6 4' : undefined"
+                  vector-effect="non-scaling-stroke"
+                />
+                <rect
+                  v-for="(q, i) in magSeedPts"
+                  :key="`m${i}`"
+                  :x="q.x - nodeR * (i === 0 && magNearStart ? 1.6 : 0.8)"
+                  :y="q.y - nodeR * (i === 0 && magNearStart ? 1.6 : 0.8)"
+                  :width="nodeR * 2 * (i === 0 && magNearStart ? 1.6 : 0.8)"
+                  :height="nodeR * 2 * (i === 0 && magNearStart ? 1.6 : 0.8)"
+                  :fill="i === 0 ? '#875f9a' : '#fff'"
+                  stroke="#875f9a"
+                  stroke-width="1.5"
+                  vector-effect="non-scaling-stroke"
+                />
+              </template>
+              <circle
+                v-if="tool === 'lasso' && magOn && hover && !magAlt && magWidthR > 0"
+                :cx="hover.x"
+                :cy="hover.y"
+                :r="magWidthR"
+                fill="none"
+                stroke="#fff"
+                stroke-width="1"
+                stroke-opacity="0.9"
+                stroke-dasharray="3 3"
+                vector-effect="non-scaling-stroke"
+              />
               <template v-if="lassoPts.length > 1">
                 <path :d="lassoD" fill="none" stroke="#fff" stroke-width="3.5" vector-effect="non-scaling-stroke" />
                 <path
@@ -2575,7 +3162,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 
       <p class="m-0 text-11px leading-16px text-muted">
         选区在本机识别，图片不会上传。滚轮缩放，按住空格拖动画面；快捷键
-        <template v-if="!samDisabled">V 点选 · </template>M 选框 · P 钢笔 · L 自由 · W 魔棒 · B 画笔（[ / ] 大小）· H 移动 · A / E
+        <template v-if="!samDisabled">V 点选 · </template>M 选框 · P 钢笔 · L 自由（可吸附边缘）· W 魔棒 · B 画笔（[ / ] 大小）· H 移动 · A / E
         选中 / 排除。完成后可在参数台里反选、调边缘柔化；下次打开会接着这次的编辑继续。
       </p>
     </div>
@@ -2638,6 +3225,9 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 .ps-opt input[type='range'] {
   width: 120px;
   accent-color: #875f9a;
+}
+.ps-opt input[type='range'].ps-opt__range--sm {
+  width: 88px;
 }
 .ps-opt__label {
   width: 28px;
