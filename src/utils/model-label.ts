@@ -38,6 +38,10 @@ const KNOWN_LABELS: Record<string, string> = {
   'image-v1': 'GPT Image 2.5',
   'GPT Image 2.6': 'GPT Image 2.6',
   'gpt-image-2-6-v1': 'GPT Image 2.6',
+  // 已退役的 GPT Image 2（历史资产 / 版本的溯源里还会出现）
+  'gpt-image-2': 'GPT Image 2',
+  'creaft-image-2': 'GPT Image 2',
+  'img.gpt-image-2': 'GPT Image 2',
   'banana-v1': 'Nano Banana 2.1',
   SD55: 'Seedream 5.5',
   'seedream-5-5-v1': 'Seedream 5.5',
