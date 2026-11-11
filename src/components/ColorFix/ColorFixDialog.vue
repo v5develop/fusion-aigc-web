@@ -157,8 +157,9 @@ async function removeFix() {
 </script>
 
 <template>
+  <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal :show="show" transform-origin="center" @update:show="onUpdateShow">
-    <section
+    <div
       class="w-[min(980px,calc(100vw-32px))] max-h-[calc(100vh-32px)] overflow-y-auto box-border p-16px rounded-14px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-12px"
       role="dialog"
       aria-modal="true"
@@ -225,6 +226,6 @@ async function removeFix() {
         </button>
         <slot name="actions" :cf="cf" :bake-file="bakeFile" />
       </footer>
-    </section>
+    </div>
   </n-modal>
 </template>

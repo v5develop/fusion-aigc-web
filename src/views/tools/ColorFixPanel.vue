@@ -25,7 +25,8 @@
  *
  * <p>图层与替换颜色（2026-11-11，都可选、不传与旧版一致）：
  * <ul>
- *   <li>插槽 `layers`：头部下方放图层列表（components/ColorFix/ColorFixLayerList）；</li>
+ *   <li>插槽 `layers`：头部下方放图层列表（components/ColorFix/ColorFixLayerList）；插槽 `adjust`：替换颜色与滑杆之间放
+ *       「更多调整」（白平衡 / HSL 分色，components/ColorFix/ColorFixAdjustments）；</li>
  *   <li>`recolor-enabled` + `v-model:recolor`：在选区与滑杆之间出「替换颜色」——开关、源色（自动 = 选区主色 / 吸管从图上取）
  *       → 目标色（色板 + 十六进制 + 取色器）、强度；先于五个滑杆生效。点吸管发 pickSource，由调用方开取色弹窗。</li>
  * </ul>
@@ -603,6 +604,9 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
           </div>
         </template>
       </div>
+
+      <!-- 更多调整（白平衡 / HSL 分色，components/ColorFix/ColorFixAdjustments）：替换颜色之后、五个滑杆之前 -->
+      <slot name="adjust" />
 
       <p v-if="slidersTitle" class="cfp__subtitle">{{ slidersTitle }}</p>
       <div class="cfp__sliders">

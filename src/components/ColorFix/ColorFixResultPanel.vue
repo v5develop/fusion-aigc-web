@@ -9,6 +9,12 @@
  * 选中「整图」底层时不出选区区块。手动涂抹与智能选区是同一个弹窗（PointSelect）：涂抹入口打开时预选画笔，
  * 并把这一层已有的选区垫在下面细化。
  *
+ * <p>更多调整（2026-11-11）：替换颜色与滑杆之间折叠的「更多调整」（ColorFixAdjustments：白平衡 + HSL 分色），中性灰吸管复用
+ * 吸取弹窗。图层满 8 层时添加 / 从整图进涂抹或智能选区会在图层列表里给提示（cf.capNotice）。
+ *
+ * <p>智能选区「继续编辑」：打开时按 cf.loadSelectionSession 取回这一层上次的编辑状态（点 / 框 / 形状 / 魔棒 / 笔画 /
+ * 扩展收缩平滑），完成时连同会话一起存（cf.applyPointMask(blob, session)）。
+ *
  * <p>全屏调色（cf.fullscreen）开着时：页面上这份整体让位（参数台、弹窗都不渲染），由全屏层里 `docked` 的那份接管——
  * 同一份 cf，两处不会同时各开一套弹窗。`large` = 弹窗铺到接近整屏。
  */
@@ -16,6 +22,8 @@ import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import ColorFixPanel from '@/views/tools/ColorFixPanel.vue'
 import ColorFixLayerList from './ColorFixLayerList.vue'
 import ColorFixEyedropper from './ColorFixEyedropper.vue'
+import ColorFixAdjustments from './ColorFixAdjustments.vue'
+import { adjustZero, neutralGrayWB, parseHex, type ColorFixAdjust } from '@/utils/colorfix-math.ts'
 import type { ResultColorFix } from './useResultColorFix.ts'
 import type { ColorFixSegmentSuggestion } from './segment.ts'
 import { COLORFIX_MASK_LOAD_FAILED, COLORFIX_ZERO } from '@/utils/colorfix.ts'
@@ -87,12 +95,31 @@ const slidersTitle = computed(() =>
 const painterShow = computed({ get: () => cf.painterOpen.value, set: (v) => cf.setPainterOpen(v) })
 const pointShow = computed({ get: () => cf.pointOpen.value, set: (v) => cf.setPointOpen(v) })
 const pickerShow = ref(false)
+/** 中性灰吸管（更多调整 · 白平衡） */
+const neutralShow = ref(false)
 watch(present, (v) => {
-  if (!v) pickerShow.value = false
+  if (!v) {
+    pickerShow.value = false
+    neutralShow.value = false
+  }
 })
 function onPickSource(hex: string) {
   const r = cf.recolor.value
   if (r) cf.setRecolor({ ...r, source: hex })
+}
+const adjust = computed<ColorFixAdjust | null>({
+  get: () => cf.adjust.value,
+  set: (v) => cf.setAdjust(v),
+})
+/**
+ * 中性灰：按原图像素算色温 / 色调（选区图层下面若还有别的层改过颜色，这里按原图算，可能要再微调）
+ */
+function onPickNeutral(hex: string) {
+  const rgb = parseHex(hex)
+  if (!rgb) return
+  const wb = neutralGrayWB(rgb[0], rgb[1], rgb[2])
+  const cur = cf.adjust.value ?? adjustZero()
+  cf.setAdjust({ ...cur, hsl: cur.hsl.map((b) => ({ ...b })), temp: wb.temp, tint: wb.tint })
 }
 
 // 参数台打开且提供「点选」：空闲时预取点选的引擎与模型（本会话一次）
@@ -174,6 +201,9 @@ function done() {
     <template #layers>
       <ColorFixLayerList :cf="cf" :docked="docked" />
     </template>
+    <template #adjust>
+      <ColorFixAdjustments v-model="adjust" :docked="docked" @pick-neutral="neutralShow = true" />
+    </template>
   </ColorFixPanel>
   <ColorFixPanel
     v-else
@@ -195,6 +225,7 @@ function done() {
     initial-tool="brush"
     :sam-disabled="!!cf.pointBlocked.value"
     :base-mask="cf.paintedMask.value"
+    :session-loader="() => cf.loadSelectionSession('paint')"
     @apply="cf.applyPaintedMask"
   />
   <PointSelect
@@ -204,6 +235,7 @@ function done() {
     :src="cf.src.value"
     :large="large"
     :base-mask="cf.pointMask.value"
+    :session-loader="() => cf.loadSelectionSession('point')"
     @apply="cf.applyPointMask"
   />
   <ColorFixEyedropper
@@ -211,5 +243,13 @@ function done() {
     v-model:show="pickerShow"
     :src="cf.src.value"
     @pick="onPickSource"
+  />
+  <ColorFixEyedropper
+    v-if="present && localAdjust && cf.src.value && neutralShow"
+    v-model:show="neutralShow"
+    :src="cf.src.value"
+    title="中性灰吸管"
+    hint="单击图上本该是灰色 / 白色的地方（如白衬衫、灰墙），自动算出让它变成中性灰的色温与色调。方向键可微调位置，回车取色。"
+    @pick="onPickNeutral"
   />
 </template>

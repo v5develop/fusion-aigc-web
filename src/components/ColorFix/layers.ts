@@ -14,7 +14,17 @@
  * 反过来 {@link legacyOf} 把图层折回旧形状（写旧的 localStorage 键、资产版本的 colorFix / colorFixRegion、远端 saver），
  * 只读旧字段的老代码照常工作；折不回去的（多层 / 有替换颜色）标 exact=false，旧字段只是近似。
  */
-import { COLORFIX_ZERO, colorFixEquals, colorFixIsZero, colorFixSanitize, normalizeHex, type ColorFixParams } from '../../utils/colorfix-math.ts'
+import {
+  COLORFIX_ZERO,
+  adjustIsZero,
+  adjustSanitize,
+  colorFixEquals,
+  colorFixIsZero,
+  colorFixSanitize,
+  normalizeHex,
+  type ColorFixAdjust,
+  type ColorFixParams,
+} from '../../utils/colorfix-math.ts'
 import {
   COLORFIX_PART_LABELS,
   COLORFIX_REGION_DEFAULT,
@@ -56,6 +66,11 @@ export interface ColorFixLayer {
   region: ColorFixRegion
   /** 替换为目标颜色（先于五参数生效）；null / 缺省 = 不替换 */
   recolor: ColorFixRecolor | null
+  /**
+   * 更多调整（2026-11-11，add-only 字段，不升 v）：白平衡 + HSL 分色，替换颜色之后、五参数之前生效；
+   * null / 缺省 = 不调。老代码读到会忽略它（legacyOf 此时 exact=false，旧字段只是近似）。
+   */
+  adjust?: ColorFixAdjust | null
 }
 
 /** 持久化 / 资产版本里的图层包（add-only：以后加字段不改 v） */
@@ -97,9 +112,14 @@ export function recolorActive(r: ColorFixRecolor | null | undefined): r is Color
   return !!r && r.strength > 0
 }
 
-/** 这一层会不会改图：可见，且（五参数非零或有替换颜色） */
+/** 更多调整是否真的会改图（白平衡 / HSL 有非零值） */
+export function adjustActive(a: ColorFixAdjust | null | undefined): a is ColorFixAdjust {
+  return !!a && !adjustIsZero(a)
+}
+
+/** 这一层会不会改图：可见，且（五参数非零 / 有替换颜色 / 有更多调整） */
 export function layerEffective(l: ColorFixLayer): boolean {
-  return l.visible && (!colorFixIsZero(l.params) || recolorActive(l.recolor))
+  return l.visible && (!colorFixIsZero(l.params) || recolorActive(l.recolor) || adjustActive(l.adjust))
 }
 
 /** 选区图层的自动名字：识别部位（单选时）/ 识别目标 / 「选区 N」 */
@@ -143,6 +163,7 @@ function layerSanitize(raw: unknown, index: number): ColorFixLayer | null {
   // 选区图层不允许是整图（没有意义，也会和底层混淆）
   if (!base && region.mode === 'whole') region.mode = 'point'
   const autoName = o.autoName !== false
+  const adjust = adjustSanitize(o.adjust)
   const name =
     typeof o.name === 'string' && o.name.trim() ? o.name.trim().slice(0, 24) : base ? '整图' : autoLayerName(region, index)
   return {
@@ -153,6 +174,8 @@ function layerSanitize(raw: unknown, index: number): ColorFixLayer | null {
     params,
     region,
     recolor: recolorSanitize(o.recolor),
+    // 全零且没开保护肤色的不留（与没有这个字段等价）
+    ...(adjust && (!adjustIsZero(adjust) || adjust.skin) ? { adjust } : {}),
   }
 }
 
@@ -218,8 +241,10 @@ export function legacyOf(layers: readonly ColorFixLayer[]): LegacyShape {
   const sel = layers.filter((l) => !isBaseLayer(l) && layerEffective(l))
   const whole: ColorFixRegion = { ...COLORFIX_REGION_DEFAULT, ...(layers.find((l) => !isBaseLayer(l))?.region ?? {}), mode: 'whole' }
   const baseVisible = base.visible ? base.params : COLORFIX_ZERO
-  if (!sel.length) return { params: { ...baseVisible }, region: whole, exact: !recolorActive(base.recolor) || !base.visible }
-  if (sel.length === 1 && colorFixIsZero(baseVisible) && !recolorActive(sel[0]!.recolor) && (!base.visible || !recolorActive(base.recolor)))
+  // 替换颜色 / 更多调整旧形状里没有：有它们就折不回去
+  const extra = (l: ColorFixLayer) => recolorActive(l.recolor) || adjustActive(l.adjust)
+  if (!sel.length) return { params: { ...baseVisible }, region: whole, exact: !extra(base) || !base.visible }
+  if (sel.length === 1 && colorFixIsZero(baseVisible) && !extra(sel[0]!) && (!base.visible || !extra(base)))
     return { params: { ...sel[0]!.params }, region: { ...sel[0]!.region }, exact: true }
   return { params: { ...baseVisible }, region: { ...sel[0]!.region }, exact: false }
 }
@@ -235,7 +260,8 @@ export function layersEqual(a: readonly ColorFixLayer[], b: readonly ColorFixLay
       x.visible === y.visible &&
       colorFixEquals(x.params, y.params) &&
       JSON.stringify(x.region) === JSON.stringify(y.region) &&
-      JSON.stringify(x.recolor) === JSON.stringify(y.recolor)
+      JSON.stringify(x.recolor) === JSON.stringify(y.recolor) &&
+      JSON.stringify(x.adjust ?? null) === JSON.stringify(y.adjust ?? null)
     )
   })
 }
@@ -247,7 +273,12 @@ export function cloneLayers(layers: readonly ColorFixLayer[]): ColorFixLayer[] {
     params: { ...l.params },
     region: { ...l.region, ...(l.region.parts ? { parts: [...l.region.parts] } : {}) },
     recolor: l.recolor ? { ...l.recolor } : null,
+    ...(l.adjust ? { adjust: cloneAdjust(l.adjust) } : {}),
   }))
+}
+
+export function cloneAdjust(a: ColorFixAdjust): ColorFixAdjust {
+  return { ...a, hsl: a.hsl.map((b) => ({ ...b })) }
 }
 
 /** 图层是否需要本机蒙版（涂抹 / 点选）：这类出图不能按参数去重，换设备也还原不了 */

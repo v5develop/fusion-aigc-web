@@ -22,6 +22,7 @@ import ColorFixResultPanel from './ColorFixResultPanel.vue'
 import ColorFixZoomView from './ColorFixZoomView.vue'
 import type { ResultColorFix } from './useResultColorFix.ts'
 import type { ColorFixViewMode } from './types.ts'
+import { MASK_VIEW_HINTS, MASK_VIEW_LABELS, type MaskViewMode } from './selection-ops.ts'
 
 const {
   cf,
@@ -69,6 +70,31 @@ watch(
 )
 const hasMask = computed(() => cf.region.value.mode !== 'whole' && !!cf.effectiveMask.value)
 const showMask = computed(() => hasMask.value && (maskPinned.value || maskFlash.value))
+
+/** 「显示选区」的查看方式（与智能选区弹窗共用，按浏览器记住）；新选区闪一下时一律用叠加 */
+const VIEW_KEY = 'colorfix:mask-view'
+const VIEW_MODES: MaskViewMode[] = ['overlay', 'mask', 'only', 'outline']
+function readView(): MaskViewMode {
+  try {
+    const v = localStorage.getItem(VIEW_KEY) as MaskViewMode | null
+    return v && VIEW_MODES.includes(v) ? v : 'overlay'
+  } catch {
+    return 'overlay'
+  }
+}
+const maskView = ref<MaskViewMode>(readView())
+function setMaskView(v: MaskViewMode) {
+  maskView.value = v
+  try {
+    localStorage.setItem(VIEW_KEY, v)
+  } catch {
+    /* 隐私模式 */
+  }
+}
+watch(maskPinned, (on) => {
+  if (on) maskView.value = readView()
+})
+const shownView = computed<MaskViewMode>(() => (maskPinned.value ? maskView.value : 'overlay'))
 
 // ---------------- 状态行 ----------------
 
@@ -137,8 +163,9 @@ const SEG =
 </script>
 
 <template>
+  <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal :show="show" :mask-closable="false" :auto-focus="true" transform-origin="center" @update:show="(v: boolean) => !v && exit()">
-    <section
+    <div
       class="cf-fs flex flex-col bg-#16181b text-white"
       role="dialog"
       aria-modal="true"
@@ -167,11 +194,30 @@ const SEG =
           type="button"
           :class="[SEG, maskPinned ? 'bg-white/18 text-white font-600' : 'bg-white/8 text-white/75 hover:(bg-white/12 text-white)']"
           :aria-pressed="maskPinned"
-          title="在图上用藤紫色标出当前选区（只是示意，不影响导出）"
+          title="在图上标出当前选区（只是示意，不影响导出）"
           @click="maskPinned = !maskPinned"
         >
           显示选区
         </button>
+        <div
+          v-if="hasMask && maskPinned"
+          role="radiogroup"
+          aria-label="选区查看方式"
+          class="flex items-center gap-2px p-3px rounded-full bg-white/8"
+        >
+          <button
+            v-for="v in VIEW_MODES"
+            :key="v"
+            type="button"
+            role="radio"
+            :aria-checked="maskView === v"
+            :title="MASK_VIEW_HINTS[v]"
+            :class="[SEG, '!px-10px', maskView === v ? 'bg-white/22 text-white font-600' : 'bg-transparent text-white/75 hover:(bg-white/10 text-white)']"
+            @click="setMaskView(v)"
+          >
+            {{ MASK_VIEW_LABELS[v] }}
+          </button>
+        </div>
         <span class="min-w-0 flex-1 truncate text-12px leading-18px text-white/65" role="status" aria-live="polite">{{ status }}</span>
         <div class="cf-fs-actions flex flex-wrap items-center gap-8px">
           <slot name="actions" />
@@ -183,12 +229,12 @@ const SEG =
         </IconButton>
       </header>
       <div class="cf-fs-body flex-1 min-h-0 flex">
-        <ColorFixZoomView ref="zoom" class="cf-fs-stage flex-1 min-w-0" :cf="cf" :mode="mode" :labels="labels" :show-mask="showMask" />
+        <ColorFixZoomView ref="zoom" class="cf-fs-stage flex-1 min-w-0" :cf="cf" :mode="mode" :labels="labels" :show-mask="showMask" :mask-view="shownView" />
         <aside class="cf-fs-dock flex flex-col bg-white text-ink" aria-label="校色参数">
           <ColorFixResultPanel :cf="cf" :title="title" :local-adjust="localAdjust" docked large />
         </aside>
       </div>
-    </section>
+    </div>
   </n-modal>
 </template>
 

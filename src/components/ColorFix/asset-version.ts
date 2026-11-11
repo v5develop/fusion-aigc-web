@@ -15,6 +15,7 @@ import { assetLibAddVersion } from '@/api/asset-library.ts'
 import { goUploadImage } from '@/api/go-upload.ts'
 import { taskCenterTask, type ITaskCenterAssetRef } from '@/api/task-center.ts'
 import { colorFixSanitize, type ColorFixParams } from '@/utils/colorfix.ts'
+import { adjustSignature } from '@/utils/colorfix-math.ts'
 import { COLORFIX_REGION_DEFAULT, colorFixRegionSanitize, type ColorFixRegion } from './types.ts'
 import {
   COLORFIX_LAYERS_VERSION,
@@ -62,7 +63,9 @@ export function colorFixLayersSignature(layers: readonly ColorFixLayer[], source
     const r = l.region
     const reg = isBaseLayer(l) ? 'whole' : `${r.mode}:${r.target}:${(r.parts ?? []).join(',')}:${r.invert ? 1 : 0}:${r.feather}`
     const rc = recolorActive(l.recolor) ? `${l.recolor.source ?? 'auto'}>${l.recolor.target}@${l.recolor.strength}` : ''
-    return `${p.hue},${p.sat},${p.light},${p.bright},${p.contrast}:${reg}:${rc}`
+    // 更多调整（add-only）：没有时不拼，旧版存的签名不变
+    const adj = adjustSignature(l.adjust)
+    return `${p.hue},${p.sat},${p.light},${p.bright},${p.contrast}:${reg}:${rc}${adj ? `:A${adj}` : ''}`
   })
   return `${normalize(sourceImage)}|L${COLORFIX_LAYERS_VERSION}|${body.join(';')}`
 }

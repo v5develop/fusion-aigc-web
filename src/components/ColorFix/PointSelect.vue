@@ -26,32 +26,65 @@
  * <p>「完成」：只有点选时导出模型网格（长边 1024）的黑底白选区 PNG（与以前一致）；有钢笔 / 自由形状时按工作分辨率
  * （长边 = 原图长边夹到 1024–2048）把点选蒙版放大后与形状合成导出。交给 useResultColorFix.applyPointMask，反选 / 柔化照常在参数台调。
  * 点选模型加载失败时钢笔 / 自由照样能用。关闭时终止 Worker，释放 WASM / GPU 内存。`large`：全屏调色里打开时弹窗接近整屏。
+ *
+ * <p>2026-11-11 增补：
+ * <ul>
+ *   <li>选框（M）：矩形 / 椭圆（再按 M 切换），Shift = 正方形 / 正圆、Alt = 从中心拉出；添加 / 排除同其它形状。</li>
+ *   <li>查看方式：叠加（半透明藤紫）/ 黑白蒙版 / 仅选区（选区外棋盘格）/ 轮廓（行军蚁虚线）；按浏览器记住。</li>
+ *   <li>继续编辑：`session-loader` 取回这一层上次的会话（selection-session.ts）就原样还原（点选结果连同位图一起存，
+ *       不必重新加载模型）；「完成」时 apply 第二个参数带上本次会话，由调用方与蒙版一起存。</li>
+ *   <li>钢笔路径可再编辑：选中钢笔形状（移动工具单击 / 钢笔工具 ⌘/Ctrl + 单击 / 区域列表）后显示锚点与手柄，拖锚点移动、
+ *       拖手柄调曲线（Alt 拖 = 断开对称）、双击路径加锚点、Delete 删锚点。</li>
+ * </ul>
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import IconButton from '@/components/IconButton/index.vue'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import { PAINTED_MASK_MAX_SIDE } from './mask-store.ts'
 import {
+  applyClampMaps,
   applyPostOps,
   colorRangeMask,
+  renderMaskView,
   rgbaToLab,
   stampStroke,
+  MASK_VIEW_HINTS,
+  MASK_VIEW_LABELS,
   POST_OPS_NONE,
   type BrushStroke,
+  type MaskViewMode,
   type SelectionPostOps,
 } from './selection-ops.ts'
+import {
+  SESSION_STROKE_POINTS_MAX,
+  strokePointCount,
+  type SelectionDoc,
+  type SelectionSession,
+  type WandOp,
+} from './selection-session.ts'
 import { markPointSegmentBroken, POINT_UNSUPPORTED_HINT } from './point-support.ts'
 import {
   combineMasks,
+  contoursToPath,
   distToPolygonEdge,
+  ellipsePolygon,
+  inHandle,
+  insertPenNode,
   lassoToPolygon,
+  marqueeRect,
+  maskContours,
   maskHasSelection,
+  movePenHandle,
+  nearestOnPen,
+  outHandle,
   penToPolyline,
   pointInPolygon,
   polygonArea,
   rasterizeShapes,
+  rectPolygon,
   type PenNode,
   type Pt,
+  type Rect,
   type SelectionShape,
   type ShapeMode,
 } from './selection-geometry.ts'
@@ -67,7 +100,7 @@ import type {
 /** 同 pointSegment.ts 的 POINT_SEGMENT_INPUT_SIDE（不静态引那个模块：它随点选弹窗一起懒加载） */
 const POINT_SEGMENT_INPUT_SIDE = 1024
 
-type Tool = 'point' | 'pen' | 'lasso' | 'wand' | 'brush' | 'move'
+type Tool = 'point' | 'marquee' | 'pen' | 'lasso' | 'wand' | 'brush' | 'move'
 
 const {
   src,
@@ -76,6 +109,7 @@ const {
   samDisabled = false,
   baseMask = '',
   title = '智能选区',
+  sessionLoader,
 } = defineProps<{
   src: string
   /** 大尺寸（全屏调色里打开） */
@@ -87,9 +121,12 @@ const {
   /** 这一层已有的选区（黑白 / 透明蒙版地址）：垫在最下面细化；'' = 从空白开始 */
   baseMask?: string
   title?: string
+  /** 取回这一层上次的选区会话（继续编辑）；返回 null = 没有 / 对不上，从 base-mask 开始 */
+  sessionLoader?: () => Promise<SelectionSession | null>
 }>()
 const show = defineModel<boolean>('show', { required: true })
-const emit = defineEmits<{ apply: [mask: Blob] }>()
+/** apply：mask = 黑底白选区 PNG；session = 本次编辑状态（调用方随蒙版存，下次还原） */
+const emit = defineEmits<{ apply: [mask: Blob, session?: Omit<SelectionSession, 'maskSize'>] }>()
 
 const ALL_TOOLS: { key: Tool; label: string; kbd: string; hint: string; icon: string }[] = [
   {
@@ -98,6 +135,13 @@ const ALL_TOOLS: { key: Tool; label: string; kbd: string; hint: string; icon: st
     kbd: 'V',
     hint: '点选：单击物体自动识别选区',
     icon: 'M12 3v4M12 17v4M3 12h4M17 12h4M12 12h.01',
+  },
+  {
+    key: 'marquee',
+    label: '选框',
+    kbd: 'M',
+    hint: '选框：拖出矩形 / 椭圆（再按 M 切换），Shift 正方形 / 正圆，Alt 从中心',
+    icon: 'M4 7V5a1 1 0 0 1 1-1h2M10 4h4M17 4h2a1 1 0 0 1 1 1v2M20 10v4M20 17v2a1 1 0 0 1-1 1h-2M14 20h-4M7 20H5a1 1 0 0 1-1-1v-2M4 14v-4',
   },
   {
     key: 'pen',
@@ -140,31 +184,20 @@ const TOOL_TIPS: Record<Tool, string> = {
   wand: '单击要选的颜色；调「容差」放宽 / 收紧，「仅连续区域」只选与点击处相连的部分；Alt / Shift + 单击排除',
   brush: '按住拖动涂抹添加，切到「擦除」或按住 Alt 擦掉；[ / ] 调画笔大小',
   point: '单击加入选区；切到「排除 −」或按住 Alt / Shift 单击排除；拖动框选；点标记可删除',
-  pen: '单击加锚点，按住拖动拉出曲线；点起点 / 双击 / Enter 闭合，Backspace 删上一点，Esc 放弃',
+  marquee: '拖出选框；Shift 正方形 / 正圆，Alt 从中心拉出；再按 M 在矩形与椭圆间切换',
+  pen: '单击加锚点，按住拖动拉出曲线；点起点 / 双击 / Enter 闭合。⌘/Ctrl + 单击路径可选中再编辑：拖锚点 / 手柄（Alt 断开对称），双击路径加锚点，Delete 删锚点',
   lasso: '按住拖动画出轮廓，松开自动闭合',
-  move: '拖动画面（也可按住空格 / 鼠标中键）；单击选区可选中，Delete 删除',
+  move: '拖动画面（也可按住空格 / 鼠标中键）；单击选区可选中，Delete 删除；选中钢笔路径后可拖锚点 / 手柄编辑',
 }
 
 // ================= 文档：点 / 框 / 形状，整条撤销栈 =================
 
-/** 魔棒一次：点击处（原图坐标）+ 当时的容差 / 连续 / 模式 */
-interface WandOp {
-  id: number
-  x: number
-  y: number
-  tol: number
-  contiguous: boolean
-  mode: ShapeMode
-}
-interface SelDoc {
-  points: PointPrompt[]
-  box: PointBox | null
-  shapes: SelectionShape[]
-  wands: WandOp[]
-  strokes: BrushStroke[]
-  post: SelectionPostOps
-  /** 垫着已有选区（base-mask）；「清空」后为 false */
-  prior: boolean
+/**
+ * 文档 = 会话里存的那份（selection-session.ts SelectionDoc）+ flatBrush：上次会话的笔画太多、已压成夹取图
+ * （brushMap，见 selection-ops strokeClampMaps），「清空」时连它一起去掉。
+ */
+interface SelDoc extends SelectionDoc {
+  flatBrush?: boolean
 }
 const EMPTY: SelDoc = { points: [], box: null, shapes: [], wands: [], strokes: [], post: POST_OPS_NONE, prior: false }
 const START: SelDoc = { ...EMPTY, prior: !!baseMask }
@@ -200,6 +233,7 @@ const isEmpty = computed(() => {
     !d.wands.length &&
     !d.strokes.length &&
     !d.prior &&
+    !d.flatBrush &&
     !d.post.grow &&
     !d.post.smooth
   )
@@ -209,7 +243,13 @@ const canRedo = computed(() => !penNodes.value.length && hIndex.value < history.
 const canClear = computed(() => !isEmpty.value || penNodes.value.length > 0)
 /** Esc 先由弹窗内部消化（放弃路径 / 取消选中），这时不让 n-modal 关窗 */
 const escBusy = computed(
-  () => penNodes.value.length > 0 || lassoPts.value.length > 0 || selectedId.value !== null || !!liveStroke.value,
+  () =>
+    penNodes.value.length > 0 ||
+    lassoPts.value.length > 0 ||
+    selectedId.value !== null ||
+    !!liveStroke.value ||
+    !!marqueeDraft.value ||
+    selAnchor.value !== null,
 )
 
 function undo() {
@@ -236,7 +276,19 @@ function clearAll() {
 
 watch(doc, (d) => {
   if (selectedId.value !== null && !d.shapes.some((s) => s.id === selectedId.value)) selectedId.value = null
+  const sp = selectedPen.value
+  if (selAnchor.value !== null && (!sp || selAnchor.value >= (sp.nodes?.length ?? 0))) selAnchor.value = null
 })
+watch(selectedId, () => {
+  selAnchor.value = null
+  penDraft.value = null
+})
+
+/** 选框形状（M 再按一次切换） */
+const marqueeShape = ref<'rect' | 'ellipse'>('rect')
+/** 正在拖的选框（原图坐标） */
+const marqueeDraft = shallowRef<Rect | null>(null)
+const marqueeMode = ref<ShapeMode>('add')
 
 function setTool(t: Tool) {
   if (t === tool.value) return
@@ -263,10 +315,90 @@ function toggleShapeMode(id: number) {
     shapes: d.shapes.map((s) => (s.id === id ? { ...s, mode: s.mode === 'add' ? 'sub' : 'add' } : s)),
   })
 }
-function addShape(kind: SelectionShape['kind'], m: ShapeMode, poly: Pt[]) {
+function addShape(kind: SelectionShape['kind'], m: ShapeMode, poly: Pt[], nodes?: PenNode[]) {
   const d = doc.value
-  const shape: SelectionShape = { id: ++shapeSeq, kind, mode: m, poly }
+  const shape: SelectionShape = { id: ++shapeSeq, kind, mode: m, poly, ...(nodes ? { nodes } : {}) }
   commit({ ...d, shapes: [...d.shapes, shape] })
+}
+
+// ================= 钢笔路径编辑（闭合后再改） =================
+
+/** 选中的钢笔形状（有锚点才可编辑） */
+const selectedPen = computed(() => {
+  const s = doc.value.shapes.find((x) => x.id === selectedId.value)
+  return s && s.kind === 'pen' && s.nodes && s.nodes.length >= 3 ? s : null
+})
+/** 选中的锚点（Delete 删它） */
+const selAnchor = ref<number | null>(null)
+/** 拖动中的锚点草稿（松手才进撤销栈） */
+const penDraft = shallowRef<{ id: number; nodes: PenNode[] } | null>(null)
+/** 编辑中显示的锚点（草稿优先） */
+const editNodes = computed<PenNode[]>(() => {
+  const sp = selectedPen.value
+  if (!sp) return []
+  const d = penDraft.value
+  return d && d.id === sp.id ? d.nodes : sp.nodes!
+})
+function penPoly(nodes: PenNode[]): Pt[] {
+  return penToPolyline(nodes, true, Math.max(0.25, 0.5 * imgPerScreen.value))
+}
+/** 参与合成的形状（拖锚点时用草稿实时预览） */
+const liveShapes = computed<SelectionShape[]>(() => {
+  const d = penDraft.value
+  if (!d) return doc.value.shapes
+  return doc.value.shapes.map((s) => (s.id === d.id ? { ...s, nodes: d.nodes, poly: penPoly(d.nodes) } : s))
+})
+function commitPenNodes(id: number, nodes: PenNode[]) {
+  const d = doc.value
+  const poly = penPoly(nodes)
+  if (poly.length < 3) return
+  commit({ ...d, shapes: d.shapes.map((s) => (s.id === id ? { ...s, nodes, poly } : s)) })
+}
+function removeAnchor(i: number) {
+  const sp = selectedPen.value
+  if (!sp?.nodes) return
+  if (sp.nodes.length <= 3) {
+    removeShape(sp.id)
+    return
+  }
+  commitPenNodes(
+    sp.id,
+    sp.nodes.filter((_, k) => k !== i),
+  )
+  selAnchor.value = null
+}
+/** 编辑命中：锚点 / 手柄 / 路径段（屏幕 HIT_PX 内）；没命中返回 null */
+function penEditHit(p: Pt): { what: 'anchor' | 'out' | 'in'; index: number } | { what: 'segment' } | null {
+  const nodes = editNodes.value
+  if (!nodes.length) return null
+  const r = HIT_PX * imgPerScreen.value
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i]!
+    if (n.hx || n.hy || n.ix || n.iy) {
+      const o = outHandle(n)
+      if (Math.hypot(o.x - p.x, o.y - p.y) <= r * 0.8) return { what: 'out', index: i }
+      const h = inHandle(n)
+      if (Math.hypot(h.x - p.x, h.y - p.y) <= r * 0.8) return { what: 'in', index: i }
+    }
+  }
+  for (let i = nodes.length - 1; i >= 0; i--)
+    if (Math.hypot(nodes[i]!.x - p.x, nodes[i]!.y - p.y) <= r) return { what: 'anchor', index: i }
+  if (nearestOnPen(nodes, p).dist <= 6 * imgPerScreen.value) return { what: 'segment' }
+  return null
+}
+/** 双击路径：在最近处插锚点（曲线形状不变） */
+function onStageDblClick(e: MouseEvent) {
+  const sp = selectedPen.value
+  if (!sp?.nodes || penNodes.value.length || (tool.value !== 'pen' && tool.value !== 'move')) return
+  const p = toImage(e)
+  if (!p) return
+  const near = nearestOnPen(sp.nodes, p)
+  if (near.seg < 0 || near.dist > 6 * imgPerScreen.value) return
+  // 双击落在锚点上不插（那是在拖锚点）
+  if (sp.nodes.some((n) => Math.hypot(n.x - p.x, n.y - p.y) <= HIT_PX * imgPerScreen.value)) return
+  const nodes = insertPenNode(sp.nodes, near.seg, near.t)
+  commitPenNodes(sp.id, nodes)
+  selAnchor.value = near.seg + 1
 }
 
 // ================= 点选模型 =================
@@ -307,13 +439,28 @@ const natural = ref({ w: 0, h: 0 })
 const dragBox = ref<PointBox | null>(null)
 
 const hasPositive = computed(() => !!doc.value.box || doc.value.points.some((p) => p.label === 1))
+/** result 对应的点 / 框（按引用）：会话还原时直接带着上次的结果，点 / 框没动就不用重算 */
+const resultFor = shallowRef<{ points: PointPrompt[]; box: PointBox | null } | null>(null)
+const resultMatches = computed(
+  () => !!result.value && !!resultFor.value && resultFor.value.points === doc.value.points && resultFor.value.box === doc.value.box,
+)
 /** 点选还欠一个结果（有正点 / 框，模型没出错，但还没算完）：这时「完成」会把点选丢掉，先不让点 */
 const samPending = computed(
-  () => hasPositive.value && !error.value && (!modelReady.value || embedding.value || decoding.value || !result.value),
+  () =>
+    hasPositive.value &&
+    !error.value &&
+    !resultMatches.value &&
+    (!modelReady.value || embedding.value || decoding.value || !result.value),
 )
 
 const status = computed(() => {
   if (exporting.value) return '正在导出选区…'
+  if (restoring.value) return '正在恢复上次的选区…'
+  if (restoredNote.value) return '已恢复上次的选区，可以继续编辑（「清空」从头开始）'
+  if (selectedPen.value && !penNodes.value.length && (tool.value === 'pen' || tool.value === 'move'))
+    return selAnchor.value !== null
+      ? '拖动锚点移动；拖手柄调曲线（Alt 断开对称）；Delete 删除这个锚点'
+      : '已选中钢笔路径：拖锚点 / 手柄编辑，双击路径加锚点，Esc 取消选中'
   if (tool.value === 'point' && !error.value) {
     if (!modelReady.value) return loadText.value
     if (embedding.value) return '正在识别图片…'
@@ -384,7 +531,7 @@ async function start() {
     await s.ready
     if (seg.value !== s) return
     modelReady.value = true
-    if (doc.value.points.length || doc.value.box) void refresh()
+    if ((doc.value.points.length || doc.value.box) && !resultMatches.value) void refresh()
   } catch (err) {
     fail(err, true)
   }
@@ -417,6 +564,8 @@ onBeforeUnmount(() => {
   if (draftTimer) clearTimeout(draftTimer)
   seg.value?.dispose()
   seg.value = null
+  if (outlineTimer) clearTimeout(outlineTimer)
+  if (sessionPriorUrl) URL.revokeObjectURL(sessionPriorUrl)
 })
 
 // ---------------- 推理：最新优先，进行中有新操作就再跑一轮 ----------------
@@ -426,6 +575,8 @@ let dirty = false
 async function refresh() {
   const s = seg.value
   if (!s || !modelReady.value || error.value) return
+  // 会话还原带来的结果还对得上（点 / 框没动）：不重算
+  if (resultMatches.value) return
   if (running) {
     dirty = true
     return
@@ -434,10 +585,12 @@ async function refresh() {
   try {
     do {
       dirty = false
-      const pts = doc.value.points.slice()
+      const ptsRef = doc.value.points
+      const pts = ptsRef.slice()
       const b = doc.value.box
       if (!pts.length && !b) {
         result.value = null
+        resultFor.value = null
         continue
       }
       embedding.value = true
@@ -449,7 +602,10 @@ async function refresh() {
       decoding.value = true
       try {
         const r = await s.decode(pts, b)
-        if (!dirty) result.value = r
+        if (!dirty) {
+          result.value = r
+          resultFor.value = { points: ptsRef, box: b }
+        }
       } finally {
         decoding.value = false
       }
@@ -465,7 +621,10 @@ async function refresh() {
 watch(
   [() => doc.value.points, () => doc.value.box],
   ([pts, b]) => {
-    if (!pts.length && !b) result.value = null
+    if (!pts.length && !b) {
+      result.value = null
+      resultFor.value = null
+    }
     void refresh()
   },
 )
@@ -583,17 +742,45 @@ function priorAt(w: number, h: number): Uint8Array | null {
 }
 /** 已有选区读不出来（blob 已回收等）：当作没有，不挡「完成」 */
 const priorFailed = ref(false)
+/** 垫底选区的来源：base-mask，或会话还原时会话里存的那张（objectURL，卸载时回收） */
+const priorSrc = ref(baseMask)
+let sessionPriorUrl = ''
 /** 垫着已有选区但还没读到：这时「完成」会把已有选区丢掉，先不让点 */
-const priorPending = computed(() => doc.value.prior && !!baseMask && !priorImg.value && !priorFailed.value)
-if (baseMask) {
+const priorPending = computed(() => doc.value.prior && !!priorSrc.value && !priorImg.value && !priorFailed.value)
+function loadPrior(url: string) {
+  priorImg.value = null
+  priorGridCache = null
+  priorFailed.value = false
+  priorSrc.value = url
+  if (!url) return
   const img = new Image()
   img.crossOrigin = 'anonymous'
   img.onload = () => {
+    if (priorSrc.value !== url) return
     priorGridCache = null
     priorImg.value = img
   }
-  img.onerror = () => (priorFailed.value = true)
-  img.src = baseMask
+  img.onerror = () => {
+    if (priorSrc.value === url) priorFailed.value = true
+  }
+  img.src = url
+}
+loadPrior(baseMask)
+
+/** 上次会话压成的笔画夹取图（预览网格）；doc.flatBrush 为真时生效 */
+let brushMap: { lo: Uint8Array; hi: Uint8Array; w: number; h: number } | null = null
+const brushMapCache = new Map<string, { lo: Uint8Array; hi: Uint8Array }>()
+function brushMapAt(W: number, H: number): { lo: Uint8Array; hi: Uint8Array } | null {
+  const m = brushMap
+  if (!m) return null
+  if (m.w === W && m.h === H) return m
+  const k = `${W}x${H}`
+  const hit = brushMapCache.get(k)
+  if (hit) return hit
+  const out = { lo: upscaleMask(m.lo, m.w, m.h, W, H), hi: upscaleMask(m.hi, m.w, m.h, W, H) }
+  brushMapCache.clear()
+  brushMapCache.set(k, out)
+  return out
 }
 
 // ---------------- 拖滑杆时的草稿（实时预览，松手才进撤销栈） ----------------
@@ -720,7 +907,7 @@ function composeAt(
 ): Uint8Array | null {
   const { w: nw, h: nh } = natural.value
   const size = W * H
-  const { add, sub } = rasterizeShapes(doc.value.shapes, W, H, W / nw, H / nh)
+  const { add, sub } = rasterizeShapes(liveShapes.value, W, H, W / nw, H / nh)
   let addM = add
   let subM = sub
   for (const op of effectiveWands.value) {
@@ -739,8 +926,11 @@ function composeAt(
       b = u
     }
   }
-  if (!b && !addM && !strokes.some((s) => s.mode === 'add')) return null
+  const flat = doc.value.flatBrush ? brushMapAt(W, H) : null
+  if (!b && !addM && !flat && !strokes.some((s) => s.mode === 'add')) return null
   let out = combineMasks(size, b, addM, subM)
+  // 上次会话压成的笔画（更早的笔画）先套，再按顺序盖这次的笔画——与逐笔重放结果一致
+  if (flat) applyClampMaps(out, flat.lo, flat.hi)
   for (const st of strokes) stampStroke(out, W, H, st, W / nw, H / nh)
   if (post.grow || post.smooth) out = applyPostOps(out, W, H, post, Math.max(W, H) / POINT_SEGMENT_INPUT_SIDE)
   return out
@@ -774,14 +964,73 @@ function recomposeSoon() {
   })
 }
 watch([result, () => doc.value, natural, priorImg], recompose)
-watch(liveStroke, recomposeSoon)
+watch([liveStroke, penDraft], recomposeSoon)
 watch(overlay, drawOverlay)
+
+// ---------------- 查看方式：叠加 / 黑白蒙版 / 仅选区 / 轮廓（按浏览器记住，与全屏「显示选区」共用） ----------------
+
+const VIEW_KEY = 'colorfix:mask-view'
+const VIEW_MODES: MaskViewMode[] = ['overlay', 'mask', 'only', 'outline']
+function readView(): MaskViewMode {
+  try {
+    const v = localStorage.getItem(VIEW_KEY) as MaskViewMode | null
+    return v && VIEW_MODES.includes(v) ? v : 'overlay'
+  } catch {
+    return 'overlay'
+  }
+}
+const maskView = ref<MaskViewMode>(readView())
+function setMaskView(v: MaskViewMode) {
+  maskView.value = v
+  try {
+    localStorage.setItem(VIEW_KEY, v)
+  } catch {
+    /* 隐私模式：只是记不住 */
+  }
+}
+watch(maskView, drawOverlay)
+
+/** 轮廓（原图坐标的 SVG path）；拖动中节流 120ms 重算 */
+const outlineD = ref('')
+let outlineTimer: ReturnType<typeof setTimeout> | null = null
+let outlineDirty = false
+function scheduleOutline() {
+  if (maskView.value !== 'outline') {
+    outlineD.value = ''
+    return
+  }
+  outlineDirty = true
+  if (outlineTimer) return
+  const run = () => {
+    outlineTimer = null
+    if (!outlineDirty) return
+    outlineDirty = false
+    const r = composite.value
+    const { w: nw, h: nh } = natural.value
+    outlineD.value = r && nw ? contoursToPath(maskContours(r.mask, r.width, r.height, 128, 0.4), nw / r.width, nh / r.height) : ''
+    if (outlineDirty) outlineTimer = setTimeout(run, 120)
+  }
+  outlineTimer = setTimeout(run, gesture ? 120 : 0)
+}
 
 function drawOverlay() {
   const c = overlay.value
   const r = composite.value
+  scheduleOutline()
   if (!c) return
-  if (!r) {
+  const view = maskView.value
+  if (!r || view === 'outline') {
+    // 黑白蒙版 / 仅选区：还没有选区时也要表达「什么都没选」
+    if (!r && natural.value.w && (view === 'mask' || view === 'only')) {
+      const g = gridOf(POINT_SEGMENT_INPUT_SIDE)
+      c.width = g.w
+      c.height = g.h
+      const ctx = c.getContext('2d')
+      if (!ctx) return
+      const empty = new Uint8Array(g.w * g.h)
+      ctx.putImageData(new ImageData(renderMaskView(empty, g.w, g.h, view, { checker: 12 }) as Uint8ClampedArray<ArrayBuffer>, g.w, g.h), 0, 0)
+      return
+    }
     c.width = c.height = 0
     return
   }
@@ -790,14 +1039,7 @@ function drawOverlay() {
   const ctx = c.getContext('2d')
   if (!ctx) return
   const img = ctx.createImageData(r.width, r.height)
-  for (let i = 0; i < r.mask.length; i++) {
-    const a = r.mask[i]!
-    if (a < 8) continue
-    img.data[i * 4] = 135
-    img.data[i * 4 + 1] = 95
-    img.data[i * 4 + 2] = 154
-    img.data[i * 4 + 3] = Math.round(a * 0.55)
-  }
+  renderMaskView(r.mask, r.width, r.height, view, { checker: 12, out: img.data })
   ctx.putImageData(img, 0, 0)
 }
 
@@ -941,6 +1183,8 @@ const nearPenStart = computed(() => {
   return n.length >= 3 && !!h && Math.hypot(n[0]!.x - h.x, n[0]!.y - h.y) <= HIT_PX * imgPerScreen.value
 })
 const hoverMarker = ref(-1)
+/** 悬停在选中钢笔路径的锚点 / 手柄 / 路径段上（换指针） */
+const hoverEdit = ref<'anchor' | 'out' | 'in' | 'segment' | null>(null)
 
 // ================= 指针 =================
 
@@ -956,6 +1200,19 @@ type Gesture =
   | { kind: 'lasso'; id: number; cx: number; cy: number }
   | { kind: 'wand'; id: number; cx: number; cy: number; p: Pt; neg: boolean }
   | { kind: 'brush'; id: number; cx: number; cy: number }
+  | { kind: 'marquee'; id: number; cx: number; cy: number; start: Pt; last: Pt; square: boolean; center: boolean }
+  | {
+      kind: 'penEdit'
+      id: number
+      cx: number
+      cy: number
+      shape: number
+      what: 'anchor' | 'out' | 'in' | 'segment'
+      index: number
+      start: Pt
+      from: PenNode[]
+      moved: boolean
+    }
 
 const pointers = new Map<number, { x: number; y: number; touch: boolean }>()
 let gesture: Gesture | null = null
@@ -976,6 +1233,8 @@ function abortGesture() {
   clearTimeout(pressTimer)
   if (gesture?.kind === 'lasso') lassoPts.value = []
   if (gesture?.kind === 'brush') liveStroke.value = null
+  if (gesture?.kind === 'marquee') marqueeDraft.value = null
+  if (gesture?.kind === 'penEdit') penDraft.value = null
   // 钢笔按下时已经放了锚点：被第二根手指（捏合）打断的这一下不算，撤掉它
   if (gesture?.kind === 'pen' && penNodes.value.length === gesture.index + 1)
     penNodes.value = penNodes.value.slice(0, gesture.index)
@@ -999,7 +1258,7 @@ function startPinch() {
 }
 
 function onPointerDown(e: PointerEvent) {
-  if (!fit.value.w) return
+  if (!fit.value.w || restoring.value) return
   const touch = e.pointerType === 'touch'
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, touch })
   if (touch && pointers.size === 2) {
@@ -1023,6 +1282,23 @@ function onPointerDown(e: PointerEvent) {
   if (!p) return
   capture(e)
   consumed = false
+  // 钢笔路径编辑：选中了钢笔形状、没在画新路径时，钢笔 / 移动工具先看是否点在锚点 / 手柄 / 路径上
+  if (e.button === 0 && !spaceHeld.value && !penNodes.value.length && (tool.value === 'pen' || tool.value === 'move')) {
+    const sp = selectedPen.value
+    const hit = sp ? penEditHit(p) : null
+    if (sp && hit) {
+      const what = hit.what
+      const index = 'index' in hit ? hit.index : -1
+      if (what === 'anchor') selAnchor.value = index
+      gesture = { kind: 'penEdit', id: e.pointerId, cx: e.clientX, cy: e.clientY, shape: sp.id, what, index, start: p, from: sp.nodes!, moved: false }
+      return
+    }
+    // 钢笔工具 ⌘/Ctrl + 单击：选中路径（不起新路径）
+    if (tool.value === 'pen' && (e.metaKey || e.ctrlKey)) {
+      selectedId.value = shapeAt(p)?.id ?? null
+      return
+    }
+  }
   if (e.button === 1 || spaceHeld.value || tool.value === 'move') {
     gesture = {
       kind: 'pan',
@@ -1080,7 +1356,16 @@ function onPointerDown(e: PointerEvent) {
     gesture = { kind: 'brush', id: e.pointerId, cx: e.clientX, cy: e.clientY }
     return
   }
+  if (tool.value === 'marquee') {
+    const q = toImage(e, true)
+    if (!q) return
+    marqueeMode.value = mode.value
+    gesture = { kind: 'marquee', id: e.pointerId, cx: e.clientX, cy: e.clientY, start: q, last: q, square: e.shiftKey, center: e.altKey }
+    return
+  }
   if (tool.value === 'pen') {
+    // 起新路径：取消对已有路径的选中
+    if (!penNodes.value.length) selectedId.value = null
     const nodes = penNodes.value
     const r = HIT_PX * imgPerScreen.value
     const now = performance.now()
@@ -1117,6 +1402,10 @@ function onPointerMove(e: PointerEvent) {
       const p = toImage(e)
       hover.value = tool.value === 'pen' || tool.value === 'brush' ? p : null
       hoverMarker.value = tool.value === 'point' && p ? pointAt(p) : -1
+      hoverEdit.value =
+        p && selectedPen.value && !penNodes.value.length && (tool.value === 'pen' || tool.value === 'move')
+          ? (penEditHit(p)?.what ?? null)
+          : null
     }
     return
   }
@@ -1136,6 +1425,33 @@ function onPointerMove(e: PointerEvent) {
   if (e.pointerId !== g.id) return
   const far = Math.hypot(e.clientX - g.cx, e.clientY - g.cy) >= DRAG_PX
   if (g.kind === 'wand') return
+  if (g.kind === 'marquee') {
+    const q = toImage(e, true)
+    if (!q) return
+    g.last = q
+    g.square = e.shiftKey
+    g.center = e.altKey
+    if (!far && !marqueeDraft.value) return
+    updateMarquee()
+    return
+  }
+  if (g.kind === 'penEdit') {
+    if (g.what === 'segment') return
+    if (!g.moved && !far) return
+    g.moved = true
+    const p = toImage(e)
+    if (!p) return
+    const nodes = g.from.map((n) => ({ ...n }))
+    const n = nodes[g.index]
+    if (!n) return
+    if (g.what === 'anchor') {
+      // 锚点带着自己的手柄一起移动（手柄是相对偏移，不用改）
+      n.x = g.from[g.index]!.x + (p.x - g.start.x)
+      n.y = g.from[g.index]!.y + (p.y - g.start.y)
+    } else nodes[g.index] = movePenHandle(g.from[g.index]!, g.what, p, e.altKey)
+    penDraft.value = { id: g.shape, nodes }
+    return
+  }
   if (g.kind === 'brush') {
     const p = toImage(e)
     const st = liveStroke.value
@@ -1221,6 +1537,23 @@ function onPointerUp(e: PointerEvent) {
     return
   }
   if (g.kind === 'pen') return
+  if (g.kind === 'marquee') {
+    const r = marqueeDraft.value
+    marqueeDraft.value = null
+    const k = imgPerScreen.value
+    // 小于 4×4 屏幕像素当误触
+    if (r && r.x1 - r.x0 >= 4 * k && r.y1 - r.y0 >= 4 * k) {
+      const kind = marqueeShape.value
+      addShape(kind, marqueeMode.value, kind === 'rect' ? rectPolygon(r) : ellipsePolygon(r, Math.max(0.25, 0.5 * k)))
+    }
+    return
+  }
+  if (g.kind === 'penEdit') {
+    const d = penDraft.value
+    penDraft.value = null
+    if (g.moved && d && d.id === g.shape) commitPenNodes(d.id, d.nodes)
+    return
+  }
   if (g.kind === 'wand') {
     if (Math.hypot(e.clientX - g.cx, e.clientY - g.cy) < DRAG_PX) addWand(g.p, g.neg ? 'sub' : 'add')
     return
@@ -1243,6 +1576,17 @@ function onPointerCancel(e: PointerEvent) {
 function onPointerLeave() {
   hover.value = null
   hoverMarker.value = -1
+  hoverEdit.value = null
+}
+
+/** 按当前手势（起点 / 当前点 / Shift / Alt）更新选框草稿 */
+function updateMarquee() {
+  const g = gesture
+  if (g?.kind !== 'marquee') return
+  const { w, h } = natural.value
+  const r = marqueeRect(g.start, g.last, { square: g.square, center: g.center })
+  // 夹在图内（从中心拉出时可能越界）
+  marqueeDraft.value = { x0: Math.max(0, r.x0), y0: Math.max(0, r.y0), x1: Math.min(w, r.x1), y1: Math.min(h, r.y1) }
 }
 
 function finishLasso() {
@@ -1261,7 +1605,13 @@ function closePen() {
   if (nodes.length < 3) return
   const k = imgPerScreen.value
   const poly = penToPolyline(nodes, true, Math.max(0.25, 0.5 * k))
-  if (poly.length >= 3 && Math.abs(polygonArea(poly)) >= 16 * k * k) addShape('pen', penMode.value, poly)
+  if (poly.length >= 3 && Math.abs(polygonArea(poly)) >= 16 * k * k)
+    addShape(
+      'pen',
+      penMode.value,
+      poly,
+      nodes.map((n) => ({ ...n })),
+    )
 }
 
 function cancelPen() {
@@ -1271,15 +1621,25 @@ function cancelPen() {
 
 // ================= 键盘 =================
 
+/** 不吃字符键的 input（滑杆 / 勾选 / 按钮类）：焦点在上面时工具快捷键照常（方向键仍归滑杆） */
+const NON_TEXT_INPUTS = new Set(['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color'])
 function isTyping(t: EventTarget | null) {
   const el = t as HTMLElement | null
-  return (
-    !!el && (el.isContentEditable || el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.tagName === 'SELECT')
-  )
+  if (!el) return false
+  if (el.tagName === 'INPUT') return !NON_TEXT_INPUTS.has((el as HTMLInputElement).type)
+  return el.isContentEditable || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'
 }
 
 function onKey(e: KeyboardEvent) {
   if (!show.value || isTyping(e.target)) return
+  // 拖选框时按下 / 松开 Shift、Alt：不等鼠标动就更新
+  if (gesture?.kind === 'marquee' && (e.key === 'Shift' || e.key === 'Alt')) {
+    gesture.square = e.shiftKey
+    gesture.center = e.altKey
+    updateMarquee()
+    e.preventDefault()
+    return
+  }
   const mod = e.metaKey || e.ctrlKey
   const k = e.key
   const lower = k.length === 1 ? k.toLowerCase() : k
@@ -1295,7 +1655,10 @@ function onKey(e: KeyboardEvent) {
     if (el && (el.tagName === 'BUTTON' || el.getAttribute('role') === 'radio')) handled = false
     else spaceHeld.value = true
   } else if (lower === 'v' && !samDisabled) setTool('point')
-  else if (lower === 'p') setTool('pen')
+  else if (lower === 'm') {
+    if (tool.value === 'marquee') marqueeShape.value = marqueeShape.value === 'rect' ? 'ellipse' : 'rect'
+    else setTool('marquee')
+  } else if (lower === 'p') setTool('pen')
   else if (lower === 'l') setTool('lasso')
   else if (lower === 'h') setTool('move')
   else if (lower === 'w') setTool('wand')
@@ -1311,13 +1674,16 @@ function onKey(e: KeyboardEvent) {
   } else if (k === 'Backspace' || k === 'Delete') {
     // 都不再冒泡给宿主（画布会当成删除节点）
     if (penNodes.value.length) penNodes.value = penNodes.value.slice(0, -1)
+    else if (selAnchor.value !== null && selectedPen.value) removeAnchor(selAnchor.value)
     else if (selectedId.value !== null) removeShape(selectedId.value)
     // 长按连删锚点删到底时不顺势撤销已完成的形状 / 点
     else if (!e.repeat) undo()
   } else if (k === 'Escape') {
     // 有东西可放弃时自己消化；否则交给 n-modal（close-on-esc 只关最上层弹窗）
     if (penNodes.value.length) cancelPen()
-    else if (gesture?.kind === 'lasso' || gesture?.kind === 'brush') abortGesture()
+    else if (gesture?.kind === 'lasso' || gesture?.kind === 'brush' || gesture?.kind === 'marquee' || gesture?.kind === 'penEdit')
+      abortGesture()
+    else if (selAnchor.value !== null) selAnchor.value = null
     else if (selectedId.value !== null) selectedId.value = null
     else handled = false
   } else handled = false
@@ -1328,6 +1694,11 @@ function onKey(e: KeyboardEvent) {
 
 function onKeyUp(e: KeyboardEvent) {
   if (e.key === ' ') spaceHeld.value = false
+  if (gesture?.kind === 'marquee' && (e.key === 'Shift' || e.key === 'Alt')) {
+    gesture.square = e.shiftKey
+    gesture.center = e.altKey
+    updateMarquee()
+  }
 }
 function onBlur() {
   spaceHeld.value = false
@@ -1358,16 +1729,20 @@ const penPreviewD = computed(() => {
 const lassoD = computed(() => polyD(lassoPts.value, false))
 /** 锚点 / 手柄在 SVG 里的半径（原图单位，屏幕上约 4px） */
 const nodeR = computed(() => 4 * imgPerScreen.value)
-const shapeLabel = (s: SelectionShape, i: number) => `${s.kind === 'pen' ? '钢笔' : '自由'} ${i + 1}`
+const SHAPE_NAMES: Record<SelectionShape['kind'], string> = { pen: '钢笔', lasso: '自由', rect: '矩形', ellipse: '椭圆' }
+const shapeLabel = (s: SelectionShape, i: number) => `${SHAPE_NAMES[s.kind]} ${i + 1}`
 
 const stageCursor = computed(() => {
   if (panning.value) return 'grabbing'
+  if (hoverEdit.value === 'segment') return 'copy'
+  if (hoverEdit.value) return 'move'
   if (spaceHeld.value || tool.value === 'move') return 'grab'
   if (tool.value === 'point') {
     if (hoverMarker.value >= 0) return 'pointer'
     return embedding.value ? 'progress' : 'crosshair'
   }
   if (tool.value === 'pen' && nearPenStart.value) return 'pointer'
+  if (restoring.value) return 'progress'
   if (tool.value === 'brush') return 'none'
   return 'crosshair'
 })
@@ -1439,8 +1814,100 @@ async function exportComposite(): Promise<Blob> {
   return maskToPng(mask, g.w, g.h)
 }
 
+/** 单通道蒙版 → 灰度 PNG（会话里存点选结果用） */
+function grayPng(mask: Uint8Array, W: number, H: number): Promise<Blob> {
+  return maskToPng(mask, W, H)
+}
+
+/** 两张单通道图 → 一张 PNG（R = a，G = b；会话里存笔画夹取图） */
+async function pairPng(a: Uint8Array, b: Uint8Array, W: number, H: number): Promise<Blob> {
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const ctx = c.getContext('2d')
+  if (!ctx) throw new Error('画布不可用')
+  const img = ctx.createImageData(W, H)
+  for (let i = 0; i < a.length; i++) {
+    img.data[i * 4] = a[i]!
+    img.data[i * 4 + 1] = b[i]!
+    img.data[i * 4 + 3] = 255
+  }
+  ctx.putImageData(img, 0, 0)
+  const blob = await new Promise<Blob | null>((resolve) => c.toBlob(resolve, 'image/png'))
+  c.width = c.height = 0
+  if (!blob) throw new Error('选区导出失败')
+  return blob
+}
+
+/** 位图 Blob → 各通道（按 W×H 读；读不出抛错） */
+async function readChannels(blob: Blob, W: number, H: number): Promise<Uint8ClampedArray> {
+  const url = URL.createObjectURL(blob)
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image()
+      el.onload = () => resolve(el)
+      el.onerror = () => reject(new Error('会话位图读取失败'))
+      el.src = url
+    })
+    const c = document.createElement('canvas')
+    c.width = W
+    c.height = H
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    if (!ctx) throw new Error('画布不可用')
+    ctx.drawImage(img, 0, 0, W, H)
+    const data = ctx.getImageData(0, 0, W, H).data
+    c.width = c.height = 0
+    return data
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+/** 垫底选区（priorImg）编码成 PNG：会话自带它，下次还原不依赖已被覆盖的旧蒙版 */
+async function priorPng(): Promise<Blob | undefined> {
+  const img = priorImg.value
+  if (!img) return undefined
+  const W = Math.min(PAINTED_MASK_MAX_SIDE, img.naturalWidth || 1)
+  const H = Math.max(1, Math.round(((img.naturalHeight || 1) * W) / (img.naturalWidth || 1)))
+  const m = readMaskImage(img, W, H)
+  return maskToPng(m, W, H)
+}
+
+/** 本次编辑状态 → 会话（不含 maskSize，调用方存蒙版时补上） */
+async function buildSession(d: SelDoc): Promise<Omit<SelectionSession, 'maskSize'>> {
+  const { w: nw, h: nh } = natural.value
+  const r = result.value
+  const sam = r && resultMatches.value && (d.points.length || d.box) ? { blob: await grayPng(r.mask, r.width, r.height), width: r.width, height: r.height } : undefined
+  let strokes = d.strokes
+  let brush: Omit<SelectionSession, 'maskSize'>['brush']
+  if (d.flatBrush || strokePointCount(d) > SESSION_STROKE_POINTS_MAX) {
+    // 笔画压成夹取图（预览网格）：先套上次压好的，再盖这次的笔画
+    const g = gridOf(POINT_SEGMENT_INPUT_SIDE)
+    const base = d.flatBrush ? brushMapAt(g.w, g.h) : null
+    const lo = base ? base.lo.slice() : new Uint8Array(g.w * g.h)
+    const hi = base ? base.hi.slice() : new Uint8Array(g.w * g.h).fill(255)
+    for (const st of d.strokes) {
+      stampStroke(lo, g.w, g.h, st, g.w / nw, g.h / nh)
+      stampStroke(hi, g.w, g.h, st, g.w / nw, g.h / nh)
+    }
+    brush = { blob: await pairPng(lo, hi, g.w, g.h), width: g.w, height: g.h }
+    strokes = []
+  }
+  const prior = d.prior ? await priorPng() : undefined
+  const { flatBrush, ...rest } = d
+  void flatBrush
+  return {
+    v: 1,
+    natural: { w: nw, h: nh },
+    doc: { ...rest, strokes, prior: d.prior && !!prior },
+    ...(sam ? { sam } : {}),
+    ...(brush ? { brush } : {}),
+    ...(prior ? { prior } : {}),
+  }
+}
+
 async function apply() {
-  if (!hasSelection.value || exporting.value || samPending.value || priorPending.value) return
+  if (!hasSelection.value || exporting.value || samPending.value || priorPending.value || restoring.value) return
   if (penNodes.value.length) closePen()
   wandDraft.value = null
   postDraft.value = null
@@ -1450,9 +1917,12 @@ async function apply() {
     const r = result.value
     // 只有点选：照旧存模型网格（长边 ≤1024），烘图时按原图尺寸平滑放大，蒙版占的本机存储小一个数量级
     const d = doc.value
-    const onlySam = !d.shapes.length && !d.wands.length && !d.strokes.length && !d.prior && !d.post.grow && !d.post.smooth
-    if (onlySam && s && r) emit('apply', await s.toMaskBlob(r, POINT_SEGMENT_INPUT_SIDE))
-    else emit('apply', await exportComposite())
+    const onlySam =
+      !d.shapes.length && !d.wands.length && !d.strokes.length && !d.prior && !d.flatBrush && !d.post.grow && !d.post.smooth
+    const mask = onlySam && s && r ? await s.toMaskBlob(r, POINT_SEGMENT_INPUT_SIDE) : await exportComposite()
+    // 会话打包失败不挡「完成」：下次从蒙版重新开始而已
+    const session = await buildSession(d).catch(() => undefined)
+    emit('apply', mask, session)
   } catch (err) {
     fail(err)
   } finally {
@@ -1460,14 +1930,98 @@ async function apply() {
   }
 }
 
+// ================= 继续编辑：还原上次的会话 =================
+
+/** 正在取回 / 解码上次的会话（期间不接受编辑、不能完成） */
+const restoring = ref(!!sessionLoader)
+/** 刚还原了会话（状态行提示几秒） */
+const restoredNote = ref(false)
+let pendingSession: SelectionSession | null = null
+let sessionDone = false
+
+async function restoreSession(sess: SelectionSession) {
+  const { w: nw, h: nh } = natural.value
+  // 换了图（尺寸对不上）：不还原
+  if (Math.abs(sess.natural.w - nw) > 0.5 || Math.abs(sess.natural.h - nh) > 0.5) return
+  if (sess.sam && sess.doc.points.length + (sess.doc.box ? 1 : 0) > 0) {
+    const data = await readChannels(sess.sam.blob, sess.sam.width, sess.sam.height)
+    const mask = new Uint8Array(sess.sam.width * sess.sam.height)
+    for (let i = 0; i < mask.length; i++) mask[i] = data[i * 4]!
+    result.value = { mask, width: sess.sam.width, height: sess.sam.height, srcWidth: nw, srcHeight: nh }
+  }
+  let flatBrush = false
+  if (sess.brush) {
+    const data = await readChannels(sess.brush.blob, sess.brush.width, sess.brush.height)
+    const n = sess.brush.width * sess.brush.height
+    const lo = new Uint8Array(n)
+    const hi = new Uint8Array(n)
+    for (let i = 0; i < n; i++) {
+      lo[i] = data[i * 4]!
+      hi[i] = data[i * 4 + 1]!
+    }
+    brushMap = { lo, hi, w: sess.brush.width, h: sess.brush.height }
+    brushMapCache.clear()
+    flatBrush = true
+  }
+  if (sessionPriorUrl) URL.revokeObjectURL(sessionPriorUrl)
+  sessionPriorUrl = sess.prior ? URL.createObjectURL(sess.prior) : ''
+  loadPrior(sess.doc.prior ? sessionPriorUrl : '')
+  const d: SelDoc = { ...sess.doc, prior: sess.doc.prior && !!sessionPriorUrl, ...(flatBrush ? { flatBrush } : {}) }
+  shapeSeq = Math.max(shapeSeq, ...d.shapes.map((x) => x.id))
+  wandSeq = Math.max(wandSeq, ...d.wands.map((x) => x.id))
+  strokeSeq = Math.max(strokeSeq, ...d.strokes.map((x) => x.id))
+  if (result.value) resultFor.value = { points: d.points, box: d.box }
+  history.value = [d]
+  hIndex.value = 0
+  restoredNote.value = true
+  setTimeout(() => (restoredNote.value = false), 4000)
+}
+
+async function maybeRestore() {
+  if (sessionDone || !pendingSession || !natural.value.w) return
+  sessionDone = true
+  const sess = pendingSession
+  pendingSession = null
+  try {
+    await restoreSession(sess)
+  } catch {
+    /* 会话坏了：按 base-mask 从头来 */
+  } finally {
+    restoring.value = false
+  }
+}
+
+if (sessionLoader) {
+  // 图一直加载不出来（尺寸拿不到）时别一直挡着：8s 后放弃还原
+  setTimeout(() => {
+    if (!restoring.value) return
+    sessionDone = true
+    pendingSession = null
+    restoring.value = false
+  }, 8000)
+  void sessionLoader()
+    .catch(() => null)
+    .then((sess) => {
+      if (!sess) {
+        sessionDone = true
+        restoring.value = false
+        return
+      }
+      pendingSession = sess
+      void maybeRestore()
+    })
+}
+watch(natural, () => void maybeRestore())
+
 const segBtn =
   'inline-flex items-center justify-center gap-4px h-30px min-w-44px px-9px rounded-sm text-12px border border-solid border-transparent cursor-pointer select-none bg-transparent text-ink-2 hover:text-ink sx-focus'
 const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
 </script>
 
 <template>
+  <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal v-model:show="show" transform-origin="center" :mask-closable="false" :close-on-esc="!escBusy">
-    <section
+    <div
       :class="large ? 'w-[min(1280px,calc(100vw-32px))]' : 'w-[min(820px,calc(100vw-32px))]'"
       class="max-h-[calc(100vh-48px)] overflow-y-auto box-border p-18px rounded-18px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-10px"
       role="dialog"
@@ -1479,8 +2033,8 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
         <button
           type="button"
           class="sx-btn-primary"
-          :disabled="!hasSelection || exporting || samPending || priorPending"
-          :title="samPending ? '点选还在计算，稍等' : priorPending ? '正在读取已有选区' : !hasSelection ? '还没有选区' : undefined"
+          :disabled="!hasSelection || exporting || samPending || priorPending || restoring"
+          :title="restoring ? '正在恢复上次的选区' : samPending ? '点选还在计算，稍等' : priorPending ? '正在读取已有选区' : !hasSelection ? '还没有选区' : undefined"
           @click="apply"
         >
           完成
@@ -1521,7 +2075,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
             :class="[segBtn, mode === 'add' && '!border-success-line !text-success font-600 bg-success-soft']"
             :aria-pressed="mode === 'add'"
             aria-keyshortcuts="A +"
-            :title="tool === 'brush' ? '画笔涂抹 = 添加到选区（A 或 +）' : '选中：点 = 加入选区，钢笔 / 自由 / 魔棒 = 添加区域（A 或 +）'"
+            :title="tool === 'brush' ? '画笔涂抹 = 添加到选区（A 或 +）' : '选中：点 = 加入选区，选框 / 钢笔 / 自由 / 魔棒 = 添加区域（A 或 +）'"
             @click="mode = 'add'"
           >
             {{ tool === 'brush' ? '添加' : '选中' }} <span aria-hidden="true" class="text-14px font-700">+</span>
@@ -1531,7 +2085,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
             :class="[segBtn, mode === 'sub' && '!border-danger-line !text-danger font-600 bg-danger-soft']"
             :aria-pressed="mode === 'sub'"
             aria-keyshortcuts="E -"
-            :title="tool === 'brush' ? '画笔涂抹 = 从选区擦除（E 或 −；也可按住 Alt）' : '排除：点 = 从选区排除，钢笔 / 自由 / 魔棒 = 挖掉区域（E 或 −；也可 Alt / Shift + 单击）'"
+            :title="tool === 'brush' ? '画笔涂抹 = 从选区擦除（E 或 −；也可按住 Alt）' : tool === 'marquee' ? '排除：选框挖掉区域（E 或 −；选框里 Shift / Alt 用于正方形 / 从中心）' : '排除：点 = 从选区排除，选框 / 钢笔 / 自由 / 魔棒 = 挖掉区域（E 或 −；也可 Alt / Shift + 单击）'"
             @click="mode = 'sub'"
           >
             {{ tool === 'brush' ? '擦除' : '排除' }} <span aria-hidden="true" class="text-14px font-700">−</span>
@@ -1547,12 +2101,35 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
       </div>
 
       <div
-        v-if="tool === 'wand' || tool === 'brush' || hasSelection || doc.post.grow || doc.post.smooth"
+        v-if="tool === 'wand' || tool === 'brush' || tool === 'marquee' || hasSelection || doc.post.grow || doc.post.smooth"
         class="ps-opts flex flex-wrap items-center gap-x-16px gap-y-8px px-12px py-8px rounded-12px bg-#f7f5f9"
         role="group"
         aria-label="工具与选区选项"
       >
-        <template v-if="tool === 'wand'">
+        <template v-if="tool === 'marquee'">
+          <div class="ps-opt">
+            <span class="ps-opt__label">形状</span>
+            <div class="sx-seg" role="radiogroup" aria-label="选框形状（M 切换）">
+              <button
+                v-for="k in (['rect', 'ellipse'] as const)"
+                :key="k"
+                type="button"
+                role="radio"
+                :class="[segBtn, marqueeShape === k && segOn]"
+                :aria-checked="marqueeShape === k"
+                @click="marqueeShape = k"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect v-if="k === 'rect'" x="4" y="6" width="16" height="12" rx="1" stroke-dasharray="3 2" />
+                  <ellipse v-else cx="12" cy="12" rx="8.5" ry="6.5" stroke-dasharray="3 2" />
+                </svg>
+                {{ k === 'rect' ? '矩形' : '椭圆' }}
+              </button>
+            </div>
+          </div>
+          <span class="text-12px text-muted">Shift 正方形 / 正圆 · Alt 从中心</span>
+        </template>
+        <template v-else-if="tool === 'wand'">
           <label class="ps-opt">
             <span class="ps-opt__label">容差</span>
             <input
@@ -1590,7 +2167,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
             <b class="ps-opt__num">{{ brushHardness }}</b>
           </label>
         </template>
-        <span v-if="tool === 'wand' || tool === 'brush'" class="ps-opts__sep" aria-hidden="true" />
+        <span v-if="tool === 'wand' || tool === 'brush' || tool === 'marquee'" class="ps-opts__sep" aria-hidden="true" />
         <label class="ps-opt" title="整体扩展（正）或收缩（负）选区边缘，按长边 1024 像素计">
           <span class="ps-opt__label">扩展</span>
           <input
@@ -1625,6 +2202,20 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
         <span class="flex-1 min-w-200px text-12px leading-18px text-muted" role="status" aria-live="polite">
           {{ status }}
         </span>
+        <div class="sx-seg" role="radiogroup" aria-label="选区查看方式">
+          <button
+            v-for="v in VIEW_MODES"
+            :key="v"
+            type="button"
+            role="radio"
+            :class="[segBtn, '!min-w-0', maskView === v && segOn]"
+            :aria-checked="maskView === v"
+            :title="MASK_VIEW_HINTS[v]"
+            @click="setMaskView(v)"
+          >
+            {{ MASK_VIEW_LABELS[v] }}
+          </button>
+        </div>
         <div class="inline-flex items-center gap-8px" role="group" aria-label="缩放">
           <IconButton label="缩小" size="md" variant="quiet" :disabled="zoom <= 1" @click="zoomOut">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -1696,6 +2287,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
           @pointerup="onPointerUp"
           @pointercancel="onPointerCancel"
           @pointerleave="onPointerLeave"
+          @dblclick="onStageDblClick"
           @contextmenu.prevent
         >
           <div ref="contentEl" class="absolute left-0 top-0" :style="contentStyle">
@@ -1714,7 +2306,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
               preserveAspectRatio="none"
               aria-hidden="true"
             >
-              <g v-for="s in doc.shapes" :key="s.id">
+              <g v-for="s in liveShapes" :key="s.id">
                 <path
                   :d="polyD(s.poly)"
                   fill="none"
@@ -1806,6 +2398,91 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
                   vector-effect="non-scaling-stroke"
                 />
               </template>
+              <template v-if="marqueeDraft">
+                <component
+                  :is="marqueeShape === 'rect' ? 'rect' : 'ellipse'"
+                  v-bind="
+                    marqueeShape === 'rect'
+                      ? { x: marqueeDraft.x0, y: marqueeDraft.y0, width: marqueeDraft.x1 - marqueeDraft.x0, height: marqueeDraft.y1 - marqueeDraft.y0 }
+                      : {
+                          cx: (marqueeDraft.x0 + marqueeDraft.x1) / 2,
+                          cy: (marqueeDraft.y0 + marqueeDraft.y1) / 2,
+                          rx: (marqueeDraft.x1 - marqueeDraft.x0) / 2,
+                          ry: (marqueeDraft.y1 - marqueeDraft.y0) / 2,
+                        }
+                  "
+                  fill="rgba(135,95,154,0.10)"
+                  stroke="#fff"
+                  stroke-width="3.5"
+                  vector-effect="non-scaling-stroke"
+                />
+                <component
+                  :is="marqueeShape === 'rect' ? 'rect' : 'ellipse'"
+                  v-bind="
+                    marqueeShape === 'rect'
+                      ? { x: marqueeDraft.x0, y: marqueeDraft.y0, width: marqueeDraft.x1 - marqueeDraft.x0, height: marqueeDraft.y1 - marqueeDraft.y0 }
+                      : {
+                          cx: (marqueeDraft.x0 + marqueeDraft.x1) / 2,
+                          cy: (marqueeDraft.y0 + marqueeDraft.y1) / 2,
+                          rx: (marqueeDraft.x1 - marqueeDraft.x0) / 2,
+                          ry: (marqueeDraft.y1 - marqueeDraft.y0) / 2,
+                        }
+                  "
+                  fill="none"
+                  :stroke="marqueeMode === 'add' ? '#e5484d' : '#1f2329'"
+                  stroke-width="1.75"
+                  stroke-dasharray="6 4"
+                  vector-effect="non-scaling-stroke"
+                />
+              </template>
+              <template v-if="outlineD && maskView === 'outline'">
+                <path :d="outlineD" fill="none" stroke="#fff" stroke-width="2.5" vector-effect="non-scaling-stroke" />
+                <path
+                  class="ps-ants"
+                  :d="outlineD"
+                  fill="none"
+                  stroke="#1f2329"
+                  stroke-width="1.25"
+                  stroke-dasharray="5 4"
+                  vector-effect="non-scaling-stroke"
+                />
+              </template>
+              <template v-if="selectedPen && !penNodes.length">
+                <template v-for="(n, i) in editNodes" :key="`e${i}`">
+                  <template v-if="n.hx || n.hy || n.ix || n.iy">
+                    <line
+                      :x1="inHandle(n).x"
+                      :y1="inHandle(n).y"
+                      :x2="n.x"
+                      :y2="n.y"
+                      stroke="#875f9a"
+                      stroke-width="1"
+                      vector-effect="non-scaling-stroke"
+                    />
+                    <line
+                      :x1="n.x"
+                      :y1="n.y"
+                      :x2="outHandle(n).x"
+                      :y2="outHandle(n).y"
+                      stroke="#875f9a"
+                      stroke-width="1"
+                      vector-effect="non-scaling-stroke"
+                    />
+                    <circle :cx="outHandle(n).x" :cy="outHandle(n).y" :r="nodeR * 0.75" fill="#875f9a" stroke="#fff" stroke-width="1" vector-effect="non-scaling-stroke" />
+                    <circle :cx="inHandle(n).x" :cy="inHandle(n).y" :r="nodeR * 0.75" fill="#875f9a" stroke="#fff" stroke-width="1" vector-effect="non-scaling-stroke" />
+                  </template>
+                  <rect
+                    :x="n.x - nodeR * 1.15"
+                    :y="n.y - nodeR * 1.15"
+                    :width="nodeR * 2.3"
+                    :height="nodeR * 2.3"
+                    :fill="selAnchor === i ? '#875f9a' : '#fff'"
+                    stroke="#875f9a"
+                    stroke-width="1.5"
+                    vector-effect="non-scaling-stroke"
+                  />
+                </template>
+              </template>
               <template v-if="lassoPts.length > 1">
                 <path :d="lassoD" fill="none" stroke="#fff" stroke-width="3.5" vector-effect="non-scaling-stroke" />
                 <path
@@ -1830,6 +2507,13 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
               :style="boxStyle(dragBox)"
               aria-hidden="true"
             />
+            <div
+              v-if="restoring"
+              class="absolute inset-0 grid place-items-center bg-white/55 text-13px text-ink-2 pointer-events-none"
+              role="status"
+            >
+              正在恢复上次的选区…
+            </div>
             <span
               v-for="(p, i) in doc.points"
               :key="i"
@@ -1891,10 +2575,10 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 
       <p class="m-0 text-11px leading-16px text-muted">
         选区在本机识别，图片不会上传。滚轮缩放，按住空格拖动画面；快捷键
-        <template v-if="!samDisabled">V 点选 · </template>P 钢笔 · L 自由 · W 魔棒 · B 画笔（[ / ] 大小）· H 移动 · A / E
-        选中 / 排除。完成后可在参数台里反选、调边缘柔化。
+        <template v-if="!samDisabled">V 点选 · </template>M 选框 · P 钢笔 · L 自由 · W 魔棒 · B 画笔（[ / ] 大小）· H 移动 · A / E
+        选中 / 排除。完成后可在参数台里反选、调边缘柔化；下次打开会接着这次的编辑继续。
       </p>
-    </section>
+    </div>
   </n-modal>
 </template>
 
@@ -1933,6 +2617,15 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 .ps-bar {
   transition: width 0.2s ease;
 }
+/* 行军蚁：虚线缓慢流动；减少动态效果时静止 */
+.ps-ants {
+  animation: ps-ants 0.9s linear infinite;
+}
+@keyframes ps-ants {
+  to {
+    stroke-dashoffset: -9;
+  }
+}
 /* 工具选项：标签 + 滑杆 + 数值，一组 ≥ 32 高 */
 .ps-opt {
   display: inline-flex;
@@ -1965,6 +2658,9 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 @media (prefers-reduced-motion: reduce) {
   .ps-bar {
     transition: none;
+  }
+  .ps-ants {
+    animation: none;
   }
 }
 </style>

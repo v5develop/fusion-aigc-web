@@ -25,7 +25,16 @@ import {
   loadPaintedMask,
   loadRegion,
 } from './mask-store.ts'
-import { isBaseLayer, layerEffective, layerMaskScope, layersFromLegacy, recolorActive, type ColorFixLayer } from './layers.ts'
+import {
+  adjustActive,
+  cloneAdjust,
+  isBaseLayer,
+  layerEffective,
+  layerMaskScope,
+  layersFromLegacy,
+  recolorActive,
+  type ColorFixLayer,
+} from './layers.ts'
 import {
   colorFixPresetFor,
   colorFixRequestParts,
@@ -92,6 +101,7 @@ export async function bakeStoredColorFix(key: string, src: string, opts: BakeSto
       invert: !!mask && l.region.invert,
       feather: mask ? l.region.feather : 0,
       recolor: recolorActive(l.recolor) ? { ...l.recolor } : null,
+      adjust: adjustActive(l.adjust) ? cloneAdjust(l.adjust) : null,
     })
   }
   const dataUrl = await colorFixRenderLayers(src, render, opts.maxSide ?? COLORFIX_EXPORT_MAX_SIDE)
@@ -130,7 +140,7 @@ export async function clearStoredColorFix(key: string | null | undefined): Promi
 }
 
 /**
- * 这条存的校色能不能只靠 CSS filter 预览（只有整图底层在起作用、没有替换颜色）：能 → filter 串；不能（有选区 / 多层 /
+ * 这条存的校色能不能只靠 CSS filter 预览（只有整图底层在起作用、没有替换颜色 / 更多调整）：能 → filter 串；不能（有选区 / 多层 /
  * 替换颜色）→ ''；没校色 → null。列表缩略图「先挂 filter、要真图再烘」用。
  */
 export function storedColorFixFilter(key: string): string | null {
@@ -139,5 +149,7 @@ export function storedColorFixFilter(key: string): string | null {
   const eff = layers.filter(layerEffective)
   if (!eff.length) return colorFixFilter({ hue: 0, sat: 0, light: 0, bright: 0, contrast: 0 })
   const only = eff[0]!
-  return eff.length === 1 && isBaseLayer(only) && !recolorActive(only.recolor) ? colorFixFilter(only.params) : ''
+  return eff.length === 1 && isBaseLayer(only) && !recolorActive(only.recolor) && !adjustActive(only.adjust)
+    ? colorFixFilter(only.params)
+    : ''
 }

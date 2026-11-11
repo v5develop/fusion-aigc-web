@@ -12,6 +12,8 @@
  */
 import { reactive } from 'vue'
 import {
+  adjustSignature,
+  applyAdjustPixels,
   applyColorFixPixels,
   dominantLab,
   oklabToSrgb8,
@@ -20,6 +22,8 @@ import {
   srgb8ToOklab,
   compositeLayerPixels,
   toHex,
+  type Lab,
+  type ColorFixAdjust,
   type ColorFixParams,
 } from './colorfix-math.ts'
 
@@ -211,14 +215,16 @@ export interface ColorFixMaskOptions {
 }
 
 /** 看起来没有透明信息的蒙版（整幅不透明）按亮度当 alpha：黑底白笔 PNG（MaskPainter / 多数分割服务）也能直接用 */
-function maskToAlpha(data: Uint8ClampedArray, invert: boolean) {
+function maskToAlpha(data: Uint8ClampedArray, invert: boolean, forceOpaque?: boolean) {
   let opaque = true
-  for (let i = 3; i < data.length; i += 4) {
-    if (data[i]! < 255) {
-      opaque = false
-      break
+  if (forceOpaque !== undefined) opaque = forceOpaque
+  else
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i]! < 255) {
+        opaque = false
+        break
+      }
     }
-  }
   for (let i = 0; i < data.length; i += 4) {
     const a = opaque ? Math.round(0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!) : data[i + 3]!
     data[i] = data[i + 1] = data[i + 2] = 255
@@ -252,22 +258,37 @@ function blurAlpha(data: Uint8ClampedArray, w: number, h: number, radius: number
   for (let i = 0; i < a.length; i++) data[i * 4 + 3] = a[i]!
 }
 
+/**
+ * 局部渲染（全屏 100% 清晰度）时蒙版的摆放：画布只是整幅输出（fullW × fullH）里从 (x, y) 起的一块；
+ * 柔化半径按整幅尺寸算；opaque = 蒙版整体是否不透明（按整幅判断，一块区域里判不准）。
+ */
+interface MaskPlacement {
+  x: number
+  y: number
+  fullW: number
+  fullH: number
+  opaque: boolean
+}
+
 /** 把任意蒙版图（alpha 或黑白）整理成「白色 + alpha = 调整强度」的画布，按需反选与柔化 */
 function prepareMask(
   mask: HTMLImageElement,
   width: number,
   height: number,
   opts: ColorFixMaskOptions,
+  place?: MaskPlacement,
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('画布不可用')
-  ctx.drawImage(mask, 0, 0, width, height)
+  if (place) ctx.drawImage(mask, -place.x, -place.y, place.fullW, place.fullH)
+  else ctx.drawImage(mask, 0, 0, width, height)
   const data = ctx.getImageData(0, 0, width, height)
-  maskToAlpha(data.data, !!opts.invert)
-  const blur = opts.feather && opts.feather > 0 ? (opts.feather * Math.max(width, height)) / 1000 : 0
+  maskToAlpha(data.data, !!opts.invert, place?.opaque)
+  const base = place ? Math.max(place.fullW, place.fullH) : Math.max(width, height)
+  const blur = opts.feather && opts.feather > 0 ? (opts.feather * base) / 1000 : 0
   if (blur > 0 && typeof (ctx as { filter?: unknown }).filter !== 'string') blurAlpha(data.data, width, height, blur)
   ctx.putImageData(data, 0, 0)
   if (blur > 0 && typeof (ctx as { filter?: unknown }).filter === 'string') {
@@ -348,6 +369,32 @@ export async function colorFixMaskOverlay(
   }
   ctx.putImageData(data, 0, 0)
   return canvas
+}
+
+/**
+ * 蒙版 → 单通道 alpha（口径同烘图：黑白 / 透明蒙版都认，按 invert 反选；不柔化），长边缩到 maxSide 以内。
+ * 全屏「显示选区」的各种查看方式用。读不了像素时抛错。
+ */
+export async function colorFixMaskAlpha(
+  maskUrl: string,
+  opts: { invert?: boolean; maxSide?: number } = {},
+): Promise<{ data: Uint8Array; width: number; height: number }> {
+  const mask = await loadImage(maskUrl)
+  const scale = Math.min(1, (opts.maxSide ?? 1024) / Math.max(mask.naturalWidth || 1, mask.naturalHeight || 1))
+  const w = Math.max(1, Math.round((mask.naturalWidth || 1) * scale))
+  const h = Math.max(1, Math.round((mask.naturalHeight || 1) * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('画布不可用')
+  ctx.drawImage(mask, 0, 0, w, h)
+  const rgba = ctx.getImageData(0, 0, w, h).data
+  canvas.width = canvas.height = 0
+  maskToAlpha(rgba, !!opts.invert)
+  const data = new Uint8Array(w * h)
+  for (let i = 0; i < data.length; i++) data[i] = rgba[i * 4 + 3]!
+  return { data, width: w, height: h }
 }
 
 /** 选区蒙版拿不到（跨域 / 404 / blob 已回收）：不退回整图校色，抛这个错，由调用方走失败 / 原图兜底 */
@@ -460,11 +507,19 @@ export interface ColorFixRenderLayer {
   feather?: number
   /** 替换为目标颜色；source 为 null = 自动（选区内主色，按原图算） */
   recolor?: { source: string | null; target: string; strength: number } | null
+  /** 更多调整（白平衡 + HSL 分色），替换颜色之后、五参数之前；null = 不调 */
+  adjust?: ColorFixAdjust | null
 }
 
 /** 把蒙版图整理成与输出同尺寸的 alpha 数组（口径同 prepareMask：黑白 / 透明蒙版都认，反选、柔化） */
-function readMaskAlpha(mask: HTMLImageElement, width: number, height: number, opts: ColorFixMaskOptions): Uint8Array {
-  const c = prepareMask(mask, width, height, opts)
+function readMaskAlpha(
+  mask: HTMLImageElement,
+  width: number,
+  height: number,
+  opts: ColorFixMaskOptions,
+  place?: MaskPlacement,
+): Uint8Array {
+  const c = prepareMask(mask, width, height, opts, place)
   const ctx = c.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('画布不可用')
   const data = ctx.getImageData(0, 0, width, height).data
@@ -520,7 +575,7 @@ export async function colorFixLayersImage(
   layers: readonly ColorFixRenderLayer[],
   maxSide = PREVIEW_MAX_SIDE,
 ): Promise<string> {
-  const norm = layers.map((l) => ({
+  const norm: NormLayer[] = layers.map((l) => ({
     ...l,
     invert: !!l.mask && !!l.invert,
     feather: l.mask ? Math.max(0, Math.min(20, l.feather ?? 0)) : 0,
@@ -531,7 +586,8 @@ export async function colorFixLayersImage(
       .map((l) => {
         const p = l.params
         const rc = l.recolor ? `${l.recolor.source ?? 'auto'}>${l.recolor.target}@${l.recolor.strength}` : ''
-        return `|${l.mask ?? 'none'}|${l.invert ? 'i' : ''}${l.feather}:${p.hue},${p.sat},${p.light},${p.bright},${p.contrast}:${rc}`
+        const adj = adjustSignature(l.adjust)
+        return `|${l.mask ?? 'none'}|${l.invert ? 'i' : ''}${l.feather}:${p.hue},${p.sat},${p.light},${p.bright},${p.contrast}:${rc}${adj ? `:A${adj}` : ''}`
       })
       .join('')
   const isExport = maxSide > PREVIEW_MAX_SIDE
@@ -556,14 +612,7 @@ export async function colorFixLayersImage(
     ),
   )
   // 自动源色先算好（按原图，与参数台上显示的那个色块同一个值）
-  const sources = await Promise.all(
-    norm.map(async (l) => {
-      if (!l.recolor || l.recolor.strength <= 0) return null
-      const hex = l.recolor.source ?? (await colorFixDominantColor(src, l.mask, l.invert))
-      const rgb = parseHex(hex)
-      return rgb ? srgb8ToOklab(rgb[0], rgb[1], rgb[2]) : null
-    }),
-  )
+  const sources = await recolorSources(src, norm)
   const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
   const width = Math.max(1, Math.round(img.naturalWidth * scale))
   const height = Math.max(1, Math.round(img.naturalHeight * scale))
@@ -574,11 +623,37 @@ export async function colorFixLayersImage(
   if (!ctx) throw new Error('画布不可用')
   ctx.drawImage(img, 0, 0, width, height)
   const frame = ctx.getImageData(0, 0, width, height)
-  const running = frame.data
+  compositeLayers(
+    frame.data,
+    norm,
+    norm.map((l, i) => {
+      const maskImg = masks[i]
+      return () => (maskImg ? readMaskAlpha(maskImg, width, height, { invert: l.invert, feather: l.feather }) : null)
+    }),
+    sources,
+    isExport,
+  )
+  ctx.putImageData(frame, 0, 0)
+  const out = canvas.toDataURL('image/png')
+  canvas.width = canvas.height = 0
+  cache.set(key, out)
+  evictStrings(cache, isExport ? EXPORT_CACHE_MAX : RESULT_CACHE_MAX)
+  return out
+}
+
+type NormLayer = ColorFixRenderLayer & { invert: boolean; feather: number }
+
+/** 逐层合成（就地改 running）：复制 → 替换颜色 → 更多调整 → 五参数 → 按 alpha 混回；exact = 更多调整逐像素精算（导出） */
+function compositeLayers(
+  running: Uint8ClampedArray,
+  layers: readonly NormLayer[],
+  alphaOf: readonly (() => Uint8Array | null)[],
+  sources: readonly (Lab | null)[],
+  exact = false,
+) {
   const adjusted = new Uint8ClampedArray(running.length)
-  norm.forEach((l, i) => {
-    const maskImg = masks[i]
-    const alpha = maskImg ? readMaskAlpha(maskImg, width, height, { invert: l.invert, feather: l.feather }) : null
+  layers.forEach((l, i) => {
+    const alpha = alphaOf[i]!()
     if (alpha && !alpha.some((v) => v > 0)) return
     adjusted.set(running)
     const target = l.recolor ? parseHex(l.recolor.target) : null
@@ -589,19 +664,163 @@ export async function colorFixLayersImage(
         { source, target: srgb8ToOklab(target[0], target[1], target[2]), strength: l.recolor.strength / 100 },
         alpha,
       )
+    if (l.adjust) applyAdjustPixels(adjusted, l.adjust, alpha, exact)
     applyColorFixPixels(adjusted, l.params, alpha)
     compositeLayerPixels(running, adjusted, alpha)
   })
-  ctx.putImageData(frame, 0, 0)
-  const out = canvas.toDataURL('image/png')
-  canvas.width = canvas.height = 0
-  cache.set(key, out)
-  evictStrings(cache, isExport ? EXPORT_CACHE_MAX : RESULT_CACHE_MAX)
-  return out
+}
+
+/** 各层「替换颜色」的源色（OKLab）：自动 = 选区主色（按原图算，与参数台色块同一个值） */
+function recolorSources(src: string, layers: readonly NormLayer[]): Promise<(Lab | null)[]> {
+  return Promise.all(
+    layers.map(async (l) => {
+      if (!l.recolor || l.recolor.strength <= 0) return null
+      const hex = l.recolor.source ?? (await colorFixDominantColor(src, l.mask, l.invert))
+      const rgb = parseHex(hex)
+      return rgb ? srgb8ToOklab(rgb[0], rgb[1], rgb[2]) : null
+    }),
+  )
+}
+
+/** 蒙版整体是否不透明（按整幅缩到 256 判断；局部渲染时一块区域判不准，见 MaskPlacement） */
+function maskOpaque(mask: HTMLImageElement): boolean {
+  const s = Math.min(1, 256 / Math.max(mask.naturalWidth || 1, mask.naturalHeight || 1))
+  const w = Math.max(1, Math.round((mask.naturalWidth || 1) * s))
+  const h = Math.max(1, Math.round((mask.naturalHeight || 1) * s))
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return true
+  ctx.drawImage(mask, 0, 0, w, h)
+  const data = ctx.getImageData(0, 0, w, h).data
+  c.width = c.height = 0
+  for (let i = 3; i < data.length; i += 4) if (data[i]! < 255) return false
+  return true
+}
+
+/** 局部渲染的结果：PNG 的 objectURL + 它实际覆盖的区域（原图像素；按输出像素取整后的，可能比请求的略大） */
+export interface ColorFixCropResult {
+  url: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** 局部渲染的结果缓存（objectURL，最近 6 块） */
+const cropCache = new Map<string, Promise<ColorFixCropResult>>()
+const CROP_CACHE_MAX = 6
+
+/**
+ * 局部高清渲染（全屏放大到超过预览图分辨率时用）：只渲整幅输出（原图 × scale）里 crop 这一块（原图像素坐标），
+ * 逐层口径与 {@link colorFixLayersImage} 相同（替换颜色 → 更多调整 → 五参数 → 软蒙版合成）；蒙版柔化按整幅尺寸算，
+ * 边缘向外多取 3 倍柔化半径再裁回，接缝处与整幅渲染一致。返回 PNG 的 objectURL 与它实际覆盖的区域（原图像素；
+ * 叠放时按这个区域摆，不按请求的 crop——输出像素取整会让两者差不到一个输出像素）。按 原图 + 图层 + 区域 缓存 6 块，
+ * 淘汰时回收。蒙版拿不到抛 {@link ColorFixMaskLoadError}。
+ */
+export function colorFixRenderCrop(
+  src: string,
+  layers: readonly ColorFixRenderLayer[],
+  crop: { x: number; y: number; w: number; h: number },
+  scale = 1,
+): Promise<ColorFixCropResult> {
+  const norm: NormLayer[] = layers.map((l) => ({
+    ...l,
+    invert: !!l.mask && !!l.invert,
+    feather: l.mask ? Math.max(0, Math.min(20, l.feather ?? 0)) : 0,
+  }))
+  const key =
+    `C|${src}|${scale.toFixed(4)}|${Math.round(crop.x)},${Math.round(crop.y)},${Math.round(crop.w)},${Math.round(crop.h)}` +
+    norm
+      .map((l) => {
+        const p = l.params
+        const rc = l.recolor ? `${l.recolor.source ?? 'auto'}>${l.recolor.target}@${l.recolor.strength}` : ''
+        return `|${l.mask ?? 'none'}|${l.invert ? 'i' : ''}${l.feather}:${p.hue},${p.sat},${p.light},${p.bright},${p.contrast}:${rc}:${adjustSignature(l.adjust)}`
+      })
+      .join('')
+  const hit = cropCache.get(key)
+  if (hit) {
+    touch(cropCache, key, hit)
+    return hit
+  }
+  const task = (async () => {
+    const img = await loadImage(src)
+    const fullW = Math.max(1, Math.round(img.naturalWidth * scale))
+    const fullH = Math.max(1, Math.round(img.naturalHeight * scale))
+    const cx = Math.max(0, Math.min(fullW - 1, Math.floor(crop.x * scale)))
+    const cy = Math.max(0, Math.min(fullH - 1, Math.floor(crop.y * scale)))
+    const cw = Math.max(1, Math.min(fullW - cx, Math.ceil((crop.x + crop.w) * scale) - cx))
+    const ch = Math.max(1, Math.min(fullH - cy, Math.ceil((crop.y + crop.h) * scale) - cy))
+    const masks = await Promise.all(
+      norm.map((l) =>
+        l.mask
+          ? loadImage(l.mask).catch(() => {
+              imageCache.delete(l.mask!)
+              throw new ColorFixMaskLoadError()
+            })
+          : null,
+      ),
+    )
+    const sources = await recolorSources(src, norm)
+    const canvas = document.createElement('canvas')
+    canvas.width = cw
+    canvas.height = ch
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) throw new Error('画布不可用')
+    ctx.drawImage(img, -cx, -cy, fullW, fullH)
+    const frame = ctx.getImageData(0, 0, cw, ch)
+    compositeLayers(
+      frame.data,
+      norm,
+      norm.map((l, i) => () => {
+        const maskImg = masks[i]
+        if (!maskImg) return null
+        const blur = l.feather > 0 ? (l.feather * Math.max(fullW, fullH)) / 1000 : 0
+        const pad = Math.ceil(blur * 3) + 2
+        const rx = Math.max(0, cx - pad)
+        const ry = Math.max(0, cy - pad)
+        const rw = Math.min(fullW, cx + cw + pad) - rx
+        const rh = Math.min(fullH, cy + ch + pad) - ry
+        const big = readMaskAlpha(maskImg, rw, rh, { invert: l.invert, feather: l.feather }, {
+          x: rx,
+          y: ry,
+          fullW,
+          fullH,
+          opaque: maskOpaque(maskImg),
+        })
+        const out = new Uint8Array(cw * ch)
+        for (let y = 0; y < ch; y++) {
+          const from = (y + cy - ry) * rw + (cx - rx)
+          out.set(big.subarray(from, from + cw), y * cw)
+        }
+        return out
+      }),
+      sources,
+    )
+    ctx.putImageData(frame, 0, 0)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    canvas.width = canvas.height = 0
+    if (!blob) throw new Error('局部渲染失败')
+    // 输出像素 → 原图像素（整幅输出取整过，按实际比例换算）
+    const kx = img.naturalWidth / fullW
+    const ky = img.naturalHeight / fullH
+    return { url: URL.createObjectURL(blob), x: cx * kx, y: cy * ky, w: cw * kx, h: ch * ky }
+  })()
+  cropCache.set(key, task)
+  task.catch(() => cropCache.delete(key))
+  while (cropCache.size > CROP_CACHE_MAX) {
+    const oldest = cropCache.keys().next().value as string
+    const old = cropCache.get(oldest)
+    cropCache.delete(oldest)
+    // 延迟回收：界面可能还挂着这一块，等新块顶上来
+    void old?.then((r) => setTimeout(() => URL.revokeObjectURL(r.url), 30_000)).catch(() => {})
+  }
+  return task
 }
 
 /**
- * 按图层烘图的统一入口：空 → 原图（零参数）；单层且无替换颜色 → {@link colorFixImage}（与旧版单选区逐像素一致）；
+ * 按图层烘图的统一入口：空 → 原图（零参数）；单层且无替换颜色 / 更多调整 → {@link colorFixImage}（与旧版单选区逐像素一致）；
  * 其余 → {@link colorFixLayersImage}。
  */
 export function colorFixRenderLayers(
@@ -611,7 +830,7 @@ export function colorFixRenderLayers(
 ): Promise<string> {
   if (!layers.length) return colorFixImage(src, { hue: 0, sat: 0, light: 0, bright: 0, contrast: 0 }, null, maxSide)
   const only = layers[0]!
-  if (layers.length === 1 && !only.recolor)
+  if (layers.length === 1 && !only.recolor && !only.adjust)
     return colorFixImage(src, { ...only.params }, only.mask, maxSide, { invert: only.invert, feather: only.feather })
   return colorFixLayersImage(src, layers, maxSide)
 }

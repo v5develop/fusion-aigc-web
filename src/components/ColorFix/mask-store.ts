@@ -2,6 +2,7 @@
  * 局部调色的本机持久化：
  * <ul>
  *   <li>选区设置（方式 / 目标 / 反选 / 柔化）：localStorage `colorfix-region:<key>`，几十字节；</li>
+ *   <li>智能选区会话（2026-11-11）：与蒙版同库同生命周期，作用域 = 蒙版作用域 + `::session`（见 selection-session.ts）；</li>
  *   <li>手动涂抹的蒙版：IndexedDB `fusion-colorfix` / `masks`（Blob），按 `<key>::<原图地址>` 存——
  *       同一条记录的多张候选各有各的涂抹。超过 {@link PAINTED_MASK_MAX_BYTES} 的蒙版只留在内存（本会话有效），
  *       不写库；IndexedDB 不可用（隐私模式 / 被禁）时同样只留内存。总量按最近使用淘汰（≤60MB / 200 条，库与内存各计），
@@ -244,11 +245,19 @@ export async function loadPaintedMask(scope: string): Promise<string> {
   return url
 }
 
-/** 存涂抹蒙版；返回 objectURL 与是否已落库（false = 只在内存：太大 / 库不可用） */
-export async function savePaintedMask(scope: string, blob: Blob): Promise<{ url: string; persisted: boolean }> {
+/**
+ * 存涂抹蒙版；返回 objectURL 与是否已落库（false = 只在内存：太大 / 库不可用 / memoryOnly）。
+ * memoryOnly：没有持久化键的校色（会话内）只放内存，同样按 LRU 有界，删掉的图层撤销回来还能取到。
+ */
+export async function savePaintedMask(
+  scope: string,
+  blob: Blob,
+  opts: { memoryOnly?: boolean } = {},
+): Promise<{ url: string; persisted: boolean }> {
   const url = URL.createObjectURL(blob)
   memSet(scope, url, blob.size)
   notify(scope)
+  if (opts.memoryOnly) return { url, persisted: false }
   if (blob.size > PAINTED_MASK_MAX_BYTES) {
     await tx('readwrite', (s) => s.delete(scope))
     return { url, persisted: false }
@@ -260,8 +269,85 @@ export async function savePaintedMask(scope: string, blob: Blob): Promise<{ url:
 
 export async function deletePaintedMask(scope: string) {
   memDelete(scope)
+  sessionMemory.delete(sessionScope(scope))
   await tx('readwrite', (s) => s.delete(scope))
+  await tx('readwrite', (s) => s.delete(sessionScope(scope)))
   notify(scope)
+}
+
+/** 本会话里蒙版的字节数（会话校验用）；没有返回 -1 */
+async function maskSizeOf(scope: string): Promise<number> {
+  const mem = memory.get(scope)
+  if (mem) return mem.size
+  const record = recordOf(await tx<unknown>('readonly', (s) => s.get(scope)))
+  return record ? record.blob.size : -1
+}
+
+// ---------------- 智能选区会话（2026-11-11，见 selection-session.ts）：与蒙版同生命周期 ----------------
+
+/** 会话的作用域 = 蒙版作用域 + `::session`（以 `<key>::` 开头，deletePaintedMasksOf 一并清） */
+export function sessionScope(maskScope: string): string {
+  return `${maskScope}::session`
+}
+
+/** 只在内存的会话（太大 / 库不可用 / 没有持久化键）：LRU，最多 24 份、40MB */
+const sessionMemory = new Map<string, Blob>()
+const SESSION_MEMORY_MAX = 24
+const SESSION_MEMORY_BYTES = 40 * 1024 * 1024
+function sessionMemSet(scope: string, blob: Blob) {
+  sessionMemory.delete(scope)
+  sessionMemory.set(scope, blob)
+  let total = 0
+  for (const b of sessionMemory.values()) total += b.size
+  while (sessionMemory.size > 1 && (sessionMemory.size > SESSION_MEMORY_MAX || total > SESSION_MEMORY_BYTES)) {
+    const [oldest, b] = sessionMemory.entries().next().value as [string, Blob]
+    if (oldest === scope) break
+    sessionMemory.delete(oldest)
+    total -= b.size
+  }
+}
+
+/**
+ * 存选区会话（打包好的 Blob）。maskScope = 对应蒙版的作用域；memoryOnly / 太大 / 库不可用时只留内存。
+ * 返回是否落库。
+ */
+export async function saveSelectionSession(maskScope: string, blob: Blob, opts: { memoryOnly?: boolean } = {}): Promise<boolean> {
+  const scope = sessionScope(maskScope)
+  if (opts.memoryOnly || blob.size > PAINTED_MASK_MAX_BYTES) {
+    sessionMemSet(scope, blob)
+    if (!opts.memoryOnly) await tx('readwrite', (s) => s.delete(scope))
+    return false
+  }
+  const ok = await tx('readwrite', (s) => s.put({ blob, at: Date.now() } satisfies MaskRecord, scope))
+  if (ok === null) {
+    sessionMemSet(scope, blob)
+    return false
+  }
+  sessionMemory.delete(scope)
+  void evictDb(scope)
+  return true
+}
+
+/**
+ * 读选区会话：内存优先，其次 IndexedDB；没有返回 null。expectMaskSize ≥ 0 时与蒙版字节数比对，
+ * 由调用方解包后再比（这里只给出蒙版当前大小）。
+ */
+export async function loadSelectionSession(maskScope: string): Promise<{ blob: Blob; maskSize: number } | null> {
+  const scope = sessionScope(maskScope)
+  let blob: Blob | null = sessionMemory.get(scope) ?? null
+  if (blob) {
+    sessionMemory.delete(scope)
+    sessionMemory.set(scope, blob)
+  } else blob = recordOf(await tx<unknown>('readonly', (s) => s.get(scope)))?.blob ?? null
+  if (!blob) return null
+  return { blob, maskSize: await maskSizeOf(maskScope) }
+}
+
+/** 删选区会话（蒙版留着） */
+export async function deleteSelectionSession(maskScope: string) {
+  const scope = sessionScope(maskScope)
+  sessionMemory.delete(scope)
+  await tx('readwrite', (s) => s.delete(scope))
 }
 
 /** 把蒙版 PNG 缩到长边 ≤ maxSide（本来就小、或浏览器不支持时原样返回） */
@@ -299,7 +385,7 @@ export function deleteRegion(key: string) {
 }
 
 /** 删掉某个结果键下所有原图的涂抹蒙版（作用域 `<key>::<原图>`，内存 + IndexedDB） */
-export async function deletePaintedMasksOf(key: string) {
+export async function deletePaintedMasksOf(key: string, opts: { memoryOnly?: boolean } = {}) {
   if (!key) return
   const prefix = `${key}::`
   for (const scope of [...memory.keys()]) {
@@ -307,6 +393,9 @@ export async function deletePaintedMasksOf(key: string) {
     memDelete(scope)
     notify(scope)
   }
+  for (const scope of [...sessionMemory.keys()]) if (scope.startsWith(prefix)) sessionMemory.delete(scope)
+  // 只放内存的作用域（没有持久化键的临时键）库里不会有：不必开库扫
+  if (opts.memoryOnly) return
   const db = await openDb()
   if (!db) return
   await new Promise<void>((resolve) => {
@@ -326,12 +415,21 @@ export async function deletePaintedMasksOf(key: string) {
   })
 }
 
-/** 把一个作用域的蒙版复制到另一个作用域（复制图层用）；源没有 / 读不出返回 null */
-export async function copyPaintedMask(from: string, to: string): Promise<{ url: string; persisted: boolean } | null> {
+/** 把一个作用域的蒙版（连同选区会话）复制到另一个作用域（复制图层用）；源没有 / 读不出返回 null */
+export async function copyPaintedMask(
+  from: string,
+  to: string,
+  opts: { memoryOnly?: boolean } = {},
+): Promise<{ url: string; persisted: boolean } | null> {
   const url = await loadPaintedMask(from)
   if (!url) return null
   const blob = await fetch(url)
     .then((r) => r.blob())
     .catch(() => null)
-  return blob ? savePaintedMask(to, blob) : null
+  if (!blob) return null
+  const session = await loadSelectionSession(from)
+  const saved = await savePaintedMask(to, blob, opts)
+  if (session && session.maskSize === blob.size) await saveSelectionSession(to, session.blob, opts)
+  else await deleteSelectionSession(to)
+  return saved
 }

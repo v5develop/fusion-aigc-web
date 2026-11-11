@@ -2,13 +2,19 @@
 /**
  * 吸取源色（替换颜色用，2026-11-11）：弹窗里铺原图，悬停实时显示指针下的颜色（3×3 平均，避开噪点），单击取色并关闭。
  * 取的是原图像素（不是校色后的），与「源色 = 选区里现在的颜色」口径一致。图读不了像素时提示，不能取。
+ * 中性灰吸管（更多调整 · 白平衡）复用本弹窗：传 title / hint。
  * 键盘：方向键移动取色点（Shift 加速），回车取色，Esc 关闭。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import { toHex } from '@/utils/colorfix-math.ts'
 
-const { src, title = '吸取源色' } = defineProps<{ src: string; title?: string }>()
+const { src, title = '吸取源色', hint = '' } = defineProps<{
+  src: string
+  title?: string
+  /** 说明文字（不传 = 吸取源色的那句） */
+  hint?: string
+}>()
 const show = defineModel<boolean>('show', { required: true })
 const emit = defineEmits<{ pick: [hex: string] }>()
 
@@ -124,8 +130,9 @@ const cursorStyle = computed(() =>
 </script>
 
 <template>
+  <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal v-model:show="show" transform-origin="center">
-    <section
+    <div
       class="w-[min(760px,calc(100vw-32px))] max-h-[calc(100vh-48px)] overflow-y-auto box-border p-16px rounded-14px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-10px"
       role="dialog"
       aria-modal="true"
@@ -143,7 +150,9 @@ const cursorStyle = computed(() =>
         </span>
         <button type="button" class="sx-btn" @click="show = false">取消</button>
       </header>
-      <p class="m-0 text-12px leading-18px text-muted">单击图上要替换的那种颜色（如衣服的主色）。方向键可微调位置，回车取色。</p>
+      <p class="m-0 text-12px leading-18px text-muted">
+        {{ hint || '单击图上要替换的那种颜色（如衣服的主色）。方向键可微调位置，回车取色。' }}
+      </p>
       <p v-if="error" class="m-0 px-12px py-8px rounded-12px bg-#fbeceb text-12px leading-18px text-#b4433e" role="alert">
         {{ error }}
       </p>
@@ -161,7 +170,7 @@ const cursorStyle = computed(() =>
             ref="imgEl"
             :src="src"
             :crossorigin="corsAttr(src)"
-            alt="吸取源色"
+            :alt="title"
             draggable="false"
             class="block max-w-full max-h-[min(62vh,640px)] cursor-crosshair select-none"
             @load="readPixels"
@@ -178,7 +187,7 @@ const cursorStyle = computed(() =>
           />
         </div>
       </div>
-    </section>
+    </div>
   </n-modal>
 </template>
 

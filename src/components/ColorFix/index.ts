@@ -20,6 +20,10 @@
  *    下载用 `await cf.downloadBaked(name)`（false = 已退回原图，提示「校色效果未能写入」），
  *    存资产用 `await cf.bakeToFile(name)` 上传。
  *
+ * 2026-11-11 增补：每层「更多调整」（白平衡 + HSL 分色，layers.ts adjust，add-only 不升 v）；智能选区加选框、查看方式
+ * （叠加 / 黑白蒙版 / 仅选区 / 轮廓）、继续编辑（会话随蒙版存，selection-session.ts）、钢笔路径再编辑；全屏放大后局部高清；
+ * 图层满 8 层给提示（LAYER_CAP_HINT）；图层列表改为 listbox + 独立工具条。
+ *
  * 要点：
  * - 烘图一律无损 PNG、保留透明通道（抠图透明底）、只缩不放，导出长边 ≤ 4096（COLORFIX_EXPORT_MAX_SIDE）；
  * - 局部调色：选区 整图 / 自动识别（POST /api/v1/studio/masks，404 时自动隐藏）/ 手动涂抹（蒙版存 IndexedDB，
@@ -40,7 +44,7 @@
  * ⚠️ 免费档水印：校色的 src（烘图来源）必须是当前观看者有权下载的那张——与它平时「下载」同一个地址
  * （免费档是带水印的交付图），绝不能换成干净原件；烘出来的 PNG 会被下载 / 上传成资产版本。
  */
-export { useResultColorFix } from './useResultColorFix.ts'
+export { useResultColorFix, LAYER_CAP_HINT } from './useResultColorFix.ts'
 export type { ResultColorFix, ResultColorFixOptions, ColorFixRemoteSaver } from './useResultColorFix.ts'
 export { bakeForUpload, triggerDownload, withImageExt, withPngExt } from './files.ts'
 export {
@@ -82,6 +86,9 @@ export { default as ColorFixItem } from './ColorFixItem.vue'
 export { default as ColorFixDialog } from './ColorFixDialog.vue'
 export { default as ColorFixFullscreen } from './ColorFixFullscreen.vue'
 export { default as ColorFixZoomView } from './ColorFixZoomView.vue'
+export { default as ColorFixAdjustments } from './ColorFixAdjustments.vue'
+export type { SelectionSession, SelectionDoc } from './selection-session.ts'
+export { MASK_VIEW_LABELS, type MaskViewMode } from './selection-ops.ts'
 export { default as ColorFixPanel } from '@/views/tools/ColorFixPanel.vue'
 export {
   colorFixSegmentSupported,

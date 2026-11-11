@@ -398,3 +398,334 @@ export function compositeLayerPixels(running: Uint8ClampedArray, adjusted: Uint8
     running[i + 2] = running[i + 2]! + (adjusted[i + 2]! - running[i + 2]!) * k
   }
 }
+
+// ---------------- 更多调整：白平衡 + HSL 分色（2026-11-11） ----------------
+
+/** HSL 分色的 8 个色带（顺序固定：存储 / 界面都按它） */
+export const COLORFIX_HSL_BANDS = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'magenta'] as const
+export type ColorFixHslBand = (typeof COLORFIX_HSL_BANDS)[number]
+export const COLORFIX_HSL_BAND_LABELS: Record<ColorFixHslBand, string> = {
+  red: '红',
+  orange: '橙',
+  yellow: '黄',
+  green: '绿',
+  cyan: '青',
+  blue: '蓝',
+  purple: '紫',
+  magenta: '洋红',
+}
+/**
+ * 各色带中心（OKLCH 色相，度）：按 sRGB 纯色 / 常见色在 OKLCH 里的色相取（红 29、橙 53–71、黄 110、绿 142、青 195、
+ * 蓝 262–264、紫 294、洋红 328），间距不均匀——相邻中心之间按余弦平方过渡，任意色相的各带权重之和恒为 1。
+ */
+export const COLORFIX_HSL_CENTERS: readonly number[] = [25, 62, 105, 142, 195, 260, 295, 335]
+/** 界面上各色带色块的颜色 */
+export const COLORFIX_HSL_SWATCHES: Record<ColorFixHslBand, string> = {
+  red: '#d9413b',
+  orange: '#e8842a',
+  yellow: '#e6c534',
+  green: '#3fa356',
+  cyan: '#2fb3c0',
+  blue: '#3467d6',
+  purple: '#8a4fd0',
+  magenta: '#d04aa8',
+}
+
+/** 一个色带的偏移：色相 / 饱和度 / 明度，各 −100…100 */
+export interface ColorFixHslShift {
+  h: number
+  s: number
+  l: number
+}
+
+/** 更多调整：白平衡（色温 / 色调，各 −100…100）+ 8 个色带的 HSL 偏移 + 是否保护肤色 */
+export interface ColorFixAdjust {
+  /** 色温：负 = 冷（偏蓝），正 = 暖（偏黄） */
+  temp: number
+  /** 色调：负 = 偏绿，正 = 偏洋红 */
+  tint: number
+  /** 8 个色带（顺序同 {@link COLORFIX_HSL_BANDS}） */
+  hsl: ColorFixHslShift[]
+  /** 保护肤色：HSL 分色对肤色区域减弱 80% */
+  skin: boolean
+}
+
+export const COLORFIX_ADJUST_RANGE = { min: -100, max: 100 }
+
+export function adjustZero(): ColorFixAdjust {
+  return { temp: 0, tint: 0, hsl: COLORFIX_HSL_BANDS.map(() => ({ h: 0, s: 0, l: 0 })), skin: false }
+}
+
+const clampAdj = (n: unknown) =>
+  typeof n === 'number' && Number.isFinite(n) ? Math.min(100, Math.max(-100, Math.round(n))) : 0
+
+/** 任意来源的「更多调整」→ 合法值（缺字段补 0、越界夹回）；不是对象返回 null */
+export function adjustSanitize(raw: unknown): ColorFixAdjust | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const list = Array.isArray(o.hsl) ? o.hsl : []
+  return {
+    temp: clampAdj(o.temp),
+    tint: clampAdj(o.tint),
+    hsl: COLORFIX_HSL_BANDS.map((_, i) => {
+      const b = (list[i] ?? {}) as Record<string, unknown>
+      return { h: clampAdj(b?.h), s: clampAdj(b?.s), l: clampAdj(b?.l) }
+    }),
+    skin: o.skin === true,
+  }
+}
+
+/** 白平衡与 HSL 都是零（不改图；skin 开关不算） */
+export function adjustIsZero(a: ColorFixAdjust | null | undefined): boolean {
+  if (!a) return true
+  return a.temp === 0 && a.tint === 0 && a.hsl.every((b) => b.h === 0 && b.s === 0 && b.l === 0)
+}
+
+/** 签名（缓存键 / 去重）：零 = '' */
+export function adjustSignature(a: ColorFixAdjust | null | undefined): string {
+  if (!a || adjustIsZero(a)) return ''
+  return `${a.temp},${a.tint},${a.skin ? 1 : 0}:${a.hsl.map((b) => `${b.h}.${b.s}.${b.l}`).join('/')}`
+}
+
+/** 白平衡每 100 点在对数域里的力度（log2，单侧）：色温 R / B 反向 ±0.6 档、色调 G ±0.4 档 */
+const WB_TEMP_STOPS = 0.6
+const WB_TINT_STOPS = 0.4
+
+/**
+ * 白平衡增益（线性 RGB 三通道乘数）：色温 R↑B↓（暖）、色调 G↓（洋红）；按 Rec.709 亮度归一，灰色调完亮度不变。
+ */
+export function wbGains(temp: number, tint: number): [number, number, number] {
+  const t = temp / 100
+  const g = tint / 100
+  const r = Math.pow(2, WB_TEMP_STOPS * t)
+  const b = Math.pow(2, -WB_TEMP_STOPS * t)
+  const gg = Math.pow(2, -WB_TINT_STOPS * g)
+  const y = 0.2126 * r + 0.7152 * gg + 0.0722 * b
+  return [r / y, gg / y, b / y]
+}
+
+/**
+ * 中性灰吸管：给一个「本该是灰色」的像素（sRGB 8 位），算出让它变成灰的色温 / 色调（{@link wbGains} 的反解，
+ * 夹在 ±100；极暗像素按 1/255 兜底，避免 log(0)）。
+ */
+export function neutralGrayWB(r: number, g: number, b: number): { temp: number; tint: number } {
+  const lin = (v: number) => Math.max(SRGB_TO_LINEAR[1]!, SRGB_TO_LINEAR[Math.round(clamp255(v))]!)
+  const lr = Math.log2(lin(r))
+  const lg = Math.log2(lin(g))
+  const lb = Math.log2(lin(b))
+  const t = (lb - lr) / (2 * WB_TEMP_STOPS)
+  const tn = (lg - (lr + lb) / 2) / WB_TINT_STOPS
+  const c = (v: number) => Math.min(100, Math.max(-100, Math.round(v * 100)))
+  return { temp: c(t) || 0, tint: c(tn) || 0 }
+}
+
+/**
+ * 某个色相（OKLCH，度）在 8 个色带上的权重：落在相邻两个中心之间，按位置 t 分给两边 cos²(πt/2) / sin²(πt/2)——
+ * 连续、平滑（中心处导数为 0）、和恒为 1。out 可复用。
+ */
+export function hslBandWeights(hueDeg: number, out: Float64Array = new Float64Array(8)): Float64Array {
+  out.fill(0)
+  const C = COLORFIX_HSL_CENTERS
+  const n = C.length
+  const h = ((hueDeg % 360) + 360) % 360
+  let i = n - 1
+  for (let k = 0; k < n; k++) if (h >= C[k]!) i = k
+  // h 比第一个中心还小：属于「最后一个 → 第一个」那一段（跨 360）
+  const a = C[i]!
+  const j = (i + 1) % n
+  let span = C[j]! - a
+  if (span <= 0) span += 360
+  let d = h - a
+  if (d < 0) d += 360
+  const t = Math.min(1, Math.max(0, d / span))
+  const s = Math.sin((Math.PI / 2) * t)
+  out[i] = 1 - s * s
+  out[j] = s * s
+  return out
+}
+
+/**
+ * 肤色权重 0–1（OKLCH）：色相围绕 54°（高斯 σ≈16°）× 彩度窗（0.02–0.14 之间）× 亮度窗（0.35–0.95）。
+ * 「保护肤色」时 HSL 分色对这部分减弱 80%。
+ */
+export function skinWeight(L: number, C: number, hueDeg: number): number {
+  let dh = Math.abs((((hueDeg - 54) % 360) + 540) % 360 - 180)
+  dh = dh / 16
+  const hw = Math.exp(-dh * dh)
+  const ramp = (x: number, a: number, b: number) => Math.min(1, Math.max(0, (x - a) / (b - a)))
+  const cw = ramp(C, 0.012, 0.03) * (1 - ramp(C, 0.13, 0.18))
+  const lw = ramp(L, 0.3, 0.42) * (1 - ramp(L, 0.94, 0.99))
+  return hw * cw * lw
+}
+
+/** 预先算好的调整（逐像素用） */
+export interface PreparedAdjust {
+  gains: [number, number, number] | null
+  /** 8 个色带的 [Δ色相(弧度), Δ饱和度(比例), Δ明度(比例)]；null = 不做 HSL */
+  bands: Float64Array | null
+  skin: boolean
+}
+
+export function prepareAdjust(a: ColorFixAdjust): PreparedAdjust {
+  const gains = a.temp || a.tint ? wbGains(a.temp, a.tint) : null
+  const any = a.hsl.some((b) => b.h || b.s || b.l)
+  let bands: Float64Array | null = null
+  if (any) {
+    bands = new Float64Array(24)
+    a.hsl.forEach((b, i) => {
+      // 色相 ±100 → ±30°；饱和度 ±100 → 彩度 ×0…×2；明度 ±100 → 往黑 / 白挪一半
+      bands![i * 3] = ((b.h * 0.3) / 180) * Math.PI
+      bands![i * 3 + 1] = b.s / 100
+      bands![i * 3 + 2] = b.l / 100
+    })
+  }
+  return { gains, bands, skin: a.skin }
+}
+
+const tmpW = new Float64Array(8)
+const tmpLab: Lab = [0, 0, 0]
+/**
+ * 单个像素按 {@link PreparedAdjust} 调整（sRGB 8 位进、出；out 可复用）：先白平衡（线性 RGB 乘增益）、再 HSL 分色
+ * （OKLCH：色相旋转、彩度缩放、亮度往黑 / 白挪），越界按彩度收回色域。灰色（彩度 < 0.01）不受 HSL 影响，0.01–0.05 渐入。
+ */
+export function adjustPixel(r: number, g: number, b: number, p: PreparedAdjust, out: Lab = [0, 0, 0]): Lab {
+  let lr = SRGB_TO_LINEAR[r & 255]!
+  let lg = SRGB_TO_LINEAR[g & 255]!
+  let lb = SRGB_TO_LINEAR[b & 255]!
+  if (p.gains) {
+    lr *= p.gains[0]
+    lg *= p.gains[1]
+    lb *= p.gains[2]
+  }
+  if (!p.bands) {
+    out[0] = linearToSrgb8(lr)
+    out[1] = linearToSrgb8(lg)
+    out[2] = linearToSrgb8(lb)
+    return out
+  }
+  linearToOklab(Math.min(1, lr), Math.min(1, lg), Math.min(1, lb), tmpLab)
+  const L = tmpLab[0]
+  const A = tmpLab[1]
+  const B = tmpLab[2]
+  const C = Math.hypot(A, B)
+  const cw = C <= 0.01 ? 0 : C >= 0.05 ? 1 : (C - 0.01) / 0.04
+  if (cw === 0) {
+    out[0] = linearToSrgb8(lr)
+    out[1] = linearToSrgb8(lg)
+    out[2] = linearToSrgb8(lb)
+    return out
+  }
+  const h = Math.atan2(B, A)
+  const hDeg = (h * 180) / Math.PI
+  hslBandWeights(hDeg, tmpW)
+  let dh = 0
+  let ds = 0
+  let dl = 0
+  for (let i = 0; i < 8; i++) {
+    const w = tmpW[i]!
+    if (!w) continue
+    dh += w * p.bands[i * 3]!
+    ds += w * p.bands[i * 3 + 1]!
+    dl += w * p.bands[i * 3 + 2]!
+  }
+  let f = cw
+  if (p.skin) f *= 1 - 0.8 * skinWeight(L, C, hDeg)
+  const h2 = h + dh * f
+  const C2 = C * Math.max(0, 1 + ds * f)
+  const k = dl * 0.5 * f
+  const L2 = k >= 0 ? L + (1 - L) * k : L * (1 + k)
+  const lin = gamutMap(L2, C2 * Math.cos(h2), C2 * Math.sin(h2))
+  out[0] = linearToSrgb8(lin[0])
+  out[1] = linearToSrgb8(lin[1])
+  out[2] = linearToSrgb8(lin[2])
+  return out
+}
+
+/** 3D 查找表边长：33³ 个格点，三线性插值（预览用；绝大多数像素与精算差 ≤ 2 级，色域边界附近极端参数最多约 20 级，导出走精算） */
+export const ADJUST_LUT_SIZE = 33
+
+/** 按调整建 3D 查找表（sRGB 立方体 size³ 个格点 × RGB，Uint8） */
+export function buildAdjustLut(a: ColorFixAdjust, size = ADJUST_LUT_SIZE): Uint8ClampedArray {
+  const p = prepareAdjust(a)
+  const lut = new Uint8ClampedArray(size * size * size * 3)
+  const out: Lab = [0, 0, 0]
+  const step = 255 / (size - 1)
+  let i = 0
+  for (let bi = 0; bi < size; bi++)
+    for (let gi = 0; gi < size; gi++)
+      for (let ri = 0; ri < size; ri++) {
+        adjustPixel(Math.round(ri * step), Math.round(gi * step), Math.round(bi * step), p, out)
+        lut[i++] = out[0]
+        lut[i++] = out[1]
+        lut[i++] = out[2]
+      }
+  return lut
+}
+
+/** RGBA 像素就地套 3D 查找表（三线性；只改 RGB）；mask（可选，0–255）为 0 的像素跳过 */
+export function applyAdjustLut(data: Uint8ClampedArray, lut: Uint8ClampedArray, size = ADJUST_LUT_SIZE, mask?: Uint8Array | null) {
+  const s1 = size - 1
+  const k = s1 / 255
+  const sz2 = size * size
+  for (let i = 0, px = 0; i < data.length; i += 4, px++) {
+    if (mask && mask[px] === 0) continue
+    const fr = data[i]! * k
+    const fg = data[i + 1]! * k
+    const fb = data[i + 2]! * k
+    const r0 = fr >= s1 ? s1 - 1 : fr | 0
+    const g0 = fg >= s1 ? s1 - 1 : fg | 0
+    const b0 = fb >= s1 ? s1 - 1 : fb | 0
+    const dr = fr - r0
+    const dg = fg - g0
+    const db = fb - b0
+    const base = (b0 * sz2 + g0 * size + r0) * 3
+    const oR = 3
+    const oG = size * 3
+    const oB = sz2 * 3
+    for (let c = 0; c < 3; c++) {
+      const q = base + c
+      const c00 = lut[q]! + (lut[q + oR]! - lut[q]!) * dr
+      const c10 = lut[q + oG]! + (lut[q + oG + oR]! - lut[q + oG]!) * dr
+      const c01 = lut[q + oB]! + (lut[q + oB + oR]! - lut[q + oB]!) * dr
+      const c11 = lut[q + oB + oG]! + (lut[q + oB + oG + oR]! - lut[q + oB + oG]!) * dr
+      const c0 = c00 + (c10 - c00) * dg
+      const c1 = c01 + (c11 - c01) * dg
+      data[i + c] = c0 + (c1 - c0) * db
+    }
+  }
+}
+
+const lutCache = new Map<string, Uint8ClampedArray>()
+/**
+ * RGBA 像素就地做「更多调整」（查找表按签名缓存 8 份）；零调整直接返回。
+ * exact = 逐像素精算（不走查找表；导出真图用——查找表在色域边界附近极端参数下最多差约 20 级，导出不能带这个误差，
+ * 4MP 约 0.6s，可接受）。
+ */
+export function applyAdjustPixels(
+  data: Uint8ClampedArray,
+  a: ColorFixAdjust | null | undefined,
+  mask?: Uint8Array | null,
+  exact = false,
+) {
+  const sig = adjustSignature(a)
+  if (!sig || !a) return
+  if (exact) {
+    const p = prepareAdjust(a)
+    const out: Lab = [0, 0, 0]
+    for (let i = 0, px = 0; i < data.length; i += 4, px++) {
+      if (mask && mask[px] === 0) continue
+      adjustPixel(data[i]!, data[i + 1]!, data[i + 2]!, p, out)
+      data[i] = out[0]
+      data[i + 1] = out[1]
+      data[i + 2] = out[2]
+    }
+    return
+  }
+  let lut = lutCache.get(sig)
+  if (!lut) {
+    lut = buildAdjustLut(a)
+    lutCache.set(sig, lut)
+    while (lutCache.size > 8) lutCache.delete(lutCache.keys().next().value as string)
+  }
+  applyAdjustLut(data, lut, ADJUST_LUT_SIZE, mask)
+}

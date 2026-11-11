@@ -315,3 +315,129 @@ export function applyPostOps(
   if (s > 0) out = smoothMask(out, width, height, s)
   return out
 }
+
+// ---------------- 画笔效果压成两张图（会话持久化，2026-11-11） ----------------
+
+/**
+ * 一串笔画对合成选区的作用恒等于一次夹取：f(c) = min(hi, max(lo, c))——添加 = max(·, v)、擦除 = min(·, 255 − v)，
+ * 两种夹取复合后仍是夹取（lo ≤ hi 一直成立）。所以任意多笔可以无损压成 lo / hi 两张图（同网格），会话里笔画太多时存它。
+ */
+export function strokeClampMaps(
+  strokes: readonly BrushStroke[],
+  width: number,
+  height: number,
+  sx: number,
+  sy = sx,
+): { lo: Uint8Array; hi: Uint8Array } {
+  const size = width * height
+  const lo = new Uint8Array(size)
+  const hi = new Uint8Array(size).fill(255)
+  const add = new Uint8Array(size)
+  for (const st of strokes) {
+    // 单笔内部按「笔迹蒙版」盖：先画到临时层再整体并进 lo / hi（同一笔重叠处取 max，与逐印 max / min 一致）
+    add.fill(st.mode === 'add' ? 0 : 255)
+    stampStroke(add, width, height, st, sx, sy)
+    if (st.mode === 'add') {
+      for (let i = 0; i < size; i++) {
+        const v = add[i]!
+        if (!v) continue
+        if (v > lo[i]!) lo[i] = v
+        if (v > hi[i]!) hi[i] = v
+      }
+    } else {
+      for (let i = 0; i < size; i++) {
+        const v = add[i]!
+        if (v === 255) continue
+        if (v < lo[i]!) lo[i] = v
+        if (v < hi[i]!) hi[i] = v
+      }
+    }
+  }
+  return { lo, hi }
+}
+
+/** 就地套用 {@link strokeClampMaps} 的结果：mask = min(hi, max(lo, mask)) */
+export function applyClampMaps(mask: Uint8Array, lo: Uint8Array, hi: Uint8Array) {
+  for (let i = 0; i < mask.length; i++) {
+    const v = mask[i]! < lo[i]! ? lo[i]! : mask[i]!
+    mask[i] = v > hi[i]! ? hi[i]! : v
+  }
+}
+
+// ---------------- 选区查看方式（2026-11-11） ----------------
+
+/** 叠加（半透明藤紫）/ 黑白蒙版 / 仅选区（选区外棋盘格）/ 轮廓（行军蚁，由调用方画矢量线） */
+export type MaskViewMode = 'overlay' | 'mask' | 'only' | 'outline'
+
+export const MASK_VIEW_LABELS: Record<MaskViewMode, string> = {
+  overlay: '叠加',
+  mask: '黑白蒙版',
+  only: '仅选区',
+  outline: '轮廓',
+}
+
+export const MASK_VIEW_HINTS: Record<MaskViewMode, string> = {
+  overlay: '选区盖一层半透明藤紫',
+  mask: '白 = 选中、黑 = 未选，灰 = 半选（软边）',
+  only: '只看选区里的内容，选区外显示棋盘格',
+  outline: '只画选区边界（虚线）',
+}
+
+/**
+ * 按查看方式把蒙版画成 RGBA（与蒙版同网格），叠在原图上：
+ * <ul>
+ *   <li>overlay：藤紫 × 蒙版 × alpha（默认 0.55，与以前一致）；</li>
+ *   <li>mask：不透明灰度（白 = 选中）；</li>
+ *   <li>only：选区外盖棋盘格（不透明度 = 1 − 蒙版），选区里透出原图；</li>
+ *   <li>outline：全透明（轮廓由调用方用 {@link maskContours} 画矢量虚线）。</li>
+ * </ul>
+ * checker = 棋盘格边长（网格像素）。
+ */
+export function renderMaskView(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  view: MaskViewMode,
+  opts: { rgb?: [number, number, number]; alpha?: number; checker?: number; out?: Uint8ClampedArray } = {},
+): Uint8ClampedArray {
+  const out = opts.out ?? new Uint8ClampedArray(width * height * 4)
+  if (view === 'outline') {
+    out.fill(0)
+    return out
+  }
+  if (view === 'mask') {
+    for (let i = 0; i < mask.length; i++) {
+      const v = mask[i]!
+      out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = v
+      out[i * 4 + 3] = 255
+    }
+    return out
+  }
+  if (view === 'only') {
+    const cs = Math.max(1, Math.round(opts.checker ?? 8))
+    for (let y = 0; y < height; y++) {
+      const ry = Math.floor(y / cs)
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x
+        const c = (ry + Math.floor(x / cs)) % 2 ? 214 : 245
+        out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = c
+        out[i * 4 + 3] = 255 - mask[i]!
+      }
+    }
+    return out
+  }
+  const [r, g, b] = opts.rgb ?? [135, 95, 154]
+  const k = opts.alpha ?? 0.55
+  for (let i = 0; i < mask.length; i++) {
+    const a = mask[i]!
+    if (a < 8) {
+      out[i * 4 + 3] = 0
+      continue
+    }
+    out[i * 4] = r
+    out[i * 4 + 1] = g
+    out[i * 4 + 2] = b
+    out[i * 4 + 3] = Math.round(a * k)
+  }
+  return out
+}

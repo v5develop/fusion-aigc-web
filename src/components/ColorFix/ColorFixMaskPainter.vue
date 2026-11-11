@@ -70,8 +70,9 @@ async function apply() {
 </script>
 
 <template>
+  <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal v-model:show="show" transform-origin="center" :mask-closable="false">
-    <section
+    <div
       :class="large ? 'w-[min(1280px,calc(100vw-32px))]' : 'w-[min(720px,calc(100vw-32px))]'"
       class="max-h-[calc(100vh-48px)] overflow-y-auto box-border p-18px rounded-13px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-12px"
       role="dialog"
@@ -96,6 +97,6 @@ async function apply() {
         erasable
         @change="hasStroke = $event"
       />
-    </section>
+    </div>
   </n-modal>
 </template>
