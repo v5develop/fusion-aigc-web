@@ -4,17 +4,20 @@
  *
  * <p>数据全走 /api/v1/creation/task-center/*：状态 Tab 角标取 overview，列表取 tasks，
  * 入口 / 状态 / 时间三组选项取 filters。状态桶、状态文案、进度都由后端算好，这里只展示；
- * 封面只用 coverUrl（已脱敏 / 预签名）。有排队或生成中的任务时每 8 秒静默刷新一次。
+ * 封面只用 coverUrl（已脱敏 / 预签名）。有排队或生成中的任务时每 8 秒静默刷新一次；
+ * 全站实时推送在线时（utils/taskWatcher 的 taskStreamLive）不再定时刷新，改为按推送的 task 事件就地更新该行：
+ * 进度类变化直接改行，状态桶变化回查该行详情并稍后静默刷新一次（角标计数、排序、封面），推送要求 resync 时整体重拉。
+ * 深链 /tasks?taskId=…（完成提醒的「查看」）：列表加载后滚动到该行并高亮；不在当前筛选 / 页时先回到「全部」第一页再找。
  * 进度条旁的预计剩余时间取后端 etaSeconds / progressSource，两次刷新之间本地倒计时（utils/task-eta）。
  *
  * <p>收藏：每行星标（乐观切换，失败回滚），「收藏」筛选只列已收藏的任务（总览角标同口径）。
  * 做同款 / 参数回填：取 /tasks/{taskId}/params 的原始提交体，经 utils/refillHandoff 一次性交接给
  * 工作流页（/workflow 按模板回填）或工具页（/tools/:toolId）。
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { NConfigProvider, NDatePicker, NPagination, NSelect, useDialog, useMessage } from 'naive-ui'
-import { toApiError } from '@/api/index.ts'
+import { getQuiet, toApiError } from '@/api/index.ts'
 import { toolSchemas } from '@/views/tools/schemas'
 import { workflowRouteOf, workflowSchemas } from '@/views/workflow/schemas'
 import { ENTRY_ROUTE } from '@/utils/same-style'
@@ -30,7 +33,11 @@ import {
   desktopNotifyDenied,
   desktopNotifyEnabled,
   desktopNotifySupported,
+  onTaskEvent,
+  onTaskResync,
   setDesktopNotify,
+  taskStreamLive,
+  type TaskStreamEvent,
 } from '@/utils/taskWatcher'
 import {
   taskCenterCancel,
@@ -44,6 +51,7 @@ import {
   type ITaskCenterFilters,
   type ITaskCenterItem,
   type ITaskCenterOverview,
+  type ITaskCenterTask,
 } from '@/api/task-center.ts'
 
 defineOptions({ name: 'task-center' })
@@ -51,6 +59,7 @@ defineOptions({ name: 'task-center' })
 const message = useMessage()
 const dialog = useDialog()
 const router = useRouter()
+const route = useRoute()
 
 const PAGE_SIZE = 20
 const POLL_MS = 8000
@@ -195,7 +204,9 @@ function schedule() {
   if (timer) clearTimeout(timer)
   if (unmounted) return
   timer = setTimeout(async () => {
-    if (hasInFlight.value && document.visibilityState === 'visible' && !loading.value) await load(true)
+    // 推送在线时由 task 事件驱动更新，不再定时拉
+    if (hasInFlight.value && !taskStreamLive.value && document.visibilityState === 'visible' && !loading.value)
+      await load(true)
     schedule()
   }, POLL_MS)
 }
@@ -208,16 +219,167 @@ function onVisibility() {
   }
 }
 
+// ---------------- 实时推送（utils/taskWatcher） ----------------
+
+const RELOAD_DEBOUNCE_MS = 1200
+let reloadTimer: ReturnType<typeof setTimeout> | null = null
+/** 攒一下再静默整页刷新（角标计数、筛选归属、排序都可能变了） */
+function reloadSoon() {
+  if (reloadTimer) clearTimeout(reloadTimer)
+  reloadTimer = setTimeout(() => {
+    reloadTimer = null
+    if (!unmounted && !loading.value) void load(true)
+  }, RELOAD_DEBOUNCE_MS)
+}
+
+function patchRow(taskId: string, patch: Partial<ITaskCenterItem>) {
+  // 整体替换数组：预计剩余时间的本地倒计时按数组变化重新打点（utils/task-eta）
+  items.value = items.value.map((i) => (i.taskId === taskId ? { ...i, ...patch } : i))
+}
+
+/** 状态桶变了：回查这一行详情（封面 / 屏蔽等推送里没有的字段） */
+async function refetchRow(taskId: string) {
+  try {
+    const res = await getQuiet<ITaskCenterTask>(`/api/v1/creation/task-center/tasks/${encodeURIComponent(taskId)}`)
+    const d = res.data
+    if (!d || unmounted) return
+    patchRow(taskId, {
+      status: d.status,
+      statusBucket: d.statusBucket,
+      statusLabel: d.statusLabel,
+      progress: d.progress,
+      etaSeconds: d.etaSeconds ?? null,
+      progressSource: d.progressSource ?? null,
+      coverUrl: d.coverUrl || null,
+      blocked: d.blocked,
+    })
+  } catch {
+    // 已删除 / 网络抖动：交给随后的整页刷新
+  }
+}
+
+/** 不在本页的任务上次推送的状态桶：只在桶变化（含新出现）时才刷新，纯进度推送不打扰 */
+const offPageBuckets = new Map<string, string>()
+
+function onLiveTask(ev: TaskStreamEvent) {
+  const row = items.value.find((i) => i.taskId === ev.taskId)
+  if (!row) {
+    // 不在本页（新提交的任务、或在别的页 / 筛选里）：状态桶变了才刷新（新任务插入第一页、角标计数）
+    if (offPageBuckets.get(ev.taskId) !== ev.statusBucket) {
+      offPageBuckets.set(ev.taskId, ev.statusBucket)
+      if (offPageBuckets.size > 500) offPageBuckets.clear()
+      reloadSoon()
+    }
+    return
+  }
+  const bucketChanged = row.statusBucket !== ev.statusBucket
+  patchRow(ev.taskId, {
+    statusBucket: ev.statusBucket,
+    ...(ev.status != null ? { status: ev.status } : {}),
+    ...(ev.statusLabel ? { statusLabel: ev.statusLabel } : {}),
+    ...(ev.progress != null ? { progress: ev.progress } : {}),
+    etaSeconds: ev.etaSeconds ?? null,
+    ...(ev.progressSource ? { progressSource: ev.progressSource } : {}),
+  })
+  if (bucketChanged) {
+    void refetchRow(ev.taskId)
+    reloadSoon()
+  }
+}
+
+// ---------------- 深链高亮（/tasks?taskId=…） ----------------
+
+const highlightId = ref('')
+let highlightTimer: ReturnType<typeof setTimeout> | null = null
+/** 待定位的任务号；找到（或确认找不到）后清空，并把 query 里的 taskId 去掉，刷新页面不再重复定位 */
+let pendingFocus = ''
+let focusWidened = false
+
+function takeQueryTaskId() {
+  const q = route.query.taskId
+  const id = typeof q === 'string' ? q.trim() : ''
+  if (!id) return
+  pendingFocus = id
+  focusWidened = false
+}
+
+function clearFocusQuery() {
+  if (route.query.taskId === undefined) return
+  const query = { ...route.query }
+  delete query.taskId
+  void router.replace({ query })
+}
+
+async function tryFocus() {
+  if (!pendingFocus || loading.value) return
+  const id = pendingFocus
+  if (items.value.some((i) => i.taskId === id)) {
+    pendingFocus = ''
+    clearFocusQuery()
+    highlightId.value = id
+    if (highlightTimer) clearTimeout(highlightTimer)
+    highlightTimer = setTimeout(() => (highlightId.value = ''), 4000)
+    await nextTick()
+    const el = document.querySelector(`[data-task-id="${CSS.escape(id)}"]`)
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    return
+  }
+  const narrowed =
+    page.value !== 1 || !!filters.statusBucket || !!filters.entryCode || !!filters.timeRange || filters.collected
+  if (!focusWidened && narrowed) {
+    // 不在当前筛选 / 页：回到「全部」第一页再找一次（筛选 watch 会触发重载，加载完再进来）
+    focusWidened = true
+    filters.statusBucket = ''
+    filters.entryCode = ''
+    filters.timeRange = ''
+    filters.collected = false
+    customRange.value = null
+    page.value = 1
+    return
+  }
+  pendingFocus = ''
+  clearFocusQuery()
+  message.info('这条任务不在最近的列表里，可以按入口或时间筛选查找')
+}
+
+watch(loading, (v) => {
+  if (!v) void tryFocus()
+})
+// 推送刚上线：首次建流不补发，「页面加载 → 建流」之间的变化会漏，静默重拉一次对齐
+watch(taskStreamLive, (live) => {
+  if (live && !unmounted && !loading.value) void load(true)
+})
+watch(
+  () => route.query.taskId,
+  () => {
+    takeQueryTaskId()
+    void tryFocus()
+  },
+)
+
+let offTask: (() => void) | null = null
+let offResync: (() => void) | null = null
+
 onMounted(() => {
+  takeQueryTaskId()
   void loadFilters()
   void load()
   schedule()
   document.addEventListener('visibilitychange', onVisibility)
+  offTask = onTaskEvent(onLiveTask)
+  offResync = onTaskResync(() => {
+    if (!loading.value) void load(true)
+  })
 })
 onBeforeUnmount(() => {
   unmounted = true
   if (timer) clearTimeout(timer)
   timer = null
+  if (reloadTimer) clearTimeout(reloadTimer)
+  reloadTimer = null
+  if (highlightTimer) clearTimeout(highlightTimer)
+  offTask?.()
+  offResync?.()
   document.removeEventListener('visibilitychange', onVisibility)
 })
 
@@ -623,7 +785,9 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
             <li
               v-for="item in items"
               :key="item.taskId"
+              :data-task-id="item.taskId"
               class="sx-squircle flex items-center gap-12px p-12px rounded-18px border border-solid border-line bg-white [transition:border-color_110ms,box-shadow_110ms] hover:(border-#c9cfd6 shadow-[0_1px_2px_rgba(31,35,41,0.05)])"
+              :class="highlightId === item.taskId && '!border-violet shadow-[0_0_0_3px_rgba(124,92,255,0.18)]'"
             >
               <div class="min-w-0 flex-1 flex items-center gap-12px rounded-12px">
                 <!-- 缩略 44 / r6：被屏蔽或加载失败走占位；文本产物显示正文首段 -->
