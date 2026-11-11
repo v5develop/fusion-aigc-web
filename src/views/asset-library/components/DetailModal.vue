@@ -1267,77 +1267,94 @@ async function removeRelation(relatedId: number) {
             </div>
           </div>
 
-          <footer class="shrink-0 flex flex-col gap-8px px-18px py-12px border-t border-t-solid border-line-soft">
-            <!-- 校色开着：下载给校色后的 PNG，另留「下载原图」 -->
-            <div v-if="cf.active.value" class="flex flex-wrap items-center gap-8px">
-              <button type="button" class="sx-soft-btn" @click="downloadColorFixed">下载校色后</button>
-              <button type="button" class="sx-soft-btn" @click="downloadColorFixOriginal">下载原图</button>
+          <!--
+            操作区两层：上层主操作等宽一行（下载 / 下载原图 / 用于画布，不换行）；
+            下层次要操作——左边校色工具或复制提示词，右边删除。按钮统一 32 高，主操作用主色。
+          -->
+          <footer class="shrink-0 flex flex-col gap-10px px-18px py-12px border-t border-t-solid border-line-soft">
+            <div
+              class="grid gap-8px"
+              :style="{ gridTemplateColumns: `repeat(${(downloadHref ? 1 : 0) + (cf.active.value ? 1 : 0) + (downloadHref ? 1 : 0)}, minmax(0, 1fr))` }"
+            >
+              <!-- 校色开着：下载给校色后的 PNG；关着：下载原文件 -->
               <button
+                v-if="cf.active.value && downloadHref"
                 type="button"
-                class="sx-soft-btn"
-                :disabled="savingColorFix"
-                :aria-busy="savingColorFix || undefined"
-                title="追加一个「校色后」版本并设为当前版本；同参数的版本已存在时直接切过去"
-                @click="saveFixVersion"
+                class="!h-32px !text-13px sx-soft-btn sx-soft-btn-primary justify-center min-w-0"
+                @click="downloadColorFixed"
               >
-                {{ savingColorFix ? '保存中…' : '存为校色版本' }}
-              </button>
-              <button
-                type="button"
-                class="sx-soft-btn"
-                :aria-pressed="fixMode === 'compare'"
-                @click="fixMode = fixMode === 'compare' ? 'result' : 'compare'"
-              >
-                {{ fixMode === 'compare' ? '退出对比' : '校色对比' }}
-              </button>
-            </div>
-            <div class="flex flex-wrap items-center gap-8px">
-              <button
-                v-if="asset.prompt"
-                type="button"
-                class="sx-soft-btn sx-soft-btn-primary"
-                @click="copyText(asset.prompt, message)"
-              >
-                复制提示词
+                <svg class="w-13px h-13px flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
+                </svg>
+                <span class="truncate">下载校色后</span>
               </button>
               <a
-                v-if="!cf.active.value && downloadHref"
-                class="sx-soft-btn no-underline"
+                v-else-if="downloadHref"
+                class="!h-32px !text-13px sx-soft-btn sx-soft-btn-primary justify-center min-w-0 no-underline"
                 :href="downloadHref"
                 :download="downloadName(asset.title, asset.media === 'video')"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <svg
-                  class="w-13px h-13px"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.9"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
+                <svg class="w-13px h-13px flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" />
                 </svg>
-                下载
+                <span class="truncate">下载</span>
               </a>
+              <button
+                v-if="cf.active.value"
+                type="button"
+                class="!h-32px !text-13px sx-soft-btn justify-center min-w-0"
+                @click="downloadColorFixOriginal"
+              >
+                <span class="truncate">下载原图</span>
+              </button>
               <button
                 v-if="downloadHref"
                 type="button"
-                class="sx-soft-btn"
+                class="!h-32px !text-13px sx-soft-btn justify-center min-w-0"
                 :disabled="openingCanvas"
                 :aria-busy="openingCanvas || undefined"
                 title="新建一张画布，把这个素材放进去"
                 @click="openAssetsInCanvas([asset])"
               >
-                {{ openingCanvas ? '正在创建画布…' : '用于画布' }}
+                <span class="truncate">{{ openingCanvas ? '正在创建画布…' : '用于画布' }}</span>
               </button>
-              <!-- 删除预留位：后端支持后由列表页传 can-delete 并监听 delete；不可删时给原因而不是隐藏 -->
+            </div>
+
+            <div
+              v-if="cf.active.value || asset.prompt || canDelete || deleteDisabledReason"
+              class="flex items-center gap-8px min-w-0"
+            >
+              <template v-if="cf.active.value">
+                <button
+                  type="button"
+                  class="!h-32px !text-13px sx-soft-btn"
+                  :class="fixMode === 'compare' ? 'sx-soft-btn-tint' : ''"
+                  :aria-pressed="fixMode === 'compare'"
+                  @click="fixMode = fixMode === 'compare' ? 'result' : 'compare'"
+                >
+                  {{ fixMode === 'compare' ? '退出对比' : '校色对比' }}
+                </button>
+                <button
+                  type="button"
+                  class="!h-32px !text-13px sx-soft-btn"
+                  :disabled="savingColorFix"
+                  :aria-busy="savingColorFix || undefined"
+                  title="追加一个「校色后」版本并设为当前版本；同参数的版本已存在时直接切过去"
+                  @click="saveFixVersion"
+                >
+                  {{ savingColorFix ? '保存中…' : '存为校色版本' }}
+                </button>
+              </template>
+              <button v-if="asset.prompt" type="button" class="!h-32px !text-13px sx-soft-btn" @click="copyText(asset.prompt, message)">
+                复制提示词
+              </button>
+              <!-- 删除：不可删时给原因而不是隐藏 -->
               <button
                 v-if="canDelete || deleteDisabledReason"
                 type="button"
-                class="sx-soft-btn sx-soft-btn-danger ml-auto"
+                class="!h-32px !text-13px sx-soft-btn sx-soft-btn-danger ml-auto"
                 :disabled="!canDelete"
                 :title="canDelete ? undefined : deleteDisabledReason"
                 @click="canDelete && emit('delete', asset.id)"
