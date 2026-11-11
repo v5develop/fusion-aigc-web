@@ -71,7 +71,7 @@ const maskHint = computed(() => {
   if (r.mode === 'paint' && cf.paintedVolatile.value) return '选区较大，只在本次浏览中保留'
   if (r.mode === 'point' && !cf.pointMask.value) return cf.pointBlocked.value || '还没有选区，点「智能选区」开始'
   if (r.mode === 'point' && cf.pointVolatile.value) return '选区较大，只在本次浏览中保留'
-  if (cf.failed.value) return cf.maskLoadFailed.value ? COLORFIX_MASK_LOAD_FAILED : '选区校色未能生成，已显示原图'
+  if (cf.failed.value) return cf.maskLoadFailed.value ? cf.loadFailedText.value || COLORFIX_MASK_LOAD_FAILED : '选区校色未能生成，已显示原图'
   return ''
 })
 
@@ -89,8 +89,18 @@ const recolor = computed<ColorFixRecolor | null>({
 const layerModes = computed(() => cf.regionModes.value.filter((m) => m !== 'whole'))
 const panelDefaults = computed(() => (onBase.value ? cf.defaults : COLORFIX_ZERO))
 const slidersTitle = computed(() =>
-  cf.layers.value.length > 1 ? `调整「${cf.selectedLayer.value.name}」` : '',
+  cf.selectedIsPixel.value
+    ? cf.selectedLayer.value.name
+    : cf.layers.value.length > 1
+      ? `调整「${cf.selectedLayer.value.name}」`
+      : '',
 )
+/** 像素层的补充说明：只在内存 / 本机数据丢了（刷新、被清、这张图不是合并时的那张） */
+const pixelNote = computed(() => {
+  if (!cf.selectedIsPixel.value) return ''
+  if (cf.layerStatus(cf.selectedLayer.value) === 'error') return '这张图在本机没有这一层的像素数据（已被清理，或不是合并时的那张图），导出会被拒绝；可删除这一层。'
+  return cf.selectedPixelVolatile.value ? '这一层较大或本机存储不可用，只在本次浏览中保留。' : ''
+})
 
 const painterShow = computed({ get: () => cf.painterOpen.value, set: (v) => cf.setPainterOpen(v) })
 const pointShow = computed({ get: () => cf.pointOpen.value, set: (v) => cf.setPointOpen(v) })
@@ -213,6 +223,8 @@ function done() {
     recolor-enabled
     :recolor-auto-source="cf.recolorAutoSource.value"
     :sliders-title="slidersTitle"
+    :pixel-layer="cf.selectedIsPixel.value"
+    :pixel-note="pixelNote"
     @mask-action="onMaskAction"
     @retry-mask="cf.retryMask()"
     @done="done"

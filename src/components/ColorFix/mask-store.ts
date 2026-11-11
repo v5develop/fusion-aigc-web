@@ -13,6 +13,7 @@
 import { forgetColorFixSource } from '@/utils/colorfix.ts'
 import type { ColorFixParams } from '@/utils/colorfix-math.ts'
 import { colorFixRegionSanitize, type ColorFixRegion } from './types.ts'
+import { deletePixelsOf } from './pixel-store.ts'
 import { COLORFIX_LAYERS_VERSION, layersSanitize, type ColorFixLayer, type ColorFixLayerStack } from './layers.ts'
 
 const REGION_PREFIX = 'colorfix-region:'
@@ -384,7 +385,7 @@ export function deleteRegion(key: string) {
   }
 }
 
-/** 删掉某个结果键下所有原图的涂抹蒙版（作用域 `<key>::<原图>`，内存 + IndexedDB） */
+/** 删掉某个结果键下所有原图的涂抹蒙版（作用域 `<key>::<原图>`，内存 + IndexedDB），连同像素层（pixel-store） */
 export async function deletePaintedMasksOf(key: string, opts: { memoryOnly?: boolean } = {}) {
   if (!key) return
   const prefix = `${key}::`
@@ -394,6 +395,8 @@ export async function deletePaintedMasksOf(key: string, opts: { memoryOnly?: boo
     notify(scope)
   }
   for (const scope of [...sessionMemory.keys()]) if (scope.startsWith(prefix)) sessionMemory.delete(scope)
+  // 像素层（向下合并的产物）与蒙版同生命周期：一并清
+  await deletePixelsOf(key, opts)
   // 只放内存的作用域（没有持久化键的临时键）库里不会有：不必开库扫
   if (opts.memoryOnly) return
   const db = await openDb()

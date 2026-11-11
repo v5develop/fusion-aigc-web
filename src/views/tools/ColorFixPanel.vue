@@ -87,6 +87,10 @@ const props = withDefaults(
     recolorAutoSource?: string | null
     /** 滑杆区上方的小标题（如当前图层名）；'' = 不显示 */
     slidersTitle?: string
+    /** 选中的是像素层（向下合并的产物）：没有选区 / 替换颜色 / 调整项，只显示一条说明 */
+    pixelLayer?: boolean
+    /** 像素层说明下方追加的一行（如「只在本次浏览中保留」）；'' = 不显示 */
+    pixelNote?: string
   }>(),
   {
     open: true,
@@ -107,6 +111,8 @@ const props = withDefaults(
     recolorEnabled: false,
     recolorAutoSource: null,
     slidersTitle: '',
+    pixelLayer: false,
+    pixelNote: '',
   },
 )
 
@@ -365,7 +371,15 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
 
       <slot name="layers" />
 
-      <div v-if="region" class="cfp__region" role="group" aria-label="调色选区">
+      <div v-if="pixelLayer" class="cfp__pixel" role="note">
+        <b>{{ slidersTitle || '像素层' }}</b>
+        <p>
+          像素层是「向下合并」得到的成品像素，没有可调的参数；想改颜色，可在它上面添加新的选区图层，或撤销合并后再调整。
+        </p>
+        <p v-if="pixelNote" class="cfp__pixel-warn">{{ pixelNote }}</p>
+      </div>
+
+      <div v-if="region && !pixelLayer" class="cfp__region" role="group" aria-label="调色选区">
         <div class="cfp__row">
           <span class="cfp__label">选区</span>
           <span class="cfp__seg" role="radiogroup" aria-label="选区方式">
@@ -497,7 +511,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
         </div>
       </div>
 
-      <div v-if="recolorEnabled" class="cfp__recolor" role="group" aria-label="替换为目标颜色">
+      <div v-if="recolorEnabled && !pixelLayer" class="cfp__recolor" role="group" aria-label="替换为目标颜色">
         <div class="cfp__row">
           <span class="cfp__label cfp__label--wide">替换颜色</span>
           <button
@@ -606,10 +620,10 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
       </div>
 
       <!-- 更多调整（白平衡 / HSL 分色，components/ColorFix/ColorFixAdjustments）：替换颜色之后、五个滑杆之前 -->
-      <slot name="adjust" />
+      <slot v-if="!pixelLayer" name="adjust" />
 
-      <p v-if="slidersTitle" class="cfp__subtitle">{{ slidersTitle }}</p>
-      <div class="cfp__sliders">
+      <p v-if="slidersTitle && !pixelLayer" class="cfp__subtitle">{{ slidersTitle }}</p>
+      <div v-if="!pixelLayer" class="cfp__sliders">
         <ColorFixSlider
           v-for="s in SLIDERS"
           :key="s.key"
@@ -632,6 +646,29 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
 </template>
 
 <style scoped lang="less">
+.cfp__pixel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 12px 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--xq-line);
+  border-radius: 10px;
+  background: var(--xq-surface2);
+  color: var(--xq-ink-2);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.cfp__pixel b {
+  color: var(--xq-ink);
+  font-size: 12px;
+}
+.cfp__pixel p {
+  margin: 0;
+}
+.cfp__pixel .cfp__pixel-warn {
+  color: var(--xq-warning-fg);
+}
 /* 浮层材质 / 过渡 / 拖动态是多状态组合选择器，按原型数值落 scoped 样式 */
 .cfp {
   position: absolute;

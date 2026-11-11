@@ -29,6 +29,9 @@
  * （batch.ts runColorFixBatch：并发 2、可取消、逐张失败列表、重试不重复存版本）；拼合（宿主给 flattener 时，烘成新版本后图层清空）；
  * 导出真图 / 全屏局部高清的逐像素合成与 PNG 编码下放 Worker（utils/colorfix-offload.ts，不可用时退回主线程，结果逐像素相同）。
  *
+ * 2026-11-11 向下合并：选中层与下面那层栅格化成「像素层」（layers.ts，kind: 'pixel'，数据在 pixel-store.ts），合并前后图像逐像素一致，
+ * `cf.mergeDown()` / Ctrl（⌘）+ E / 图层工具条；像素层没有参数、本机才有数据——资产版本 colorFixLayers 带 hasPixelLayers，别处改用成品图（colorFixBaseOf）。
+ *
  * 要点：
  * - 烘图一律无损 PNG、保留透明通道（抠图透明底）、只缩不放，导出长边 ≤ 4096（COLORFIX_EXPORT_MAX_SIDE）；
  * - 局部调色：选区 整图 / 自动识别（POST /api/v1/studio/masks，404 时自动隐藏）/ 手动涂抹（蒙版存 IndexedDB，
@@ -79,6 +82,7 @@ export {
   bakeStoredColorFix,
   clearStoredColorFix,
   loadStoredLayers,
+  storedHasPixelLayers,
   storedColorFixFilter,
   type BakeStoredOptions,
 } from './stored.ts'

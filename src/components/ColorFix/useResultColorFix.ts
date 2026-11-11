@@ -34,13 +34,20 @@
  * <p>粘贴校色参数（{@link pasteLayers}，preset.ts）：整套替换为预设里能带走的图层（底层 + 自动识别层，自动识别层在这张图上重新识别），
  * 一步可撤销。
  *
- * <p>拼合（{@link flatten}，2026-11-11）：多个图层在图层模型里合不成一层（每层蒙版不同、调整链非线性，见 layers.ts），所以不做「向下合并」，
- * 只做「拼合」——宿主提供 `flattener`（如资产详情：把当前效果烘成新版本并设为当前版本）时可用；拼合成功、宿主切到新图后，
+ * <p>向下合并（{@link mergeDown}，2026-11-11）：像 Photoshop 栅格化——选中层与它下面那层合成一个像素层（layers.ts 像素层），内容 = 合并那一刻
+ * 渲染到这两层为止的结果（原图分辨率、导出口径逐像素精算，Worker 里算），覆盖度 = 两层蒙版覆盖范围的并集（二值，理由见 utils/colorfix
+ * colorFixMergeRender）；合并前后整张图逐像素相同。像素数据在 pixel-store.ts（和蒙版同生命周期，撤销历史里引用的钉住不淘汰）；
+ * 合并整步可撤销（两层与它们的蒙版原样回来）。图太大 / 存不下就拒绝并提示。
+ *
+ * <p>拼合（{@link flatten}，2026-11-11）：另一条路——整套图层烘成一张新图存为资产新版本（保留可编辑性用「复制图层」，不想占本机存储用拼合）。
+ * 宿主提供 `flattener`（如资产详情：把当前效果烘成新版本并设为当前版本）时可用；拼合成功、宿主切到新图后，
  * 图层清空为零参数的整图底层，从新图继续调（不会再套一遍默认校色）。宿主没提供时不出这个入口。
  */
 import { computed, onBeforeUnmount, ref, shallowReactive, watch, type Ref } from 'vue'
 import {
   ColorFixMaskLoadError,
+  ColorFixMergeTooLargeError,
+  colorFixMergeRender,
   COLORFIX_DEFAULT,
   COLORFIX_EXPORT_MAX_SIDE,
   COLORFIX_ZERO,
@@ -77,6 +84,7 @@ import {
   type ColorFixSegmenter,
   type ColorFixSegmentSuggestion,
 } from './segment.ts'
+import { clearPixelPins, deletePixel, loadPixel, savePixel, setPixelPins } from './pixel-store.ts'
 import {
   copyPaintedMask,
   deletePaintedMask,
@@ -101,13 +109,21 @@ import {
   cloneAdjust,
   cloneLayers,
   isBaseLayer,
+  isPixelLayer,
+  isSelectionLayer,
   layerEffective,
   layerMaskScope,
+  layersEqual,
   layersFromLegacy,
   legacyOf,
   makeBaseLayer,
+  makePixelLayer,
+  mergeDownBlocked,
   newLayerId,
+  newPixelId,
   nextLayerIndex,
+  nextPixelName,
+  pixelScope,
   recolorActive,
   type ColorFixLayer,
   type ColorFixRecolor,
@@ -121,9 +137,9 @@ import { adjustSignature, type ColorFixAdjust } from '@/utils/colorfix-math.ts'
 export { triggerDownload }
 
 /** 图层满额时的提示 */
-export const LAYER_CAP_HINT = `最多 ${COLORFIX_LAYERS_MAX} 层，可删除不用的图层`
+export const LAYER_CAP_HINT = `最多 ${COLORFIX_LAYERS_MAX} 层：可删除不用的图层，或「向下合并」两层后继续加`
 /** 图层满额时的提示（宿主支持拼合时） */
-export const LAYER_CAP_HINT_FLATTEN = `最多 ${COLORFIX_LAYERS_MAX} 层：可删除不用的图层，或「拼合」成新版本后继续加`
+export const LAYER_CAP_HINT_FLATTEN = `最多 ${COLORFIX_LAYERS_MAX} 层：可删除不用的图层、「向下合并」两层，或「拼合」成新版本后继续加`
 
 /** 拼合时交给宿主的东西 */
 export interface ColorFixFlattenContext {
@@ -330,14 +346,65 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   /** 某层当前生效的蒙版；底层 / 未就绪为 '' */
   function effectiveMaskOf(l: ColorFixLayer): string {
-    if (isBaseLayer(l)) return ''
+    if (!isSelectionLayer(l)) return ''
     const m = maskOf(l.id)
     if (l.region.mode === 'auto') return m.auto
     if (l.region.mode === 'paint') return m.paint
     if (l.region.mode === 'point') return m.point
     return ''
   }
-  const pendingOf = (l: ColorFixLayer) => !isBaseLayer(l) && !effectiveMaskOf(l)
+  const pendingOf = (l: ColorFixLayer) => (isPixelLayer(l) ? !pixelReady(l) : !isBaseLayer(l) && !effectiveMaskOf(l))
+
+  // --- 像素层的数据（按 pid；复制图层共用同一份）：换图 / 换键就重读 ---
+
+  interface PixelState {
+    full: string
+    preview: string
+    /** loading = 正在从本机读；ok = 可用；missing = 本机没有（被淘汰 / 换了设备 / 这张图不是合并时的那张） */
+    state: 'loading' | 'ok' | 'missing'
+    /** 只在内存（太大 / 库不可用 / 没有持久化键），刷新后会丢 */
+    volatile: boolean
+  }
+  const pixels = shallowReactive(new Map<string, PixelState>())
+  const pixelOf = (l: ColorFixLayer): PixelState | undefined => (l.pixel ? pixels.get(l.pixel.pid) : undefined)
+  function pixelReady(l: ColorFixLayer): boolean {
+    return pixelOf(l)?.state === 'ok'
+  }
+  const pixelScopes = (pid: string) =>
+    [pixelScope(scopeKey.value, src.value, pid, 'full'), pixelScope(scopeKey.value, src.value, pid, 'preview')] as const
+  const pixelTickets = new Map<string, number>()
+  async function loadPixelData(pid: string) {
+    const my = (pixelTickets.get(pid) ?? 0) + 1
+    pixelTickets.set(pid, my)
+    const [fullScope, previewScope] = pixelScopes(pid)
+    pixels.set(pid, { full: '', preview: '', state: 'loading', volatile: false })
+    const [full, preview] = await Promise.all([loadPixel(fullScope), loadPixel(previewScope)])
+    if (pixelTickets.get(pid) !== my) return
+    pixels.set(pid, { full, preview: preview || full, state: full ? 'ok' : 'missing', volatile: false })
+  }
+  const pixelLoaded = new Map<string, string>()
+  watch(
+    () => [
+      ...new Set(layers.value.filter((l) => isPixelLayer(l) && l.pixel).map((l) => l.pixel!.pid)),
+    ].map((pid) => `${pid}|${scopeKey.value}|${src.value}`),
+    (list) => {
+      const alive = new Set<string>()
+      for (const sig of list) {
+        const pid = sig.slice(0, sig.indexOf('|'))
+        alive.add(pid)
+        if (pixelLoaded.get(pid) === sig) continue
+        pixelLoaded.set(pid, sig)
+        if (src.value) void loadPixelData(pid)
+      }
+      for (const pid of [...pixelLoaded.keys()]) {
+        if (alive.has(pid)) continue
+        pixelLoaded.delete(pid)
+        pixelTickets.set(pid, (pixelTickets.get(pid) ?? 0) + 1)
+        pixels.delete(pid)
+      }
+    },
+    { immediate: true },
+  )
 
   // --- 自动识别：每层一条，换目标 / 部位 / 图 / 重试就重来 ---
 
@@ -420,7 +487,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   const autoSigs = computed(() =>
     layers.value
-      .filter((l) => !isBaseLayer(l))
+      .filter(isSelectionLayer)
       .map((l) => {
         const parts = l.region.mode === 'auto' ? colorFixRequestParts(l.region.target, l.region.parts).join(',') : ''
         const sig =
@@ -471,7 +538,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     if (storeTickets.get(id) === my) patchMask(id, { paint, point })
   }
   const storeSigs = computed(() =>
-    layers.value.filter((l) => !isBaseLayer(l)).map((l) => `${l.id}|${scopeKey.value}|${src.value}`),
+    layers.value.filter(isSelectionLayer).map((l) => `${l.id}|${scopeKey.value}|${src.value}`),
   )
   const storeLoaded = new Map<string, string>()
   watch(
@@ -498,7 +565,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   // 别处替换 / 删除 / 淘汰了同一作用域的蒙版（旧 objectURL 会被回收）：重新读一次，不清空现有值、不动 volatile 标记
   const stopMaskSync = onPaintedMaskChange((scope) => {
     for (const l of layers.value) {
-      if (isBaseLayer(l)) continue
+      if (!isSelectionLayer(l)) continue
       for (const mode of ['paint', 'point'] as const) {
         if (scope !== layerMaskScope(scopeKey.value, src.value, l.id, mode)) continue
         const my = (storeTickets.get(l.id) ?? 0) + 1
@@ -515,8 +582,9 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       ctl.ticket += 1
       stopSeg(ctl)
     }
-    // 没有持久化键：本实例的内存蒙版 / 会话随组件走
+    // 没有持久化键：本实例的内存蒙版 / 会话 / 像素层随组件走
     void deletePaintedMasksOf(memKey, { memoryOnly: true })
+    clearPixelPins(memKey)
   })
 
   // --- 选中图层的蒙版状态（参数台 / 全屏状态行沿用旧字段名） ---
@@ -566,6 +634,37 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     noteLayers(capHint.value)
   }
 
+  // 像素层数据的引用：当前图层 + 撤销 / 重做历史里出现过的 pid。这些钉住不让库淘汰；
+  // 同一次载入里从所有引用中消失的（撤销栈被新操作截断 / 超出 60 步）从本机删掉。换键 / 换图载入时只重置，不删（那是别的记录的数据）
+  let refPids = new Set<string>()
+  function referencedPids(): Set<string> {
+    const set = new Set<string>()
+    const add = (list: readonly ColorFixLayer[]) => {
+      for (const l of list) if (l.pixel) set.add(l.pixel.pid)
+    }
+    add(layers.value)
+    for (const s of past.value) add(s.layers)
+    for (const s of future.value) add(s.layers)
+    return set
+  }
+  function syncPixelRefs(reset = false) {
+    const now = referencedPids()
+    if (!reset) {
+      for (const pid of refPids) {
+        if (now.has(pid)) continue
+        for (const scope of pixelScopes(pid)) void deletePixel(scope)
+        pixelLoaded.delete(pid)
+        pixels.delete(pid)
+      }
+    }
+    refPids = now
+    setPixelPins(
+      memKey,
+      [...now].flatMap((pid) => pixelScopes(pid)).filter(Boolean),
+    )
+  }
+  watch([scopeKey, src], () => syncPixelRefs(), { flush: 'post' })
+
   // 撤销 / 重做（只记图层）
   type Snapshot = { layers: ColorFixLayer[]; selected: string }
   const past = ref<Snapshot[]>([])
@@ -590,6 +689,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   function pushPast(s: Snapshot) {
     past.value = [...past.value, s].slice(-HISTORY_MAX)
     future.value = []
+    syncPixelRefs()
   }
   function resetHistory() {
     if (burstTimer) clearTimeout(burstTimer)
@@ -598,6 +698,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     past.value = []
     future.value = []
     markCommitted()
+    syncPixelRefs(true)
   }
   /** 连续调整（watch 里调）：一段停手前的改动合成一步 */
   function noteEdit() {
@@ -624,6 +725,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     layers.value = cloneLayers(s.layers)
     selectedLayerId.value = layers.value.some((l) => l.id === s.selected) ? s.selected : BASE_LAYER_ID
     markCommitted()
+    syncPixelRefs()
   }
   const canUndoLayers = computed(() => past.value.length > 0 || bursting.value)
   const canRedoLayers = computed(() => future.value.length > 0)
@@ -697,6 +799,8 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       layers.value = list
       selectedLayerId.value = copy.id
     })
+    // 像素层不可变：复制出来的图层直接引用同一份像素数据（pid 相同），没有蒙版要复制
+    if (isPixelLayer(from)) return copy.id
     const k = scopeKey.value
     const memOnly = memoryOnly.value
     const image = src.value
@@ -759,6 +863,10 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     const n = name.trim().slice(0, 24)
     const l = layers.value.find((x) => x.id === id)
     if (!l || isBaseLayer(l)) return
+    if (isPixelLayer(l)) {
+      structural(() => updateLayer(id, { name: n || nextPixelName(layers.value.filter((x) => x.id !== id)), autoName: false }))
+      return
+    }
     structural(() => updateLayer(id, n ? { name: n, autoName: false } : { name: renameForRegion({ ...l, autoName: true }, l.region), autoName: true }))
   }
 
@@ -769,7 +877,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   /** 选中图层若是底层，就先新建一个指定方式的选区图层（旧入口「涂抹 / 点选」落在底层上时） */
   function ensureSelectionLayer(mode: 'point' | 'paint'): ColorFixLayer | null {
     const l = selectedLayer.value
-    if (!isBaseLayer(l)) return l
+    if (isSelectionLayer(l)) return l
     const id = addLayer(mode)
     return layers.value.find((x) => x.id === id) ?? null
   }
@@ -818,7 +926,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
    */
   async function loadSelectionSessionOf(mode: 'paint' | 'point'): Promise<SelectionSession | null> {
     const l = selectedLayer.value
-    if (isBaseLayer(l) || !maskOf(l.id)[mode]) return null
+    if (!isSelectionLayer(l) || !maskOf(l.id)[mode]) return null
     const scope = layerMaskScope(scopeKey.value, src.value, l.id, mode)
     if (!scope) return null
     const hit = await loadSelectionSession(scope).catch(() => null)
@@ -837,7 +945,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   /** 打开涂抹（选中的是底层时先新建一个涂抹图层） */
   function openPainter() {
     if (!src.value) return
-    if (isBaseLayer(selectedLayer.value)) addLayer('paint')
+    if (!isSelectionLayer(selectedLayer.value)) addLayer('paint')
     else painterOpen.value = true
   }
   // 满额时 addLayer 自己会置 capNotice（不静默失败）
@@ -845,7 +953,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   /** 打开点选（浏览器不支持时不开；选中的是底层时先新建一个点选图层） */
   function openPointSelect() {
     if (!src.value || pointSegmentBlocked.value) return
-    if (isBaseLayer(selectedLayer.value)) addLayer('point')
+    if (!isSelectionLayer(selectedLayer.value)) addLayer('point')
     else pointOpen.value = true
   }
   function setPointOpen(v: boolean) {
@@ -982,6 +1090,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   /** 选中图层的参数恢复默认：底层回 defaults，选区图层回零 */
   function resetParams() {
+    if (isPixelLayer(selectedLayer.value)) return
     params.value = { ...(isBaseLayer(selectedLayer.value) ? defaults : COLORFIX_ZERO) }
   }
 
@@ -1006,6 +1115,120 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     else await deletePaintedMasksOf(memKey, { memoryOnly: true })
   }
 
+  // ---------------- 向下合并 ----------------
+
+  const merging = ref(false)
+  const MERGE_TOO_LARGE = '图片太大，无法合并'
+  const mergeTooLargeText = () => (opts.flattener ? `${MERGE_TOO_LARGE}，可改用「拼合为新版本」` : MERGE_TOO_LARGE)
+
+  /** index 这一层向下合并不可用的原因（'' = 可以） */
+  function mergeBlockedAt(index: number): string {
+    if (merging.value) return '正在合并…'
+    if (flattening.value) return '正在拼合…'
+    if (!src.value) return '没有可校色的图片'
+    const why = mergeDownBlocked(layers.value, index)
+    if (why) return why
+    // 到上层为止所有生效的层都要就绪（选区蒙版 / 像素数据），否则合出来的内容不对
+    if (layers.value.slice(0, index + 1).some((l) => layerEffective(l) && pendingOf(l))) return '有图层的选区还没就绪'
+    return ''
+  }
+  /** 选中图层向下合并不可用的原因（'' = 可以）；工具条 / 菜单据此置灰并给提示 */
+  const mergeDownBlockedReason = computed(() => mergeBlockedAt(layers.value.findIndex((l) => l.id === selectedLayerId.value)))
+  const canMergeDown = computed(() => !mergeDownBlockedReason.value)
+  const selectedIsPixel = computed(() => isPixelLayer(selectedLayer.value))
+  const selectedPixelVolatile = computed(() => !!pixelOf(selectedLayer.value)?.volatile)
+
+  /**
+   * 向下合并（见文件头）：选中层与它下面那层栅格化成一个像素层，占下面那层的位置并选中；成功返回 true，失败 / 被拒图层保持不变。
+   * 下面那层是整图底层时合并进底层——底层变成整幅的像素层（仍叫「整图」、固定在最下）。一步可撤销。
+   */
+  async function mergeDown(id = selectedLayerId.value): Promise<boolean> {
+    const i = layers.value.findIndex((l) => l.id === id)
+    const why = mergeBlockedAt(i)
+    if (why) {
+      noteLayers(why)
+      return false
+    }
+    flushBurst()
+    merging.value = true
+    const image = src.value
+    const k = scopeKey.value
+    const memOnly = memoryOnly.value
+    const used = cloneLayers(layers.value.slice(0, i + 1))
+    const lower = used[i - 1]!
+    const upper = used[i]!
+    const changed = () => image !== src.value || k !== scopeKey.value || !layersEqual(layers.value.slice(0, i + 1), used)
+    const saved: string[] = []
+    const discard = () => {
+      for (const scope of saved) void deletePixel(scope)
+    }
+    try {
+      const list: ColorFixRenderLayer[] = []
+      for (const l of used) {
+        if (!layerEffective(l)) continue
+        list.push({ ...renderLayerOf(l, effectiveMaskOf(l)), cover: l.id === lower.id || l.id === upper.id })
+      }
+      const out = await colorFixMergeRender(image, list)
+      if (changed()) {
+        noteLayers('合并期间图层有变化，已取消，请重试')
+        return false
+      }
+      const pid = newPixelId()
+      const fullScope = pixelScope(k, image, pid, 'full')
+      const fs = await savePixel(fullScope, out.full, { memoryOnly: memOnly })
+      if (!fs.ok) {
+        noteLayers(mergeTooLargeText(), 6000)
+        return false
+      }
+      saved.push(fullScope)
+      let previewUrl = fs.url
+      if (out.preview) {
+        const previewScope = pixelScope(k, image, pid, 'preview')
+        const ps = await savePixel(previewScope, out.preview, { memoryOnly: memOnly })
+        if (!ps.ok) {
+          discard()
+          noteLayers(mergeTooLargeText(), 6000)
+          return false
+        }
+        saved.push(previewScope)
+        previewUrl = ps.url
+      }
+      if (changed()) {
+        discard()
+        noteLayers('合并期间图层有变化，已取消，请重试')
+        return false
+      }
+      const merged = makePixelLayer(
+        isBaseLayer(lower) ? BASE_LAYER_ID : newLayerId(),
+        isBaseLayer(lower) ? '整图' : nextPixelName(layers.value),
+        { w: out.width, h: out.height, pid },
+      )
+      pixels.set(pid, { full: fs.url, preview: previewUrl, state: 'ok', volatile: !fs.persisted })
+      pixelLoaded.set(pid, `${pid}|${k}|${image}`)
+      structural(() => {
+        const next = [...layers.value]
+        next.splice(i - 1, 2, merged)
+        layers.value = next
+        selectedLayerId.value = merged.id
+      })
+      noteLayers(
+        !fs.persisted && !memOnly
+          ? `已合并为「${merged.name}」（可撤销）；图片较大或本机存储不可用，这一层只在本次浏览中保留`
+          : `已合并为「${merged.name}」，合并前后图像一致（可撤销）`,
+        6000,
+      )
+      return true
+    } catch (err) {
+      discard()
+      if (err instanceof ColorFixMergeTooLargeError) noteLayers(mergeTooLargeText(), 6000)
+      else if (err instanceof ColorFixMaskLoadError) noteLayers(`${err.message}，合并已取消`)
+      else noteLayers('合并失败，图层保持不变，请重试')
+      return false
+    } finally {
+      merging.value = false
+    }
+  }
+
   // ---------------- 拼合 ----------------
 
   const flattening = ref(false)
@@ -1021,7 +1244,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   /** 拼合（见文件头）：成功返回 true；失败图层保持不变 */
   async function flatten(): Promise<boolean> {
-    if (flattening.value || flattenBlocked.value || !opts.flattener) return false
+    if (flattening.value || merging.value || flattenBlocked.value || !opts.flattener) return false
     flushBurst()
     flattening.value = true
     const snap = cloneLayers(layers.value)
@@ -1107,6 +1330,22 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   /** 是否可以给「校色对比」档（= active） */
   const compareAvailable = active
 
+  /** 一层的渲染输入（像素层给它的像素地址，调整层给蒙版与调整） */
+  function renderLayerOf(l: ColorFixLayer, mask: string): ColorFixRenderLayer {
+    if (isPixelLayer(l)) {
+      const px = pixelOf(l)
+      return { params: { ...COLORFIX_ZERO }, mask: null, pixel: { full: px?.full ?? '', preview: px?.preview || px?.full || '' } }
+    }
+    return {
+      params: { ...l.params },
+      mask: mask || null,
+      invert: mask ? l.region.invert : false,
+      feather: mask ? l.region.feather : 0,
+      recolor: recolorActive(l.recolor) ? { ...l.recolor } : null,
+      adjust: adjustActive(l.adjust) ? cloneAdjust(l.adjust) : null,
+    }
+  }
+
   /** 生效的图层（可见且会改图），自下而上 */
   const plan = computed(() =>
     layers.value.filter(layerEffective).map((l) => ({ layer: l, mask: effectiveMaskOf(l), pending: pendingOf(l) })),
@@ -1115,27 +1354,19 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   const maskPending = computed(() => plan.value.some((p) => p.pending))
   /** 预览 / 导出的渲染输入（跳过未就绪的层） */
   const renderLayers = computed<ColorFixRenderLayer[]>(() =>
-    plan.value
-      .filter((p) => !p.pending)
-      .map(({ layer: l, mask }) => ({
-        params: { ...l.params },
-        mask: mask || null,
-        invert: mask ? l.region.invert : false,
-        feather: mask ? l.region.feather : 0,
-        recolor: recolorActive(l.recolor) ? { ...l.recolor } : null,
-        adjust: adjustActive(l.adjust) ? cloneAdjust(l.adjust) : null,
-      })),
+    plan.value.filter((p) => !p.pending).map(({ layer: l, mask }) => renderLayerOf(l, mask)),
   )
   /** 只有一层整图调整、没有替换颜色 / 更多调整：CSS filter 就能即时预览 */
   const filterOnly = computed(() => {
     const list = renderLayers.value
-    return list.length === 1 && !list[0]!.mask && !list[0]!.recolor && !list[0]!.adjust
+    return list.length === 1 && !list[0]!.mask && !list[0]!.recolor && !list[0]!.adjust && !list[0]!.pixel
   })
 
   const currentKey = computed(() => {
     if (!active.value || !renderLayers.value.length) return ''
     return `${src.value}${renderLayers.value
       .map((l) => {
+        if (l.pixel) return `|PX:${l.pixel.full}`
         const p = l.params
         const rc = l.recolor ? `${l.recolor.source ?? 'a'}>${l.recolor.target}@${l.recolor.strength}` : ''
         const adj = adjustSignature(l.adjust)
@@ -1150,6 +1381,8 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   const failed = ref(false)
   /** 失败原因是选区蒙版拿不到（提示「选区蒙版加载失败，未应用校色」） */
   const maskLoadFailed = ref(false)
+  /** maskLoadFailed 时的提示语（选区蒙版 / 像素层各一句） */
+  const loadFailedText = ref('')
   const baking = ref(false)
   let timers: ReturnType<typeof setTimeout>[] = []
   let ticket = 0
@@ -1184,7 +1417,10 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
         } catch (err) {
           if (my !== ticket) return
           // 蒙版加载失败：小图那一轮就定论（再跑大图也一样拿不到）
-          if (err instanceof ColorFixMaskLoadError) maskLoadFailed.value = true
+          if (err instanceof ColorFixMaskLoadError) {
+            maskLoadFailed.value = true
+            loadFailedText.value = err.message
+          }
           if (final || err instanceof ColorFixMaskLoadError) failed.value = true
         } finally {
           if (my === ticket && final) baking.value = false
@@ -1296,7 +1532,11 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   /** 列表上每层的状态（识别中 / 选区未就绪 / 识别失败），图层列表打标用 */
   function layerStatus(l: ColorFixLayer): 'ok' | 'busy' | 'pending' | 'error' {
-    if (isBaseLayer(l)) return 'ok'
+    if (isBaseLayer(l) && !isPixelLayer(l)) return 'ok'
+    if (isPixelLayer(l)) {
+      const st = pixelOf(l)?.state
+      return st === 'ok' ? 'ok' : st === 'missing' ? 'error' : 'pending'
+    }
     const m = maskOf(l.id)
     if (l.region.mode === 'auto' && m.busy) return 'busy'
     if (l.region.mode === 'auto' && m.error) return 'error'
@@ -1328,6 +1568,16 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     /** 在图层区显示一行提示（4s 后清空） */
     noteLayers,
     pasteLayers,
+    /** 向下合并（选中层与下面那层栅格化成像素层，见文件头） */
+    mergeDown,
+    merging,
+    canMergeDown,
+    /** 选中图层向下合并不可用的原因（'' = 可以） */
+    mergeDownBlockedReason,
+    /** 选中的是像素层（参数台不出选区 / 调整项，只有一条说明） */
+    selectedIsPixel,
+    /** 选中的像素层只在内存里（刷新后丢） */
+    selectedPixelVolatile,
     canFlatten,
     flattenBlocked,
     flattening,
@@ -1375,8 +1625,9 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     ready,
     baking,
     failed,
-    /** failed 的原因是选区蒙版加载失败 */
+    /** failed 的原因是选区蒙版 / 像素层加载失败 */
     maskLoadFailed,
+    loadFailedText,
     /** 当前原图（enabled 关时为 ''） */
     src,
     // 动作

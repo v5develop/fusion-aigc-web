@@ -11,7 +11,7 @@
  * </ul>
  * 合成公式与主线程同一份（utils/colorfix-math compositeOneLayer），结果逐像素相同。像素只在本机内存里流转。
  */
-import { compositeOneLayer, type CompositeLayerSpec, type Lab } from './colorfix-math.ts'
+import { compositeStep, coverUnion, writeCover, type CompositeLayerSpec, type CompositeStep, type Lab } from './colorfix-math.ts'
 
 interface Session {
   width: number
@@ -19,11 +19,24 @@ interface Session {
   exact: boolean
   running: Uint8ClampedArray
   adjusted: Uint8ClampedArray
+  /** 向下合并：累计被标记的层的覆盖范围，end 时写进 A 通道（null = 普通合成） */
+  cover: Uint8Array | null
 }
 
 type InMsg =
-  | { type: 'begin'; id: number; width: number; height: number; frame: ArrayBuffer; exact: boolean }
-  | { type: 'layer'; id: number; seq: number; spec: CompositeLayerSpec; alpha: ArrayBuffer | null; source: Lab | null }
+  | { type: 'begin'; id: number; width: number; height: number; frame: ArrayBuffer; exact: boolean; cover?: boolean }
+  | {
+      type: 'layer'
+      id: number
+      seq: number
+      spec: CompositeLayerSpec
+      alpha: ArrayBuffer | null
+      source: Lab | null
+      /** 像素层：整幅 RGBA（A = 覆盖度）；有它时 spec / alpha / source 不用 */
+      pixels?: ArrayBuffer | null
+      /** 把这一层的覆盖范围并进 cover（只在 begin 带 cover 时有用） */
+      cover?: boolean
+    }
   | { type: 'end'; id: number; encode: boolean }
   | { type: 'abort'; id: number }
 
@@ -41,6 +54,7 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
         exact: m.exact,
         running,
         adjusted: new Uint8ClampedArray(running.length),
+        cover: m.cover ? new Uint8Array(running.length / 4) : null,
       })
       return
     }
@@ -51,12 +65,17 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
     }
     if (!s) throw new Error('渲染会话不存在')
     if (m.type === 'layer') {
-      compositeOneLayer(s.running, s.adjusted, m.spec, m.alpha ? new Uint8Array(m.alpha) : null, m.source, s.exact)
+      const step: CompositeStep = m.pixels
+        ? { kind: 'pixel', pixels: new Uint8ClampedArray(m.pixels) }
+        : { kind: 'adjust', spec: m.spec, alpha: m.alpha ? new Uint8Array(m.alpha) : null, source: m.source }
+      compositeStep(s.running, s.adjusted, step, s.exact)
+      if (s.cover && m.cover) coverUnion(s.cover, step)
       post({ id: m.id, type: 'ack', seq: m.seq })
       return
     }
     // end
     sessions.delete(m.id)
+    if (s.cover) writeCover(s.running, s.cover)
     if (m.encode && typeof OffscreenCanvas !== 'undefined') {
       try {
         const canvas = new OffscreenCanvas(s.width, s.height)

@@ -544,7 +544,10 @@ export function createAssetDetail(assetId: Ref<number | null>, props: DetailProp
   const colorFixBase = computed(() => {
     const a = asset.value
     if (!a || a.media !== 'image') return ''
-    const source = currentFixParams.value?.sourceImage
+    const fix = currentFixParams.value
+    // 带像素层的校色版本：像素只在存它的设备上，底图用它已存的成品图（同 colorFixBaseOf）
+    if ((fix?.colorFixLayers as { hasPixelLayers?: boolean } | undefined)?.hasPixelLayers === true) return a.image || ''
+    const source = fix?.sourceImage
     return (typeof source === 'string' && source) || a.image || ''
   })
   const colorFixKey = computed(() => {

@@ -14,8 +14,11 @@ import { reactive } from 'vue'
 import {
   adjustSignature,
   applyColorFixPixels,
-  compositeOneLayer,
+  compositeStep,
   computeHistogram,
+  coverUnion,
+  writeCover,
+  type CompositeStep,
   dominantLab,
   oklabToSrgb8,
   parseHex,
@@ -402,15 +405,24 @@ export async function colorFixMaskAlpha(
 /** 选区蒙版拿不到（跨域 / 404 / blob 已回收）：不退回整图校色，抛这个错，由调用方走失败 / 原图兜底 */
 export const COLORFIX_MASK_LOAD_FAILED = '选区蒙版加载失败，未应用校色'
 export class ColorFixMaskLoadError extends Error {
-  constructor() {
-    super(COLORFIX_MASK_LOAD_FAILED)
+  constructor(message = COLORFIX_MASK_LOAD_FAILED) {
+    super(message)
     this.name = 'ColorFixMaskLoadError'
+  }
+}
+
+/** 像素层的数据拿不到（本机缓存被清 / 淘汰）：同样不悄悄少一层，抛这个错（是 ColorFixMaskLoadError，原有的失败兜底照常接住） */
+export const COLORFIX_PIXEL_LOAD_FAILED = '像素层数据加载失败，未应用校色'
+export class ColorFixPixelLoadError extends ColorFixMaskLoadError {
+  constructor() {
+    super(COLORFIX_PIXEL_LOAD_FAILED)
+    this.name = 'ColorFixPixelLoadError'
   }
 }
 
 /** 烘图失败的提示语：蒙版加载失败给专门的一句，其余返回 fallback */
 export function colorFixFailureText(err: unknown, fallback: string): string {
-  return err instanceof ColorFixMaskLoadError ? COLORFIX_MASK_LOAD_FAILED : fallback
+  return err instanceof ColorFixMaskLoadError ? err.message : fallback
 }
 
 /**
@@ -511,6 +523,13 @@ export interface ColorFixRenderLayer {
   recolor?: { source: string | null; target: string; strength: number } | null
   /** 更多调整（白平衡 + HSL 分色），替换颜色之后、五参数之前；null = 不调 */
   adjust?: ColorFixAdjust | null
+  /**
+   * 像素层（向下合并的产物）：整幅 RGBA PNG 的地址（A 通道 = 覆盖度），按它直接盖到下面的结果上；有它时 params / mask /
+   * recolor / adjust 都不用。full = 原图分辨率；preview = 预览分辨率的副本（没有就用 full）。
+   */
+  pixel?: { full: string; preview?: string } | null
+  /** 向下合并用：把这一层的覆盖范围并进结果的 A 通道（只 {@link colorFixMergeRender} 认） */
+  cover?: boolean
 }
 
 /** 把蒙版图整理成与输出同尺寸的 alpha 数组（口径同 prepareMask：黑白 / 透明蒙版都认，反选、柔化） */
@@ -622,6 +641,7 @@ export async function colorFixLayersImage(
         const p = l.params
         const rc = l.recolor ? `${l.recolor.source ?? 'auto'}>${l.recolor.target}@${l.recolor.strength}` : ''
         const adj = adjustSignature(l.adjust)
+        if (l.pixel) return `|PX:${pixelUrlOf(l, maxSide > PREVIEW_MAX_SIDE)}`
         return `|${l.mask ?? 'none'}|${l.invert ? 'i' : ''}${l.feather}:${p.hue},${p.sat},${p.light},${p.bright},${p.contrast}:${rc}${adj ? `:A${adj}` : ''}`
       })
       .join('')
@@ -646,6 +666,7 @@ export async function colorFixLayersImage(
         : null,
     ),
   )
+  const pixelImgs = await loadPixelImages(norm, isExport)
   // 自动源色先算好（按原图，与参数台上显示的那个色块同一个值）
   const sources = await recolorSources(src, norm)
   const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
@@ -661,11 +682,15 @@ export async function colorFixLayersImage(
     const maskImg = masks[i]
     return () => (maskImg ? readMaskAlpha(maskImg, width, height, { invert: l.invert, feather: l.feather }) : null)
   })
+  const pixelsOf = norm.map((_, i) => {
+    const pimg = pixelImgs[i]
+    return pimg ? () => readPixelFrame(pimg, width, height) : null
+  })
   let out = ''
   // 导出尺寸：逐像素合成与 PNG 编码下放 Worker（同一套公式，结果逐像素相同）；Worker 不可用 / 崩了退回主线程重算
   if (isExport && offloadAvailable()) {
     try {
-      const r = await compositeInWorker(ctx.getImageData(0, 0, width, height).data, width, height, offloadLayers(norm, alphaOf, sources), {
+      const r = await compositeInWorker(ctx.getImageData(0, 0, width, height).data, width, height, offloadLayers(norm, alphaOf, sources, pixelsOf), {
         exact: true,
         encode: true,
       })
@@ -683,7 +708,7 @@ export async function colorFixLayersImage(
   }
   if (!out) {
     const frame = ctx.getImageData(0, 0, width, height)
-    compositeLayers(frame.data, norm, alphaOf, sources, isExport)
+    compositeLayers(frame.data, norm, alphaOf, sources, pixelsOf, isExport)
     ctx.putImageData(frame, 0, 0)
     out = canvas.toDataURL('image/png')
   }
@@ -704,18 +729,75 @@ function compositeLayers(
   layers: readonly NormLayer[],
   alphaOf: readonly (() => Uint8Array | null)[],
   sources: readonly (Lab | null)[],
+  pixelsOf: readonly ((() => Uint8ClampedArray) | null)[],
   exact = false,
 ) {
   const adjusted = new Uint8ClampedArray(running.length)
-  layers.forEach((l, i) => compositeOneLayer(running, adjusted, l, alphaOf[i]!(), sources[i] ?? null, exact))
+  layers.forEach((l, i) => compositeStep(running, adjusted, stepOf(l, alphaOf[i]!, sources[i] ?? null, pixelsOf[i] ?? null), exact))
 }
 
-function offloadLayers(layers: readonly NormLayer[], alphaOf: readonly (() => Uint8Array | null)[], sources: readonly (Lab | null)[]) {
+/** 一层 → 合成的一步（像素层给整幅像素，调整层给 alpha 与替换颜色源色） */
+function stepOf(
+  l: NormLayer,
+  alpha: () => Uint8Array | null,
+  source: Lab | null,
+  pixels: (() => Uint8ClampedArray) | null,
+): CompositeStep {
+  if (pixels) return { kind: 'pixel', pixels: pixels() }
+  return { kind: 'adjust', spec: { params: l.params, recolor: l.recolor, adjust: l.adjust }, alpha: alpha(), source }
+}
+
+function offloadLayers(
+  layers: readonly NormLayer[],
+  alphaOf: readonly (() => Uint8Array | null)[],
+  sources: readonly (Lab | null)[],
+  pixelsOf: readonly ((() => Uint8ClampedArray) | null)[],
+) {
   return layers.map((l, i) => ({
     spec: { params: { ...l.params }, recolor: l.recolor ? { ...l.recolor } : null, adjust: l.adjust ?? null },
     alpha: alphaOf[i]!,
     source: sources[i] ?? null,
+    pixels: pixelsOf[i] ?? undefined,
+    cover: !!l.cover,
   }))
+}
+
+/** 像素层这次渲染该用哪张图：导出 / 局部高清用原图分辨率，预览用预览副本（没有就原图） */
+function pixelUrlOf(l: Pick<ColorFixRenderLayer, 'pixel'>, full: boolean): string | null {
+  return l.pixel ? (full ? l.pixel.full : l.pixel.preview || l.pixel.full) : null
+}
+
+async function loadPixelImages(layers: readonly NormLayer[], full: boolean): Promise<(HTMLImageElement | null)[]> {
+  return Promise.all(
+    layers.map((l) => {
+      const url = pixelUrlOf(l, full)
+      return url
+        ? loadImage(url).catch(() => {
+            imageCache.delete(url)
+            throw new ColorFixPixelLoadError()
+          })
+        : null
+    }),
+  )
+}
+
+/** 把像素层的图读成输出尺寸的 RGBA（place = 局部渲染时输出只是整幅里的一块）；与原图同分辨率时是 1:1 取像素，不重采样 */
+function readPixelFrame(
+  img: HTMLImageElement,
+  width: number,
+  height: number,
+  place?: { x: number; y: number; fullW: number; fullH: number },
+): Uint8ClampedArray {
+  const c = document.createElement('canvas')
+  c.width = width
+  c.height = height
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('画布不可用')
+  if (place) ctx.drawImage(img, -place.x, -place.y, place.fullW, place.fullH)
+  else ctx.drawImage(img, 0, 0, width, height)
+  const data = ctx.getImageData(0, 0, width, height).data
+  c.width = c.height = 0
+  return data
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -793,6 +875,7 @@ export function colorFixRenderCrop(
       .map((l) => {
         const p = l.params
         const rc = l.recolor ? `${l.recolor.source ?? 'auto'}>${l.recolor.target}@${l.recolor.strength}` : ''
+        if (l.pixel) return `|PX:${l.pixel.full}`
         return `|${l.mask ?? 'none'}|${l.invert ? 'i' : ''}${l.feather}:${p.hue},${p.sat},${p.light},${p.bright},${p.contrast}:${rc}:${adjustSignature(l.adjust)}`
       })
       .join('')
@@ -819,6 +902,7 @@ export function colorFixRenderCrop(
           : null,
       ),
     )
+    const pixelImgs = await loadPixelImages(norm, true)
     const sources = await recolorSources(src, norm)
     const canvas = document.createElement('canvas')
     canvas.width = cw
@@ -849,11 +933,15 @@ export function colorFixRenderCrop(
         }
         return out
       })
+    const pixelsOf = norm.map((_, i) => {
+      const pimg = pixelImgs[i]
+      return pimg ? () => readPixelFrame(pimg, cw, ch, { x: cx, y: cy, fullW, fullH }) : null
+    })
     let blob: Blob | null = null
     // 局部高清下放 Worker（精算，与导出同口径）；不可用退回主线程（查找表，与预览同口径）
     if (offloadAvailable()) {
       try {
-        const r = await compositeInWorker(ctx.getImageData(0, 0, cw, ch).data, cw, ch, offloadLayers(norm, alphaOf, sources), {
+        const r = await compositeInWorker(ctx.getImageData(0, 0, cw, ch).data, cw, ch, offloadLayers(norm, alphaOf, sources, pixelsOf), {
           exact: true,
           encode: true,
         })
@@ -871,7 +959,7 @@ export function colorFixRenderCrop(
     }
     if (!blob) {
       const frame = ctx.getImageData(0, 0, cw, ch)
-      compositeLayers(frame.data, norm, alphaOf, sources)
+      compositeLayers(frame.data, norm, alphaOf, sources, pixelsOf)
       ctx.putImageData(frame, 0, 0)
       blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
     }
@@ -894,6 +982,142 @@ export function colorFixRenderCrop(
   return task
 }
 
+// ---------------- 向下合并（2026-11-11，见 components/ColorFix/layers.ts mergeDownBlocked） ----------------
+
+/** 合并在原图分辨率上做：长边 / 总像素超过这两个上限就拒绝（Worker 里要同时放帧 + 工作缓冲 + 覆盖度，4 字节 × 2 + 1 字节 / 像素） */
+export const COLORFIX_MERGE_MAX_SIDE = 8192
+export const COLORFIX_MERGE_MAX_PIXELS = 40_000_000
+export const COLORFIX_MERGE_TOO_LARGE = '图片太大，无法合并'
+
+/** 原图超出合并上限（或浏览器分配不出这么大的画布） */
+export class ColorFixMergeTooLargeError extends Error {
+  constructor() {
+    super(COLORFIX_MERGE_TOO_LARGE)
+    this.name = 'ColorFixMergeTooLargeError'
+  }
+}
+
+/** 向下合并的产物：原图分辨率的像素层 PNG（A 通道 = 覆盖度 0 / 255）+ 预览分辨率的副本（原图不大于预览尺寸时没有，用原图那份） */
+export interface ColorFixMergeResult {
+  full: Blob
+  preview: Blob | null
+  width: number
+  height: number
+}
+
+/** Blob → 缩到长边 ≤ maxSide 的 PNG Blob（不用缩 / 浏览器不支持返回 null） */
+async function downscaleBlob(blob: Blob, w: number, h: number, maxSide: number): Promise<Blob | null> {
+  const scale = maxSide / Math.max(w, h)
+  if (scale >= 1 || typeof createImageBitmap !== 'function') return null
+  const bitmap = await createImageBitmap(blob)
+  try {
+    const c = document.createElement('canvas')
+    c.width = Math.max(1, Math.round(w * scale))
+    c.height = Math.max(1, Math.round(h * scale))
+    const ctx = c.getContext('2d')
+    if (!ctx) return null
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(bitmap, 0, 0, c.width, c.height)
+    const out = await new Promise<Blob | null>((resolve) => c.toBlob(resolve, 'image/png'))
+    c.width = c.height = 0
+    return out
+  } finally {
+    bitmap.close()
+  }
+}
+
+/**
+ * 向下合并的渲染：按「导出口径」（逐像素精算）在原图分辨率上自下而上合成 layers（调用方只传可见且会改图的那些，到被合并的上层为止），
+ * 标了 cover 的层（被合并的两层）的覆盖范围并起来写进结果的 A 通道：覆盖度 255 = 这两层碰过的像素（蒙版 alpha > 0），0 = 没碰过。
+ * 覆盖度取二值而不是软并集：软边处下层结果已经混过一次，再按软并集盖回去会混第二次，合并前后就不一样了；
+ * 二值覆盖 + 结果像素 = 合并前这一点的最终颜色，盖回去逐位等于合并前（没碰过的点结果就等于下面的层，所以 A=0 处不丢信息）。
+ *
+ * Worker 可用时合成与 PNG 编码都在 Worker（主线程只取帧、整理蒙版 alpha），不可用时主线程重算，结果逐像素相同。
+ * 超过 {@link COLORFIX_MERGE_MAX_SIDE} / {@link COLORFIX_MERGE_MAX_PIXELS} 抛 {@link ColorFixMergeTooLargeError}；
+ * 蒙版 / 像素层拿不到抛 {@link ColorFixMaskLoadError}。
+ */
+export async function colorFixMergeRender(src: string, layers: readonly ColorFixRenderLayer[]): Promise<ColorFixMergeResult> {
+  const norm: NormLayer[] = layers.map((l) => ({
+    ...l,
+    invert: !!l.mask && !!l.invert,
+    feather: l.mask ? Math.max(0, Math.min(20, l.feather ?? 0)) : 0,
+  }))
+  const img = await loadImage(src).catch((err) => {
+    imageCache.delete(src)
+    throw err
+  })
+  const width = Math.max(1, img.naturalWidth)
+  const height = Math.max(1, img.naturalHeight)
+  if (width > COLORFIX_MERGE_MAX_SIDE || height > COLORFIX_MERGE_MAX_SIDE || width * height > COLORFIX_MERGE_MAX_PIXELS)
+    throw new ColorFixMergeTooLargeError()
+  const masks = await Promise.all(
+    norm.map((l) =>
+      l.mask
+        ? loadImage(l.mask).catch(() => {
+            imageCache.delete(l.mask!)
+            throw new ColorFixMaskLoadError()
+          })
+        : null,
+    ),
+  )
+  const pixelImgs = await loadPixelImages(norm, true)
+  const sources = await recolorSources(src, norm)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new ColorFixMergeTooLargeError()
+  ctx.drawImage(img, 0, 0, width, height)
+  const alphaOf = norm.map((l, i) => {
+    const maskImg = masks[i]
+    return () => (maskImg ? readMaskAlpha(maskImg, width, height, { invert: l.invert, feather: l.feather }) : null)
+  })
+  const pixelsOf = norm.map((_, i) => {
+    const pimg = pixelImgs[i]
+    return pimg ? () => readPixelFrame(pimg, width, height) : null
+  })
+  let full: Blob | null = null
+  if (offloadAvailable()) {
+    try {
+      const r = await compositeInWorker(
+        ctx.getImageData(0, 0, width, height).data,
+        width,
+        height,
+        offloadLayers(norm, alphaOf, sources, pixelsOf),
+        { exact: true, encode: true, cover: true },
+      )
+      if (r.blob) full = r.blob
+      else if (r.buffer) {
+        ctx.putImageData(new ImageData(new Uint8ClampedArray(r.buffer), width, height), 0, 0)
+        full = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+      }
+    } catch (err) {
+      if (!(err instanceof OffloadUnavailable)) {
+        canvas.width = canvas.height = 0
+        throw err
+      }
+    }
+  }
+  if (!full) {
+    const frame = ctx.getImageData(0, 0, width, height)
+    const adjusted = new Uint8ClampedArray(frame.data.length)
+    const cover = new Uint8Array(width * height)
+    norm.forEach((l, i) => {
+      const step = stepOf(l, alphaOf[i]!, sources[i] ?? null, pixelsOf[i] ?? null)
+      compositeStep(frame.data, adjusted, step, true)
+      if (l.cover) coverUnion(cover, step)
+    })
+    writeCover(frame.data, cover)
+    ctx.putImageData(frame, 0, 0)
+    full = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  }
+  canvas.width = canvas.height = 0
+  if (!full) throw new Error('合并失败')
+  const preview = await downscaleBlob(full, width, height, PREVIEW_MAX_SIDE).catch(() => null)
+  return { full, preview, width, height }
+}
+
 /**
  * 按图层烘图的统一入口：空 → 原图（零参数）；单层且无替换颜色 / 更多调整 → {@link colorFixImage}（与旧版单选区逐像素一致）；
  * 其余 → {@link colorFixLayersImage}。
@@ -905,7 +1129,7 @@ export function colorFixRenderLayers(
 ): Promise<string> {
   if (!layers.length) return colorFixImage(src, { hue: 0, sat: 0, light: 0, bright: 0, contrast: 0 }, null, maxSide)
   const only = layers[0]!
-  if (layers.length === 1 && !only.recolor && !only.adjust)
+  if (layers.length === 1 && !only.recolor && !only.adjust && !only.pixel)
     return colorFixImage(src, { ...only.params }, only.mask, maxSide, { invert: only.invert, feather: only.feather })
   return colorFixLayersImage(src, layers, maxSide)
 }

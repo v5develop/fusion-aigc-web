@@ -96,6 +96,7 @@ import {
   bakeStoredColorFix,
   hasStoredColorFix,
   storedColorFixFilter,
+  storedHasPixelLayers,
   triggerDownload,
   type ResultColorFix,
 } from '@/components/ColorFix'
@@ -1787,7 +1788,11 @@ async function bakedTileFile(tile: IResultTile, maxSide?: number, fallback = '�
     if (!file && hasStoredColorFix(key)) {
       const mode = loadRegion(key)?.mode
       message.warning(
-        mode === 'paint' || mode === 'point' ? `本机选区已丢失，${fallback}` : `选区识别失败，${fallback}`,
+        storedHasPixelLayers(key)
+          ? `本机像素层已丢失，${fallback}`
+          : mode === 'paint' || mode === 'point'
+            ? `本机选区已丢失，${fallback}`
+            : `选区识别失败，${fallback}`,
       )
     }
     return file

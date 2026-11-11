@@ -13,11 +13,15 @@
  *   <li>「⋯」菜单（2026-11-11）：复制校色参数 / 粘贴校色参数（preset.ts，涂抹 / 点选层带不走，粘贴后一行提示带入了几层、可撤销）、
  *       拼合（宿主提供 flattener 时才有；先在列表下方确认，说明会存成新版本、隐藏层丢弃）。</li>
  * </ul>
+ *
+ * <p>向下合并（2026-11-11）：工具条的合并钮 / 「⋯」菜单 / Ctrl（⌘）+ E（焦点不在输入框时，页面上有多份参数台时只响应最近操作过的那份）——
+ * 先在列表下方确认（说明合并后两层变成一个像素层、效果一致、之后改下面的层它不会跟着变），确认后在原图分辨率上合并（Worker），
+ * 期间按钮显示「正在合并…」。像素层在列表里带「像素」标、没有调整项，其余（显隐 / 排序 / 复制 / 改名 / 删除 / 再次合并）与别的层一样。
  */
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import IconButton from '@/components/IconButton/index.vue'
 import type { ResultColorFix } from './useResultColorFix.ts'
-import { COLORFIX_LAYERS_MAX, adjustActive, isBaseLayer, recolorActive, type ColorFixLayer } from './layers.ts'
+import { COLORFIX_LAYERS_MAX, adjustActive, isBaseLayer, isPixelLayer, recolorActive, type ColorFixLayer } from './layers.ts'
 import { colorFixClipboard, copyColorFixPreset, presetLayersForPaste } from './preset.ts'
 import { COLORFIX_REGION_LABELS, COLORFIX_TARGET_LABELS, type ColorFixAutoTarget } from './types.ts'
 
@@ -65,6 +69,7 @@ function onAddClick() {
 // ---------------- 行 ----------------
 
 function sourceLabel(l: ColorFixLayer): string {
+  if (isPixelLayer(l)) return isBaseLayer(l) ? '整幅 · 像素层' : '像素层（合并结果）'
   if (isBaseLayer(l)) return '整幅图片'
   const r = l.region
   const parts = [COLORFIX_REGION_LABELS[r.mode]]
@@ -75,6 +80,10 @@ function sourceLabel(l: ColorFixLayer): string {
 /** 图层状态提示（列表上的小标与读屏文字） */
 function statusOf(l: ColorFixLayer): { text: string; tone: 'ok' | 'busy' | 'warn' } | null {
   const st = cf.layerStatus(l)
+  if (isPixelLayer(l)) {
+    if (st === 'error') return { text: '无像素数据', tone: 'warn' }
+    return st === 'pending' ? { text: '读取中', tone: 'busy' } : null
+  }
   if (st === 'busy') return { text: '识别中', tone: 'busy' }
   if (st === 'error') return { text: '识别失败', tone: 'warn' }
   if (st === 'pending') return { text: '未选区', tone: 'warn' }
@@ -83,6 +92,7 @@ function statusOf(l: ColorFixLayer): { text: string; tone: 'ok' | 'busy' | 'warn
 
 function optionLabel(l: ColorFixLayer): string {
   const bits = [l.name, sourceLabel(l)]
+  if (isPixelLayer(l)) bits.push('像素')
   if (!l.visible) bits.push('已隐藏')
   if (recolorActive(l.recolor)) bits.push(`替换为 ${l.recolor.target}`)
   if (adjustActive(l.adjust)) bits.push('有更多调整')
@@ -146,6 +156,7 @@ function onListKey(e: KeyboardEvent) {
   else if (e.key === 'Home') pick(0)
   else if (e.key === 'End') pick(list.length - 1)
   else if ((e.key === 'Delete' || e.key === 'Backspace') && !isBaseLayer(cur)) cf.removeLayer(cur.id)
+  else if ((e.key === 'e' || e.key === 'E') && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) requestMerge()
   else if (e.key === 'F2') void startRename(cur)
   else if ((e.key === 'h' || e.key === 'H') && !e.metaKey && !e.ctrlKey) cf.setLayerVisible(cur.id, !cur.visible)
   else handled = false
@@ -169,6 +180,11 @@ const canDown = computed(() => {
 const moreOptions = computed(() => {
   const clip = colorFixClipboard.value
   const list: { key: string; label: string; disabled?: boolean }[] = [
+    {
+      key: 'merge',
+      label: merging.value ? '正在合并…' : cf.mergeDownBlockedReason.value ? `向下合并（${cf.mergeDownBlockedReason.value}）` : '向下合并（Ctrl/⌘+E）…',
+      disabled: !!cf.mergeDownBlockedReason.value,
+    },
     { key: 'copy', label: '复制校色参数' },
     {
       key: 'paste',
@@ -183,6 +199,58 @@ const moreOptions = computed(() => {
   return list
 })
 const confirmFlatten = ref(false)
+
+// ---------------- 向下合并 ----------------
+
+const confirmMerge = ref(false)
+const merging = computed(() => cf.merging.value)
+const lowerName = computed(() => {
+  const i = cf.layers.value.findIndex((l) => l.id === selected.value.id)
+  return i > 0 ? cf.layers.value[i - 1]!.name : ''
+})
+const mergeLabel = computed(() => {
+  const why = cf.mergeDownBlockedReason.value
+  return why ? `向下合并（${why}）` : `向下合并「${selected.value.name}」到「${lowerName.value}」（Ctrl/⌘+E）`
+})
+/** 点合并钮 / 菜单 / 快捷键：能合并才弹确认，不能就把原因说出来 */
+function requestMerge() {
+  if (merging.value) return
+  const why = cf.mergeDownBlockedReason.value
+  if (why) {
+    cf.noteLayers(why)
+    return
+  }
+  confirmFlatten.value = false
+  confirmMerge.value = true
+}
+async function doMerge() {
+  const ok = await cf.mergeDown()
+  confirmMerge.value = false
+  if (ok) void focusList()
+}
+// 页面上可能同时有几份参数台（各管一张图）：快捷键只给最近操作过的那份
+let activeOwner: object | null = null
+const me = {}
+function claim() {
+  activeOwner = me
+}
+function onWindowKey(e: KeyboardEvent) {
+  if ((e.key !== 'e' && e.key !== 'E') || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.defaultPrevented) return
+  if (activeOwner !== me || !cf.src.value || cf.painterOpen.value || cf.pointOpen.value) return
+  const t = e.target as HTMLElement | null
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+  e.preventDefault()
+  requestMerge()
+}
+onMounted(() => {
+  activeOwner = me
+  window.addEventListener('keydown', onWindowKey)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onWindowKey)
+  if (activeOwner === me) activeOwner = null
+})
+
 function onMore(key: string | number) {
   const k = String(key)
   if (k === 'copy') {
@@ -203,7 +271,10 @@ function onMore(key: string | number) {
       6000,
     )
     void focusList()
+  } else if (k === 'merge') {
+    requestMerge()
   } else if (k === 'flatten') {
+    confirmMerge.value = false
     confirmFlatten.value = true
   }
 }
@@ -221,7 +292,14 @@ function removeSelected() {
 </script>
 
 <template>
-  <div class="cfl" :class="{ 'is-docked': docked }" role="group" aria-label="调色图层">
+  <div
+    class="cfl"
+    :class="{ 'is-docked': docked }"
+    role="group"
+    aria-label="调色图层"
+    @pointerdown.capture="claim"
+    @focusin="claim"
+  >
     <div class="cfl__head">
       <b class="cfl__title">图层</b>
       <span class="cfl__count" :aria-label="`共 ${count} 层，最多 ${COLORFIX_LAYERS_MAX} 层`">{{ count }}/{{ COLORFIX_LAYERS_MAX }}</span>
@@ -251,7 +329,7 @@ function removeSelected() {
         </svg>
       </IconButton>
       <n-dropdown trigger="click" :options="moreOptions" placement="bottom-end" @select="onMore">
-        <IconButton label="更多：复制 / 粘贴校色参数、拼合" size="sm" variant="quiet" aria-haspopup="menu">
+        <IconButton label="更多：向下合并、复制 / 粘贴校色参数、拼合" size="sm" variant="quiet" aria-haspopup="menu">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <circle cx="5" cy="12" r="1.8" />
             <circle cx="12" cy="12" r="1.8" />
@@ -286,6 +364,24 @@ function removeSelected() {
       </n-dropdown>
     </div>
     <p class="cfl__cap" :class="{ 'is-empty': !cf.capNotice.value, 'is-warn': cf.capNotice.value === cf.capHint.value }" role="status" aria-live="polite">{{ cf.capNotice.value }}</p>
+    <div v-if="confirmMerge" class="cfl__confirm" role="alertdialog" aria-labelledby="cfl-merge-title" :aria-describedby="`${uid}-merge-desc`">
+      <b id="cfl-merge-title" class="cfl__confirm-title">向下合并「{{ selected.name }}」到「{{ lowerName }}」？</b>
+      <p :id="`${uid}-merge-desc`" class="cfl__confirm-desc">
+        合并后两层变为一个像素层（效果与合并前完全一致）。之后再修改下方图层，被合并区域不会随之变化；如需保留可编辑性，可先「复制」图层再合并。
+      </p>
+      <div class="cfl__confirm-actions">
+        <button type="button" class="cfl__btn sx-hit" :disabled="merging" @click="confirmMerge = false">取消</button>
+        <button
+          type="button"
+          class="cfl__btn is-primary sx-hit"
+          :disabled="merging || !cf.canMergeDown.value"
+          :aria-busy="merging || undefined"
+          @click="doMerge"
+        >
+          {{ merging ? '正在合并…' : '合并' }}
+        </button>
+      </div>
+    </div>
     <div v-if="confirmFlatten" class="cfl__confirm" role="alertdialog" aria-labelledby="cfl-flatten-title" :aria-describedby="`${uid}-flatten-desc`">
       <b id="cfl-flatten-title" class="cfl__confirm-title">拼合为新版本？</b>
       <p :id="`${uid}-flatten-desc`" class="cfl__confirm-desc">
@@ -304,7 +400,7 @@ function removeSelected() {
       class="cfl__list"
       role="listbox"
       tabindex="0"
-      aria-label="图层（上面的后合成）。上下键选择，Alt 加上下键调整顺序，H 显示或隐藏，F2 改名，Delete 删除"
+      aria-label="图层（上面的后合成）。上下键选择，Alt 加上下键调整顺序，H 显示或隐藏，Ctrl 或 Command 加 E 向下合并，F2 改名，Delete 删除"
       :aria-activedescendant="optionId(selectedId)"
       @keydown="onListKey"
     >
@@ -340,6 +436,7 @@ function removeSelected() {
           <span class="cfl__name" :title="l.id === 'base' ? '整图：作用于整幅图片，固定在最下层' : '双击改名'">{{ l.name }}</span>
           <span class="cfl__meta">{{ sourceLabel(l) }}</span>
         </span>
+        <span v-if="isPixelLayer(l)" class="cfl__tag is-pixel" aria-hidden="true" title="像素层：向下合并的成品像素，没有可调参数">像素</span>
         <span v-if="adjustActive(l.adjust)" class="cfl__tag" aria-hidden="true" title="有更多调整（白平衡 / HSL）">调</span>
         <span
           v-if="recolorActive(l.recolor)"
@@ -382,6 +479,19 @@ function removeSelected() {
           </svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M10.7 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M3 3l18 18" />
+          </svg>
+        </IconButton>
+        <IconButton
+          :label="mergeLabel"
+          size="sm"
+          variant="quiet"
+          :disabled="!cf.canMergeDown.value"
+          :loading="merging"
+          @click="requestMerge"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v10M8 9l4 4 4-4" />
+            <rect x="4" y="16" width="16" height="5" rx="1.5" />
           </svg>
         </IconButton>
         <template v-if="!selectedIsBase">
@@ -584,6 +694,9 @@ function removeSelected() {
   color: var(--xq-violet-ink);
   font-size: 10.5px;
   line-height: 15px;
+}
+.cfl__tag.is-pixel {
+  border-style: dashed;
 }
 .cfl__tools {
   display: flex;

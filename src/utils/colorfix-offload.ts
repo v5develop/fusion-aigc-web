@@ -79,6 +79,10 @@ export interface OffloadLayer {
   /** 这一层的 alpha（null = 整幅）；按需取，取完 transfer 给 Worker */
   alpha: () => Uint8Array | null
   source: Lab | null
+  /** 像素层：整幅 RGBA（A = 覆盖度）；有它时 spec / alpha / source 不用。按需取，取完 transfer 给 Worker */
+  pixels?: () => Uint8ClampedArray
+  /** 向下合并：把这一层的覆盖范围并进结果的 A 通道（compositeInWorker 要带 opts.cover） */
+  cover?: boolean
 }
 
 /**
@@ -90,7 +94,7 @@ export async function compositeInWorker(
   width: number,
   height: number,
   layers: readonly OffloadLayer[],
-  opts: { exact: boolean; encode: boolean },
+  opts: { exact: boolean; encode: boolean; cover?: boolean },
 ): Promise<{ blob?: Blob; buffer?: ArrayBuffer }> {
   const w = getWorker()
   if (!w) throw new OffloadUnavailable()
@@ -115,20 +119,32 @@ export async function compositeInWorker(
     })
   try {
     const buf = frame.buffer as ArrayBuffer
-    w.postMessage({ type: 'begin', id, width, height, frame: buf, exact: opts.exact }, [buf])
+    w.postMessage({ type: 'begin', id, width, height, frame: buf, exact: opts.exact, cover: !!opts.cover }, [buf])
     const waits: Promise<void>[] = []
     for (let i = 0; i < layers.length; i++) {
       const l = layers[i]!
-      let alpha = l.alpha()
+      let alpha = l.pixels ? null : l.alpha()
+      let pixels = l.pixels ? l.pixels() : null
       // 只 transfer 自己独占的缓冲（子视图先拷一份，免得把别人的整块内存送走）
       if (alpha && (alpha.byteOffset !== 0 || alpha.byteLength !== alpha.buffer.byteLength)) alpha = alpha.slice()
+      if (pixels && (pixels.byteOffset !== 0 || pixels.byteLength !== pixels.buffer.byteLength)) pixels = pixels.slice()
       if (i >= 2) await waits[i - 2]
       if (dead) break
       waits.push(ackOf(i))
       const ab = alpha ? (alpha.buffer as ArrayBuffer) : null
+      const pb = pixels ? (pixels.buffer as ArrayBuffer) : null
       w.postMessage(
-        { type: 'layer', id, seq: i, spec: { params: l.spec.params, recolor: l.spec.recolor ?? null, adjust: l.spec.adjust ?? null }, alpha: ab, source: l.source },
-        ab ? [ab] : [],
+        {
+          type: 'layer',
+          id,
+          seq: i,
+          spec: { params: l.spec.params, recolor: l.spec.recolor ?? null, adjust: l.spec.adjust ?? null },
+          alpha: ab,
+          source: l.source,
+          pixels: pb,
+          cover: !!l.cover,
+        },
+        [...(ab ? [ab] : []), ...(pb ? [pb] : [])],
       )
     }
     if (!dead) w.postMessage({ type: 'end', id, encode: opts.encode })

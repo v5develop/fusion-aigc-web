@@ -21,6 +21,7 @@ import {
   COLORFIX_LAYERS_VERSION,
   isBaseLayer,
   layerEffective,
+  layersHavePixel,
   layersNeedLocalMask,
   layersSanitize,
   legacyOf,
@@ -105,7 +106,10 @@ export function colorFixVersionParamsOf(layers: readonly ColorFixLayer[], source
     colorFix: leg.params,
     sourceImage,
     ...(leg.region.mode !== 'whole' ? { colorFixRegion: leg.region } : {}),
-    ...(leg.exact ? {} : { colorFixLayers: { v: COLORFIX_LAYERS_VERSION, layers } }),
+    // 有像素层（向下合并）：像素只在本机，别处不能按图层重放——hasPixelLayers 告诉读的人改用这个版本已存的成品图当底图（colorFixBaseOf）
+    ...(leg.exact
+      ? {}
+      : { colorFixLayers: { v: COLORFIX_LAYERS_VERSION, layers, ...(layersHavePixel(layers) ? { hasPixelLayers: true } : {}) } }),
   })
 }
 
@@ -184,6 +188,7 @@ export function colorFixVersionSavedInSession(assetId: number, layers: readonly 
 
 /**
  * 资产的校色底图（资产详情与批量应用同一口径）：当前版本是校色版本 → 它的 sourceImage（在原图上重调，不叠两遍）；
+ * 带像素层的校色版本（colorFixLayers.hasPixelLayers）→ 它已存的成品图 asset.image（像素层的数据只在本机，重放不出来，也就没有「叠两遍」）；
  * 否则当前展示图 asset.image（拼合出来的版本不带 colorFix，底图就是它自己）。免费档水印：两者都是这位用户有权下载的那张。
  */
 export function colorFixBaseOf(
@@ -195,7 +200,11 @@ export function colorFixBaseOf(
     const v = versions.find((x) => x.id === asset.currentVersionId)
     try {
       const o = v?.params ? JSON.parse(v.params) : null
-      if (o?.colorFix && typeof o.sourceImage === 'string' && o.sourceImage) return o.sourceImage
+      if (o?.colorFix && typeof o.sourceImage === 'string' && o.sourceImage) {
+        // 带像素层的版本：像素在存它的那台设备上，原图重放不出来——底图用它已存的成品图（asset.image）
+        if (o.colorFixLayers?.hasPixelLayers === true) return asset.image || ''
+        return o.sourceImage
+      }
     } catch {
       /* 参数坏了按当前图 */
     }

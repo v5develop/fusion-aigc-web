@@ -8,13 +8,16 @@
  * <p>存在 localStorage（同一浏览器跨页面 / 跨标签页可用，`storage` 事件同步），读写失败只是剪贴板不可用，不影响校色本身。
  */
 import { ref } from 'vue'
+import { COLORFIX_ZERO } from '@/utils/colorfix-math.ts'
 import { COLORFIX_REGION_LABELS, COLORFIX_TARGET_LABELS } from './types.ts'
 import {
   COLORFIX_LAYERS_MAX,
   cloneLayers,
   isBaseLayer,
+  isPixelLayer,
   layerEffective,
   layerTransferable,
+  makeBaseLayer,
   layersSanitize,
   newLayerId,
   type ColorFixLayer,
@@ -82,7 +85,8 @@ export function presetRows(preset: ColorFixPreset): PresetLayerRow[] {
     const transferable = layerTransferable(l)
     const effective = layerEffective(l)
     let note: string
-    if (isBaseLayer(l)) note = '整幅图片'
+    if (isPixelLayer(l)) note = '像素层（向下合并的产物）：内容属于原图，不能带走'
+    else if (isBaseLayer(l)) note = '整幅图片'
     else if (l.region.mode === 'auto') note = `自动识别 · ${COLORFIX_TARGET_LABELS[l.region.target]}，每张图重新识别`
     else note = `${COLORFIX_REGION_LABELS[l.region.mode]}：手动选区只属于原图，不能带走`
     if (transferable && !l.visible) note += '（已隐藏，不生效）'
@@ -115,7 +119,9 @@ export function copyColorFixPreset(layers: readonly ColorFixLayer[]): CopyResult
  */
 export function presetLayersForPaste(preset: ColorFixPreset): { layers: ColorFixLayer[]; skipped: number } {
   const all = cloneLayers(preset.layers)
-  const base = all.find(isBaseLayer)!
+  // 底层是像素层（合并进了整图）：内容带不走，换回零参数的整图底层
+  const base0 = all.find(isBaseLayer)!
+  const base = isPixelLayer(base0) ? makeBaseLayer(COLORFIX_ZERO) : base0
   const rest = all.filter((l) => !isBaseLayer(l))
   const keep = rest.filter(layerTransferable).map((l) => ({ ...l, id: newLayerId() }))
   return { layers: [base, ...keep].slice(0, COLORFIX_LAYERS_MAX), skipped: rest.length - keep.length }

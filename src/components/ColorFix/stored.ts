@@ -16,6 +16,7 @@ import {
   loadColorFix,
   type ColorFixRenderLayer,
 } from '@/utils/colorfix.ts'
+import { loadPixel } from './pixel-store.ts'
 import {
   deleteLayers,
   deletePaintedMasksOf,
@@ -29,9 +30,12 @@ import {
   adjustActive,
   cloneAdjust,
   isBaseLayer,
+  isPixelLayer,
   layerEffective,
   layerMaskScope,
   layersFromLegacy,
+  layersHavePixel,
+  pixelScope,
   recolorActive,
   type ColorFixLayer,
 } from './layers.ts'
@@ -89,6 +93,15 @@ export async function bakeStoredColorFix(key: string, src: string, opts: BakeSto
   if (!layers) return null
   const render: ColorFixRenderLayer[] = []
   for (const l of layers.filter(layerEffective)) {
+    if (isPixelLayer(l)) {
+      // 像素层的数据只在本机：拿不到（被淘汰 / 换了设备 / 清了站点数据）= 不校色，调用方用原图（与蒙版同口径，不悄悄少一层）
+      const pid = l.pixel?.pid ?? ''
+      const full = await loadPixel(pixelScope(key, src, pid, 'full'))
+      if (!full) return null
+      const preview = (await loadPixel(pixelScope(key, src, pid, 'preview'))) || undefined
+      render.push({ params: { ...l.params }, mask: null, pixel: { full, preview } })
+      continue
+    }
     let mask: string | null = null
     if (!isBaseLayer(l)) {
       mask = await resolveLayerMask(key, src, l, opts)
@@ -106,6 +119,12 @@ export async function bakeStoredColorFix(key: string, src: string, opts: BakeSto
   }
   const dataUrl = await colorFixRenderLayers(src, render, opts.maxSide ?? COLORFIX_EXPORT_MAX_SIDE)
   return new File([colorFixDataUrlToBlob(dataUrl)], withPngExt(opts.name || 'colorfix.png'), { type: 'image/png' })
+}
+
+/** 这条存的校色有没有像素层（向下合并的产物，数据只在本机） */
+export function storedHasPixelLayers(key: string): boolean {
+  const layers = key ? loadStoredLayers(key) : null
+  return !!layers && layersHavePixel(layers)
 }
 
 /** 这条存的校色图层（图层包优先，没有 / 过期按旧键迁移）；没校色返回 null */
@@ -149,7 +168,7 @@ export function storedColorFixFilter(key: string): string | null {
   const eff = layers.filter(layerEffective)
   if (!eff.length) return colorFixFilter({ hue: 0, sat: 0, light: 0, bright: 0, contrast: 0 })
   const only = eff[0]!
-  return eff.length === 1 && isBaseLayer(only) && !recolorActive(only.recolor) && !adjustActive(only.adjust)
+  return eff.length === 1 && isBaseLayer(only) && !isPixelLayer(only) && !recolorActive(only.recolor) && !adjustActive(only.adjust)
     ? colorFixFilter(only.params)
     : ''
 }

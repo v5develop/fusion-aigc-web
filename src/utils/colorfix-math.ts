@@ -1082,3 +1082,84 @@ export function compositeOneLayer(
   applyColorFixPixels(adjusted, l.params, alpha)
   compositeLayerPixels(running, adjusted, alpha)
 }
+
+// ---------------- 像素层与向下合并（2026-11-11，主线程与 Worker 共用，Node 可单测） ----------------
+
+/**
+ * 像素层的合成：running.rgb ← running.rgb + (pixels.rgb − running.rgb) × pixels.a / 255。
+ * pixels 是与 running 同尺寸的 RGBA，A 通道是这一层的覆盖度（向下合并出来的像素层只有 0 / 255 两档）；
+ * running 的 alpha 通道不动（与调整层一样，透明底抠图合成后仍透明）。a=255 逐位拷贝、a=0 跳过，所以覆盖度为 255 的像素与来源逐位相同。
+ */
+export function compositePixelLayer(running: Uint8ClampedArray, pixels: Uint8ClampedArray) {
+  for (let i = 0; i < running.length; i += 4) {
+    const a = pixels[i + 3]!
+    if (a === 0) continue
+    if (a === 255) {
+      running[i] = pixels[i]!
+      running[i + 1] = pixels[i + 1]!
+      running[i + 2] = pixels[i + 2]!
+      continue
+    }
+    const k = a / 255
+    running[i] = running[i]! + (pixels[i]! - running[i]!) * k
+    running[i + 1] = running[i + 1]! + (pixels[i + 1]! - running[i + 1]!) * k
+    running[i + 2] = running[i + 2]! + (pixels[i + 2]! - running[i + 2]!) * k
+  }
+}
+
+/** 合成的一步：调整层（含它的软蒙版 alpha、替换颜色源色）或像素层 */
+export type CompositeStep =
+  | { kind: 'adjust'; spec: CompositeLayerSpec; alpha: Uint8Array | null; source: Lab | null }
+  | { kind: 'pixel'; pixels: Uint8ClampedArray }
+
+/** 合成一步（就地改 running；adjusted 是调整层用的工作缓冲） */
+export function compositeStep(running: Uint8ClampedArray, adjusted: Uint8ClampedArray, step: CompositeStep, exact = false) {
+  if (step.kind === 'pixel') compositePixelLayer(running, step.pixels)
+  else compositeOneLayer(running, adjusted, step.spec, step.alpha, step.source, exact)
+}
+
+/**
+ * 把一层的「覆盖范围」并进 cover（就地）：调整层 = 它的软蒙版里 alpha > 0 的像素（alpha 为 null = 整幅）；
+ * 像素层 = A 通道 > 0 的像素。向下合并的像素层的覆盖度就是两层覆盖范围的并集。
+ */
+export function coverUnion(cover: Uint8Array, step: CompositeStep) {
+  if (step.kind === 'pixel') {
+    for (let i = 0; i < cover.length; i++) if (step.pixels[i * 4 + 3]! > 0) cover[i] = 255
+    return
+  }
+  if (!step.alpha) {
+    cover.fill(255)
+    return
+  }
+  for (let i = 0; i < cover.length; i++) if (step.alpha[i]! > 0) cover[i] = 255
+}
+
+/** 并集覆盖度（软）：1 − (1 − a)(1 − b)，0–255；只给说明与对照用，向下合并实际取 {@link coverUnion} 的 0 / 255 二值 */
+export function unionAlpha(a: number, b: number): number {
+  return Math.round(255 - ((255 - a) * (255 - b)) / 255)
+}
+
+/** 把覆盖度写进 RGBA 的 A 通道（就地），得到像素层的数据 */
+export function writeCover(running: Uint8ClampedArray, cover: Uint8Array) {
+  for (let i = 0; i < cover.length; i++) running[i * 4 + 3] = cover[i]!
+}
+
+/**
+ * 逐步合成一整帧（纯函数，导出路径与测试共用）：frame 是来源 RGBA（会被就地改写成结果），steps 自下而上。
+ * cover = 需要统计覆盖范围的步骤下标（向下合并的两层）；给了就在结果的 A 通道写覆盖度（0 / 255）。
+ */
+export function compositeSteps(
+  frame: Uint8ClampedArray,
+  steps: readonly CompositeStep[],
+  exact = true,
+  cover?: readonly number[],
+): Uint8ClampedArray {
+  const adjusted = new Uint8ClampedArray(frame.length)
+  const cov = cover ? new Uint8Array(frame.length / 4) : null
+  steps.forEach((s, i) => {
+    compositeStep(frame, adjusted, s, exact)
+    if (cov && cover!.includes(i)) coverUnion(cov, s)
+  })
+  if (cov) writeCover(frame, cov)
+  return frame
+}
