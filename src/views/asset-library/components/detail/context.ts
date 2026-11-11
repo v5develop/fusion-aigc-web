@@ -27,6 +27,7 @@ import {
   corsAttr,
   markCorsBlocked,
   saveColorFixVersion,
+  saveFlattenedVersion,
   useResultColorFix,
 } from '@/components/ColorFix'
 import { copyText, downloadName } from '../../ui.ts'
@@ -565,6 +566,21 @@ export function createAssetDetail(assetId: Ref<number | null>, props: DetailProp
         const region = colorFixRegionSanitize(o.colorFixRegion)
         return region && region.mode !== 'whole' ? null : colorFixSanitize(o.colorFix)
       },
+    },
+    // 拼合：当前效果烘成新版本（不带 colorFix，之后以它为底图），设为当前版本后重新拉详情 → 底图切到新版本、图层清空
+    flattener: async (ctx) => {
+      const id = assetId.value
+      if (!id) return false
+      try {
+        await saveFlattenedVersion(id, ctx)
+      } catch (err) {
+        message.error('拼合失败，请重试')
+        throw err
+      }
+      message.success('已拼合为新版本，并设为当前版本')
+      await load(id)
+      emit('changed')
+      return true
     },
   })
 

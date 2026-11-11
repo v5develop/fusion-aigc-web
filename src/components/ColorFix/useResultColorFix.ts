@@ -27,8 +27,16 @@
  * <p>图层上限 8：添加 / 复制 / 从底层进入涂抹 / 智能选区在满额时不再静默失败——置 {@link LAYER_CAP_HINT} 到 capNotice（4s 后清），
  * 图层列表显示这句话。
  *
- * <p>更多调整（2026-11-11）：每层可选白平衡 + HSL 分色（layers.ts adjust），替换颜色之后、五参数之前生效；有它时预览走画布。
- * 全屏放大到超过预览图分辨率时，{@link renderDetail} 只渲可视区域的原分辨率小块（utils/colorfix colorFixRenderCrop）。
+ * <p>更多调整（2026-11-11）：每层可选白平衡 + HSL 分色 + 色阶 + 曲线（layers.ts adjust），替换颜色之后、五参数之前生效
+ * （顺序：替换颜色 → 白平衡 → HSL → 色阶 → 曲线 → 五参数）；有它时预览走画布。
+ * 全屏放大到超过预览图分辨率时，{@link renderDetail} 只渲可视区域的原分辨率小块（utils/colorfix colorFixRenderCrop，Worker 里算）。
+ *
+ * <p>粘贴校色参数（{@link pasteLayers}，preset.ts）：整套替换为预设里能带走的图层（底层 + 自动识别层，自动识别层在这张图上重新识别），
+ * 一步可撤销。
+ *
+ * <p>拼合（{@link flatten}，2026-11-11）：多个图层在图层模型里合不成一层（每层蒙版不同、调整链非线性，见 layers.ts），所以不做「向下合并」，
+ * 只做「拼合」——宿主提供 `flattener`（如资产详情：把当前效果烘成新版本并设为当前版本）时可用；拼合成功、宿主切到新图后，
+ * 图层清空为零参数的整图底层，从新图继续调（不会再套一遍默认校色）。宿主没提供时不出这个入口。
  */
 import { computed, onBeforeUnmount, ref, shallowReactive, watch, type Ref } from 'vue'
 import {
@@ -96,6 +104,7 @@ import {
   layerMaskScope,
   layersFromLegacy,
   legacyOf,
+  makeBaseLayer,
   newLayerId,
   nextLayerIndex,
   recolorActive,
@@ -112,6 +121,18 @@ export { triggerDownload }
 
 /** 图层满额时的提示 */
 export const LAYER_CAP_HINT = `最多 ${COLORFIX_LAYERS_MAX} 层，可删除不用的图层`
+/** 图层满额时的提示（宿主支持拼合时） */
+export const LAYER_CAP_HINT_FLATTEN = `最多 ${COLORFIX_LAYERS_MAX} 层：可删除不用的图层，或「拼合」成新版本后继续加`
+
+/** 拼合时交给宿主的东西 */
+export interface ColorFixFlattenContext {
+  /** 校色底图（= cf.src） */
+  sourceImage: string
+  /** 拼合前的图层（存进版本参数备查） */
+  layers: ColorFixLayer[]
+  /** 按当前图层烘真图（长边 ≤ maxSide，默认 4096；无损 PNG） */
+  bakeFile: (name?: string, maxSide?: number) => Promise<File>
+}
 
 let instanceSeq = 0
 
@@ -148,6 +169,11 @@ export interface ResultColorFixOptions {
   segmenter?: ColorFixSegmenter | null
   /** 远端保存（可选） */
   saver?: ColorFixRemoteSaver
+  /**
+   * 拼合（可选）：把当前效果存成一张新图并让 src 切过去（如资产新版本），成功返回 true。
+   * 不传 = 不提供拼合。见文件头。
+   */
+  flattener?: (ctx: ColorFixFlattenContext) => Promise<boolean>
 }
 
 const PREVIEW_SIDE = 1600
@@ -519,16 +545,21 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   const canAddLayer = computed(() => layers.value.length < COLORFIX_LAYERS_MAX)
 
-  /** 满额时操作被拒的提示（4s 后清空）；'' = 无 */
+  /** 满额提示语（宿主支持拼合时多一句「拼合」） */
+  const capHint = computed(() => (opts.flattener ? LAYER_CAP_HINT_FLATTEN : LAYER_CAP_HINT))
+  /** 图层区的一行提示（满额被拒 / 复制粘贴 / 拼合结果，4s 后清空）；'' = 无 */
   const capNotice = ref('')
   let capTimer: ReturnType<typeof setTimeout> | null = null
-  function noteCap() {
-    capNotice.value = LAYER_CAP_HINT
+  function noteLayers(text: string, ms = 4000) {
+    capNotice.value = text
     if (capTimer) clearTimeout(capTimer)
     capTimer = setTimeout(() => {
       capNotice.value = ''
       capTimer = null
-    }, 4000)
+    }, ms)
+  }
+  function noteCap() {
+    noteLayers(capHint.value)
   }
 
   // 撤销 / 重做（只记图层）
@@ -676,6 +707,19 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       }
     })()
     return copy.id
+  }
+
+  /**
+   * 粘贴校色参数：整套替换为给定图层（第一层须是底层；调用方用 preset.ts presetLayersForPaste 准备好），一步可撤销。
+   * 自动识别层会在这张图上重新识别；新图层没有蒙版历史。
+   */
+  function pasteLayers(next: readonly ColorFixLayer[]) {
+    const list = cloneLayers(next).slice(0, COLORFIX_LAYERS_MAX)
+    if (!list.length || !isBaseLayer(list[0]!)) return
+    structural(() => {
+      layers.value = list
+      selectedLayerId.value = firstSelected(list)
+    })
   }
 
   /** 删除选区图层（底层不能删）；蒙版留着，撤销回来还能用 */
@@ -832,6 +876,9 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   }
 
   let loading = false
+  /** 拼合成功后、宿主切到新图之前置位：下一次换键时图层清空为零参数，参数台 / 全屏保持打开 */
+  let flattenNext = false
+  let flattenTimer: ReturnType<typeof setTimeout> | null = null
   function loadFrom(list: ColorFixLayer[], selected?: string) {
     layers.value = list
     selectedLayerId.value = selected && list.some((l) => l.id === selected) ? selected : firstSelected(list)
@@ -841,6 +888,17 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     key,
     async (k) => {
       loading = true
+      if (flattenNext) {
+        flattenNext = false
+        if (flattenTimer) clearTimeout(flattenTimer)
+        flattenTimer = null
+        loadFrom([makeBaseLayer(COLORFIX_ZERO)])
+        touched.value = false
+        painterOpen.value = false
+        pointOpen.value = false
+        loading = false
+        return
+      }
       const stored = k ? loadColorFix(k) : null
       const storedRegion = k ? loadRegion(k) : null
       const stack = k && stored ? loadLayers(k, legacySignature(stored, storedRegion)) : null
@@ -933,6 +991,57 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     loading = false
     if (k) await clearStoredColorFix(k)
     else await deletePaintedMasksOf(memKey, { memoryOnly: true })
+  }
+
+  // ---------------- 拼合 ----------------
+
+  const flattening = ref(false)
+  /** 拼合不可用的原因（'' = 可以拼合）；宿主没提供拼合时恒为「不支持」 */
+  const flattenBlocked = computed(() => {
+    if (!opts.flattener) return '当前位置不支持拼合'
+    if (!src.value) return '没有可校色的图片'
+    if (!layers.value.some(layerEffective)) return '还没有任何调整'
+    if (plan.value.some((p) => p.pending)) return '有图层的选区还没就绪'
+    return ''
+  })
+  const canFlatten = computed(() => !!opts.flattener)
+
+  /** 拼合（见文件头）：成功返回 true；失败图层保持不变 */
+  async function flatten(): Promise<boolean> {
+    if (flattening.value || flattenBlocked.value || !opts.flattener) return false
+    flushBurst()
+    flattening.value = true
+    const snap = cloneLayers(layers.value)
+    const image = src.value
+    flattenNext = true
+    try {
+      const ok = await opts.flattener({
+        sourceImage: image,
+        layers: snap,
+        bakeFile: (name = 'colorfix-flatten.png', maxSide = COLORFIX_EXPORT_MAX_SIDE) =>
+          bakeToFile(/\.png$/i.test(name) ? name : `${name}.png`, maxSide),
+      })
+      if (!ok) {
+        flattenNext = false
+        return false
+      }
+      noteLayers('已拼合为新版本：图层已清空，可在新版本上继续调色', 5000)
+      // 宿主一般在返回前就切了图；没切（或换键还在路上）时 8s 后作废，免得之后某次换键误清图层
+      if (flattenNext) {
+        if (flattenTimer) clearTimeout(flattenTimer)
+        flattenTimer = setTimeout(() => {
+          flattenNext = false
+          flattenTimer = null
+        }, 8000)
+      }
+      return true
+    } catch {
+      flattenNext = false
+      noteLayers('拼合失败，图层保持不变，请重试')
+      return false
+    } finally {
+      flattening.value = false
+    }
   }
 
   /** 给模板 / 子组件用的写入口（避免直接改传入对象上的 ref） */
@@ -1080,6 +1189,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     if (remoteTimer) clearTimeout(remoteTimer)
     if (burstTimer) clearTimeout(burstTimer)
     if (capTimer) clearTimeout(capTimer)
+    if (flattenTimer) clearTimeout(flattenTimer)
   })
 
   /** 当前参数的烘图已就绪 */
@@ -1197,6 +1307,14 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     selectedLayer,
     canAddLayer,
     capNotice,
+    capHint,
+    /** 在图层区显示一行提示（4s 后清空） */
+    noteLayers,
+    pasteLayers,
+    canFlatten,
+    flattenBlocked,
+    flattening,
+    flatten,
     canUndoLayers,
     canRedoLayers,
     recolorAutoSource,

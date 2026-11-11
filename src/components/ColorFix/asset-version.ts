@@ -31,6 +31,8 @@ import type { ResultColorFix } from './useResultColorFix.ts'
 import { bakeForUpload } from './files.ts'
 
 const savedSignatures = new Set<string>()
+/** 正在保存中的 资产|签名（本页并发去重，保存结束即移除） */
+const inflightSignatures = new Set<string>()
 
 const normalize = (u: string | null | undefined) => (u || '').split('?')[0]?.replace(/^https?:\/\/[^/]+/, '') ?? ''
 
@@ -93,7 +95,11 @@ export function colorFixSignatureOfVersion(paramsJson: string | null | undefined
  * 折不回去（多层 / 替换颜色）时另加 colorFixLayers = { v, layers }（只增不改，蒙版不在里面）。
  */
 export function colorFixVersionParams(cf: ResultColorFix, sourceImage: string): string {
-  const layers = cf.layers.value
+  return colorFixVersionParamsOf(cf.layers.value, sourceImage)
+}
+
+/** 同 {@link colorFixVersionParams}，直接给图层（批量应用用） */
+export function colorFixVersionParamsOf(layers: readonly ColorFixLayer[], sourceImage: string): string {
   const leg = legacyOf(layers)
   return JSON.stringify({
     colorFix: leg.params,
@@ -127,23 +133,96 @@ export async function saveColorFixVersion(
   opts: SaveColorFixVersionOptions,
 ): Promise<SaveColorFixVersionResult> {
   if (!cf.active.value || !opts.sourceImage) return { status: 'not-active' }
-  const sig = colorFixSignature(cf, opts.sourceImage)
+  return saveColorFixLayersVersion(assetId, cf.layers.value, (name, side) => cf.bakeToFile(name, side), opts)
+}
+
+/**
+ * 「保存为新版本」的图层口径（工具页 / 资产详情 / 批量应用共用）：先按签名去重（调用方给的已有版本 + 本会话存过的），
+ * 再按上传口径烘图（3072 → 超限 2048）→ 直传 → 追加版本。bake(name, maxSide) 烘出 PNG 文件。
+ * beforeCommit（可选）在追加版本前最后调一次，抛错即放弃（批量「取消」用：上传了但不追加，不会多出版本）。
+ */
+export async function saveColorFixLayersVersion(
+  assetId: number,
+  layers: readonly ColorFixLayer[],
+  bake: (name: string, maxSide: number) => Promise<File>,
+  opts: SaveColorFixVersionOptions & { beforeCommit?: () => void | Promise<void> },
+): Promise<SaveColorFixVersionResult> {
+  const sig = colorFixLayersSignature(layers, opts.sourceImage)
+  const flightKey = sig ? `${assetId}|${sig}` : ''
   if (sig) {
     const dup = opts.existingVersions?.find((v) => colorFixSignatureOfVersion(v.params) === sig)
     if (dup) return { status: 'duplicate', versionId: dup.id }
-    if (savedSignatures.has(`${assetId}|${sig}`)) return { status: 'duplicate' }
+    if (savedSignatures.has(flightKey)) return { status: 'duplicate' }
+    // 同一页里并发的两次保存（批量与详情同时、连点）：后来者按已有版本处理
+    if (inflightSignatures.has(flightKey)) return { status: 'duplicate' }
+    inflightSignatures.add(flightKey)
   }
-  const name = opts.fileName || `colorfix-asset-${assetId}.png`
-  const file = await bakeForUpload((side) => cf.bakeToFile(/\.png$/i.test(name) ? name : `${name}.png`, side))
-  if (!file) return { status: 'not-active' }
+  try {
+    const name = opts.fileName || `colorfix-asset-${assetId}.png`
+    const file = await bakeForUpload((side) => bake(/\.png$/i.test(name) ? name : `${name}.png`, side))
+    if (!file) return { status: 'not-active' }
+    await opts.beforeCommit?.()
+    const url = await goUploadImage(file)
+    await opts.beforeCommit?.()
+    await assetLibAddVersion(assetId, {
+      imageUrl: url,
+      prompt: opts.prompt || '校色后',
+      params: colorFixVersionParamsOf(layers, opts.sourceImage),
+    })
+    if (sig) savedSignatures.add(flightKey)
+    return { status: 'saved', url }
+  } finally {
+    if (flightKey) inflightSignatures.delete(flightKey)
+  }
+}
+
+/** 这组图层存在这个资产上的版本签名是否已经存过（本会话），批量「重试」判重用 */
+export function colorFixVersionSavedInSession(assetId: number, layers: readonly ColorFixLayer[], sourceImage: string): boolean {
+  const sig = colorFixLayersSignature(layers, sourceImage)
+  return !!sig && savedSignatures.has(`${assetId}|${sig}`)
+}
+
+/**
+ * 资产的校色底图（资产详情与批量应用同一口径）：当前版本是校色版本 → 它的 sourceImage（在原图上重调，不叠两遍）；
+ * 否则当前展示图 asset.image（拼合出来的版本不带 colorFix，底图就是它自己）。免费档水印：两者都是这位用户有权下载的那张。
+ */
+export function colorFixBaseOf(
+  asset: { image: string; media: string; currentVersionId: number },
+  versions: readonly { id: number; params?: string | null }[],
+): string {
+  if (asset.media !== 'image') return ''
+  if (asset.currentVersionId) {
+    const v = versions.find((x) => x.id === asset.currentVersionId)
+    try {
+      const o = v?.params ? JSON.parse(v.params) : null
+      if (o?.colorFix && typeof o.sourceImage === 'string' && o.sourceImage) return o.sourceImage
+    } catch {
+      /* 参数坏了按当前图 */
+    }
+  }
+  return asset.image || ''
+}
+
+/**
+ * 拼合：把当前效果烘成新版本并设为当前版本。版本 params 不带 colorFix（它不是「可重调的校色版本」，之后以它为底图继续调），
+ * 只记 colorFixFlattened = { sourceImage, layers } 备查。返回新图地址。
+ */
+export async function saveFlattenedVersion(
+  assetId: number,
+  ctx: { sourceImage: string; layers: readonly ColorFixLayer[]; bakeFile: (name?: string, maxSide?: number) => Promise<File> },
+): Promise<string> {
+  const name = `colorfix-flatten-${assetId}.png`
+  const file = await bakeForUpload((side) => ctx.bakeFile(name, side))
+  if (!file) throw new Error('拼合烘图失败')
   const url = await goUploadImage(file)
   await assetLibAddVersion(assetId, {
     imageUrl: url,
-    prompt: opts.prompt || '校色后',
-    params: colorFixVersionParams(cf, opts.sourceImage),
+    prompt: '拼合校色',
+    params: JSON.stringify({
+      colorFixFlattened: { sourceImage: ctx.sourceImage, layers: { v: COLORFIX_LAYERS_VERSION, layers: ctx.layers } },
+    }),
   })
-  if (sig) savedSignatures.add(`${assetId}|${sig}`)
-  return { status: 'saved', url }
+  return url
 }
 
 /** 任务结果图 → 素材库资产（对号规则见文件头）；对不上返回 undefined */

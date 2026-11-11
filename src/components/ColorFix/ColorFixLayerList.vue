@@ -10,13 +10,15 @@
  *   <li>键盘（焦点在列表上）：↑ / ↓ / Home / End 换选中、Alt + ↑ / ↓ 调顺序、H 显示 / 隐藏、F2 改名、Delete 删除
  *       （都不再冒泡给宿主页面）；Tab 进入工具条；</li>
  *   <li>头部：撤销 / 重做、「添加选区」菜单；满 8 层时按钮置灰（悬停 / 聚焦有提示），点了也给一行提示，不再静默无反应。</li>
+ *   <li>「⋯」菜单（2026-11-11）：复制校色参数 / 粘贴校色参数（preset.ts，涂抹 / 点选层带不走，粘贴后一行提示带入了几层、可撤销）、
+ *       拼合（宿主提供 flattener 时才有；先在列表下方确认，说明会存成新版本、隐藏层丢弃）。</li>
  * </ul>
  */
 import { computed, nextTick, ref } from 'vue'
 import IconButton from '@/components/IconButton/index.vue'
 import type { ResultColorFix } from './useResultColorFix.ts'
-import { LAYER_CAP_HINT } from './useResultColorFix.ts'
 import { COLORFIX_LAYERS_MAX, adjustActive, isBaseLayer, recolorActive, type ColorFixLayer } from './layers.ts'
+import { colorFixClipboard, copyColorFixPreset, presetLayersForPaste } from './preset.ts'
 import { COLORFIX_REGION_LABELS, COLORFIX_TARGET_LABELS, type ColorFixAutoTarget } from './types.ts'
 
 const { cf, docked = false } = defineProps<{
@@ -162,6 +164,55 @@ const canDown = computed(() => {
   return !selectedIsBase.value && i > 1
 })
 
+// ---------------- ⋯ 菜单：复制 / 粘贴校色参数、拼合 ----------------
+
+const moreOptions = computed(() => {
+  const clip = colorFixClipboard.value
+  const list: { key: string; label: string; disabled?: boolean }[] = [
+    { key: 'copy', label: '复制校色参数' },
+    {
+      key: 'paste',
+      label: clip ? '粘贴校色参数（替换当前图层）' : '粘贴校色参数（还没有复制过）',
+      disabled: !clip,
+    },
+  ]
+  if (cf.canFlatten.value) {
+    const why = cf.flattenBlocked.value
+    list.push({ key: 'flatten', label: why ? `拼合为新版本（${why}）` : '拼合为新版本…', disabled: !!why || cf.flattening.value })
+  }
+  return list
+})
+const confirmFlatten = ref(false)
+function onMore(key: string | number) {
+  const k = String(key)
+  if (k === 'copy') {
+    const r = copyColorFixPreset(cf.layers.value)
+    cf.noteLayers(
+      r.skipped
+        ? `已复制 ${r.total} 层校色参数；其中 ${r.skipped} 层是手动选区，粘贴到别的图时不会带过去`
+        : `已复制 ${r.total} 层校色参数，可在别的图片或资产库「应用校色」里使用`,
+    )
+  } else if (k === 'paste') {
+    const clip = colorFixClipboard.value
+    if (!clip) return
+    const { layers, skipped } = presetLayersForPaste(clip)
+    cf.pasteLayers(layers)
+    const auto = layers.filter((l) => !isBaseLayer(l)).length
+    cf.noteLayers(
+      `已粘贴 ${layers.length} 层${auto ? `（${auto} 层自动识别会在这张图上重新识别）` : ''}${skipped ? `，${skipped} 层手动选区未带入` : ''}；可撤销`,
+      6000,
+    )
+    void focusList()
+  } else if (k === 'flatten') {
+    confirmFlatten.value = true
+  }
+}
+const hiddenCount = computed(() => cf.layers.value.filter((l) => !l.visible).length)
+async function doFlatten() {
+  const ok = await cf.flatten()
+  if (ok) confirmFlatten.value = false
+}
+
 function removeSelected() {
   if (selectedIsBase.value) return
   cf.removeLayer(selected.value.id)
@@ -199,13 +250,22 @@ function removeSelected() {
           <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
         </svg>
       </IconButton>
+      <n-dropdown trigger="click" :options="moreOptions" placement="bottom-end" @select="onMore">
+        <IconButton label="更多：复制 / 粘贴校色参数、拼合" size="sm" variant="quiet" aria-haspopup="menu">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="19" cy="12" r="1.8" />
+          </svg>
+        </IconButton>
+      </n-dropdown>
       <n-tooltip v-if="!cf.canAddLayer.value" trigger="hover" placement="bottom-end">
         <template #trigger>
           <button
             type="button"
             class="cfl__add sx-hit"
             aria-disabled="true"
-            :aria-label="`添加选区：${LAYER_CAP_HINT}`"
+            :aria-label="`添加选区：${cf.capHint.value}`"
             @click="onAddClick"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
@@ -214,7 +274,7 @@ function removeSelected() {
             添加选区
           </button>
         </template>
-        {{ LAYER_CAP_HINT }}
+        {{ cf.capHint.value }}
       </n-tooltip>
       <n-dropdown v-else trigger="click" :options="addOptions" placement="bottom-end" @select="onAdd">
         <button type="button" class="cfl__add sx-hit" title="添加一个选区图层，单独调整它的颜色" aria-haspopup="menu">
@@ -225,7 +285,19 @@ function removeSelected() {
         </button>
       </n-dropdown>
     </div>
-    <p v-if="cf.capNotice.value" class="cfl__cap" role="status" aria-live="polite">{{ cf.capNotice.value }}</p>
+    <p class="cfl__cap" :class="{ 'is-empty': !cf.capNotice.value, 'is-warn': cf.capNotice.value === cf.capHint.value }" role="status" aria-live="polite">{{ cf.capNotice.value }}</p>
+    <div v-if="confirmFlatten" class="cfl__confirm" role="alertdialog" aria-labelledby="cfl-flatten-title" :aria-describedby="`${uid}-flatten-desc`">
+      <b id="cfl-flatten-title" class="cfl__confirm-title">拼合为新版本？</b>
+      <p :id="`${uid}-flatten-desc`" class="cfl__confirm-desc">
+        把当前所有可见图层的效果烘成一张图，存为资产的新版本并设为当前版本；之后图层清空，从新版本继续调色。原版本仍在版本列表里，可随时切回。<template v-if="hiddenCount">隐藏的 {{ hiddenCount }} 层不会计入。</template>
+      </p>
+      <div class="cfl__confirm-actions">
+        <button type="button" class="cfl__btn sx-hit" :disabled="cf.flattening.value" @click="confirmFlatten = false">取消</button>
+        <button type="button" class="cfl__btn is-primary sx-hit" :disabled="cf.flattening.value || !!cf.flattenBlocked.value" :aria-busy="cf.flattening.value || undefined" @click="doFlatten">
+          {{ cf.flattening.value ? '正在拼合…' : '拼合' }}
+        </button>
+      </div>
+    </div>
 
     <ul
       ref="listEl"
@@ -324,7 +396,7 @@ function removeSelected() {
             </svg>
           </IconButton>
           <IconButton
-            :label="cf.canAddLayer.value ? '复制图层' : `复制图层：${LAYER_CAP_HINT}`"
+            :label="cf.canAddLayer.value ? '复制图层' : `复制图层：${cf.capHint.value}`"
             size="sm"
             variant="quiet"
             :disabled="!cf.canAddLayer.value"
@@ -430,10 +502,69 @@ function removeSelected() {
   margin: 0;
   padding: 5px 8px;
   border-radius: 8px;
-  background: var(--xq-warning-soft);
-  color: var(--xq-warning-fg);
+  background: var(--xq-info-soft);
+  color: var(--xq-ink-2);
   font-size: 11.5px;
   line-height: 16px;
+}
+.cfl__cap.is-warn {
+  background: var(--xq-warning-soft);
+  color: var(--xq-warning-fg);
+}
+/* 空的时候仍保留节点（读屏的 live region 要先在场），只是不占位 */
+.cfl__cap.is-empty {
+  padding: 0;
+  background: none;
+}
+.cfl__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--xq-violet-line);
+  border-radius: 10px;
+  background: var(--xq-surface2);
+}
+.cfl__confirm-title {
+  color: var(--xq-ink);
+  font-size: 12px;
+}
+.cfl__confirm-desc {
+  margin: 0;
+  color: var(--xq-ink-2);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.cfl__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.cfl__btn {
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border: 1px solid var(--xq-line);
+  border-radius: 14px;
+  background: linear-gradient(var(--xq-surface), var(--xq-surface2));
+  color: var(--xq-ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cfl__btn.is-primary {
+  border-color: transparent;
+  background: var(--xq-violet-solid);
+  color: var(--xq-on-accent, #fff);
+  font-weight: 600;
+}
+.cfl__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.cfl__btn:focus-visible {
+  outline: 2px solid var(--xq-violet);
+  outline-offset: 2px;
 }
 .cfl__eye {
   width: 16px;

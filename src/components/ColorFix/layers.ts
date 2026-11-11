@@ -18,6 +18,7 @@ import {
   COLORFIX_ZERO,
   adjustIsZero,
   adjustSanitize,
+  cloneCurves,
   colorFixEquals,
   colorFixIsZero,
   colorFixSanitize,
@@ -67,7 +68,8 @@ export interface ColorFixLayer {
   /** 替换为目标颜色（先于五参数生效）；null / 缺省 = 不替换 */
   recolor: ColorFixRecolor | null
   /**
-   * 更多调整（2026-11-11，add-only 字段，不升 v）：白平衡 + HSL 分色，替换颜色之后、五参数之前生效；
+   * 更多调整（2026-11-11，add-only 字段，不升 v）：白平衡 + HSL 分色 + 色阶 + 曲线（adjust.levels / adjust.curves，
+   * 同样 add-only），替换颜色之后、五参数之前生效，顺序：白平衡 → HSL → 色阶 → 曲线；
    * null / 缺省 = 不调。老代码读到会忽略它（legacyOf 此时 exact=false，旧字段只是近似）。
    */
   adjust?: ColorFixAdjust | null
@@ -278,7 +280,20 @@ export function cloneLayers(layers: readonly ColorFixLayer[]): ColorFixLayer[] {
 }
 
 export function cloneAdjust(a: ColorFixAdjust): ColorFixAdjust {
-  return { ...a, hsl: a.hsl.map((b) => ({ ...b })) }
+  return {
+    ...a,
+    hsl: a.hsl.map((b) => ({ ...b })),
+    ...(a.levels ? { levels: { ...a.levels } } : {}),
+    ...(a.curves ? { curves: cloneCurves(a.curves) } : {}),
+  }
+}
+
+/**
+ * 这一层能不能带到别的图上（复制 / 粘贴校色参数、批量应用）：整图底层与「自动识别」图层可以（换图后重新识别），
+ * 涂抹 / 点选的蒙版是对着这张图画的，带不走。
+ */
+export function layerTransferable(l: Pick<ColorFixLayer, 'id' | 'region'>): boolean {
+  return isBaseLayer(l) || l.region.mode === 'auto'
 }
 
 /** 图层是否需要本机蒙版（涂抹 / 点选）：这类出图不能按参数去重，换设备也还原不了 */

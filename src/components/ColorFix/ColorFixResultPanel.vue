@@ -23,10 +23,10 @@ import ColorFixPanel from '@/views/tools/ColorFixPanel.vue'
 import ColorFixLayerList from './ColorFixLayerList.vue'
 import ColorFixEyedropper from './ColorFixEyedropper.vue'
 import ColorFixAdjustments from './ColorFixAdjustments.vue'
-import { adjustZero, neutralGrayWB, parseHex, type ColorFixAdjust } from '@/utils/colorfix-math.ts'
+import { adjustZero, neutralGrayWB, parseHex, type ColorFixAdjust, type ColorFixHistogram } from '@/utils/colorfix-math.ts'
 import type { ResultColorFix } from './useResultColorFix.ts'
 import type { ColorFixSegmentSuggestion } from './segment.ts'
-import { COLORFIX_MASK_LOAD_FAILED, COLORFIX_ZERO } from '@/utils/colorfix.ts'
+import { COLORFIX_MASK_LOAD_FAILED, COLORFIX_ZERO, colorFixHistogram } from '@/utils/colorfix.ts'
 import { schedulePointSegmentPrefetch } from './point-support.ts'
 import { isBaseLayer, type ColorFixRecolor } from './layers.ts'
 import type { ColorFixRegion } from './types.ts'
@@ -122,6 +122,29 @@ function onPickNeutral(hex: string) {
   cf.setAdjust({ ...cur, hsl: cur.hsl.map((b) => ({ ...b })), temp: wb.temp, tint: wb.tint })
 }
 
+/**
+ * 色阶 / 曲线的底图：选中图层范围内的原图直方图（底层 = 整图，选区图层 = 它的蒙版内，蒙版没就绪时不画）。
+ * 按原图算——下面若还有别的层改过颜色，这里看到的是原图分布。
+ */
+const histogram = ref<ColorFixHistogram | null>(null)
+let histTicket = 0
+watch(
+  () => {
+    const l = cf.selectedLayer.value
+    return [panelOpen.value && localAdjust, cf.src.value, isBaseLayer(l), cf.effectiveMask.value, l.region.invert] as const
+  },
+  async ([want, image, base, mask, invert]) => {
+    const my = ++histTicket
+    if (!want || !image || (!base && !mask)) {
+      histogram.value = null
+      return
+    }
+    const h = await colorFixHistogram(image, base ? null : mask, !base && invert)
+    if (my === histTicket) histogram.value = h
+  },
+  { immediate: true },
+)
+
 // 参数台打开且提供「点选」：空闲时预取点选的引擎与模型（本会话一次）
 watch(
   () => panelOpen.value && localAdjust && cf.regionModes.value.includes('point') && !cf.pointBlocked.value,
@@ -202,7 +225,7 @@ function done() {
       <ColorFixLayerList :cf="cf" :docked="docked" />
     </template>
     <template #adjust>
-      <ColorFixAdjustments v-model="adjust" :docked="docked" @pick-neutral="neutralShow = true" />
+      <ColorFixAdjustments v-model="adjust" :docked="docked" :histogram="histogram" @pick-neutral="neutralShow = true" />
     </template>
   </ColorFixPanel>
   <ColorFixPanel

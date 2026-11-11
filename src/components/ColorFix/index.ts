@@ -24,6 +24,11 @@
  * （叠加 / 黑白蒙版 / 仅选区 / 轮廓）、继续编辑（会话随蒙版存，selection-session.ts）、钢笔路径再编辑；全屏放大后局部高清；
  * 图层满 8 层给提示（LAYER_CAP_HINT）；图层列表改为 listbox + 独立工具条。
  *
+ * 2026-11-11 再补：每层「更多调整」加色阶 + 曲线（adjust.levels / adjust.curves，add-only；顺序 替换颜色 → 白平衡 → HSL →
+ * 色阶 → 曲线 → 五参数）；复制 / 粘贴校色参数（preset.ts，自动识别层换图重新识别，涂抹 / 点选层带不走）；资产库多选「应用校色」
+ * （batch.ts runColorFixBatch：并发 2、可取消、逐张失败列表、重试不重复存版本）；拼合（宿主给 flattener 时，烘成新版本后图层清空）；
+ * 导出真图 / 全屏局部高清的逐像素合成与 PNG 编码下放 Worker（utils/colorfix-offload.ts，不可用时退回主线程，结果逐像素相同）。
+ *
  * 要点：
  * - 烘图一律无损 PNG、保留透明通道（抠图透明底）、只缩不放，导出长边 ≤ 4096（COLORFIX_EXPORT_MAX_SIDE）；
  * - 局部调色：选区 整图 / 自动识别（POST /api/v1/studio/masks，404 时自动隐藏）/ 手动涂抹（蒙版存 IndexedDB，
@@ -44,8 +49,30 @@
  * ⚠️ 免费档水印：校色的 src（烘图来源）必须是当前观看者有权下载的那张——与它平时「下载」同一个地址
  * （免费档是带水印的交付图），绝不能换成干净原件；烘出来的 PNG 会被下载 / 上传成资产版本。
  */
-export { useResultColorFix, LAYER_CAP_HINT } from './useResultColorFix.ts'
-export type { ResultColorFix, ResultColorFixOptions, ColorFixRemoteSaver } from './useResultColorFix.ts'
+export { useResultColorFix, LAYER_CAP_HINT, LAYER_CAP_HINT_FLATTEN } from './useResultColorFix.ts'
+export type {
+  ResultColorFix,
+  ResultColorFixOptions,
+  ColorFixRemoteSaver,
+  ColorFixFlattenContext,
+} from './useResultColorFix.ts'
+export {
+  colorFixClipboard,
+  copyColorFixPreset,
+  presetSanitize,
+  presetRows,
+  presetLayersForPaste,
+  presetLayersForApply,
+  presetHasEffect,
+  type ColorFixPreset,
+  type PresetLayerRow,
+} from './preset.ts'
+export {
+  runColorFixBatch,
+  type ColorFixBatchItem,
+  type ColorFixBatchStatus,
+  type ColorFixBatchAsset,
+} from './batch.ts'
 export { bakeForUpload, triggerDownload, withImageExt, withPngExt } from './files.ts'
 export {
   hasStoredColorFix,
@@ -65,6 +92,11 @@ export {
   colorFixSignatureOfVersion,
   colorFixLayersSignature,
   colorFixVersionParams,
+  colorFixVersionParamsOf,
+  colorFixVersionSavedInSession,
+  colorFixBaseOf,
+  saveColorFixLayersVersion,
+  saveFlattenedVersion,
   type SaveColorFixVersionOptions,
   type SaveColorFixVersionResult,
   type ColorFixTaskAssetResult,
@@ -87,6 +119,7 @@ export { default as ColorFixDialog } from './ColorFixDialog.vue'
 export { default as ColorFixFullscreen } from './ColorFixFullscreen.vue'
 export { default as ColorFixZoomView } from './ColorFixZoomView.vue'
 export { default as ColorFixAdjustments } from './ColorFixAdjustments.vue'
+export { default as ColorFixToneEditor } from './ColorFixToneEditor.vue'
 export type { SelectionSession, SelectionDoc } from './selection-session.ts'
 export { MASK_VIEW_LABELS, type MaskViewMode } from './selection-ops.ts'
 export { default as ColorFixPanel } from '@/views/tools/ColorFixPanel.vue'

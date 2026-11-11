@@ -13,19 +13,20 @@
 import { reactive } from 'vue'
 import {
   adjustSignature,
-  applyAdjustPixels,
   applyColorFixPixels,
+  compositeOneLayer,
+  computeHistogram,
   dominantLab,
   oklabToSrgb8,
   parseHex,
-  recolorPixels,
   srgb8ToOklab,
-  compositeLayerPixels,
   toHex,
+  type ColorFixHistogram,
   type Lab,
   type ColorFixAdjust,
   type ColorFixParams,
 } from './colorfix-math.ts'
+import { OffloadUnavailable, compositeInWorker, offloadAvailable } from './colorfix-offload.ts'
 
 export {
   COLORFIX_DEFAULT,
@@ -140,6 +141,7 @@ export function forgetColorFixSource(url: string): void {
     for (const key of [...cache.keys()]) if (key.includes(`|${url}|`)) cache.delete(key)
   }
   for (const key of [...dominantCache.keys()]) if (key.includes(`|${url}|`)) dominantCache.delete(key)
+  for (const key of [...histCache.keys()]) if (key.includes(`|${url}|`)) histCache.delete(key)
 }
 
 /** 加一个防缓存查询参数（同一地址先被不带 crossorigin 的 <img> 拉过、缓存里是没有 CORS 头的那份时用） */
@@ -565,9 +567,42 @@ export function colorFixDominantColor(src: string, mask: string | null, invert =
   return task
 }
 
+const histCache = new Map<string, Promise<ColorFixHistogram | null>>()
+const HIST_SIDE = 256
+
+/**
+ * 原图（选区内）的直方图（亮度 + R / G / B），按原图缩到长边 256 统计——曲线 / 色阶编辑器的底图。
+ * mask 为 null = 整图；选区外（alpha < 50%）不算。读不了像素返回 null。按 原图 + 蒙版 + 反选 缓存 16 份。
+ */
+export function colorFixHistogram(src: string, mask: string | null, invert = false): Promise<ColorFixHistogram | null> {
+  const key = `${src}|${mask ?? 'none'}|${invert ? 1 : 0}`
+  const hit = histCache.get(key)
+  if (hit) return hit
+  const task = (async () => {
+    const img = await loadImage(src)
+    const scale = Math.min(1, HIST_SIDE / Math.max(img.naturalWidth || 1, img.naturalHeight || 1))
+    const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale))
+    const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale))
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = h
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return null
+    ctx.drawImage(img, 0, 0, w, h)
+    const data = ctx.getImageData(0, 0, w, h).data
+    c.width = c.height = 0
+    const alpha = mask ? readMaskAlpha(await loadImage(mask), w, h, { invert }) : null
+    return computeHistogram(data, alpha)
+  })().catch(() => null)
+  histCache.set(key, task)
+  while (histCache.size > 16) histCache.delete(histCache.keys().next().value as string)
+  return task
+}
+
 /**
  * 多图层烘图：原图打底，按顺序每层「复制当前结果 → 替换颜色 → 五参数 → 按软蒙版混回当前结果」，最后出无损 PNG
- * （透明通道原样保留）。逐像素在 CPU 上算（每层只算蒙版内像素），与单层 {@link colorFixImage} 同一套公式。
+ * （透明通道原样保留）。逐像素在 CPU 上算（每层只算蒙版内像素），与单层 {@link colorFixImage} 同一套公式；
+ * 导出尺寸（长边 > 1600）的合成与 PNG 编码下放 Worker（colorfix-offload.ts），不可用时主线程重算，结果逐像素相同。
  * 结果缓存口径同 colorFixImage（预览 LRU ≤8、导出只留 1 张）；任一层蒙版拿不到抛 {@link ColorFixMaskLoadError}。
  */
 export async function colorFixLayersImage(
@@ -622,19 +657,36 @@ export async function colorFixLayersImage(
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('画布不可用')
   ctx.drawImage(img, 0, 0, width, height)
-  const frame = ctx.getImageData(0, 0, width, height)
-  compositeLayers(
-    frame.data,
-    norm,
-    norm.map((l, i) => {
-      const maskImg = masks[i]
-      return () => (maskImg ? readMaskAlpha(maskImg, width, height, { invert: l.invert, feather: l.feather }) : null)
-    }),
-    sources,
-    isExport,
-  )
-  ctx.putImageData(frame, 0, 0)
-  const out = canvas.toDataURL('image/png')
+  const alphaOf = norm.map((l, i) => {
+    const maskImg = masks[i]
+    return () => (maskImg ? readMaskAlpha(maskImg, width, height, { invert: l.invert, feather: l.feather }) : null)
+  })
+  let out = ''
+  // 导出尺寸：逐像素合成与 PNG 编码下放 Worker（同一套公式，结果逐像素相同）；Worker 不可用 / 崩了退回主线程重算
+  if (isExport && offloadAvailable()) {
+    try {
+      const r = await compositeInWorker(ctx.getImageData(0, 0, width, height).data, width, height, offloadLayers(norm, alphaOf, sources), {
+        exact: true,
+        encode: true,
+      })
+      if (r.blob) out = await blobToDataUrl(r.blob)
+      else if (r.buffer) {
+        ctx.putImageData(new ImageData(new Uint8ClampedArray(r.buffer), width, height), 0, 0)
+        out = canvas.toDataURL('image/png')
+      }
+    } catch (err) {
+      if (!(err instanceof OffloadUnavailable)) {
+        canvas.width = canvas.height = 0
+        throw err
+      }
+    }
+  }
+  if (!out) {
+    const frame = ctx.getImageData(0, 0, width, height)
+    compositeLayers(frame.data, norm, alphaOf, sources, isExport)
+    ctx.putImageData(frame, 0, 0)
+    out = canvas.toDataURL('image/png')
+  }
   canvas.width = canvas.height = 0
   cache.set(key, out)
   evictStrings(cache, isExport ? EXPORT_CACHE_MAX : RESULT_CACHE_MAX)
@@ -643,7 +695,10 @@ export async function colorFixLayersImage(
 
 type NormLayer = ColorFixRenderLayer & { invert: boolean; feather: number }
 
-/** 逐层合成（就地改 running）：复制 → 替换颜色 → 更多调整 → 五参数 → 按 alpha 混回；exact = 更多调整逐像素精算（导出） */
+/**
+ * 逐层合成（就地改 running，主线程）：复制 → 替换颜色 → 更多调整（白平衡 → HSL → 色阶 → 曲线）→ 五参数 → 按 alpha 混回；
+ * exact = 白平衡 / HSL 逐像素精算（导出）。公式在 colorfix-math compositeOneLayer，与 Worker 共用。
+ */
 function compositeLayers(
   running: Uint8ClampedArray,
   layers: readonly NormLayer[],
@@ -652,21 +707,23 @@ function compositeLayers(
   exact = false,
 ) {
   const adjusted = new Uint8ClampedArray(running.length)
-  layers.forEach((l, i) => {
-    const alpha = alphaOf[i]!()
-    if (alpha && !alpha.some((v) => v > 0)) return
-    adjusted.set(running)
-    const target = l.recolor ? parseHex(l.recolor.target) : null
-    const source = sources[i]
-    if (l.recolor && target && source)
-      recolorPixels(
-        adjusted,
-        { source, target: srgb8ToOklab(target[0], target[1], target[2]), strength: l.recolor.strength / 100 },
-        alpha,
-      )
-    if (l.adjust) applyAdjustPixels(adjusted, l.adjust, alpha, exact)
-    applyColorFixPixels(adjusted, l.params, alpha)
-    compositeLayerPixels(running, adjusted, alpha)
+  layers.forEach((l, i) => compositeOneLayer(running, adjusted, l, alphaOf[i]!(), sources[i] ?? null, exact))
+}
+
+function offloadLayers(layers: readonly NormLayer[], alphaOf: readonly (() => Uint8Array | null)[], sources: readonly (Lab | null)[]) {
+  return layers.map((l, i) => ({
+    spec: { params: { ...l.params }, recolor: l.recolor ? { ...l.recolor } : null, adjust: l.adjust ?? null },
+    alpha: alphaOf[i]!,
+    source: sources[i] ?? null,
+  }))
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result))
+    r.onerror = () => reject(r.error ?? new Error('读取失败'))
+    r.readAsDataURL(blob)
   })
 }
 
@@ -769,11 +826,7 @@ export function colorFixRenderCrop(
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) throw new Error('画布不可用')
     ctx.drawImage(img, -cx, -cy, fullW, fullH)
-    const frame = ctx.getImageData(0, 0, cw, ch)
-    compositeLayers(
-      frame.data,
-      norm,
-      norm.map((l, i) => () => {
+    const alphaOf = norm.map((l, i) => () => {
         const maskImg = masks[i]
         if (!maskImg) return null
         const blur = l.feather > 0 ? (l.feather * Math.max(fullW, fullH)) / 1000 : 0
@@ -795,11 +848,33 @@ export function colorFixRenderCrop(
           out.set(big.subarray(from, from + cw), y * cw)
         }
         return out
-      }),
-      sources,
-    )
-    ctx.putImageData(frame, 0, 0)
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+      })
+    let blob: Blob | null = null
+    // 局部高清下放 Worker（精算，与导出同口径）；不可用退回主线程（查找表，与预览同口径）
+    if (offloadAvailable()) {
+      try {
+        const r = await compositeInWorker(ctx.getImageData(0, 0, cw, ch).data, cw, ch, offloadLayers(norm, alphaOf, sources), {
+          exact: true,
+          encode: true,
+        })
+        if (r.blob) blob = r.blob
+        else if (r.buffer) {
+          ctx.putImageData(new ImageData(new Uint8ClampedArray(r.buffer), cw, ch), 0, 0)
+          blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+        }
+      } catch (err) {
+        if (!(err instanceof OffloadUnavailable)) {
+          canvas.width = canvas.height = 0
+          throw err
+        }
+      }
+    }
+    if (!blob) {
+      const frame = ctx.getImageData(0, 0, cw, ch)
+      compositeLayers(frame.data, norm, alphaOf, sources)
+      ctx.putImageData(frame, 0, 0)
+      blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    }
     canvas.width = canvas.height = 0
     if (!blob) throw new Error('局部渲染失败')
     // 输出像素 → 原图像素（整幅输出取整过，按实际比例换算）

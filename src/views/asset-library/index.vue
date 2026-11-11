@@ -14,6 +14,7 @@
  * 增强能力照旧：分类条、比例 / 收藏筛选、标签带与标签筛选、收藏、单卡打标签、多选批量打标签、
  * 标签管理、详情（版本 / 相关资产 / 生成结果 / 原图·校色后，← / → 翻上一个下一个）。
  * 删除与「未分类」筛选见 useAssetDelete.ts（多选「删除」只删上传 / AI 生成，官方素材跳过并在确认语里说明）。
+ * 多选「应用校色」（BatchColorFixModal）：把校色面板里复制的参数套到已选图片上，每张存为新版本。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -44,6 +45,7 @@ import AssetPager from './components/AssetPager.vue'
 import DetailModal from './components/DetailModal.vue'
 import TagManagerModal from './components/TagManagerModal.vue'
 import BatchTagModal from './components/BatchTagModal.vue'
+import BatchColorFixModal from './components/BatchColorFixModal.vue'
 import AssetTagPopover from './components/AssetTagPopover.vue'
 import PromptDomain from './components/PromptDomain.vue'
 import { useAssetsInCanvas } from './useInCanvas.ts'
@@ -537,6 +539,30 @@ function openBatchTag() {
   }
   showBatchTag.value = true
 }
+// 多选「应用校色」：已选里的图片（视频在弹窗里标跳过）
+const showBatchColorFix = ref(false)
+const batchColorFixAssets = ref<IAssetLibAsset[]>([])
+const selectedImageCount = computed(
+  () =>
+    selectedIds.value.filter((id) => (selectedAssets.get(id) ?? items.value.find((it) => it.id === id))?.media === 'image')
+      .length,
+)
+function openBatchColorFix() {
+  const picked = selectedIds.value
+    .map((id) => selectedAssets.get(id) ?? items.value.find((it) => it.id === id))
+    .filter((a): a is IAssetLibAsset => !!a)
+  if (!picked.some((a) => a.media === 'image')) return
+  if (picked.length > 50) {
+    message.warning('一次最多给 50 张图片应用校色')
+    return
+  }
+  batchColorFixAssets.value = picked
+  showBatchColorFix.value = true
+}
+function onBatchColorFixed() {
+  void silentRefresh()
+}
+
 function onBatchTagged() {
   exitSelect()
   void silentRefresh()
@@ -759,6 +785,15 @@ const emptyCopy = computed(() => {
               @click="openBatchTag"
             >
               批量打标签
+            </button>
+            <button
+              type="button"
+              :class="TOOL_CLS"
+              :disabled="!selectedImageCount"
+              :title="selectedImageCount ? '把校色面板里复制的参数应用到已选图片，每张存为新版本' : '先勾选要校色的图片'"
+              @click="openBatchColorFix"
+            >
+              应用校色
             </button>
             <button
               type="button"
@@ -1066,6 +1101,7 @@ const emptyCopy = computed(() => {
     />
     <TagManagerModal v-model:show="showTagManager" @changed="onTagsChanged" />
     <BatchTagModal v-model:show="showBatchTag" :asset-ids="selectedIds" @success="onBatchTagged" />
+    <BatchColorFixModal v-model:show="showBatchColorFix" :assets="batchColorFixAssets" @changed="onBatchColorFixed" />
     <AssetTagPopover ref="tagPopover" @changed="onPopoverChanged" />
   </n-config-provider>
 </template>

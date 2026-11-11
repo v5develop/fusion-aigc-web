@@ -448,6 +448,12 @@ export interface ColorFixAdjust {
   hsl: ColorFixHslShift[]
   /** 保护肤色：HSL 分色对肤色区域减弱 80% */
   skin: boolean
+  /**
+   * 色阶（2026-11-11 增补，add-only）：HSL 分色之后生效；缺省 / null = 不调（老数据没有这个字段，出图不变）。
+   */
+  levels?: ColorFixLevels | null
+  /** 曲线（2026-11-11 增补，add-only）：色阶之后、五参数之前生效；缺省 / null = 不调 */
+  curves?: ColorFixCurves | null
 }
 
 export const COLORFIX_ADJUST_RANGE = { min: -100, max: 100 }
@@ -459,11 +465,13 @@ export function adjustZero(): ColorFixAdjust {
 const clampAdj = (n: unknown) =>
   typeof n === 'number' && Number.isFinite(n) ? Math.min(100, Math.max(-100, Math.round(n))) : 0
 
-/** 任意来源的「更多调整」→ 合法值（缺字段补 0、越界夹回）；不是对象返回 null */
+/** 任意来源的「更多调整」→ 合法值（缺字段补 0、越界夹回）；不是对象返回 null。色阶 / 曲线是恒等时不留字段 */
 export function adjustSanitize(raw: unknown): ColorFixAdjust | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
   const list = Array.isArray(o.hsl) ? o.hsl : []
+  const levels = levelsSanitize(o.levels)
+  const curves = curvesSanitize(o.curves)
   return {
     temp: clampAdj(o.temp),
     tint: clampAdj(o.tint),
@@ -472,19 +480,60 @@ export function adjustSanitize(raw: unknown): ColorFixAdjust | null {
       return { h: clampAdj(b?.h), s: clampAdj(b?.s), l: clampAdj(b?.l) }
     }),
     skin: o.skin === true,
+    ...(levels && !levelsIsIdentity(levels) ? { levels } : {}),
+    ...(curves && !curvesIsIdentity(curves) ? { curves } : {}),
   }
 }
 
-/** 白平衡与 HSL 都是零（不改图；skin 开关不算） */
-export function adjustIsZero(a: ColorFixAdjust | null | undefined): boolean {
-  if (!a) return true
+/** 去掉恒等的色阶 / 曲线字段（编辑器拖回原位时用，存储与签名都与「没调过」一致） */
+export function adjustNormalize(a: ColorFixAdjust): ColorFixAdjust {
+  const { levels, curves, ...rest } = a
+  return {
+    ...rest,
+    ...(levels && !levelsIsIdentity(levels) ? { levels } : {}),
+    ...(curves && !curvesIsIdentity(curves) ? { curves } : {}),
+  }
+}
+
+/** 白平衡与 HSL 都是零（色阶 / 曲线不算） */
+export function wbHslIsZero(a: ColorFixAdjust): boolean {
   return a.temp === 0 && a.tint === 0 && a.hsl.every((b) => b.h === 0 && b.s === 0 && b.l === 0)
 }
 
-/** 签名（缓存键 / 去重）：零 = '' */
+/** 白平衡、HSL、色阶、曲线都不改图（skin 开关不算） */
+export function adjustIsZero(a: ColorFixAdjust | null | undefined): boolean {
+  if (!a) return true
+  return wbHslIsZero(a) && levelsIsIdentity(a.levels) && curvesIsIdentity(a.curves)
+}
+
+/** 白平衡 + HSL 部分的签名（3D 查找表缓存键）；零 = '' */
+function wbHslSignature(a: ColorFixAdjust): string {
+  if (wbHslIsZero(a)) return ''
+  return `${a.temp},${a.tint},${a.skin ? 1 : 0}:${a.hsl.map((b) => `${b.h}.${b.s}.${b.l}`).join('/')}`
+}
+
+/** 色阶 + 曲线部分的签名（1D 查找表缓存键）；恒等 = '' */
+export function toneSignature(a: ColorFixAdjust | null | undefined): string {
+  if (!a) return ''
+  const lv = a.levels && !levelsIsIdentity(a.levels) ? a.levels : null
+  const cv = a.curves && !curvesIsIdentity(a.curves) ? a.curves : null
+  if (!lv && !cv) return ''
+  const pts = (p: CurvePoint[]) => p.map(([x, y]) => `${x}.${y}`).join('_')
+  return (
+    (lv ? `Lv${lv.inBlack},${lv.inWhite},${lv.gamma},${lv.outBlack},${lv.outWhite}` : '') +
+    (cv ? `Cv${COLORFIX_CURVE_CHANNELS.map((c) => (curveIsIdentity(cv[c]) ? '' : pts(cv[c]))).join('/')}` : '')
+  )
+}
+
+/**
+ * 签名（缓存键 / 去重）：零 = ''。只有白平衡 / HSL 时与增补色阶 / 曲线之前逐字相同（旧版本的去重签名不变），
+ * 色阶 / 曲线只在调过时追加在后面。
+ */
 export function adjustSignature(a: ColorFixAdjust | null | undefined): string {
   if (!a || adjustIsZero(a)) return ''
-  return `${a.temp},${a.tint},${a.skin ? 1 : 0}:${a.hsl.map((b) => `${b.h}.${b.s}.${b.l}`).join('/')}`
+  const base = `${a.temp},${a.tint},${a.skin ? 1 : 0}:${a.hsl.map((b) => `${b.h}.${b.s}.${b.l}`).join('/')}`
+  const tone = toneSignature(a)
+  return tone ? `${base}|${tone}` : base
 }
 
 /** 白平衡每 100 点在对数域里的力度（log2，单侧）：色温 R / B 反向 ±0.6 档、色调 G ±0.4 档 */
@@ -696,10 +745,11 @@ export function applyAdjustLut(data: Uint8ClampedArray, lut: Uint8ClampedArray, 
 }
 
 const lutCache = new Map<string, Uint8ClampedArray>()
+const toneCache = new Map<string, ToneLuts>()
 /**
- * RGBA 像素就地做「更多调整」（查找表按签名缓存 8 份）；零调整直接返回。
- * exact = 逐像素精算（不走查找表；导出真图用——查找表在色域边界附近极端参数下最多差约 20 级，导出不能带这个误差，
- * 4MP 约 0.6s，可接受）。
+ * RGBA 像素就地做「更多调整」：白平衡 + HSL（3D 查找表按签名缓存 8 份）→ 色阶 + 曲线（每通道 256 项 1D 查找表）；零调整直接返回。
+ * exact = 白平衡 / HSL 逐像素精算（不走 3D 查找表；导出真图用——查找表在色域边界附近极端参数下最多差约 20 级，导出不能带这个误差，
+ * 4MP 约 0.6s，可接受）。色阶 / 曲线是逐通道函数、输入是 8 位整数，256 项查找表本身就是精确值，预览与导出同一张表。
  */
 export function applyAdjustPixels(
   data: Uint8ClampedArray,
@@ -709,6 +759,21 @@ export function applyAdjustPixels(
 ) {
   const sig = adjustSignature(a)
   if (!sig || !a) return
+  applyWbHslPixels(data, a, mask, exact)
+  const tsig = toneSignature(a)
+  if (!tsig) return
+  let tone = toneCache.get(tsig)
+  if (!tone) {
+    tone = buildToneLuts(a.levels, a.curves)
+    toneCache.set(tsig, tone)
+    while (toneCache.size > 16) toneCache.delete(toneCache.keys().next().value as string)
+  }
+  applyToneLuts(data, tone, mask)
+}
+
+function applyWbHslPixels(data: Uint8ClampedArray, a: ColorFixAdjust, mask: Uint8Array | null | undefined, exact: boolean) {
+  const sig = wbHslSignature(a)
+  if (!sig) return
   if (exact) {
     const p = prepareAdjust(a)
     const out: Lab = [0, 0, 0]
@@ -723,9 +788,297 @@ export function applyAdjustPixels(
   }
   let lut = lutCache.get(sig)
   if (!lut) {
-    lut = buildAdjustLut(a)
+    lut = buildAdjustLut({ ...a, levels: null, curves: null })
     lutCache.set(sig, lut)
     while (lutCache.size > 8) lutCache.delete(lutCache.keys().next().value as string)
   }
   applyAdjustLut(data, lut, ADJUST_LUT_SIZE, mask)
+}
+
+// ---------------- 色阶 + 曲线（2026-11-11 增补） ----------------
+//
+// 生效顺序（每层）：替换颜色 → 白平衡 → HSL 分色 → 色阶 → 曲线 → 五个滑杆。色阶与曲线都是逐通道的 0–255 映射，
+// 合成一张每通道 256 项的查找表：out_c = 曲线_c(曲线_RGB(色阶(x)))，中间全程浮点、最后取整一次。
+
+/** 色阶：输入黑 / 白场、中间调 gamma、输出黑 / 白场（主通道，三通道同一组） */
+export interface ColorFixLevels {
+  /** 输入黑场 0–253 */
+  inBlack: number
+  /** 输入白场 inBlack+2–255 */
+  inWhite: number
+  /** 中间调 0.10–9.99（> 1 提亮中间调，与 Photoshop 色阶的灰色滑块同义） */
+  gamma: number
+  /** 输出黑场 0–255 */
+  outBlack: number
+  /** 输出白场 0–255（可以小于输出黑场 = 反相） */
+  outWhite: number
+}
+
+export const COLORFIX_LEVELS_IDENTITY: Readonly<ColorFixLevels> = Object.freeze({
+  inBlack: 0,
+  inWhite: 255,
+  gamma: 1,
+  outBlack: 0,
+  outWhite: 255,
+})
+export const LEVELS_GAMMA_MIN = 0.1
+export const LEVELS_GAMMA_MAX = 9.99
+
+const clampInt = (v: unknown, lo: number, hi: number, dflt: number) =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : dflt
+
+/** 任意来源 → 合法色阶（缺字段按恒等补、越界夹回）；不是对象返回 null */
+export function levelsSanitize(raw: unknown): ColorFixLevels | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const inBlack = clampInt(o.inBlack, 0, 253, 0)
+  const inWhite = clampInt(o.inWhite, inBlack + 2, 255, 255)
+  const g = typeof o.gamma === 'number' && Number.isFinite(o.gamma) ? o.gamma : 1
+  const gamma = Math.round(Math.min(LEVELS_GAMMA_MAX, Math.max(LEVELS_GAMMA_MIN, g)) * 100) / 100
+  return { inBlack, inWhite, gamma, outBlack: clampInt(o.outBlack, 0, 255, 0), outWhite: clampInt(o.outWhite, 0, 255, 255) }
+}
+
+export function levelsIsIdentity(l: ColorFixLevels | null | undefined): boolean {
+  return (
+    !l ||
+    (l.inBlack === 0 && l.inWhite === 255 && l.gamma === 1 && l.outBlack === 0 && l.outWhite === 255)
+  )
+}
+
+/** 色阶映射（浮点进、浮点出，0–255） */
+export function levelsMap(l: ColorFixLevels, x: number): number {
+  let v = (x - l.inBlack) / (l.inWhite - l.inBlack)
+  v = v < 0 ? 0 : v > 1 ? 1 : v
+  if (l.gamma !== 1) v = Math.pow(v, 1 / l.gamma)
+  return l.outBlack + v * (l.outWhite - l.outBlack)
+}
+
+/** 曲线控制点 [输入, 输出]，0–255 整数 */
+export type CurvePoint = [number, number]
+export const COLORFIX_CURVE_CHANNELS = ['rgb', 'r', 'g', 'b'] as const
+export type ColorFixCurveChannel = (typeof COLORFIX_CURVE_CHANNELS)[number]
+export const COLORFIX_CURVE_LABELS: Record<ColorFixCurveChannel, string> = { rgb: 'RGB', r: '红', g: '绿', b: '蓝' }
+/** 每条曲线最多几个控制点（含两个端点） */
+export const CURVE_MAX_POINTS = 8
+/** 相邻控制点输入值的最小间距（避免竖直段） */
+export const CURVE_MIN_GAP = 4
+
+/** 曲线：RGB 主曲线 + 红 / 绿 / 蓝分通道（先主曲线、再分通道） */
+export type ColorFixCurves = Record<ColorFixCurveChannel, CurvePoint[]>
+
+export function curveIdentity(): CurvePoint[] {
+  return [
+    [0, 0],
+    [255, 255],
+  ]
+}
+
+export function curvesIdentity(): ColorFixCurves {
+  return { rgb: curveIdentity(), r: curveIdentity(), g: curveIdentity(), b: curveIdentity() }
+}
+
+/**
+ * 任意来源的一条曲线 → 合法控制点：取整夹到 0–255、按输入排序、输入间距 < {@link CURVE_MIN_GAP} 的后来者丢掉、
+ * 最多 {@link CURVE_MAX_POINTS} 个；不足两个点 = 恒等。
+ */
+export function curvePointsSanitize(raw: unknown): CurvePoint[] {
+  if (!Array.isArray(raw)) return curveIdentity()
+  const pts: CurvePoint[] = []
+  for (const p of raw) {
+    if (!Array.isArray(p) || p.length < 2) continue
+    const x = p[0]
+    const y = p[1]
+    if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) continue
+    pts.push([Math.min(255, Math.max(0, Math.round(x))), Math.min(255, Math.max(0, Math.round(y)))])
+  }
+  pts.sort((a, b) => a[0] - b[0])
+  const out: CurvePoint[] = []
+  for (const p of pts) {
+    const last = out[out.length - 1]
+    if (last && p[0] - last[0] < CURVE_MIN_GAP) continue
+    out.push(p)
+    if (out.length >= CURVE_MAX_POINTS) break
+  }
+  return out.length >= 2 ? out : curveIdentity()
+}
+
+export function curveIsIdentity(pts: readonly CurvePoint[] | null | undefined): boolean {
+  if (!pts || pts.length < 2) return true
+  // 所有点都在对角线上、且覆盖两端（端点不在 0 / 255 时两端外是平的，不是恒等）
+  return pts[0]![0] === 0 && pts[pts.length - 1]![0] === 255 && pts.every(([x, y]) => x === y)
+}
+
+export function curvesSanitize(raw: unknown): ColorFixCurves | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  return {
+    rgb: curvePointsSanitize(o.rgb),
+    r: curvePointsSanitize(o.r),
+    g: curvePointsSanitize(o.g),
+    b: curvePointsSanitize(o.b),
+  }
+}
+
+export function curvesIsIdentity(c: ColorFixCurves | null | undefined): boolean {
+  return !c || COLORFIX_CURVE_CHANNELS.every((k) => curveIsIdentity(c[k]))
+}
+
+export function cloneCurves(c: ColorFixCurves): ColorFixCurves {
+  return {
+    rgb: c.rgb.map((p) => [p[0], p[1]] as CurvePoint),
+    r: c.r.map((p) => [p[0], p[1]] as CurvePoint),
+    g: c.g.map((p) => [p[0], p[1]] as CurvePoint),
+    b: c.b.map((p) => [p[0], p[1]] as CurvePoint),
+  }
+}
+
+/**
+ * 单调三次插值（Fritsch–Carlson）：过每个控制点、相邻两点之间不过冲（数据单调的段输出也单调），
+ * 第一个点左边 / 最后一个点右边取端点的输出值（与 Photoshop 曲线一致）。点须已按输入严格递增（{@link curvePointsSanitize}）。
+ * 返回浮点函数，输出夹在 0–255。
+ */
+export function monotoneCurve(pts: readonly CurvePoint[]): (x: number) => number {
+  const n = pts.length
+  if (n < 2) return (x) => x
+  const xs = pts.map((p) => p[0])
+  const ys = pts.map((p) => p[1])
+  const d: number[] = []
+  for (let k = 0; k < n - 1; k++) d.push((ys[k + 1]! - ys[k]!) / (xs[k + 1]! - xs[k]!))
+  const m: number[] = new Array<number>(n)
+  m[0] = d[0]!
+  m[n - 1] = d[n - 2]!
+  for (let k = 1; k < n - 1; k++) m[k] = d[k - 1]! * d[k]! <= 0 ? 0 : (d[k - 1]! + d[k]!) / 2
+  for (let k = 0; k < n - 1; k++) {
+    if (d[k] === 0) {
+      m[k] = 0
+      m[k + 1] = 0
+      continue
+    }
+    const a = m[k]! / d[k]!
+    const b = m[k + 1]! / d[k]!
+    const s = a * a + b * b
+    if (s > 9) {
+      const t = 3 / Math.sqrt(s)
+      m[k] = t * a * d[k]!
+      m[k + 1] = t * b * d[k]!
+    }
+  }
+  return (x: number) => {
+    if (x <= xs[0]!) return ys[0]!
+    if (x >= xs[n - 1]!) return ys[n - 1]!
+    let k = 0
+    while (k < n - 2 && x > xs[k + 1]!) k++
+    const h = xs[k + 1]! - xs[k]!
+    const t = (x - xs[k]!) / h
+    const t2 = t * t
+    const t3 = t2 * t
+    const v =
+      (2 * t3 - 3 * t2 + 1) * ys[k]! +
+      (t3 - 2 * t2 + t) * h * m[k]! +
+      (-2 * t3 + 3 * t2) * ys[k + 1]! +
+      (t3 - t2) * h * m[k + 1]!
+    return v < 0 ? 0 : v > 255 ? 255 : v
+  }
+}
+
+/** 色阶 + 曲线的逐通道查找表（R / G / B 各 256 项） */
+export type ToneLuts = [Uint8ClampedArray, Uint8ClampedArray, Uint8ClampedArray]
+
+/** 建色阶 + 曲线查找表：out_c = 曲线_c(曲线_RGB(色阶(x)))，浮点串联、最后四舍五入一次 */
+export function buildToneLuts(levels: ColorFixLevels | null | undefined, curves: ColorFixCurves | null | undefined): ToneLuts {
+  const lv = levels && !levelsIsIdentity(levels) ? levels : null
+  const cv = curves && !curvesIsIdentity(curves) ? curves : null
+  const master = cv && !curveIsIdentity(cv.rgb) ? monotoneCurve(cv.rgb) : null
+  const chan = (['r', 'g', 'b'] as const).map((c) => (cv && !curveIsIdentity(cv[c]) ? monotoneCurve(cv[c]) : null))
+  const out: ToneLuts = [new Uint8ClampedArray(256), new Uint8ClampedArray(256), new Uint8ClampedArray(256)]
+  for (let x = 0; x < 256; x++) {
+    let v = lv ? levelsMap(lv, x) : x
+    if (master) v = master(v)
+    for (let c = 0; c < 3; c++) {
+      const f = chan[c]
+      out[c]![x] = Math.round(f ? f(v) : v)
+    }
+  }
+  return out
+}
+
+/** RGBA 像素就地套色阶 + 曲线查找表（只改 RGB）；mask（可选，0–255）为 0 的像素跳过 */
+export function applyToneLuts(data: Uint8ClampedArray, luts: ToneLuts, mask?: Uint8Array | null) {
+  const [lr, lg, lb] = luts
+  for (let i = 0, px = 0; i < data.length; i += 4, px++) {
+    if (mask && mask[px] === 0) continue
+    data[i] = lr[data[i]!]!
+    data[i + 1] = lg[data[i + 1]!]!
+    data[i + 2] = lb[data[i + 2]!]!
+  }
+}
+
+/** 直方图（各 256 格）：亮度（Rec.601）+ R / G / B */
+export interface ColorFixHistogram {
+  l: Uint32Array
+  r: Uint32Array
+  g: Uint32Array
+  b: Uint32Array
+  /** 参与统计的像素数（选区为空时 0） */
+  count: number
+}
+
+/** 统计直方图：alpha（可选，0–255）< 128 的像素不算（选区外）；全透明像素不算 */
+export function computeHistogram(data: Uint8ClampedArray, alpha?: Uint8Array | null): ColorFixHistogram {
+  const h: ColorFixHistogram = {
+    l: new Uint32Array(256),
+    r: new Uint32Array(256),
+    g: new Uint32Array(256),
+    b: new Uint32Array(256),
+    count: 0,
+  }
+  for (let i = 0, px = 0; i < data.length; i += 4, px++) {
+    if (alpha && alpha[px]! < 128) continue
+    if (data[i + 3]! === 0) continue
+    const r = data[i]!
+    const g = data[i + 1]!
+    const b = data[i + 2]!
+    h.r[r]! += 1
+    h.g[g]! += 1
+    h.b[b]! += 1
+    h.l[Math.round(0.299 * r + 0.587 * g + 0.114 * b)]! += 1
+    h.count++
+  }
+  return h
+}
+
+// ---------------- 多图层逐像素合成（主线程与 Worker 共用，2026-11-11 从 utils/colorfix 挪来） ----------------
+
+/** 一层的调整（不含蒙版）：替换颜色（源色已解析成 OKLab）→ 更多调整 → 五参数 */
+export interface CompositeLayerSpec {
+  params: ColorFixParams
+  recolor?: { source: string | null; target: string; strength: number } | null
+  adjust?: ColorFixAdjust | null
+}
+
+/**
+ * 一层合成（就地改 running）：复制 → 替换颜色 → 更多调整（白平衡 → HSL → 色阶 → 曲线）→ 五参数 → 按 alpha 混回。
+ * adjusted 是复用的工作缓冲（与 running 同长）；alpha 为 null = 整幅；alpha 全 0 直接跳过。
+ * exact = 白平衡 / HSL 逐像素精算（导出 / 局部高清）。
+ */
+export function compositeOneLayer(
+  running: Uint8ClampedArray,
+  adjusted: Uint8ClampedArray,
+  l: CompositeLayerSpec,
+  alpha: Uint8Array | null,
+  source: Lab | null,
+  exact = false,
+) {
+  if (alpha && !alpha.some((v) => v > 0)) return
+  adjusted.set(running)
+  const target = l.recolor ? parseHex(l.recolor.target) : null
+  if (l.recolor && target && source)
+    recolorPixels(
+      adjusted,
+      { source, target: srgb8ToOklab(target[0], target[1], target[2]), strength: l.recolor.strength / 100 },
+      alpha,
+    )
+  if (l.adjust) applyAdjustPixels(adjusted, l.adjust, alpha, exact)
+  applyColorFixPixels(adjusted, l.params, alpha)
+  compositeLayerPixels(running, adjusted, alpha)
 }

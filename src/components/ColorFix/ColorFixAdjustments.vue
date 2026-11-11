@@ -7,23 +7,35 @@
  *       色温 / 色调；吸管弹窗由调用方开，发 pickNeutral）；</li>
  *   <li>HSL 分色：8 个色带（红 / 橙 / 黄 / 绿 / 青 / 蓝 / 紫 / 洋红）选一个，调它的色相 / 饱和度 / 明度；色带之间在 OKLCH 色相上
  *       平滑过渡（utils/colorfix-math hslBandWeights）；「保护肤色」打开时肤色区域只受 20% 影响。</li>
+ *   <li>色阶 / 曲线（ColorFixToneEditor，2026-11-11 增补）：HSL 之后生效，底图是原图（选区内）直方图（histogram 由调用方算好传入）。</li>
  * </ul>
- * 生效顺序：替换颜色 → 白平衡 → HSL 分色 → 五个滑杆。数学在 colorfix-math（纯函数，有 node 校验）。
+ * 生效顺序：替换颜色 → 白平衡 → HSL 分色 → 色阶 → 曲线 → 五个滑杆。数学在 colorfix-math（纯函数，有 node 校验）。
  * 折叠状态按浏览器记住（localStorage，读写失败不影响使用）。
  */
 import { computed, ref } from 'vue'
 import IconButton from '@/components/IconButton/index.vue'
+import ColorFixToneEditor from './ColorFixToneEditor.vue'
 import {
   COLORFIX_HSL_BANDS,
   COLORFIX_HSL_BAND_LABELS,
   COLORFIX_HSL_SWATCHES,
   adjustIsZero,
+  adjustNormalize,
   adjustZero,
+  curvesIsIdentity,
+  levelsIsIdentity,
   type ColorFixAdjust,
+  type ColorFixCurves,
+  type ColorFixHistogram,
   type ColorFixHslShift,
+  type ColorFixLevels,
 } from '@/utils/colorfix-math.ts'
 
-const { docked = false } = defineProps<{ docked?: boolean }>()
+const { docked = false, histogram = null } = defineProps<{
+  docked?: boolean
+  /** 原图（选区内）直方图，色阶 / 曲线的底图；null = 不画 */
+  histogram?: ColorFixHistogram | null
+}>()
 const adjust = defineModel<ColorFixAdjust | null>({ default: null })
 const emit = defineEmits<{ pickNeutral: [] }>()
 
@@ -55,9 +67,18 @@ const bandTouched = (i: number) => {
 }
 
 function write(next: ColorFixAdjust) {
-  // 全零且没开保护肤色 = 没调（存 null，与老数据一致）
-  adjust.value = adjustIsZero(next) && !next.skin ? null : next
+  // 全零且没开保护肤色 = 没调（存 null，与老数据一致）；恒等的色阶 / 曲线不留字段
+  const n = adjustNormalize(next)
+  adjust.value = adjustIsZero(n) && !n.skin ? null : n
 }
+const levels = computed<ColorFixLevels | null>({
+  get: () => cur.value.levels ?? null,
+  set: (v) => write({ ...cur.value, hsl: cur.value.hsl.map((b) => ({ ...b })), levels: v }),
+})
+const curves = computed<ColorFixCurves | null>({
+  get: () => cur.value.curves ?? null,
+  set: (v) => write({ ...cur.value, hsl: cur.value.hsl.map((b) => ({ ...b })), curves: v }),
+})
 function setWb(k: 'temp' | 'tint', v: number) {
   write({ ...cur.value, hsl: cur.value.hsl.map((b) => ({ ...b })), [k]: v })
 }
@@ -79,11 +100,13 @@ function resetBand() {
 
 const summary = computed(() => {
   const a = adjust.value
-  if (!a || adjustIsZero(a)) return '白平衡 · HSL 分色'
+  if (!a || adjustIsZero(a)) return '白平衡 · HSL · 色阶 · 曲线'
   const bits: string[] = []
   if (a.temp || a.tint) bits.push(`色温 ${signed(a.temp)} · 色调 ${signed(a.tint)}`)
   const n = a.hsl.filter((b) => b.h || b.s || b.l).length
   if (n) bits.push(`HSL ${n} 色`)
+  if (!levelsIsIdentity(a.levels)) bits.push('色阶')
+  if (!curvesIsIdentity(a.curves)) bits.push('曲线')
   return bits.join(' · ')
 })
 const active = computed(() => !!adjust.value && !adjustIsZero(adjust.value))
@@ -139,7 +162,7 @@ function onBandKey(e: KeyboardEvent) {
         更多调整
       </button>
       <span class="cfa__summary" :class="{ 'is-on': active }">{{ summary }}</span>
-      <button v-if="active" type="button" class="cfa__btn sx-hit" title="白平衡与 HSL 分色全部归零" @click="resetAll">重置</button>
+      <button v-if="active" type="button" class="cfa__btn sx-hit" title="白平衡、HSL 分色、色阶、曲线全部归零" @click="resetAll">重置</button>
     </div>
 
     <div v-if="open" :id="bodyId" class="cfa__body">
@@ -277,6 +300,7 @@ function onBandKey(e: KeyboardEvent) {
           重置「{{ COLORFIX_HSL_BAND_LABELS[COLORFIX_HSL_BANDS[band]!] }}」
         </button>
       </div>
+      <ColorFixToneEditor v-model:levels="levels" v-model:curves="curves" :histogram="histogram" />
     </div>
   </div>
 </template>
