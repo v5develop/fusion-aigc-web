@@ -5,6 +5,7 @@
  * <p>数据全走 /api/v1/creation/task-center/*：状态 Tab 角标取 overview，列表取 tasks，
  * 入口 / 状态 / 时间三组选项取 filters。状态桶、状态文案、进度都由后端算好，这里只展示；
  * 封面只用 coverUrl（已脱敏 / 预签名）。有排队或生成中的任务时每 8 秒静默刷新一次。
+ * 进度条旁的预计剩余时间取后端 etaSeconds / progressSource，两次刷新之间本地倒计时（utils/task-eta）。
  *
  * <p>收藏：每行星标（乐观切换，失败回滚），「收藏」筛选只列已收藏的任务（总览角标同口径）。
  * 做同款 / 参数回填：取 /tasks/{taskId}/params 的原始提交体，经 utils/refillHandoff 一次性交接给
@@ -24,6 +25,7 @@ import IconButton from '@/components/IconButton/index.vue'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
 import { ossResize, thumbFallback } from '@/utils/oss'
+import { useTaskEta } from '@/utils/task-eta'
 import {
   desktopNotifyDenied,
   desktopNotifyEnabled,
@@ -463,6 +465,8 @@ async function openWith(item: ITaskCenterItem, mode: RefillMode) {
 const brokenCovers = ref(new Set<string>())
 const isVideo = (item: ITaskCenterItem) => item.resultType === 'video'
 const showProgress = (item: ITaskCenterItem) => IN_FLIGHT.has(item.statusBucket) && item.progress != null
+/** 预计剩余时间：只给在途任务；ESTIMATED（耗时外推）比 REAL 淡一档 */
+const { etaOf } = useTaskEta(items, (item) => IN_FLIGHT.has(item.statusBucket))
 
 const emptyCopy = computed(() => {
   const narrowed = !!(filters.entryCode || filters.timeRange)
@@ -718,21 +722,36 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
                     <span class="tabular-nums">{{ item.createTime }}</span>
                     <span class="tabular-nums select-all" :title="item.taskId">{{ item.taskId }}</span>
                   </span>
-                  <span v-if="showProgress(item)" class="flex items-center gap-8px max-w-320px">
-                    <span
-                      class="relative flex-1 h-4px overflow-hidden rounded-full bg-sunken"
-                      role="progressbar"
-                      :aria-valuenow="item.progress ?? 0"
-                      aria-valuemin="0"
-                      aria-valuemax="100"
-                      :aria-label="`${item.title}进度`"
-                    >
+                  <span
+                    v-if="showProgress(item) || etaOf(item)"
+                    class="flex flex-wrap items-center gap-x-8px gap-y-2px max-w-420px"
+                  >
+                    <span v-if="showProgress(item)" class="flex flex-1 items-center gap-8px min-w-160px max-w-320px">
                       <span
-                        class="absolute inset-y-0 left-0 rounded-full sx-grad-progress transition-[width] duration-300"
-                        :style="{ width: `${item.progress}%` }"
-                      />
+                        class="relative flex-1 h-4px overflow-hidden rounded-full bg-sunken"
+                        role="progressbar"
+                        :aria-valuenow="item.progress ?? 0"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        :aria-label="`${item.title}进度`"
+                      >
+                        <span
+                          class="absolute inset-y-0 left-0 rounded-full sx-grad-progress transition-[width] duration-300"
+                          :style="{ width: `${item.progress}%` }"
+                        />
+                      </span>
+                      <span class="flex-none text-11px tabular-nums text-violet-ink">{{ item.progress }}%</span>
                     </span>
-                    <span class="flex-none text-11px tabular-nums text-violet-ink">{{ item.progress }}%</span>
+                    <!-- 可见文案每秒倒计时，对读屏隐藏；读屏走粗分档的 srText，只在跨档时播报 -->
+                    <span v-if="etaOf(item)" class="flex-none text-11px leading-16px tabular-nums">
+                      <span
+                        aria-hidden="true"
+                        :class="etaOf(item)?.tone === 'real' ? 'text-violet-ink' : 'text-muted'"
+                        :title="etaOf(item)?.tone === 'real' ? undefined : '按以往耗时估算，仅供参考'"
+                        >{{ etaOf(item)?.text }}</span
+                      >
+                      <span class="sr-only" aria-live="polite" aria-atomic="true">{{ etaOf(item)?.srText }}</span>
+                    </span>
                   </span>
                   <span
                     v-if="item.failReason"

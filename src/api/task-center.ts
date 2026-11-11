@@ -9,6 +9,12 @@ import { del, get, post, put } from './index.ts'
 /** 状态桶：queued / processing / success / failed / cancelled */
 export type TaskStatusBucket = 'queued' | 'processing' | 'success' | 'failed' | 'cancelled'
 
+/**
+ * 进度来源：REAL = 子任务 / 管线步骤真实推进；ESTIMATED = 按耗时外推的估算；NONE = 无从估计。
+ * ESTIMATED 只是估算，展示上要比 REAL 弱一档。
+ */
+export type TaskProgressSource = 'REAL' | 'ESTIMATED' | 'NONE'
+
 /** 总览与列表共用的筛选条件 */
 export interface ITaskCenterFilter {
   /** 创作入口编码（筛选项接口下发），空 = 全部 */
@@ -54,6 +60,10 @@ export interface ITaskCenterItem {
   createTime: string
   /** 0..100 */
   progress: number | null
+  /** 预计剩余秒数（≤3600）；未知 / 已超时 / 已结束为 null */
+  etaSeconds?: number | null
+  /** 进度来源（旧后端不下发时按 NONE 处理） */
+  progressSource?: TaskProgressSource | string | null
   /** video / image / text */
   resultType: string | null
   coverUrl: string | null
@@ -144,6 +154,10 @@ export interface ITaskCenterTask {
   statusLabel: string
   createTime: string
   progress: number
+  /** 预计剩余秒数（≤3600）；未知 / 已超时 / 已结束为 null */
+  etaSeconds?: number | null
+  /** 进度来源（旧后端不下发时按 NONE 处理） */
+  progressSource?: TaskProgressSource | string | null
   coverUrl: string
   assetGroupId: string
   blocked: boolean
