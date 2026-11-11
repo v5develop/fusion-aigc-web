@@ -12,7 +12,7 @@
  */
 import { getQuiet, toApiError, TASK_SUBMITTED_EVENT } from '@/api/index.ts'
 import type { ITaskCenterPage, ITaskCenterTask } from '@/api/task-center.ts'
-import { identityOf } from '@/utils/auth-session.ts'
+import { currentAccountId } from '@/utils/auth-session.ts'
 
 export interface FinishedTask {
   taskId: string
@@ -43,7 +43,7 @@ let lastPollAt = 0
 let started = false
 let booted = false
 let routeOf: () => string = () => '/'
-/** 在途记录属于哪个账号（token 里的账号指纹）；undefined = 还没认过 */
+/** 在途记录属于哪个账号（currentAccountId，后端用户 id）；undefined = 还没认过，null = 认过但身份暂未知 */
 let owner: string | null | undefined
 
 const isHidden = () => document.visibilityState === 'hidden'
@@ -116,9 +116,11 @@ async function poll() {
     owner = undefined
     return schedule()
   }
-  const who = identityOf(token)
-  if (owner !== undefined && who !== owner) resetScope()
-  owner = who
+  const who = currentAccountId() || null
+  // 身份暂未知（老会话还没拉到用户信息）不算换人；前后都已知且不同才清。未知期间保留上一个已知的 owner 继续比
+  if (owner && who && who !== owner) resetScope()
+  if (who) owner = who
+  else if (owner === undefined) owner = null
   inflight = true
   lastPollAt = Date.now()
   try {

@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { getUserInfo } from '@/api/methods.ts'
+import { rememberAccount } from '@/utils/auth-session.ts'
 
 interface IUserInfo {
   availablePoints: number // 可用点数（不含冻结）
@@ -17,11 +18,23 @@ export const useUserInfoStore = defineStore('useUserInfoStore', () => {
   let inflight: Promise<void> | null = null
   let queued = false
 
-  const request = () =>
-    getUserInfo()
+  const request = () => {
+    // 记下发请求时的 token：响应回来时 token 已经换了（登录 / 换号 / 刷新），这份用户信息就不能拿来认账号
+    const tokenAtRequest = localStorage.getItem('fusion_accessToken')
+    return getUserInfo()
       .then((res) => {
         if (res.code === 0) {
           const data = res.data
+
+          // 账号 id 只有这里和登录响应能给（token 是不透明 UUID，解不出身份）。
+          // 老会话（身份修好前登录的）也在这里补记，按账号存的字体偏好、「最近」资产随即生效，不必重新登录
+          if (tokenAtRequest && tokenAtRequest === localStorage.getItem('fusion_accessToken')) {
+            if (rememberAccount(data?.id)) {
+              // 本机记的账号和 token 实际所属账号不一致：账号级缓存已清，内存里的 store 还是旧账号的，整页重建
+              window.location.reload()
+              return
+            }
+          }
 
           userInfo.value = {
             availablePoints: data.availablePoints, // 可用点数（不含冻结）
@@ -31,6 +44,7 @@ export const useUserInfoStore = defineStore('useUserInfoStore', () => {
         }
       })
       .catch(() => {})
+  }
 
   /** 主动刷新用户信息（积分余额） */
   const updateUserInfo = (): Promise<void> => {

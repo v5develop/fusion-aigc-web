@@ -30,12 +30,23 @@ body {
  * 字号由构建期改写成 calc(Npx * var(--xq-fs, 1))，字体栈改写成 var(--xq-font-family, 原栈)，<html> 上的变量一改全站生效。
  * 「更易读」额外加宽字距；显式写了 tracking 的元素保持自己的值。
  */
+/*
+ * 原生表单控件不继承 font-family（浏览器 UA 样式给它们单独的系统字体：按钮 / 输入框是 system-ui，
+ * 有的平台 textarea 还是等宽），于是「字体显示」选的字体到了输入框、按钮、画布节点里的提示词框就断了。
+ * 这里统一继承父级（最终是 body 的 var(--xq-font-family, 站点字体栈)），placeholder 随控件一起继承。
+ * :where 零特异性：任何组件 / 工具类自己写的字体（图标字体 .iconfont、代码区的等宽栈）都照样胜出。
+ */
+:where(button, input, select, optgroup, textarea, [contenteditable]) {
+  font-family: inherit;
+}
+
 html[data-xq-font='readable'] body {
   letter-spacing: 0.02em;
   word-spacing: 0.05em;
 }
 
-/* 画布节点区有自己的缩放（用户在画布里放大缩小），节点里的字保持设计字号，免得撑破固定尺寸的节点卡片 */
+/* 画布节点区有自己的缩放（用户在画布里放大缩小），节点里的字保持设计字号，免得撑破固定尺寸的节点卡片。
+ * 只豁免字号：字体族照常从 body 继承 --xq-font-family，节点文字与节点内输入框都跟随「字体显示」 */
 .vue-flow {
   --xq-fs: 1;
 }

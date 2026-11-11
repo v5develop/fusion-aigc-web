@@ -50,7 +50,7 @@ export async function signOut(): Promise<void> {
   } catch {
     // 网络失败或 token 已失效：服务端无法吊销也无妨，下面照常清本地
   }
-  // 先清「最近」：key 由 accessToken 推出，token 一删就算不对了
+  // 清当前账号的「最近」：key 按账号 id 算（登出不清 id）
   clearRecentAssets()
   for (const key of CREDENTIAL_KEYS) localStorage.removeItem(key)
   // 动态 import 避免 stores ↔ api 的循环依赖（同 api/index.ts 中的处理）

@@ -14,11 +14,11 @@
  * 运行时只往 `<html>` 上写两个 CSS 变量，任何子树可以把 `--xq-fs` 重置回 1 自行豁免（画布节点区就是这样做的）。
  *
  * <p>只用本机 / 系统字体，不下载任何网络字体。后端暂无用户偏好接口，跨设备同步需要后端加字段。
- * 本模块不发请求，只依赖 auth-session（纯 localStorage / JWT 解码），可被 main.ts 等底层模块依赖；
+ * 本模块不发请求，只依赖 auth-session（纯 localStorage），可被 main.ts 等底层模块依赖；
  * auth-session 反过来不 import 本模块（它用字面量前缀），避免循环。
  */
 import { ref } from 'vue'
-import { identityOf } from '@/utils/auth-session.ts'
+import { currentAccountId, onAccountChange } from '@/utils/auth-session.ts'
 
 export type TextScale = 'sm' | 'md' | 'lg' | 'xl'
 /** default 站点字体栈 / system 系统界面字体 / readable 更易读 / rounded 圆体 / local 用户选的本机字体（family 字段） */
@@ -103,17 +103,12 @@ function normalize(raw: unknown): TextPrefs {
   return { scale, font, family: font === 'local' ? family : '' }
 }
 
-/* ---------------- 账号身份（同 asset-recent：取自 accessToken 的 JWT 指纹，与 auth-session 换号检测同一份解码） ---------------- */
+/* ---------------- 账号身份（同 asset-recent：后端用户 id，见 auth-session 的 currentAccountId） ---------------- */
 
-/** 当前账号的存储 key；未登录（取不到身份）时为空串 = 不读不写，用默认 */
+/** 当前账号的存储 key；身份未知（未登录 / 老会话还没拉到用户信息）时为空串 = 不读不写 */
 function storageKey(): string {
-  try {
-    const token = localStorage.getItem('fusion_accessToken')
-    const who = (token && identityOf(token)) || ''
-    return who ? `${TEXT_PREFS_KEY_PREFIX}${who}` : ''
-  } catch {
-    return ''
-  }
+  const who = currentAccountId()
+  return who ? `${TEXT_PREFS_KEY_PREFIX}${who}` : ''
 }
 
 function readStored(key: string): TextPrefs {
@@ -131,6 +126,12 @@ function readStored(key: string): TextPrefs {
 /** 当前生效的偏好（设置页直接绑这个） */
 export const textPrefs = ref<TextPrefs>({ ...DEFAULT_TEXT_PREFS })
 let currentKey = ''
+/**
+ * 身份未知期间用户改过偏好（老会话首次进站、用户信息还没回来就去改了字体）：
+ * 身份一到就把这份改动落到该账号名下，而不是用本机（空的）存档把它冲掉。
+ * 改动的人就是当前 token 的主人，也就是马上解出来的那个账号，所以不会串号。
+ */
+let pendingUnsaved = false
 
 /** 把偏好写到 <html>：--xq-fs 字号乘数、--xq-font-family 字体栈、data-xq-font 供 base.css 加字距 */
 function apply(p: TextPrefs) {
@@ -147,36 +148,65 @@ function apply(p: TextPrefs) {
   else root.setAttribute('data-xq-font', p.font)
 }
 
-/**
- * 按当前账号读本机缓存并套用。main.ts 挂载前调用一次（首屏无闪烁），
- * 之后每次路由切换调用：登录 / 宿主换号后 token 变了，这里会跟着换成新账号的偏好。
- */
-export function syncTextPrefsWithAccount() {
-  const key = storageKey()
-  if (key === currentKey && key) return
-  currentKey = key
-  textPrefs.value = readStored(key)
-  apply(textPrefs.value)
-}
-
-/** 修改偏好：立即生效 + 写本机缓存 */
-export function setTextPrefs(patch: Partial<TextPrefs>) {
-  const next = normalize({ ...textPrefs.value, ...patch })
-  textPrefs.value = next
-  apply(next)
-  if (!currentKey) return
+function persist(key: string, p: TextPrefs) {
   try {
-    const isDefault = next.scale === DEFAULT_TEXT_PREFS.scale && next.font === DEFAULT_TEXT_PREFS.font && !next.family
-    if (isDefault) localStorage.removeItem(currentKey)
-    else localStorage.setItem(currentKey, JSON.stringify(next))
+    const isDefault = p.scale === DEFAULT_TEXT_PREFS.scale && p.font === DEFAULT_TEXT_PREFS.font && !p.family
+    if (isDefault) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(p))
   } catch {
     /* 隐私模式 / 配额：本次会话内仍然生效，只是下次打开回到默认 */
   }
 }
 
+/**
+ * 按当前账号读本机缓存并套用。main.ts 挂载前调用一次（首屏无闪烁），之后在路由切换、
+ * 账号 id 变化（登录、首次拿到用户信息）、别的标签页改动时调用。
+ *
+ * <p>账号没变就什么都不做——<b>包括账号未知（空 key）的情况</b>：早先空 key 每次都重读默认值并套用，
+ * 身份恒为空时等于每次路由切换都把刚选的字体冲回默认。
+ */
+export function syncTextPrefsWithAccount() {
+  const key = storageKey()
+  if (key === currentKey) return
+  const prevKey = currentKey
+  currentKey = key
+
+  if (!key) {
+    // 从「已知账号」变成「未知」：别把上一个人的偏好留给下一个人，回默认
+    pendingUnsaved = false
+    textPrefs.value = { ...DEFAULT_TEXT_PREFS }
+    apply(textPrefs.value)
+    return
+  }
+  if (!prevKey && pendingUnsaved) {
+    // 身份刚解出来，而用户在此之前已经改过：保留眼前生效的这份并落盘，不闪回
+    pendingUnsaved = false
+    persist(key, textPrefs.value)
+    return
+  }
+  pendingUnsaved = false
+  textPrefs.value = readStored(key)
+  apply(textPrefs.value)
+}
+
+/** 修改偏好：立即生效 + 写本机缓存（身份未知时先记在内存，身份一到再落盘） */
+export function setTextPrefs(patch: Partial<TextPrefs>) {
+  const next = normalize({ ...textPrefs.value, ...patch })
+  textPrefs.value = next
+  apply(next)
+  if (!currentKey) {
+    pendingUnsaved = true
+    return
+  }
+  persist(currentKey, next)
+}
+
 export function resetTextPrefs() {
   setTextPrefs({ ...DEFAULT_TEXT_PREFS })
 }
+
+// 本页内登录 / 拉到用户信息记下了账号 id：立刻换成该账号的偏好（不必等下一次路由切换）
+onAccountChange(() => syncTextPrefsWithAccount())
 
 /**
  * 别的标签页改了偏好 / 换了账号：同步过来。storage 事件不在写入方标签页触发，
@@ -185,9 +215,13 @@ export function resetTextPrefs() {
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
     if (e.key === null || (currentKey && e.key === currentKey)) {
-      currentKey = ''
-      syncTextPrefsWithAccount()
-    } else if (e.key === 'fusion_accessToken') {
+      // 同账号的偏好被另一个标签页改了（或 storage 被整个清空）：强制重读
+      const key = storageKey()
+      currentKey = key
+      pendingUnsaved = false
+      textPrefs.value = readStored(key)
+      apply(textPrefs.value)
+    } else if (e.key === 'fusion_identity' || e.key === 'fusion_accessToken') {
       // 另一个标签页登录 / 换号：同账号时 sync 直接返回
       syncTextPrefsWithAccount()
     }

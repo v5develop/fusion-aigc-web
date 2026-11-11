@@ -324,7 +324,7 @@ function logoutToLogin() {
   // 「要不要清缓存」这个决策唯一收敛在 authSession 的指纹比对上——下次冷启动拿新 token
   // 的身份跟留下来的 fusion_identity 一比，同人就留、换人才清，比「登出即清」精确得多。
   // 指纹留着正是为了那次比对：清了它就等于把唯一的判据丢了，换号也比不出来
-  clearRecentAssets() // 要在 token 移除前：key 由 token 里的账号指纹算出
+  clearRecentAssets() // key 按账号 id 算（登出不清 id），放在哪都算得对
   localStorage.removeItem('fusion_accessToken')
   localStorage.removeItem('fusion_refreshToken')
   localStorage.removeItem('union_token')

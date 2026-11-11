@@ -1,11 +1,11 @@
 /**
  * 资产选择器「最近」：本机最近选过的资产，按账号隔离存 localStorage。
  *
- * <p>key 带账号指纹（取自 fusion accessToken，用户 store 里没有 id），换号不会串；
+ * <p>key 带账号 id（auth-session 的 currentAccountId，即后端用户 id），换号不会串；
  * 登出时清当前账号那份；资产被删除后同步剔除，免得「最近」里留着已删素材。
  * 不依赖任何请求模块，api/index.ts 可直接引用而不构成循环。
  */
-import { identityOf } from '@/utils/auth-session.ts'
+import { currentAccountId } from '@/utils/auth-session.ts'
 
 export interface IRecentAsset {
   id: string
@@ -21,19 +21,30 @@ export const RECENT_MAX = 30
 const isHttp = (url: string) => /^https?:\/\//i.test(url)
 
 function recentKey(): string {
-  let who = ''
-  try {
-    const token = localStorage.getItem('fusion_accessToken')
-    who = (token && identityOf(token)) || ''
-  } catch {
-    /* 取不到身份：落到匿名 key，登出时同样会清 */
-  }
+  // 取不到身份（老会话还没拉到用户信息）：落到匿名 key，登出时同样会清
+  const who = currentAccountId()
   return who ? `${RECENT_PREFIX}:${who}` : RECENT_PREFIX
+}
+
+/**
+ * 匿名 key 里的记录并入当前账号：身份修好之前账号 id 恒为空，所有「最近」都落在匿名 key；
+ * 身份未知窗口（老会话还没拉到用户信息）写的也在这里。匿名 key 在登出（clearRecentAssets）和换号
+ * （resetAccountScope 白名单清理）时都会被清，所以里面的记录只可能属于当前 token 的主人，并过来不会串号。
+ * 只在账号自己那份还不存在时并入，不覆盖。
+ */
+function adoptAnonymous(key: string) {
+  if (key === RECENT_PREFIX) return
+  const anon = localStorage.getItem(RECENT_PREFIX)
+  if (anon == null) return
+  if (localStorage.getItem(key) == null) localStorage.setItem(key, anon)
+  localStorage.removeItem(RECENT_PREFIX)
 }
 
 export function readRecentAssets(): IRecentAsset[] {
   try {
-    const raw = JSON.parse(localStorage.getItem(recentKey()) || '[]')
+    const key = recentKey()
+    adoptAnonymous(key)
+    const raw = JSON.parse(localStorage.getItem(key) || '[]')
     if (!Array.isArray(raw)) return []
     return raw
       .filter((r) => r && typeof r.url === 'string' && isHttp(r.url) && (r.media === 'image' || r.media === 'video'))
@@ -58,7 +69,7 @@ export function writeRecentAssets(list: IRecentAsset[]) {
   }
 }
 
-/** 登出：清当前账号的「最近」（要在 token 被移除之前调用，才能算对 key） */
+/** 登出：清当前账号的「最近」（key 按账号 id 算，登出不清 id，调用先后不影响） */
 export function clearRecentAssets() {
   try {
     localStorage.removeItem(recentKey())
