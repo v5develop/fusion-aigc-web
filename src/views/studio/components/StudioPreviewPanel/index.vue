@@ -48,7 +48,13 @@ import {
   type ColorFixRegion,
   type ColorFixRegionMode,
 } from '@/components/ColorFix/index.ts'
-import { loadPaintedMask, loadRegion, savePaintedMask, saveRegion } from '@/components/ColorFix/mask-store.ts'
+import {
+  copyPaintedMask,
+  loadPaintedMask,
+  loadRegion,
+  savePaintedMask,
+  saveRegion,
+} from '@/components/ColorFix/mask-store.ts'
 import { goUploadImage } from '@/api/go-upload.ts'
 import { assetLibAddVersion } from '@/api/asset-library.ts'
 import type { StudioBatchDetail, StudioTask } from '@/api/studio-types.ts'
@@ -69,12 +75,18 @@ import { downloadImage } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
 import {
   KIND_LABEL,
+  LIBRARY_FAILED_HINT,
+  LIBRARY_PENDING_HINT,
+  LIBRARY_PENDING_LABEL,
   batchChip,
   batchProgress,
   formatTime,
   isBatchTerminal,
+  isTransientResult,
   taskCaption,
   taskChip,
+  taskLibraryStatus,
+  urlIdentity,
 } from '../../constants.ts'
 import { useColorFix } from '../../colorfix/useColorFix.ts'
 import { tryonItemParts } from '../../colorfix/mask-parts.ts'
@@ -270,6 +282,8 @@ const selectedSuccess = computed<StudioTask | null>(() =>
   isTaskSuccess(selectedTask.value) ? selectedTask.value : null,
 )
 const selectedSrc = computed(() => selectedSuccess.value?.resultUrl ?? '')
+/** 选中成品的入素材库状态（契约 §4.6）：pending 入库中 / failed 未能入库 / undefined 已入库或不适用 */
+const libraryState = computed(() => taskLibraryStatus(selectedSuccess.value))
 const runningInBatch = computed(() => tasks.value.filter(isTaskRunning).length)
 
 /** 把当前看到的那张钉住（只在还没钉住时写，不改变舞台） */
@@ -377,8 +391,12 @@ const maskError = ref('')
 const garmentMissing = ref(false)
 const paintedMask = ref('')
 const painterShow = ref(false)
+/**
+ * 涂抹蒙版按「任务 + 成品图」存本机。键里不带查询串：短期签名地址（入库中 / 免费档）每次查询现签，
+ * 带着签名进键，下一次轮询就找不回刚涂的选区，过期后还成了死键
+ */
 const paintScope = computed(() =>
-  selectedSuccess.value ? `${regionKey(selectedSuccess.value)}::${selectedSrc.value}` : '',
+  selectedSuccess.value ? `${regionKey(selectedSuccess.value)}::${urlIdentity(selectedSrc.value)}` : '',
 )
 const garmentFallback = computed(
   () => region.value.mode === 'auto' && region.value.target === 'garment' && garmentMissing.value,
@@ -457,6 +475,7 @@ watch(
       presetMask.value,
       activeParts.value.join(','),
       presetParts.value,
+      libraryState.value,
     ] as const,
   async ([on, mode, target, image, preset]) => {
     const my = ++segTicket
@@ -472,6 +491,12 @@ watch(
     if (presetHit) {
       autoMask.value = presetHit
       maskBusy.value = false
+      return
+    }
+    // 成品还在入库（§4.6）：服务端入库完成后会补服装蒙版（mask_url），轮询带回来再用；
+    // 现在拿私有桶签名地址去识别，可能被拒（1003）而误退回整图
+    if (target === 'garment' && garmentKind.value && libraryState.value === 'pending') {
+      maskBusy.value = true
       return
     }
     if (!colorFixSegmentSupported.value) {
@@ -498,11 +523,17 @@ watch(
 
 let paintTicket = 0
 watch(
-  paintScope,
-  async (scope) => {
+  () => [paintScope.value, selectedSuccess.value?.taskId ?? '', libraryState.value] as const,
+  async ([scope, taskId], prev) => {
     const my = ++paintTicket
     paintedMask.value = ''
     if (!scope) return
+    // 入库完成：同一张图从私有桶签名地址换成素材库公有地址，入库中涂的选区搬到新键下
+    const [prevScope, prevTaskId, prevState] = prev ?? []
+    if (prevScope && prevScope !== scope && prevTaskId === taskId && prevState === 'pending') {
+      if (!(await loadPaintedMask(scope))) await copyPaintedMask(prevScope, scope).catch(() => null)
+      if (my !== paintTicket) return
+    }
     const url = await loadPaintedMask(scope)
     if (my === paintTicket) paintedMask.value = url
   },
@@ -607,7 +638,12 @@ function downloadBefore() {
 const saving = ref(false)
 /** 成品已入素材库（asset_id > 0）；asset_id = 0 时按钮仍可点，点了先重拉一次批次再判断（入库可能刚完成） */
 const canSaveAsset = computed(() => (selectedSuccess.value?.assetId ?? 0) > 0)
-const showSaveAsset = computed(() => typeof selectedSuccess.value?.assetId === 'number')
+/** 未能入库（failed）的成品素材库里没有这条、永远不会有 asset_id：不出「存为资产」，改出提示 */
+const showSaveAsset = computed(
+  () => typeof selectedSuccess.value?.assetId === 'number' && libraryState.value !== 'failed',
+)
+/** 入库中：按钮转圈置灰（「入库中」），轮询拿到 asset_id 后自动恢复 */
+const savePending = computed(() => libraryState.value === 'pending')
 
 /** asset_id 还是 0：重拉一次批次详情（顺手更新列表里的这条），返回最新的 asset_id */
 async function refetchAssetId(t: StudioTask): Promise<number> {
@@ -616,9 +652,10 @@ async function refetchAssetId(t: StudioTask): Promise<number> {
   try {
     const fresh = (await studioBatchDetail(batchId)).data
     if (!fresh) return 0
-    const at = ctl.items.value.findIndex((d) => d.batch.id === batchId)
-    if (at >= 0) ctl.items.value[at] = fresh
-    return fresh.tasks.find((x) => x.taskId === t.taskId)?.assetId ?? 0
+    ctl.replace(fresh)
+    const ft = fresh.tasks.find((x) => x.taskId === t.taskId)
+    // 重拉时才发现还在入库：asset_id 不可用（轮询会继续，入库完成后按钮自动恢复）
+    return ft && !taskLibraryStatus(ft) ? (ft.assetId ?? 0) : 0
   } catch {
     return 0
   }
@@ -634,6 +671,10 @@ async function saveAsAsset() {
   saving.value = true
   try {
     let assetId = t.assetId ?? 0
+    if (taskLibraryStatus(t) === 'pending') {
+      message.info('这张结果正在存入素材库，完成后即可存为资产')
+      return
+    }
     if (!assetId) assetId = await refetchAssetId(t)
     if (!assetId) {
       message.warning('这张结果还没进素材库（入库中或已删除），稍后再试')
@@ -658,7 +699,8 @@ async function saveAsAsset() {
     await assetLibAddVersion(assetId, {
       imageUrl: url,
       prompt: '校色后',
-      params: JSON.stringify({ colorFix: params, sourceImage: t.resultUrl }),
+      // 短期签名地址（免费档水印视图）会过期，不写进版本参数
+      params: JSON.stringify({ colorFix: params, ...(isTransientResult(t) ? {} : { sourceImage: t.resultUrl }) }),
     })
     rememberSavedAssetColorFix(t.taskId, params)
     message.success('已存为资产（校色前 / 后两版）')
@@ -680,6 +722,18 @@ const lbItems = computed<LightboxItem[]>(() =>
     name: taskCaption(t, props.detail?.batch),
   })),
 )
+
+/**
+ * 成品图加载失败：带 crossorigin 的先退回普通加载（校色读像素要 CORS）；仍失败且是短期签名地址
+ * （入库中 / 未能入库 / 免费档，10 分钟过期）时现签一次这张（同一地址只补一次、同一任务有间隔，见 refreshTask）
+ */
+function onResultError(task: StudioTask, url: string) {
+  if (cfTool.value && corsAttr(url)) {
+    markCorsBlocked(url)
+    return
+  }
+  if (url === task.resultUrl && isTransientResult(task)) void ctl.refreshTask(task.taskId, url)
+}
 
 function openLightbox() {
   const t = selectedSuccess.value
@@ -817,16 +871,19 @@ const pillCls =
             <IconButton
               v-if="showSaveAsset"
               :label="
-                !canSaveAsset
-                  ? '存为资产：这张结果可能还在入库，点一下重新查询'
-                  : cfOn
-                    ? '存为资产（校色前 / 后两版）'
-                    : '存为资产'
+                savePending
+                  ? `${LIBRARY_PENDING_LABEL}：完成后即可存为资产`
+                  : !canSaveAsset
+                    ? '存为资产：这张结果可能还在入库，点一下重新查询'
+                    : cfOn
+                      ? '存为资产（校色前 / 后两版）'
+                      : '存为资产'
               "
               :loading="saving"
+              :disabled="savePending"
               @click="saveAsAsset"
             >
-              <svg v-if="saving" class="animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <svg v-if="saving || savePending" class="animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.5" />
                 <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
               </svg>
@@ -933,7 +990,7 @@ const pillCls =
               @click="openLightbox"
               @keydown.enter.prevent="openLightbox"
               @keydown.space.prevent="openLightbox"
-              @error="cfTool && markCorsBlocked(displaySrc)"
+              @error="selectedSuccess && onResultError(selectedSuccess, displaySrc)"
             />
 
             <!-- 没识别到服装：退回整图校色的小提示（结果档，校色开着时） -->
@@ -1029,6 +1086,29 @@ const pillCls =
           </div>
         </div>
 
+        <!-- 成品入素材库状态（§4.6）：常驻 live region，pending → 空 / failed 时读屏能播报 -->
+        <div v-if="selectedSuccess" class="flex-none empty:hidden" role="status" aria-live="polite">
+          <div
+            v-if="libraryState === 'pending'"
+            class="flex items-center gap-6px text-12px leading-18px text-muted"
+            title="成品已可查看和下载，正在后台存入素材库，通常几秒内完成"
+          >
+            <span
+              class="shrink-0 w-10px h-10px box-border border-[1.5px] border-solid border-violet-line border-t-violet rounded-full animate-spin animate-duration-1000 motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+            {{ LIBRARY_PENDING_HINT }}
+          </div>
+          <div
+            v-else-if="libraryState === 'failed'"
+            class="flex items-center gap-6px text-12px leading-18px text-warning"
+            title="成品仍可查看和下载，但素材库里没有这条，不能存为资产"
+          >
+            <span class="shrink-0 w-6px h-6px rounded-full bg-warning" aria-hidden="true" />
+            {{ LIBRARY_FAILED_HINT }}
+          </div>
+        </div>
+
         <!-- 这张图的读图 / 参考图提示（验收 F12 / B2：结果里就地展示，不只 toast） -->
         <ul
           v-if="selectedTask?.warnings?.length"
@@ -1063,7 +1143,7 @@ const pillCls =
                 class="block w-full h-full object-cover"
                 loading="lazy"
                 draggable="false"
-                @error="cfTool && markCorsBlocked(task.resultUrl)"
+                @error="onResultError(task, task.resultUrl)"
               />
               <span
                 v-else-if="isTaskRunning(task)"
@@ -1093,7 +1173,7 @@ const pillCls =
                   :crossorigin="cfTool ? corsAttr(task.resultUrl) : undefined"
                   alt=""
                   class="block max-w-full max-h-[312px] object-contain"
-                  @error="cfTool && markCorsBlocked(task.resultUrl)"
+                  @error="onResultError(task, task.resultUrl)"
                 />
               </div>
             </div>

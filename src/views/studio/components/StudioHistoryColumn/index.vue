@@ -19,7 +19,7 @@ import { studioCancelBatch, studioDeleteBatch } from '@/api/studio.ts'
 import type { StudioBatchDetail } from '@/api/studio-types.ts'
 import { downloadImagesAsZip } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
-import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal } from '../../constants.ts'
+import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal, isTransientResult } from '../../constants.ts'
 import HistoryActionRow from '@/components/HistoryActionRow/index.vue'
 import { formatFullTime, formatShortTime } from '@/utils/time.ts'
 import { ossResize, thumbFallback } from '@/utils/oss'
@@ -116,6 +116,14 @@ function stackOf(d: StudioBatchDetail) {
   const results = resultsOf(d)
   if (results.length) return results.slice(0, 3)
   return d.batch.coverUrl ? [d.batch.coverUrl] : []
+}
+/**
+ * 缩略图加载失败且是某张成品的短期签名地址（入库中 / 未能入库 / 免费档，10 分钟过期）：现签一次那张
+ * （同一地址只补一次，见 useStudioHistory.refreshTask）；输入图 / 封面不处理
+ */
+function onStackError(d: StudioBatchDetail, url: string | undefined) {
+  const task = url ? d.tasks.find((t) => t.resultUrl === url) : undefined
+  if (task && isTransientResult(task)) void ctl.refreshTask(task.taskId, url)
 }
 function stackCount(d: StudioBatchDetail) {
   return inputsOf(d).length || resultsOf(d).length || (d.batch.coverUrl ? 1 : 0)
@@ -365,7 +373,7 @@ function prevPage() {
                     loading="lazy"
                     decoding="async"
                     class="block w-full h-full rounded-13px object-cover"
-                    @error="(e: Event) => thumbFallback(e, stackOf(d)[0])"
+                    @error="(e: Event) => thumbFallback(e, stackOf(d)[0]) || onStackError(d, stackOf(d)[0])"
                   />
                   <span v-else>{{ (KIND_LABEL[d.batch.kind] ?? '批次').slice(0, 2) }}</span>
                   <span

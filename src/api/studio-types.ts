@@ -345,7 +345,18 @@ export interface StudioTask {
   promptText?: string
   /** 提示词经用户编辑后重新生成过 */
   promptEdited?: boolean
+  /**
+   * 成品转存素材库的状态（契约 api-studio.md §4.6，只增 2026-11-11；仅 status=2 时有意义，不认识 / 缺省按空）：
+   * '' = 已在素材库（或不适用：免费档水印视图）；
+   * 'pending' = 已交付、可看可下载，后台正在入库：result_url 是 10 分钟短期签名地址（不要缓存 / 持久化），
+   * asset_id 可能还是 0，mask_url 晚几秒补；
+   * 'failed' = 入库永久失败：仍可看可下载（短期签名地址），但素材库里没有这条（asset_id 恒为 0）。老网关不下发
+   */
+  libraryStatus?: StudioLibraryStatus | (string & {})
 }
+
+/** 成品入素材库状态：'' 已入库 / 不适用；pending 入库中；failed 未能入库（见 StudioTask.libraryStatus） */
+export type StudioLibraryStatus = '' | 'pending' | 'failed'
 
 /**
  * 校色五参数（服务端键名，整数）：hue [-30,30]、saturation [-60,70]、value 明度 [-40,40]、

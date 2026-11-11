@@ -89,6 +89,14 @@ export function studioBatchDetail(id: number) {
   return get<types.StudioBatchDetail>(`${PREFIX}/batches/${id}`)
 }
 
+/**
+ * 单个任务（GET /tasks/{task_id}）：结构同批次详情的 tasks[]。只用于成品「先交付、后入库」（§4.6）期间
+ * 批次已终态后补查这一张，以及短期签名地址过期（图片加载失败）时现签一次；平时轮询批次就够了。
+ */
+export function studioTaskDetail(taskId: string) {
+  return get<types.StudioTask>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}`)
+}
+
 /** 取消批次：只取消还在排队的任务（点数立即退回），生成中的会继续跑完 */
 export function studioCancelBatch(id: number) {
   return post<types.StudioCancelResp>(`${PREFIX}/batches/${id}/cancel`, {})

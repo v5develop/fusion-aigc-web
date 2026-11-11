@@ -6,19 +6,21 @@ import { useUserInfoStore } from '@/stores/user-info.ts'
 import {
   studioBatchDetail,
   studioHistory,
+  studioTaskDetail,
   studioQuoteImageGen,
   studioQuotePose,
   studioQuoteTryon,
 } from '@/api/studio.ts'
 import type {
   StudioBatchDetail,
+  StudioTask,
   StudioImageGenQuoteReq,
   StudioKind,
   StudioPoseQuoteReq,
   StudioTryonQuoteReq,
 } from '@/api/studio-types.ts'
 import { createSafeUuid } from '@/utils/utils.ts'
-import { isBatchTerminal } from './constants.ts'
+import { isBatchTerminal, isSignedUrl, taskLibraryStatus, urlIdentity } from './constants.ts'
 import { toApiError } from '@/api'
 import { POLL_RAMP } from '@/utils/hooks/usePolling.ts'
 
@@ -153,6 +155,16 @@ export function useStudioPolling(
   return { offline, start, stop, retry }
 }
 
+/** 同一张图的签名地址在这段时间内沿用旧的（服务端每次查询现签 10 分钟，轮询每次都换查询串，换了图就会重载、校色重烘） */
+const SIGNED_REUSE_MS = 4 * 60 * 1000
+/** 入库中刚变空、但 asset_id / 服装蒙版还没带出来时，再补查几轮（约 2 秒一轮） */
+const LIBRARY_SETTLE_ROUNDS = 5
+/** 同一个任务因图片加载失败补查的最小间隔 */
+const REFRESH_TASK_GAP_MS = 20 * 1000
+
+/** 成品是穿着服装的人物（商拍 / 姿态）：入库完成后服务端会补服装蒙版 */
+const expectsMask = (t: StudioTask) => t.kind === 'tryon' || t.kind === 'pose'
+
 /**
  * 生成历史：游标分页（next_cursor 空 = 没有下一页）+ 「有非终态批次就自动轮询」。
  *
@@ -180,8 +192,119 @@ export function useStudioHistory(
   const loadingMore = ref(false)
 
   const hasMore = computed(() => !!nextCursor.value)
-  /** 已加载里还有非终态批次（轮询进行依据） */
+  /** 已加载里还有非终态批次（「N 个进行中」、积分刷新依据） */
   const hasRunning = computed(() => items.value.some((d) => !isBatchTerminal(d.batch.status)))
+
+  // ---------------- 成品先交付、后入库（契约 §4.6） ----------------
+
+  /**
+   * 入库中刚变空、但 asset_id 还是 0 / 服装蒙版还没补的任务：taskId → 剩余补查轮数。
+   * 轮数有界：素材库入库关闭、用户已在素材库删了这张时 asset_id 永远是 0，不能一直轮询。
+   */
+  const settling = new Map<string, number>()
+  /** 批次里有成品在等入库（pending / 刚入库还在补 asset_id、蒙版）：批次已终态也要继续轮询 */
+  const awaitsLibrary = (d: StudioBatchDetail) =>
+    d.tasks.some((t) => taskLibraryStatus(t) === 'pending' || settling.has(t.taskId))
+  /** 需要轮询的批次：非终态，或终态但有成品还在入库 */
+  const needsPoll = (d: StudioBatchDetail) => !isBatchTerminal(d.batch.status) || awaitsLibrary(d)
+  /** 轮询器是否该跑（settling 不是响应式，跟着 items 一起算即可：每次 items 变化都会重新评估） */
+  const needsPolling = () => items.value.some(needsPoll)
+
+  /** 签名地址第一次拿到的时间（沿用判断用）；条目有界 */
+  const signedSeenAt = new Map<string, number>()
+  function noteSigned(url: string, now: number) {
+    if (!isSignedUrl(url) || signedSeenAt.has(url)) return
+    if (signedSeenAt.size > 400) {
+      for (const [k, at] of signedSeenAt) if (now - at > SIGNED_REUSE_MS * 3) signedSeenAt.delete(k)
+    }
+    signedSeenAt.set(url, now)
+  }
+  /** 新旧地址是同一对象的两次签名、且旧签名还新鲜：沿用旧地址（不让图片每 2 秒重载一次） */
+  function keepSigned(prevUrl: string | undefined, nextUrl: string, now: number): string {
+    // 新地址也得是签名地址：入库完成换成的公有长期地址（哪怕路径相同）必须立即换上，不能沿用私有桶短签
+    if (
+      prevUrl &&
+      prevUrl !== nextUrl &&
+      isSignedUrl(prevUrl) &&
+      isSignedUrl(nextUrl) &&
+      urlIdentity(prevUrl) === urlIdentity(nextUrl)
+    ) {
+      const at = signedSeenAt.get(prevUrl)
+      if (at !== undefined && now - at < SIGNED_REUSE_MS) return prevUrl
+    }
+    noteSigned(nextUrl, now)
+    return nextUrl
+  }
+
+  /** 合并一个任务：沿用新鲜签名；入库中 → 变空时登记补查（asset_id / 蒙版还没带出来） */
+  function adoptTask(prev: StudioTask | undefined, next: StudioTask, now: number, reuseSigned = true): StudioTask {
+    const resultUrl = reuseSigned ? keepSigned(prev?.resultUrl, next.resultUrl, now) : next.resultUrl
+    if (!reuseSigned) noteSigned(next.resultUrl, now)
+    const cleared = taskLibraryStatus(prev) === 'pending' && !taskLibraryStatus(next) && next.status === 2
+    const incomplete = !(next.assetId ?? 0) || (expectsMask(next) && !next.maskUrl)
+    if (cleared && incomplete) settling.set(next.taskId, LIBRARY_SETTLE_ROUNDS)
+    else if (!incomplete || taskLibraryStatus(next) !== undefined || next.status !== 2) settling.delete(next.taskId)
+    return resultUrl === next.resultUrl ? next : { ...next, resultUrl }
+  }
+
+  /** 用服务端的新详情替换旧详情（轮询 / 刷新 / 补拉共用）：tasks 整体替换，只沿用新鲜签名地址 */
+  function adopt(prev: StudioBatchDetail | undefined, next: StudioBatchDetail): StudioBatchDetail {
+    const now = Date.now()
+    const prevTasks = new Map((prev?.tasks ?? []).map((t) => [t.taskId, t]))
+    const coverUrl = keepSigned(prev?.batch.coverUrl, next.batch.coverUrl, now)
+    return {
+      ...next,
+      batch: coverUrl === next.batch.coverUrl ? next.batch : { ...next.batch, coverUrl },
+      tasks: next.tasks.map((t) => adoptTask(prevTasks.get(t.taskId), t, now)),
+    }
+  }
+
+  /** 外部拿到的新批次详情（如预览区「存为资产」前重拉）放回列表 */
+  function replace(next: StudioBatchDetail) {
+    const at = items.value.findIndex((d) => d.batch.id === next.batch.id)
+    if (at < 0) return
+    items.value[at] = adopt(items.value[at], next)
+    startPollingIfNeeded()
+  }
+
+  /** 每个任务上次补查的时间 + 已经为哪些地址补查过（同一个地址只补一次，防止坏图无限重试） */
+  const refreshedAt = new Map<string, number>()
+  const refreshedUrls = new Set<string>()
+
+  /**
+   * 成品图加载失败（多半是短期签名过期：轮询已停、页面放久了）：单独现签一次这张（GET /tasks/{task_id}），
+   * 换上新地址。同一地址只补一次，同一任务至少间隔 20 秒；返回是否换上了新地址。
+   */
+  async function refreshTask(taskId: string, failedUrl?: string): Promise<boolean> {
+    const now = Date.now()
+    const at = items.value.findIndex((d) => d.tasks.some((t) => t.taskId === taskId))
+    if (at < 0) return false
+    const old = items.value[at]!.tasks.find((t) => t.taskId === taskId)!
+    const urlKey = failedUrl || old.resultUrl
+    if (!urlKey || refreshedUrls.has(urlKey)) return false
+    if (now - (refreshedAt.get(taskId) ?? 0) < REFRESH_TASK_GAP_MS) return false
+    refreshedUrls.add(urlKey)
+    refreshedAt.set(taskId, now)
+    try {
+      const fresh = (await studioTaskDetail(taskId)).data
+      if (!fresh) return false
+      const i = items.value.findIndex((d) => d.tasks.some((t) => t.taskId === taskId))
+      if (i < 0) return false
+      const d = items.value[i]!
+      // 不沿用旧签名：加载失败的正是它
+      const merged = adoptTask(
+        d.tasks.find((t) => t.taskId === taskId),
+        fresh,
+        Date.now(),
+        false,
+      )
+      items.value[i] = { ...d, tasks: d.tasks.map((t) => (t.taskId === taskId ? merged : t)) }
+      startPollingIfNeeded()
+      return merged.resultUrl !== old.resultUrl
+    } catch {
+      return false
+    }
+  }
 
   async function fetchPage(cursor: string): Promise<{ list: StudioBatchDetail[]; next: string }> {
     const res = await studioHistory({ kind: kind || undefined, cursor: cursor || undefined, limit })
@@ -206,7 +329,8 @@ export function useStudioHistory(
       const tail = next && list.length ? items.value.filter((d) => newer(list[list.length - 1]!, d)) : []
       const seen = new Set(list.map((d) => d.batch.id))
       const keep = tail.filter((d) => !seen.has(d.batch.id))
-      items.value = [...list, ...keep]
+      const prevById = new Map(items.value.map((d) => [d.batch.id, d]))
+      items.value = [...list.map((d) => adopt(prevById.get(d.batch.id), d)), ...keep]
       // 保留了已加载的后几页：游标仍指向它们之后；否则用新一页的游标
       if (!keep.length) nextCursor.value = next
       startPollingIfNeeded()
@@ -232,8 +356,9 @@ export function useStudioHistory(
     if (items.value.some((d) => d.batch.id === id)) return true
     if (dropped.has(id)) return false
     try {
-      const data = (await studioBatchDetail(id)).data
-      if (!data) return false
+      const raw = (await studioBatchDetail(id)).data
+      if (!raw) return false
+      const data = adopt(undefined, raw)
       if (!items.value.some((d) => d.batch.id === id)) {
         const at = items.value.findIndex((d) => newer(data, d))
         if (at < 0) items.value.push(data)
@@ -253,7 +378,7 @@ export function useStudioHistory(
     loadingMore.value = true
     try {
       const { list, next } = await fetchPage(nextCursor.value)
-      items.value.push(...list)
+      items.value.push(...list.map((d) => adopt(undefined, d)))
       nextCursor.value = next
       startPollingIfNeeded()
     } finally {
@@ -270,16 +395,46 @@ export function useStudioHistory(
     // 从有到无的那一刻说明有批次到终态（扣点 / 退点），刷一次积分
     if (lastRunning && !running) updateUserInfo()
     lastRunning = running
-    if (running) {
+    if (needsPolling()) {
       poller.start({ soon: soonNext })
       soonNext = false
     } else poller.stop()
   }
 
-  /** 一轮：各在跑批次并发拉详情；返回本轮结果给轮询器做退避 / 停止判断 */
+  /**
+   * 已终态、只在等入库的批次：开始等的时间。通常几秒就入库；入库失败会退避重试最长约一小时，
+   * 等得久了放慢补查（1 分钟后约 10 秒一次，5 分钟后约 30 秒一次），不按 2 秒一直打。
+   */
+  const libraryWaitSince = new Map<number, number>()
+  let roundNo = 0
+
+  function dueThisRound(d: StudioBatchDetail, now: number): boolean {
+    // 刚入库完、在补 asset_id / 蒙版的批次每轮都查：补查轮数按轮扣，放慢节奏会在补到之前就扣完
+    if (!isBatchTerminal(d.batch.status) || d.tasks.some((t) => settling.has(t.taskId))) {
+      libraryWaitSince.delete(d.batch.id)
+      return true
+    }
+    const since = libraryWaitSince.get(d.batch.id) ?? now
+    libraryWaitSince.set(d.batch.id, since)
+    const waited = now - since
+    if (waited < 60 * 1000) return true
+    return roundNo % (waited < 5 * 60 * 1000 ? 5 : 15) === 0
+  }
+
+  /** 一轮：各在跑批次（含终态但有成品在入库的）并发拉详情；返回本轮结果给轮询器做退避 / 停止判断 */
   async function pollRound(): Promise<PollRoundResult> {
-    const runningItems = items.value.filter((d) => !isBatchTerminal(d.batch.status))
-    if (!runningItems.length) return { done: true }
+    const now = Date.now()
+    roundNo++
+    const waiting = items.value.filter(needsPoll)
+    for (const id of libraryWaitSince.keys()) if (!waiting.some((d) => d.batch.id === id)) libraryWaitSince.delete(id)
+    // 补查轮数按轮扣：扣到 0 就不再为它轮询（asset_id 可能就是 0：入库关闭 / 已从素材库删除）
+    for (const [taskId, left] of settling) {
+      if (left <= 1) settling.delete(taskId)
+      else settling.set(taskId, left - 1)
+    }
+    if (!waiting.length) return { done: true }
+    const runningItems = waiting.filter((d) => dueThisRound(d, now))
+    if (!runningItems.length) return { done: false }
     const results = await Promise.allSettled(
       runningItems.map(async (d) => ({ id: d.batch.id, data: (await studioBatchDetail(d.batch.id)).data })),
     )
@@ -290,8 +445,8 @@ export function useStudioHistory(
         okCount++
         if (!r.value.data) return
         const at = items.value.findIndex((d) => d.batch.id === r.value.id)
-        // 轮询拿到的是全量，tasks 整体替换，不做增量合并
-        if (at >= 0) items.value[at] = r.value.data
+        // 轮询拿到的是全量，tasks 整体替换，不做增量合并（只沿用新鲜的签名地址）
+        if (at >= 0) items.value[at] = adopt(items.value[at], r.value.data)
         return
       }
       const e = toApiError(r.reason)
@@ -308,7 +463,7 @@ export function useStudioHistory(
       }
     })
     startPollingIfNeeded()
-    return { done: !hasRunning.value, failure: okCount > 0 ? undefined : failure }
+    return { done: !needsPolling(), failure: okCount > 0 ? undefined : failure }
   }
 
   const poller = useStudioPolling(pollRound, { interval })
@@ -324,6 +479,8 @@ export function useStudioHistory(
     loadMore,
     drop,
     ensure,
+    replace,
+    refreshTask,
     /** 是否是本会话里用户自己删掉的批次 */
     wasDropped: (id: number) => dropped.has(id),
     stopPolling,

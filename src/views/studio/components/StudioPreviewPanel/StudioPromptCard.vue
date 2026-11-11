@@ -16,6 +16,7 @@ import { studioRegenerateTask } from '@/api/studio.ts'
 import { toApiError } from '@/api/index.ts'
 import type { StudioBatchDetail, StudioTask } from '@/api/studio-types.ts'
 import { unitPoints } from './compare.ts'
+import { taskLibraryStatus } from '../../constants.ts'
 
 const props = defineProps<{
   detail: StudioBatchDetail
@@ -106,7 +107,8 @@ const confirmText = computed(() => {
   const unit = unitPoints(props.detail.batch)
   return `用${dirty.value ? '修改后的' : '当前'}提示词只重新生成姿势 ${props.task.poseIndex + 1} 这一张，会重新冻结 1 张的点数${
     unit ? `（约 ${unit} 点）` : ''
-  }${props.task.status === 2 ? '；原来的成品仍保留在素材库' : ''}。确定？`
+    // 入库中 / 未能入库（§4.6）的成品此刻不在素材库，不承诺「仍保留在素材库」
+  }${props.task.status === 2 && !taskLibraryStatus(props.task) ? '；原来的成品仍保留在素材库' : ''}。确定？`
 })
 
 async function regenerate() {

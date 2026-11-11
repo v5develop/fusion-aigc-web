@@ -199,3 +199,45 @@ export function formatTime(ms?: number) {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
+
+// ---------------- 成品入素材库状态（契约 §4.6：先交付、后入库） ----------------
+
+export const LIBRARY_PENDING_LABEL = '入库中'
+export const LIBRARY_PENDING_HINT = '入库中，成品可先查看和下载'
+export const LIBRARY_FAILED_HINT = '未能存入素材库，仍可查看和下载'
+
+/** 成品入库状态：只认成功任务的 pending / failed，其余（空 / 不认识 / 非成功）= 已入库或不适用 */
+export function taskLibraryStatus(
+  task: Pick<StudioTask, 'status' | 'libraryStatus'> | null | undefined,
+): 'pending' | 'failed' | undefined {
+  if (!task || task.status !== 2) return undefined
+  const s = task.libraryStatus
+  if (s === 'pending') return 'pending'
+  return s === 'failed' ? 'failed' : undefined
+}
+
+/**
+ * 成品地址是否是短期签名地址（入库中 / 未能入库：10 分钟现签，或免费档水印视图）：
+ * 只能拿来看 / 下载 / 当下一次生成的输入，**不要**写进本机缓存、最近列表或交给别处长期引用。
+ */
+export function isTransientResult(task: Pick<StudioTask, 'status' | 'libraryStatus' | 'resultUrl'>): boolean {
+  return !!taskLibraryStatus(task) || isSignedUrl(task.resultUrl)
+}
+
+/** OSS / S3 签名地址（带过期参数）：同一对象每次查询现签，查询串不同 */
+export function isSignedUrl(url: string | null | undefined): boolean {
+  // 与 utils/oss.ts 的 SIGNED_QUERY 同口径（OSS v1/v4、S3、TOS 等）
+  return (
+    !!url &&
+    /[?&](signature|x-oss-signature|x-oss-credential|x-amz-signature|x-tos-signature|expires|ossaccesskeyid|security-token|auth_key)=/i.test(
+      url,
+    )
+  )
+}
+
+/** 去掉查询串与锚点：同一对象的不同签名归为同一个键（本机按图存东西时用，签名会过期，不能进键） */
+export function urlIdentity(url: string | null | undefined): string {
+  if (!url) return ''
+  const cut = url.search(/[?#]/)
+  return cut < 0 ? url : url.slice(0, cut)
+}
