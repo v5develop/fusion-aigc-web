@@ -86,12 +86,12 @@ function onInput(event: Event) {
   height: 12px;
   flex: 0 0 12px;
   box-sizing: border-box;
-  border: 1px solid rgba(31, 35, 41, 0.1);
+  border: 1px solid rgb(var(--xq-ink-rgb) / 0.1);
   border-radius: 50%;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .cfs__label {
-  color: #1f2329;
+  color: var(--xq-ink);
   font-size: 11.5px;
   font-weight: 500;
   line-height: 16px;
@@ -101,10 +101,10 @@ function onInput(event: Event) {
   box-sizing: border-box;
   margin-left: auto;
   padding: 0 6px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
   border-radius: 7px;
-  background: #fff;
-  color: #6b487c;
+  background: var(--xq-surface);
+  color: var(--xq-violet-ink);
   font-size: 10.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -175,7 +175,7 @@ function onInput(event: Event) {
   -webkit-appearance: none;
   border: 2px solid #83598f;
   border-radius: 50%;
-  background: #fff;
+  background: var(--xq-surface);
   box-shadow: 0 1px 3px rgba(31, 35, 41, 0.22);
   transition: transform 0.12s ease;
 }
@@ -199,7 +199,7 @@ function onInput(event: Event) {
   height: 10px;
   border: 2px solid #83598f;
   border-radius: 50%;
-  background: #fff;
+  background: var(--xq-surface);
   box-shadow: 0 1px 3px rgba(31, 35, 41, 0.22);
 }
 .cfs input[type='range']:focus-visible::-moz-range-thumb {
@@ -211,5 +211,12 @@ function onInput(event: Event) {
   .cfs input[type='range']::-webkit-slider-thumb {
     transition: none;
   }
+}
+/* 深色：轨道沉进底面一档、零位刻线换成描边色（浅色原值保持）；scoped 只作用在最后一段，祖先 [data-theme] 照常匹配 */
+[data-theme='dark'] .cfs__track::before {
+  background: var(--xq-sunken);
+}
+[data-theme='dark'] .cfs__zero {
+  background: var(--xq-line-strong);
 }
 </style>

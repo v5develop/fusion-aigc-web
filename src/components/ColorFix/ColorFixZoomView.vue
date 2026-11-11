@@ -513,11 +513,11 @@ const zoomBtn =
         @pointerdown="onSplitDown"
       >
         <span
-          class="absolute left-1/2 top-0 bottom-0 w-2px -ml-1px bg-white [filter:drop-shadow(0_0_6px_rgba(135,95,154,0.6))]"
+          class="absolute left-1/2 top-0 bottom-0 w-2px -ml-1px bg-#fff [filter:drop-shadow(0_0_6px_rgba(135,95,154,0.6))]"
           aria-hidden="true"
         />
         <span
-          class="absolute left-1/2 top-1/2 grid w-36px h-36px -translate-x-1/2 -translate-y-1/2 box-border place-items-center rounded-full border border-solid border-line-strong bg-[linear-gradient(#ffffff,#f4f5f6)] text-violet-ink shadow-[0_4px_10px_rgba(31,35,41,0.2)] outline-none focus-visible:(outline-2 outline-solid outline-white outline-offset-2)"
+          class="absolute left-1/2 top-1/2 grid w-36px h-36px -translate-x-1/2 -translate-y-1/2 box-border place-items-center rounded-full border border-solid border-line-strong bg-[linear-gradient(var(--xq-surface),#f4f5f6)] text-violet-ink shadow-[0_4px_10px_rgba(31,35,41,0.2)] outline-none focus-visible:(outline-2 outline-solid outline-white outline-offset-2)"
           role="slider"
           tabindex="0"
           :aria-label="`${labels[0]}与${labels[1]}分割线`"
@@ -570,7 +570,7 @@ const zoomBtn =
 .cfz-box {
   will-change: transform;
   /* 透明图：棋盘格衬底 */
-  background: repeating-conic-gradient(#e9eaec 0% 25%, #fff 0% 50%) 50% / 16px 16px;
+  background: repeating-conic-gradient(var(--xq-checker-b) 0% 25%, var(--xq-checker-a) 0% 50%) 50% / 16px 16px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 .cfz-tile {

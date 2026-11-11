@@ -126,6 +126,22 @@ onBeforeUnmount(() => {
   stroke-linecap: round;
   transition: stroke 0.25s ease;
 }
+/* 深色：中性连线改用墨色令牌（深色下墨色是浅灰），藤紫光晕 / 高亮换提亮的藤紫 */
+[data-theme='dark'] .tpl-core {
+  stroke: rgb(var(--xq-ink-rgb) / 0.22);
+}
+[data-theme='dark'] .is-hint .tpl-core {
+  stroke: rgb(var(--xq-ink-rgb) / 0.18);
+}
+[data-theme='dark'] .tpl-halo {
+  stroke: rgb(var(--xq-violet-rgb) / 0.1);
+}
+[data-theme='dark'] .is-lit .tpl-core {
+  stroke: rgb(var(--xq-violet-fg-rgb) / 0.6);
+}
+[data-theme='dark'] .tpl-light {
+  stroke: rgb(var(--xq-violet-fg-rgb) / 0.6);
+}
 .is-hint .tpl-core {
   stroke: rgba(40, 34, 46, 0.16);
   stroke-dasharray: 4 5;

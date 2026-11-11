@@ -2,6 +2,7 @@
 
 import { computed, onUnmounted, ref } from 'vue'
 import { createDiscreteApi } from 'naive-ui'
+import { discreteConfigProviderProps } from '@/theme/naive'
 import { llAcceptAgreement, llGetAgreement } from '@/api/local-life.ts'
 import { useUserInfoStore } from '@/stores/user-info.ts'
 import { POLL_HIDDEN_MIN, POLL_RAMP } from '@/utils/hooks/usePolling.ts'
@@ -14,7 +15,7 @@ let pending: Promise<boolean> | null = null
 
 function showAgreementModal(): Promise<boolean> {
   return new Promise((resolve) => {
-    const { modal } = createDiscreteApi(['modal'])
+    const { modal } = createDiscreteApi(['modal'], { configProviderProps: discreteConfigProviderProps })
     const dialog = modal.create({
       title: 'AIGC 功能使用约定',
       content:

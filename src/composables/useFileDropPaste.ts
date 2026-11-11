@@ -18,6 +18,7 @@
  *   选中的上传区已满提示「已达上限」、禁用提示 disabledMessage，不静默忽略；交出去的文件走 onFiles，与文件对话框同一个处理函数（校验、体积、时长、上传、进度都不重复写）。
  */
 import { createDiscreteApi, useMessage } from 'naive-ui'
+import { discreteConfigProviderProps } from '@/theme/naive'
 import { getCurrentScope, onScopeDispose, ref, toValue, watch } from 'vue'
 import type { ComponentPublicInstance, MaybeRefOrGetter, Ref } from 'vue'
 
@@ -151,7 +152,7 @@ const isShown = (el: Element) => el.isConnected && el.getClientRects().length > 
 // 没有 NMessageProvider 时（极少数游离挂载）退回独立的 message 实例
 let discreteMessage: { warning: (s: string) => unknown } | null = null
 function fallbackWarn(text: string) {
-  discreteMessage ??= createDiscreteApi(['message']).message
+  discreteMessage ??= createDiscreteApi(['message'], { configProviderProps: discreteConfigProviderProps }).message
   discreteMessage.warning(text)
 }
 

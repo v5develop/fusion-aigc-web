@@ -84,7 +84,7 @@ const segBtn =
   'h-32px box-border px-12px rounded-6px border border-solid text-12px whitespace-nowrap cursor-pointer sx-focus ' +
   '[transition:border-color_.15s,background_.15s,color_.15s] motion-reduce:transition-none disabled:(opacity-45 cursor-not-allowed)'
 const segOn =
-  'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] text-violet-ink font-600 shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+  'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] text-violet-ink font-600 shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
 const segOff = 'border-transparent bg-transparent text-muted hover:enabled:text-ink'
 const segTrack =
   'inline-flex flex-wrap gap-2px p-2px box-border rounded-8px border border-solid border-line bg-surface3 shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]'
@@ -210,7 +210,7 @@ const labelCls = 'text-12px font-500 leading-18px text-ink-2'
             :disabled="disabled"
             @input="state.setContent(($event.target as HTMLTextAreaElement).value)"
             placeholder="还有哪些要求一句话写清，比如「节奏再快一点」；不标维度时写这里也能生成"
-            class="block w-full box-border resize-y min-h-76px rounded-12px border border-solid border-#c9cfd6 bg-white px-10px pt-8px pb-22px text-13px leading-20px text-ink shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)] outline-none placeholder:text-placeholder hover:border-#aeb6bf focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.14)]) disabled:(bg-surface3 text-placeholder cursor-not-allowed)"
+            class="block w-full box-border resize-y min-h-76px rounded-12px border border-solid border-control bg-white px-10px pt-8px pb-22px text-13px leading-20px text-ink shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)] outline-none placeholder:text-placeholder hover:border-control-hover focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.14)]) disabled:(bg-surface3 text-placeholder cursor-not-allowed)"
           />
           <span class="pointer-events-none absolute right-10px bottom-6px text-11px text-placeholder tabular-nums">
             {{ state.content.length }}/{{ contentMax }}

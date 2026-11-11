@@ -154,7 +154,7 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
 
     &.pending {
       background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-      color: #666;
+      color: var(--xq-ink-2);
       i {
         font-size: 32px;
       }
@@ -165,7 +165,7 @@ const isImgChecked = () => selectedIds?.value.has(data.id)
 
     &.processing {
       background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
-      color: #333;
+      color: var(--xq-ink);
       i {
         font-size: 32px;
         animation: spin 1s linear infinite;

@@ -307,7 +307,7 @@ function onColorFix(e: MouseEvent) {
       <RunErrorNotice v-else-if="data.status === 'error'" :node-id="id" :data="data" />
       <div
         v-else-if="partial"
-        class="mt-6px px-8px py-3px rounded-5px bg-[#fff7e6] text-[#b45309] text-11px font-500 text-center"
+        class="mt-6px px-8px py-3px rounded-5px bg-warning-soft text-warning text-11px font-500 text-center"
       >
         成功 {{ candidates.length }}/{{ data.requestedCount }} · 只计成功张数
       </div>
@@ -328,7 +328,7 @@ function onColorFix(e: MouseEvent) {
           v-for="item in visibleCandidates"
           :key="item.url + item.index"
           class="canvas-cand relative shrink-0 w-64px h-64px overflow-hidden border border-solid border-line rounded-4px bg-surface2"
-          :class="{ '!border-violet shadow-[0_0_0_1px_#875f9a]': selectedIdx === item.index }"
+          :class="{ '!border-violet shadow-[0_0_0_1px_var(--xq-violet)]': selectedIdx === item.index }"
           role="listitem"
         >
           <button
@@ -384,7 +384,7 @@ function onColorFix(e: MouseEvent) {
             <button
               type="button"
               :class="[CAND_ACTION, FOCUS_RING]"
-              class="hover:!bg-[#fbeeed] hover:!text-danger"
+              class="hover:!bg-danger-soft hover:!text-danger"
               title="移除这张"
               :aria-label="`移除候选 ${item.index + 1}`"
               @click.stop="onRemoveCandidate(item.index)"

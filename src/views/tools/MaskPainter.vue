@@ -374,7 +374,7 @@ defineExpose({ exportMask, clear, undo })
               height: `${tipSize}px`,
               background: tool === 'erase' ? 'transparent' : MASK_COLOR,
               opacity: tool === 'erase' ? 1 : MASK_OPACITY,
-              boxShadow: tool === 'erase' ? 'inset 0 0 0 1.5px #4b5563' : undefined,
+              boxShadow: tool === 'erase' ? 'inset 0 0 0 1.5px var(--xq-ink-2)' : undefined,
             }"
           />
         </span>

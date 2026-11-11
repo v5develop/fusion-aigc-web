@@ -288,7 +288,7 @@ function onBandKey(e: KeyboardEvent) {
   gap: 6px;
   margin: 0 12px;
   padding: 8px 0;
-  border-bottom: 1px dashed #ece7f0;
+  border-bottom: 1px dashed var(--xq-violet-soft-2);
   cursor: default;
 }
 .cfa.is-docked {
@@ -310,19 +310,19 @@ function onBandKey(e: KeyboardEvent) {
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: #1f2329;
+  color: var(--xq-ink);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
 .cfa__toggle:hover {
-  background: #f4eef8;
+  background: var(--xq-info-soft);
 }
 .cfa__chev {
   width: 14px;
   height: 14px;
-  color: #8a9099;
+  color: var(--xq-muted);
   transition: transform 0.14s ease;
 }
 .cfa__chev.is-open {
@@ -332,13 +332,13 @@ function onBandKey(e: KeyboardEvent) {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  color: #9aa1aa;
+  color: var(--xq-muted);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .cfa__summary.is-on {
-  color: #6b487c;
+  color: var(--xq-violet-ink);
   font-weight: 600;
 }
 .cfa__body {
@@ -354,7 +354,7 @@ function onBandKey(e: KeyboardEvent) {
   margin-top: 2px;
 }
 .cfa__sec-title {
-  color: #4a5059;
+  color: var(--xq-ink-2);
   font-size: 11.5px;
   font-weight: 600;
 }
@@ -373,23 +373,23 @@ function onBandKey(e: KeyboardEvent) {
 .cfa__label {
   width: 40px;
   flex: 0 0 40px;
-  color: #4a5059;
+  color: var(--xq-ink-2);
   font-size: 11.5px;
 }
 .cfa__num {
   width: 32px;
   flex: none;
-  color: #6b487c;
+  color: var(--xq-violet-ink);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .cfa__num.is-zero {
-  color: #9aa1aa;
+  color: var(--xq-muted);
   font-weight: 500;
 }
 .cfa__soft {
-  color: #6b7280;
+  color: var(--xq-muted);
   font-size: 11.5px;
 }
 /* 渐变轨道滑杆：轨道 6px（可点高 22），手柄 14 白底藤紫描边 */
@@ -406,33 +406,33 @@ function onBandKey(e: KeyboardEvent) {
 .cfa__range::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 3px;
-  background: var(--track, #e5e7eb);
+  background: var(--track, var(--xq-line));
   box-shadow: inset 0 0 0 1px rgba(31, 35, 41, 0.08);
 }
 .cfa__range::-moz-range-track {
   height: 6px;
   border-radius: 3px;
-  background: var(--track, #e5e7eb);
+  background: var(--track, var(--xq-line));
 }
 .cfa__range::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
   margin-top: -4px;
-  border: 2px solid #875f9a;
+  border: 2px solid var(--xq-violet);
   border-radius: 50%;
-  background: #fff;
+  background: var(--xq-surface);
   box-shadow: 0 1px 3px rgba(31, 35, 41, 0.25);
   -webkit-appearance: none;
 }
 .cfa__range::-moz-range-thumb {
   width: 10px;
   height: 10px;
-  border: 2px solid #875f9a;
+  border: 2px solid var(--xq-violet);
   border-radius: 50%;
-  background: #fff;
+  background: var(--xq-surface);
 }
 .cfa__range:focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -449,19 +449,19 @@ function onBandKey(e: KeyboardEvent) {
   height: 26px;
   place-items: center;
   padding: 0;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--xq-surface);
   cursor: pointer;
 }
 .cfa__band.is-on {
-  border-color: #8b64a0;
+  border-color: var(--xq-violet);
   box-shadow: 0 0 0 2px rgba(135, 95, 154, 0.22);
 }
 .cfa__band-dot {
   width: 14px;
   height: 14px;
-  border: 1px solid rgba(31, 35, 41, 0.12);
+  border: 1px solid rgb(var(--xq-ink-rgb) / 0.12);
   border-radius: 50%;
 }
 .cfa__band-mark {
@@ -470,15 +470,15 @@ function onBandKey(e: KeyboardEvent) {
   right: -3px;
   width: 7px;
   height: 7px;
-  border: 1.5px solid #fff;
+  border: 1.5px solid var(--xq-surface);
   border-radius: 50%;
-  background: #875f9a;
+  background: var(--xq-violet);
 }
 .cfa__band:focus-visible,
 .cfa__toggle:focus-visible,
 .cfa__btn:focus-visible,
 .cfa__switch:focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: 2px;
 }
 .cfa__switch {
@@ -489,7 +489,7 @@ function onBandKey(e: KeyboardEvent) {
   padding: 0;
   border: 0;
   border-radius: 9px;
-  background: #d5d9de;
+  background: var(--xq-line-strong);
   cursor: pointer;
   transition: background 0.12s ease;
 }
@@ -500,12 +500,12 @@ function onBandKey(e: KeyboardEvent) {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--xq-surface);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   transition: transform 0.12s ease;
 }
 .cfa__switch.is-on {
-  background: #875f9a;
+  background: var(--xq-violet);
 }
 .cfa__switch.is-on i {
   transform: translateX(12px);
@@ -515,10 +515,10 @@ function onBandKey(e: KeyboardEvent) {
   flex: none;
   box-sizing: border-box;
   padding: 0 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
   border-radius: 12px;
-  background: linear-gradient(#fff, #f7f8f9);
-  color: #4a5059;
+  background: linear-gradient(var(--xq-surface), var(--xq-surface2));
+  color: var(--xq-ink-2);
   font: inherit;
   font-size: 11px;
   line-height: 22px;
@@ -526,7 +526,7 @@ function onBandKey(e: KeyboardEvent) {
   cursor: pointer;
 }
 .cfa__btn:hover {
-  border-color: #c9cfd6;
+  border-color: var(--xq-control);
 }
 @media (prefers-reduced-motion: reduce) {
   .cfa__chev,

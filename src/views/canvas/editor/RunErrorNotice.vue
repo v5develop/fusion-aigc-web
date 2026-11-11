@@ -26,7 +26,7 @@ const isUnknown = computed(() => props.data.errorCode === 'UPSTREAM_UNKNOWN')
     <button
       v-if="data.retryable"
       type="button"
-      class="nodrag h-22px mt-4px px-8px border border-solid border-[#e4b7b4] rounded-4px bg-white text-danger text-11px cursor-pointer hover:bg-[#fbeeed]"
+      class="nodrag h-22px mt-4px px-8px border border-solid border-danger-line rounded-4px bg-white text-danger text-11px cursor-pointer hover:bg-danger-soft"
       :class="FOCUS_RING"
       @click.stop="store.retryNode(nodeId)"
     >

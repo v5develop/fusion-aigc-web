@@ -32,15 +32,15 @@ export const FOCUS_RING =
 export const POP_FADE = 'animate-[canvas-editor-fade_140ms_ease-out] motion-reduce:animate-none'
 
 /** 浮层面板外壳（控制台 / 添加面板 / 操作条）：line 描边 / r8 / 白底 / 藤紫调浮层投影 */
-export const POP_SURFACE = `border border-solid border-line rounded-8px bg-white shadow-[0_12px_28px_rgba(58,38,72,0.14),0_2px_6px_rgba(31,35,41,0.06)] ${POP_FADE}`
+export const POP_SURFACE = `border border-solid border-line rounded-8px bg-overlay shadow-[0_12px_28px_rgba(58,38,72,0.14),0_2px_6px_rgba(31,35,41,0.06)] ${POP_FADE}`
 
 /** 节点卡片（canvas-v31 §5：border 1px line / r8 / 白底 / --canvas-node-shadow）；悬停描边转浅藤紫 */
 export const NODE_CARD =
-  'group relative bg-white border border-solid border-line rounded-8px text-ink-2 text-12px shadow-[0_2px_4px_rgba(16,24,40,0.06),0_16px_36px_rgba(16,24,40,0.13)] transition-[border-color,box-shadow] duration-120 hover:border-violet-line'
+  'group relative bg-surface border border-solid border-line rounded-8px text-ink-2 text-12px shadow-node transition-[border-color,box-shadow] duration-120 hover:border-violet-line'
 
 /** 选中态：藤紫描边 + 3px 浅藤紫环 + 带紫调的落影（与选框 / 浮层同一色族，不用原型的蓝） */
 export const NODE_CARD_SELECTED =
-  '!border-violet !shadow-[0_0_0_3px_rgba(135,95,154,0.15),0_2px_4px_rgba(58,38,72,0.07),0_16px_36px_rgba(58,38,72,0.15)]'
+  '!border-violet !shadow-[0_0_0_3px_rgb(var(--xq-violet-rgb)/0.15),0_2px_4px_rgba(58,38,72,0.07),0_16px_36px_rgba(58,38,72,0.15)]'
 
 /**
  * 节点右下角缩放把手（原型 .wf-node-resize v3.1：18px 命中区、9px 直角线、nwse 光标；悬停 / 选中才出现）。
@@ -66,26 +66,26 @@ export const NODE_ICON_BTN = `relative grid shrink-0 w-28px h-28px p-0 place-ite
  * 画布语义色（canvas-v31 --canvas-green / red / amber 及其浅底、描边）：比全局 success / danger / warning
  * 的浅底与描边略深，画布内一律用这一组字面值。
  */
-export const CANVAS_OK = 'border-[#bcd8c9] bg-[#eaf3ee] text-success'
-export const CANVAS_ERR = 'border-[#e4b7b4] bg-[#fbeeed] text-danger'
+export const CANVAS_OK = 'border-success-line bg-success-soft text-success'
+export const CANVAS_ERR = 'border-danger-line bg-danger-soft text-danger'
 
 /** 生成节点的执行钮：浅绿底 + 绿描边（canvas-v31 .wf-model-node__actions button.is-run，hover 见 .wf-console__run） */
-export const NODE_RUN_BTN = `relative grid shrink-0 w-28px h-28px after:content-empty after:absolute after:-inset-3px p-0 place-items-center border border-solid ${CANVAS_OK} rounded-4px cursor-pointer hover:border-[#a4c9b6] hover:bg-[#e0eee6] disabled:opacity-50 disabled:cursor-not-allowed nodrag ${FOCUS_RING}`
+export const NODE_RUN_BTN = `relative grid shrink-0 w-28px h-28px after:content-empty after:absolute after:-inset-3px p-0 place-items-center border border-solid ${CANVAS_OK} rounded-4px cursor-pointer hover:border-success hover:bg-success-soft disabled:opacity-50 disabled:cursor-not-allowed nodrag ${FOCUS_RING}`
 
 /** 生成节点的徽标（超强模型等）：琥珀浅底（.wf-model-node__badge） */
 export const NODE_BADGE =
-  'shrink-0 px-6px py-1px border border-solid border-[#e5cfa9] rounded-3px bg-[#f8f1e4] text-warning text-11px font-600 leading-16px whitespace-nowrap'
+  'shrink-0 px-6px py-1px border border-solid border-warning-line rounded-3px bg-warning-soft text-warning text-11px font-600 leading-16px whitespace-nowrap'
 
 /** 端口旁的序号 / 计数徽标（17px 圆，藤紫浅底；原型 .wf-model-node__ref-count / __out-index） */
 export const PORT_COUNT =
   'absolute z-2 grid w-17px h-17px place-items-center border border-solid border-violet-line rounded-full bg-violet-soft text-violet text-10px font-600 leading-none -translate-y-50% pointer-events-none'
 
 /** 视频生成节点的输出序号：红系（.wf-model-node.is-video .wf-model-node__out-index） */
-export const PORT_COUNT_VIDEO = '!border-[#e4b7b4] !bg-[#fdf3f2] !text-[#b13a36]'
+export const PORT_COUNT_VIDEO = '!border-danger-line !bg-danger-soft !text-danger'
 
 /** 棋盘格底（模型结果区 / 空图片区；.wf-model-node__checker：#e9ecef 方格 + surface-3） */
 export const CHECKER_BG =
-  '[background:repeating-conic-gradient(#e9ecef_0%,#e9ecef_25%,transparent_0%,transparent_50%)_0_0/16px_16px,#f3f4f5]'
+  '[background:repeating-conic-gradient(var(--xq-checker-b)_0%,var(--xq-checker-b)_25%,transparent_0%,transparent_50%)_0_0/16px_16px,var(--xq-surface3)]'
 
 /** 运行中 / 失败 / 部分成功提示条的公共骨架（.wf-model-node__running / __error：居中、r4、11px） */
 export const NODE_NOTICE = 'flex items-center justify-center gap-6px mt-6px px-8px py-5px rounded-4px text-11px'
@@ -98,10 +98,10 @@ export const TOOLBAR =
  * 顶栏普通按钮（5185 .wf-top-btn 新版）：32px / r14 squircle / 0.8px #d9d9d9 描边 / 白→#f8f9fa 板材 + 内高光 + 短投影。
  * 32px 即命中区下限，不再另补伪元素。
  */
-export const TOP_BTN = `sx-squircle inline-flex shrink-0 items-center h-32px gap-5px px-12px border-[0.8px] border-solid border-[#d9d9d9] rounded-14px bg-gradient-to-b from-white to-[#f8f9fa] text-ink-2 text-13px font-500 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(31,35,41,0.05)] hover:border-[#c9cfd6] hover:from-[#fafafa] hover:to-[#f1f3f5] hover:text-ink aria-disabled:opacity-50 aria-disabled:cursor-not-allowed ${FOCUS_RING}`
+export const TOP_BTN = `sx-squircle inline-flex shrink-0 items-center h-32px gap-5px px-12px border-[0.8px] border-solid border-line-strong rounded-14px bg-gradient-to-b from-surface to-soft-bottom text-ink-2 text-13px font-500 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(31,35,41,0.05)] hover:border-control hover:from-surface2 hover:to-surface3 hover:text-ink aria-disabled:opacity-50 aria-disabled:cursor-not-allowed ${FOCUS_RING}`
 
 /** 顶栏主按钮「执行模型」：藤紫渐变 #7b5591→#6a487b + 0 4px 12px 紫调投影；hover 提亮、按下内凹 */
-export const TOP_BTN_PRIMARY = `sx-squircle inline-flex shrink-0 items-center h-32px gap-5px px-14px border-[0.8px] border-solid border-[#6a487b] rounded-14px bg-gradient-to-b from-[#7b5591] to-[#6a487b] text-white text-13px font-500 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_4px_12px_rgba(106,72,123,0.24)] hover:from-[#86609c] hover:to-[#74508a] active:from-[#6b487c] active:to-[#5f3f6f] active:shadow-[inset_0_1px_3px_rgba(31,35,41,0.24)] aria-disabled:opacity-50 aria-disabled:cursor-not-allowed ${FOCUS_RING}`
+export const TOP_BTN_PRIMARY = `sx-squircle inline-flex shrink-0 items-center h-32px gap-5px px-14px border-[0.8px] border-solid border-violet-border rounded-14px bg-gradient-to-b from-[#7b5591] to-[#6a487b] text-white text-13px font-500 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_4px_12px_rgba(106,72,123,0.24)] hover:from-[#86609c] hover:to-[#74508a] active:from-[#6b487c] active:to-violet-press active:shadow-[inset_0_1px_3px_rgba(31,35,41,0.24)] aria-disabled:opacity-50 aria-disabled:cursor-not-allowed ${FOCUS_RING}`
 
 /** 多选操作条按钮（原型 v3.1 .wf-selection-bar button：28px / r4 / 13px）；悬停走藤紫浅底 */
 export const SELECTION_BTN = `inline-flex items-center h-28px gap-4px px-8px border border-solid border-transparent rounded-4px bg-transparent text-ink-2 text-13px cursor-pointer hover:border-violet-line hover:bg-violet-soft hover:text-violet-ink ${FOCUS_RING}`

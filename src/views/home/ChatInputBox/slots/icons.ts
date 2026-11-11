@@ -15,24 +15,24 @@ export const ICON_UPLOAD = uploadIcon
 export const ICON_CARET_DOWN = caretDownIcon
 
 export const ICON_SHOP = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
-  <path d="M2 14V2.5C2 2.22386 2.22386 2 2.5 2H5.5C5.77614 2 6 2.22386 6 2.5V14" stroke="#3A3A3A" stroke-width="1.2"/>
-  <path d="M2 6H6" stroke="#3A3A3A" stroke-width="1.2"/>
-  <path d="M10 4H13.5C13.7761 4 14 4.22386 14 4.5V14" stroke="#3A3A3A" stroke-width="1.2"/>
-  <path d="M10 14V4" stroke="#3A3A3A" stroke-width="1.2"/>
-  <path d="M10 8H14" stroke="#3A3A3A" stroke-width="1.2"/>
+  <path d="M2 14V2.5C2 2.22386 2.22386 2 2.5 2H5.5C5.77614 2 6 2.22386 6 2.5V14" stroke="currentColor" stroke-width="1.2"/>
+  <path d="M2 6H6" stroke="currentColor" stroke-width="1.2"/>
+  <path d="M10 4H13.5C13.7761 4 14 4.22386 14 4.5V14" stroke="currentColor" stroke-width="1.2"/>
+  <path d="M10 14V4" stroke="currentColor" stroke-width="1.2"/>
+  <path d="M10 8H14" stroke="currentColor" stroke-width="1.2"/>
 </svg>`
 
 export const ICON_STYLE = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
-  <circle cx="8" cy="8" r="6" stroke="#3A3A3A" stroke-width="1.2"/>
-  <path d="M8 2C8 2 4 5 4 8C4 11 8 14 8 14C8 14 12 11 12 8C12 5 8 2 8 2Z" stroke="#3A3A3A" stroke-width="1.2"/>
+  <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/>
+  <path d="M8 2C8 2 4 5 4 8C4 11 8 14 8 14C8 14 12 11 12 8C12 5 8 2 8 2Z" stroke="currentColor" stroke-width="1.2"/>
 </svg>`
 
 export const ICON_PERSON = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
-  <circle cx="8" cy="4.5" r="2.5" stroke="#3A3A3A" stroke-width="1.2"/>
-  <path d="M3.5 14C3.5 10.6863 5.46243 8 8 8C10.5376 8 12.5 10.6863 12.5 14" stroke="#3A3A3A" stroke-width="1.2" stroke-linecap="round"/>
+  <circle cx="8" cy="4.5" r="2.5" stroke="currentColor" stroke-width="1.2"/>
+  <path d="M3.5 14C3.5 10.6863 5.46243 8 8 8C10.5376 8 12.5 10.6863 12.5 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
 </svg>`
 
 export const ICON_LOCATION = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
-  <path d="M8 14C8 14 13 9.5 13 6C13 3.23858 10.7614 1 8 1C5.23858 1 3 3.23858 3 6C3 9.5 8 14 8 14Z" stroke="#3A3A3A" stroke-width="1.2"/>
-  <circle cx="8" cy="6" r="1.5" stroke="#3A3A3A" stroke-width="1.2"/>
+  <path d="M8 14C8 14 13 9.5 13 6C13 3.23858 10.7614 1 8 1C5.23858 1 3 3.23858 3 6C3 9.5 8 14 8 14Z" stroke="currentColor" stroke-width="1.2"/>
+  <circle cx="8" cy="6" r="1.5" stroke="currentColor" stroke-width="1.2"/>
 </svg>`

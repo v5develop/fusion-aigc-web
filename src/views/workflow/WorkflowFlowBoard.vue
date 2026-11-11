@@ -45,7 +45,7 @@ const meta = 'text-11px leading-16px text-placeholder'
           <b class="text-12px font-600 leading-18px text-ink-2">{{ input.label }}</b>
           <span
             v-if="input.kind === 'video'"
-            class="ml-auto px-5px rounded-3px border border-solid border-#ead8b9 bg-#fbf4e8 text-11px leading-16px text-warning"
+            class="ml-auto px-5px rounded-3px border border-solid border-warning-line bg-warning-soft text-11px leading-16px text-warning"
             >视频</span
           >
           <span

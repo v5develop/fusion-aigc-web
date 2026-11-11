@@ -261,7 +261,7 @@ const sections = computed(() => {
               :class="[cardBase, 'w-full', tool.path ? cardEnabled : 'cursor-not-allowed opacity-60']"
             >
               <span class="w-full flex items-center gap-12px">
-                <span class="h-44px w-44px shrink-0 flex items-center justify-center rounded-lg bg-#f1ecf3 text-violet">
+                <span class="h-44px w-44px shrink-0 flex items-center justify-center rounded-lg bg-violet-pill text-violet">
                   <svg
                     viewBox="0 0 24 24"
                     width="20"

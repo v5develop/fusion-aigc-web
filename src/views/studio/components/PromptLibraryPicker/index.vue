@@ -128,7 +128,7 @@ const excerpt = (item: IPromptLibItem) => item.prompt.replace(/\s+/g, ' ').trim(
           v-for="item in items"
           :key="item.id"
           type="button"
-          class="group flex flex-col gap-5px px-12px py-10px text-left border border-solid border-line rounded-8px bg-white cursor-pointer transition-[border-color,background-color] duration-180 ease-[cubic-bezier(0.2,0.7,0.2,1)] hover:border-violet-line hover:bg-#faf7fc"
+          class="group flex flex-col gap-5px px-12px py-10px text-left border border-solid border-line rounded-8px bg-white cursor-pointer transition-[border-color,background-color] duration-180 ease-[cubic-bezier(0.2,0.7,0.2,1)] hover:border-violet-line hover:bg-violet-tint"
           @click="choose(item)"
         >
           <span class="text-13px font-600 text-ink">{{ item.title }}</span>
@@ -162,6 +162,6 @@ const excerpt = (item: IPromptLibItem) => item.prompt.replace(/\s+/g, ' ').trim(
 
 /* 滚动条 mixin 无法用原子类表达 */
 .stu-scroll {
-  .scrollbar-autohide(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
+  .scrollbar-autohide(@width: 8px, @trackColor: var(--xq-surface), @thumbColor: rgb(var(--xq-ink-rgb) / 0.1), @thumbWidth: 4px, @hoverColor: rgb(var(--xq-ink-rgb) / 0.35));
 }
 </style>

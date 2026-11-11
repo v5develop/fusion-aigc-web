@@ -194,7 +194,7 @@ const pillCls =
           class="flex-1 min-w-0 flex items-center justify-center gap-6px h-30px px-14px box-border rounded-4px border border-solid text-12px cursor-pointer transition-colors outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
           :class="
             i === active
-              ? 'border-violet-line bg-[linear-gradient(#fff,#f8f3fc)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-violet-ink font-600'
+              ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-violet-ink font-600'
               : 'border-transparent bg-transparent text-ink-2 hover:text-ink'
           "
           @click="active = i"
@@ -241,7 +241,7 @@ const pillCls =
           >
             <div
               v-if="boxStyle"
-              class="absolute box-border border-2 border-solid border-white rounded-2px pointer-events-none shadow-[0_0_0_1px_#875f9a,0_0_0_9999px_rgba(31,35,41,0.48)]"
+              class="absolute box-border border-2 border-solid border-#fff rounded-2px pointer-events-none shadow-[0_0_0_1px_var(--xq-violet),0_0_0_9999px_rgba(31,35,41,0.48)]"
               :style="boxStyle"
             >
               <span
@@ -251,7 +251,7 @@ const pillCls =
               <span
                 v-for="c in CORNERS"
                 :key="c"
-                class="absolute w-8px h-8px box-border rounded-2px bg-white border-1.5px border-solid border-violet"
+                class="absolute w-8px h-8px box-border rounded-2px bg-#fff border-1.5px border-solid border-violet"
                 :class="c"
                 aria-hidden="true"
               />

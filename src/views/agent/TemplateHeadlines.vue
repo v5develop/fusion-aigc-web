@@ -122,7 +122,7 @@ function pick(h: IPlazaHeadline) {
             : '',
         ]"
       >
-        <div class="relative h-117px w-208px flex-none overflow-hidden rounded-12px bg-#eef1f3 max-sm:(h-81px w-144px)">
+        <div class="relative h-117px w-208px flex-none overflow-hidden rounded-12px bg-sunken max-sm:(h-81px w-144px)">
           <video
             v-if="coverOf(h) && isVideo(coverOf(h))"
             :src="coverOf(h)"
@@ -149,10 +149,10 @@ function pick(h: IPlazaHeadline) {
 
         <div class="min-w-0 flex-1">
           <div class="flex min-w-0 items-center gap-8px">
-            <span class="flex-none text-11px font-600 tabular-nums text-#c2b4cd">{{ rankText(h.rank) }}</span>
+            <span class="flex-none text-11px font-600 tabular-nums text-violet-ink/55">{{ rankText(h.rank) }}</span>
             <b class="truncate text-14px font-600 leading-22px text-ink">{{ h.title }}</b>
             <span
-              class="inline-flex h-18px flex-none items-center rounded-5px border border-solid border-#dcc9e9 bg-#faf4fd px-6px text-10px font-600 text-violet-ink"
+              class="inline-flex h-18px flex-none items-center rounded-5px border border-solid border-violet-line bg-violet-tint px-6px text-10px font-600 text-violet-ink"
             >
               本周头条
             </span>
@@ -160,11 +160,11 @@ function pick(h: IPlazaHeadline) {
           <p class="m-0 mt-4px truncate text-12px leading-19px text-muted" :title="h.why">{{ h.why }}</p>
           <div class="mt-7px flex min-w-0 flex-wrap items-center gap-8px text-11px text-placeholder">
             <span v-if="tagLine(h)">{{ tagLine(h) }}</span>
-            <span v-if="tagLine(h)" class="h-3px w-3px rounded-full bg-#d2d6da" aria-hidden="true" />
+            <span v-if="tagLine(h)" class="h-3px w-3px rounded-full bg-line-strong" aria-hidden="true" />
             <span>本周 {{ h.uses }} 次复刻</span>
             <span
               class="font-600"
-              :class="h.trend == null ? 'text-violet-ink' : h.trend > 0 ? 'text-#3f7a56' : 'text-muted'"
+              :class="h.trend == null ? 'text-violet-ink' : h.trend > 0 ? 'text-success' : 'text-muted'"
             >
               {{ trendText(h) }}
             </span>

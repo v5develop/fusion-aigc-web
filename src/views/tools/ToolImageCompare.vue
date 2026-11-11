@@ -108,7 +108,7 @@ const tagCls =
 <template>
   <div
     ref="root"
-    class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 overflow-hidden [border-radius:inherit] bg-surface3 select-none touch-none outline-none focus-visible:shadow-[0_0_0_2px_#875f9a,0_0_0_5px_rgba(135,95,154,0.2)]"
+    class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 overflow-hidden [border-radius:inherit] bg-surface3 select-none touch-none outline-none focus-visible:shadow-[0_0_0_2px_var(--xq-violet),0_0_0_5px_rgba(135,95,154,0.2)]"
     :class="held ? 'cursor-grabbing' : 'cursor-ew-resize'"
     :style="box"
     role="slider"
@@ -152,12 +152,12 @@ const tagCls =
       labels[1]
     }}</span>
     <span
-      class="absolute top-0 bottom-0 z-4 w-2px -ml-1px bg-white pointer-events-none [filter:drop-shadow(0_0_6px_rgba(135,95,154,0.55))]"
+      class="absolute top-0 bottom-0 z-4 w-2px -ml-1px bg-#fff pointer-events-none [filter:drop-shadow(0_0_6px_rgba(135,95,154,0.55))]"
       :style="{ left: `${pos}%` }"
       aria-hidden="true"
     />
     <span
-      class="absolute top-1/2 z-5 grid w-30px h-30px box-border place-items-center rounded-full border border-solid border-line-strong bg-[linear-gradient(#ffffff,#f4f5f6)] text-violet-ink pointer-events-none shadow-[inset_0_1px_0_#fff,0_1px_2px_rgba(31,35,41,0.1),0_4px_10px_rgba(31,35,41,0.16)] [transition:transform_220ms_ease] motion-reduce:transition-none"
+      class="absolute top-1/2 z-5 grid w-30px h-30px box-border place-items-center rounded-full border border-solid border-line-strong bg-[linear-gradient(var(--xq-surface),var(--xq-surface3))] text-violet-ink pointer-events-none shadow-[inset_0_1px_0_#fff,0_1px_2px_rgba(31,35,41,0.1),0_4px_10px_rgba(31,35,41,0.16)] [transition:transform_220ms_ease] motion-reduce:transition-none"
       :class="held ? '-translate-x-1/2 -translate-y-1/2 scale-92' : '-translate-x-1/2 -translate-y-1/2'"
       :style="{ left: `${pos}%` }"
       aria-hidden="true"

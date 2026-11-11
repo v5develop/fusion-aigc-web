@@ -267,12 +267,12 @@ watch(formData, () => {
     position: sticky;
     top: 0;
     z-index: 1;
-    background-color: #f5f6f8;
+    background-color: var(--xq-page);
     > .lv1-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background-color: #f5f6f8;
+      background-color: var(--xq-page);
       > .manage-cont {
         display: flex;
         align-items: center;
@@ -284,8 +284,8 @@ watch(formData, () => {
           border: none;
           border-radius: 8px;
           cursor: pointer;
-          background: #edeeef; /* 中性灰按钮 */
-          color: #3a3a3a; /* token: 中性色/正文文字 */
+          background: var(--xq-sunken); /* 中性灰按钮 */
+          color: var(--xq-ink-2); /* token: 中性色/正文文字 */
           font-size: 14px;
           line-height: 20px;
           white-space: nowrap;
@@ -303,19 +303,19 @@ watch(formData, () => {
     .tab-lv1 {
       display: flex;
       gap: 8px 16px;
-      color: #1f1f1f;
+      color: var(--xq-ink);
       text-align: center;
       padding-bottom: 16px;
-      background-color: #f5f6f8;
+      background-color: var(--xq-page);
       > .item {
         padding: 10px 16px;
         cursor: pointer;
         border-radius: 8px;
         &:hover {
-          background-color: white;
+          background-color: var(--xq-surface);
         }
         &.active {
-          background-color: white;
+          background-color: var(--xq-surface);
         }
       }
     }
@@ -342,7 +342,7 @@ watch(formData, () => {
   width: 400px;
   box-sizing: border-box;
   padding: 24px;
-  background: #ffffff;
+  background: var(--xq-surface);
   border-radius: 12px;
   box-shadow:
     0px 9px 28px 8px rgba(0, 0, 0, 0.05),
@@ -353,14 +353,14 @@ watch(formData, () => {
 .confirm-title {
   font-size: 18px;
   font-weight: 600;
-  color: #3a3a3a; /* token: 中性色/正文文字 */
+  color: var(--xq-ink-2); /* token: 中性色/正文文字 */
   line-height: 26px;
 }
 
 .confirm-text {
   margin-top: 12px;
   font-size: 14px;
-  color: #8f8f8f; /* token: 中性色/辅助文字 */
+  color: var(--xq-muted); /* token: 中性色/辅助文字 */
   line-height: 22px;
 }
 
@@ -389,8 +389,12 @@ watch(formData, () => {
     }
   }
   > .btn-cancel {
-    background: #f0ebff; /* token: AI智慧紫/AI浅底色 */
+    background: var(--xq-violet-soft); /* token: AI智慧紫/AI浅底色 */
     color: #8e66f9; /* token: AI智慧紫/AI强调色 */
+    // 深色：亮紫在深底上发荧光，换藤紫
+    [data-theme='dark'] & {
+      color: var(--xq-violet-fg);
+    }
   }
   > .btn-agree {
     background: linear-gradient(0deg, #bba2ff 0%, #ccbaff 99%); /* token: AI智慧紫/AI主渐变 */

@@ -52,14 +52,14 @@ const DISCLOSURE =
     <!-- 校色状态：只在调过色 / 当前是校色版本时出现 -->
     <p
       v-if="d.fixSavedAsVersion.value && !d.cf.active.value"
-      class="m-0 flex gap-8px p-10px rounded-12px bg-info-soft text-12px leading-18px text-#654876"
+      class="m-0 flex gap-8px p-10px rounded-12px bg-info-soft text-12px leading-18px text-alert-info"
     >
       <span aria-hidden="true">ⓘ</span>
       当前显示的是校色后保存的版本，原图仍保留，可在图片底部切回「原图」。
     </p>
     <p
       v-else-if="d.cf.active.value && !d.fixSavedAsVersion.value"
-      class="m-0 flex gap-8px p-10px rounded-12px bg-warning-soft text-12px leading-18px text-#7d5a20"
+      class="m-0 flex gap-8px p-10px rounded-12px bg-warning-soft text-12px leading-18px text-alert-warning"
     >
       <span aria-hidden="true">ⓘ</span>
       校色效果目前只存在这台设备的浏览器里。点图片左上「保存为新版本」可存进资产，换设备也能用。
@@ -238,6 +238,6 @@ const DISCLOSURE =
 
 <style scoped>
 .asset-prompt {
-  background: linear-gradient(180deg, #fbf8fd 0%, #fff 100%);
+  background: linear-gradient(180deg, var(--xq-violet-soft-tint) 0%, var(--xq-surface) 100%);
 }
 </style>

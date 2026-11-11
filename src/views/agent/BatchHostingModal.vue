@@ -53,18 +53,18 @@ const T_BTN =
   '[transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s,box-shadow_0.11s,color_0.11s] motion-reduce:transition-none'
 const BTN_SM = `inline-flex h-28px flex-none items-center justify-center gap-6px rounded-14px border border-solid px-12px text-12px leading-none whitespace-nowrap cursor-pointer select-none ${T_BTN}`
 const BTN_DEFAULT =
-  'border-control bg-[linear-gradient(#fff,#fbfcfc)] font-500 text-ink-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] enabled:hover:(border-control-hover bg-[linear-gradient(#fff,#f7f8f9)] text-ink) enabled:active:(border-control-press bg-[linear-gradient(#f3f4f5,#f7f8f9)] shadow-press text-ink) disabled:(border-line bg-none bg-surface3 shadow-none text-placeholder cursor-default)'
+  'border-control bg-[linear-gradient(var(--xq-plate-top),var(--xq-plate-bottom))] font-500 text-ink-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] enabled:hover:(border-control-hover bg-[linear-gradient(var(--xq-surface),var(--xq-surface2))] text-ink) enabled:active:(border-control-press bg-[linear-gradient(var(--xq-surface3),var(--xq-surface2))] shadow-press text-ink) disabled:(border-line bg-none bg-surface3 shadow-none text-placeholder cursor-default)'
 const BTN_DANGER =
-  'border-#f0c9c7 bg-white font-500 text-#c24545 enabled:hover:(bg-#fdf6f6 border-#e8b4b1) disabled:(opacity-50 cursor-default)'
+  'border-danger-soft-line bg-white font-500 text-danger-strong enabled:hover:(bg-danger-soft border-danger-soft-line-hover) disabled:(opacity-50 cursor-default)'
 const SOFT_CARD =
-  'border border-solid border-#c9cdd0 bg-[linear-gradient(#fff,#f8f9fa)] shadow-[0_6px_16px_rgba(31,35,41,0.08),inset_0_1px_0_#fff]'
+  'border border-solid border-soft-line bg-[linear-gradient(var(--xq-surface),var(--xq-soft-bottom))] shadow-[0_6px_16px_rgba(31,35,41,0.08),inset_0_1px_0_#fff]'
 const BTN_PRIMARY =
-  'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)] font-600 text-white shadow-btn enabled:hover:(border-violet-press bg-[linear-gradient(#9a6fae,#875c9a)]) enabled:active:(border-#5c3d6b bg-none bg-violet-press shadow-[inset_0_1px_3px_rgba(40,24,48,0.35)]) disabled:(border-violet-line bg-none bg-violet-disabled shadow-none text-white/80 cursor-default)'
+  'border-violet-border bg-[linear-gradient(var(--xq-violet-top),var(--xq-violet-bottom))] font-600 text-white shadow-btn enabled:hover:(border-violet-press bg-[linear-gradient(var(--xq-violet-hover-top),var(--xq-violet-hover-bottom))]) enabled:active:(border-violet-press-border bg-none bg-violet-press shadow-press-accent) disabled:(border-violet-line bg-none bg-violet-disabled shadow-none text-white/80 cursor-default)'
 const MODAL =
   'flex max-h-[calc(100vh-48px)] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-12px border border-solid border-line bg-white shadow-pop'
 const MODAL_HEAD = 'flex h-52px flex-none items-center gap-8px border-b border-solid border-line pl-18px pr-10px'
 const MODAL_X =
-  'ml-auto grid h-26px w-26px place-items-center rounded-4px border-none bg-transparent p-0 text-#8a919c cursor-pointer hover:bg-surface3'
+  'ml-auto grid h-26px w-26px place-items-center rounded-4px border-none bg-transparent p-0 text-placeholder cursor-pointer hover:bg-surface3'
 const ICON_X = 'M6 6l12 12M18 6L6 18'
 const ICON_CHECK = 'M5 12l5 5 9-10'
 
@@ -673,7 +673,7 @@ onUnmounted(() => {
             @mouseleave="pointedTask = null"
           >
             <span
-              class="grid h-22px w-22px flex-none place-items-center rounded-full border border-solid border-#e2d3ee bg-white text-11px font-600 text-violet-ink tabular-nums"
+              class="grid h-22px w-22px flex-none place-items-center rounded-full border border-solid border-violet-soft-line bg-white text-11px font-600 text-violet-ink tabular-nums"
               aria-hidden="true"
               >{{ i + 1 }}</span
             >
@@ -685,7 +685,7 @@ onUnmounted(() => {
                   v-if="tasks.length > 1"
                   type="button"
                   :aria-label="`删除任务 ${i + 1}`"
-                  :class="[MODAL_X, '!ml-auto !h-32px !w-32px !rounded-full hover:(!bg-#fdf6f6 !text-#c24545)', FOCUS]"
+                  :class="[MODAL_X, '!ml-auto !h-32px !w-32px !rounded-full hover:(!bg-danger-soft !text-danger-strong)', FOCUS]"
                   @click="removeTask(t.key)"
                 >
                   <svg
@@ -722,7 +722,7 @@ onUnmounted(() => {
                   <button
                     type="button"
                     :aria-label="`删除参考图 ${j + 1}`"
-                    class="absolute right-[-8px] top-[-8px] grid h-22px w-22px place-items-center rounded-full border-none bg-ink/70 p-0 text-white cursor-pointer sx-hit after:-inset-6px [@media(pointer:coarse)]:after:-inset-10px sx-focus"
+                    class="absolute right-[-8px] top-[-8px] grid h-22px w-22px place-items-center rounded-full border-none bg-[rgba(31,35,41,0.7)] p-0 text-white cursor-pointer sx-hit after:-inset-6px [@media(pointer:coarse)]:after:-inset-10px sx-focus"
                     @click="removeImage(t, j)"
                   >
                     <svg
@@ -774,7 +774,7 @@ onUnmounted(() => {
           <button
             type="button"
             :class="[
-              'flex h-36px flex-none items-center justify-center gap-6px rounded-14px border border-dashed border-#d7c9e2 bg-[rgba(248,243,252,0.5)] text-12px text-violet-ink cursor-pointer hover:(border-violet-line bg-#faf5fd)',
+              'flex h-36px flex-none items-center justify-center gap-6px rounded-14px border border-dashed border-violet-line bg-violet-tint/50 text-12px text-violet-ink cursor-pointer hover:(border-violet-line bg-violet-tint)',
               FOCUS,
             ]"
             @click="addTask"
@@ -807,7 +807,7 @@ onUnmounted(() => {
               <span v-if="!quote.complete" class="text-11px">（部分规格未报价，实际以扣除为准）</span>
               <span v-if="quote.sufficient">余额 {{ quote.balance }} 点数</span>
               <template v-else>
-                <span class="text-#c24545">点数不足（余额 {{ quote.balance }} 点数）</span>
+                <span class="text-danger-strong">点数不足（余额 {{ quote.balance }} 点数）</span>
                 <button
                   type="button"
                   class="h-28px cursor-pointer border-none bg-transparent px-4px text-12px text-violet-ink underline underline-offset-2"

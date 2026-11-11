@@ -356,13 +356,20 @@ function removeSelected() {
 </template>
 
 <style scoped lang="less">
+/* 选中描边：浅色 #b99bcb（介于柔紫线与藤紫之间，色板里没有），深色换藤紫 */
+.cfl {
+  --cfl-sel: #b99bcb;
+}
+[data-theme='dark'] .cfl {
+  --cfl-sel: var(--xq-violet);
+}
 .cfl {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin: 0 12px;
   padding: 8px 0;
-  border-bottom: 1px dashed #ece7f0;
+  border-bottom: 1px dashed var(--xq-violet-soft-2);
   cursor: default;
 }
 .cfl.is-docked {
@@ -375,12 +382,12 @@ function removeSelected() {
   min-height: 28px;
 }
 .cfl__title {
-  color: #1f2329;
+  color: var(--xq-ink);
   font-size: 12px;
   font-weight: 600;
 }
 .cfl__count {
-  color: #9aa1aa;
+  color: var(--xq-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -393,10 +400,10 @@ function removeSelected() {
   align-items: center;
   gap: 4px;
   padding: 0 10px;
-  border: 1px solid #d9c8e4;
+  border: 1px solid var(--xq-violet-line);
   border-radius: 13px;
-  background: linear-gradient(180deg, #fff, #f8f3fc);
-  color: #6b487c;
+  background: linear-gradient(180deg, var(--xq-surface), var(--xq-violet-tint));
+  color: var(--xq-violet-ink);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -413,7 +420,7 @@ function removeSelected() {
 }
 .cfl__add:focus-visible,
 .cfl__list:focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: 1px;
 }
 .cfl__list:focus-visible .cfl__row.is-on {
@@ -423,8 +430,8 @@ function removeSelected() {
   margin: 0;
   padding: 5px 8px;
   border-radius: 8px;
-  background: #fbf3e6;
-  color: #94651f;
+  background: var(--xq-warning-soft);
+  color: var(--xq-warning-fg);
   font-size: 11.5px;
   line-height: 16px;
 }
@@ -433,17 +440,17 @@ function removeSelected() {
   height: 16px;
   flex: 0 0 16px;
   margin-left: 4px;
-  color: #8a9099;
+  color: var(--xq-muted);
 }
 .cfl__row.is-hidden .cfl__eye {
-  color: #c2c7ce;
+  color: var(--xq-control);
 }
 .cfl__tag {
   flex: none;
   padding: 0 5px;
-  border: 1px solid #d9c8e4;
+  border: 1px solid var(--xq-violet-line);
   border-radius: 6px;
-  color: #6b487c;
+  color: var(--xq-violet-ink);
   font-size: 10.5px;
   line-height: 15px;
 }
@@ -458,14 +465,14 @@ function removeSelected() {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  color: #4a5059;
+  color: var(--xq-ink-2);
   font-size: 11.5px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .cfl__tools-note {
-  color: #9aa1aa;
+  color: var(--xq-muted);
   font-size: 11px;
 }
 .cfl__list {
@@ -489,27 +496,27 @@ function removeSelected() {
   align-items: center;
   gap: 8px;
   padding: 3px 6px 3px 4px;
-  border: 1px solid #eceef0;
+  border: 1px solid var(--xq-line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--xq-surface);
   cursor: pointer;
   transition:
     border-color 0.12s ease,
     background 0.12s ease;
 }
 .cfl__row:hover:not(.is-on) {
-  border-color: #d5d9de;
+  border-color: var(--xq-line-strong);
 }
 .cfl__row.is-on {
-  border-color: #b99bcb;
-  background: linear-gradient(180deg, #fff, #f7f1fb);
+  border-color: var(--cfl-sel);
+  background: linear-gradient(180deg, var(--xq-surface), var(--xq-violet-tint));
   box-shadow: 0 1px 2px rgba(107, 72, 124, 0.12);
 }
 .cfl__row.is-base {
-  background: #fafafa;
+  background: var(--xq-surface2);
 }
 .cfl__row.is-base.is-on {
-  background: linear-gradient(180deg, #fff, #f7f1fb);
+  background: linear-gradient(180deg, var(--xq-surface), var(--xq-violet-tint));
 }
 .cfl__row.is-hidden .cfl__main {
   opacity: 0.5;
@@ -523,7 +530,7 @@ function removeSelected() {
 }
 .cfl__name {
   overflow: hidden;
-  color: #1f2329;
+  color: var(--xq-ink);
   font-size: 12.5px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -531,7 +538,7 @@ function removeSelected() {
 }
 .cfl__meta {
   overflow: hidden;
-  color: #8a9099;
+  color: var(--xq-muted);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -542,7 +549,7 @@ function removeSelected() {
   height: 26px;
   box-sizing: border-box;
   padding: 0 6px;
-  border: 1px solid #b99bcb;
+  border: 1px solid var(--cfl-sel);
   border-radius: 6px;
   font: inherit;
   font-size: 12.5px;
@@ -551,7 +558,7 @@ function removeSelected() {
   width: 14px;
   height: 14px;
   flex: 0 0 14px;
-  border: 1px solid rgba(31, 35, 41, 0.15);
+  border: 1px solid rgb(var(--xq-ink-rgb) / 0.15);
   border-radius: 4px;
 }
 .cfl__status {
@@ -563,19 +570,19 @@ function removeSelected() {
   white-space: nowrap;
 }
 .cfl__status.is-busy {
-  background: #f1ecf5;
-  color: #6b487c;
+  background: var(--xq-violet-pill);
+  color: var(--xq-violet-ink);
 }
 .cfl__status.is-warn {
-  background: #fbf3e6;
-  color: #94651f;
+  background: var(--xq-warning-soft);
+  color: var(--xq-warning-fg);
 }
 .cfl__empty {
   margin: 0;
   padding: 6px 8px;
   border-radius: 8px;
-  background: #f7f5f9;
-  color: #7a808a;
+  background: var(--xq-surface2);
+  color: var(--xq-muted);
   font-size: 11px;
   line-height: 16px;
 }

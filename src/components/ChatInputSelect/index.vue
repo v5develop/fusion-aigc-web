@@ -95,7 +95,7 @@ function renderLabel(option: DropdownOption) {
         <svg class="arrow" width="16" height="16" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
             d="M3 4.5L6 7.5L9 4.5"
-            stroke="rgba(0,0,0,0.25)"
+            style="stroke: rgb(var(--xq-ink-rgb) / 0.25)"
             stroke-width=".8"
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -125,7 +125,7 @@ function renderLabel(option: DropdownOption) {
 
     .label {
       font-size: 12px;
-      color: #3a3a3a;
+      color: var(--xq-ink-2);
       line-height: 20px;
       white-space: nowrap;
     }

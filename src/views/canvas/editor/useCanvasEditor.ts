@@ -7,6 +7,7 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { createDiscreteApi } from 'naive-ui'
+import { discreteConfigProviderProps } from '@/theme/naive'
 import { catalogModelLabels, normalizeModelTier } from '@/utils/model-label'
 import {
   canvasGet,
@@ -59,7 +60,9 @@ import type {
   CanvasToolKind,
 } from './types.ts'
 
-const { message, dialog } = createDiscreteApi(['message', 'dialog'])
+const { message, dialog } = createDiscreteApi(['message', 'dialog'], {
+  configProviderProps: discreteConfigProviderProps,
+})
 
 /** 供编辑器子组件使用的消息提示（naive 离散 API，组件树外可用） */
 export const editorMessage = message

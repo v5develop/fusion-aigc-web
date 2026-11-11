@@ -628,7 +628,7 @@ export function createAssetDetail(assetId: Ref<number | null>, props: DetailProp
         key: 'delete',
         label: props.canDelete ? '删除…' : `删除（${props.deleteDisabledReason}）`,
         disabled: !props.canDelete,
-        props: { style: props.canDelete ? 'color: #b4433e' : undefined },
+        props: { style: props.canDelete ? 'color: var(--xq-danger-fg)' : undefined },
       })
     }
     return list

@@ -1,7 +1,7 @@
 /* 全局基础样式 —— 对齐原型 v3（docs/design/ui-design-spec.md §1.6、§1.8、§8.1） */
 :root {
   /* 旧 less 页面用的主色变量，统一为藤紫 */
-  --main-color: #875f9a;
+  --main-color: var(--xq-violet);
 }
 
 *,
@@ -16,9 +16,51 @@ body {
   font-family: 'Smartisan Compact', 'Noto Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #4b5563;
-  background: #f5f6f7;
+  color: var(--xq-ink-2);
+  background: var(--xq-page);
   line-height: normal;
+}
+
+/*
+ * 主题（src/utils/themePrefs.ts）：<html data-theme="light|dark">，令牌值在 src/theme/tokens.ts（uno preflight 注入）。
+ * 背景先落在 <html> 上：index.html 的内联脚本在首帧前写好 data-theme，body 还没解析到时也不会白闪。
+ */
+html {
+  background: var(--xq-page);
+}
+/* 深色下的选区：藤紫半透明 + 白字（浅色保持浏览器默认，不改原样子） */
+[data-theme='dark'] ::selection {
+  background: var(--xq-selection);
+  color: var(--xq-selection-ink);
+}
+/*
+ * 切换主题时的短交叉淡入：优先用 View Transitions（整页一次合成，零重排）；不支持时退化为 160ms 的颜色过渡。
+ * 两种都只在切换那一刻挂上，平时不给全站元素加 transition；系统要求减少动态效果时直接跳变。
+ */
+html.xq-theme-switching,
+html.xq-theme-switching *,
+html.xq-theme-switching *::before,
+html.xq-theme-switching *::after {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    fill 160ms ease,
+    box-shadow 160ms ease !important;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.xq-theme-switching,
+  html.xq-theme-switching * {
+    transition: none !important;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
 }
 
 #app {
@@ -53,7 +95,7 @@ html[data-xq-font='readable'] body {
 
 /* 键盘焦点：可点元素统一 2px 藤紫环（原型 v3-theme.css:75-78）；:where 零特异性，组件自己的焦点样式优先 */
 :where(button, [role='button'], a[href], summary, [tabindex]:not([tabindex='-1'])):focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-focus);
   outline-offset: 2px;
 }
 
@@ -70,12 +112,12 @@ html[data-xq-font='readable'] body {
   min-height: 40px;
   border: 2px solid transparent;
   border-radius: 999px;
-  background-color: rgba(0, 0, 0, 0.18);
+  background-color: var(--xq-scrollbar-thumb);
   background-clip: padding-box;
   transition: background-color 0.2s ease;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.32);
+  background-color: var(--xq-scrollbar-thumb-hover);
 }
 
 /* 修改整个控件面板的背景 */
@@ -84,10 +126,10 @@ video::-webkit-media-controls-panel {
 }
 
 /* ---- Naive 全局覆盖（原型 canvas-v31.css .wf-modal / sx-scoped.css .sx-modal、v3-theme.css 选择菜单） ---- */
-/* 遮罩：墨色 .32（Modal / Drawer 同一档；n-image 预览走自己的 .n-image-preview-overlay，不受影响） */
+/* 遮罩：浅色墨色 .32 / 深色黑 .56（Modal / Drawer 同一档；n-image 预览走自己的 .n-image-preview-overlay，不受影响） */
 .n-modal-mask,
 .n-drawer-mask {
-  background-color: rgba(31, 35, 41, 0.32);
+  background-color: var(--xq-scrim);
 }
 /* 弹窗卡片：圆角 r18 已在 Card 主题，这里补 squircle，与 sx-squircle 一致 */
 .n-modal .n-card,
@@ -120,7 +162,7 @@ video::-webkit-media-controls-panel {
    藤紫墨字、不要对勾；hover / pending 取 surface-3 */
 /* 带 .fusion-dropdown 的面板外层已自带描边（dropdown.less），内层菜单不再描一次，免得双线 */
 .n-dropdown-menu.n-dropdown:not(.fusion-dropdown) {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
 }
 /* 选项整体内缩 4、圆角 6：选中 / hover 底色是缩进的圆角块 */
 .n-base-select-option {
@@ -134,13 +176,13 @@ video::-webkit-media-controls-panel {
 }
 .n-base-select-option:hover,
 .n-base-select-option--pending {
-  background: #f3f4f5;
+  background: var(--xq-surface3);
 }
 .n-base-select-option.n-base-select-option--selected {
-  border-color: #d9c7e3;
-  background: linear-gradient(180deg, #ffffff 0%, #f8f3fc 100%);
-  box-shadow: 0 1px 2px rgba(31, 35, 41, 0.05);
-  color: #6b487c;
+  border-color: var(--xq-violet-line);
+  background: linear-gradient(180deg, var(--xq-surface) 0%, var(--xq-violet-tint) 100%);
+  box-shadow: var(--xq-shadow-hairline);
+  color: var(--xq-violet-ink);
   font-weight: 600;
 }
 .n-base-select-option.n-base-select-option--selected::before {

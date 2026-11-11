@@ -175,7 +175,7 @@ async function regenerate() {
         :id="`studio-prompt-${task.taskId}`"
         v-model="draft"
         class="block w-full h-96px box-border m-0 px-8px py-6px resize-y overflow-y-auto overscroll-contain rounded-6px border border-solid text-12px leading-18px text-ink-2 outline-none"
-        :class="isPose ? 'border-[#bfe3c8] bg-[#f3fbf5] focus:border-violet' : 'border-line bg-surface2'"
+        :class="isPose ? 'border-success-line bg-success-soft focus:border-violet' : 'border-line bg-surface2'"
         :readonly="!isPose"
         :maxlength="PROMPT_MAX + 200"
         spellcheck="false"

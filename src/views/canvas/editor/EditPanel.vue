@@ -213,7 +213,7 @@ const canSubmit = computed(() => !run.busy.value && promptLength.value > 0)
           >
             <input
               type="checkbox"
-              class="absolute top-3px left-3px m-0 accent-[#875f9a]"
+              class="absolute top-3px left-3px m-0 accent-[var(--xq-violet)]"
               :checked="extras.includes(item.url)"
               :disabled="!extras.includes(item.url) && images.length >= MAX_IMAGES"
               :aria-label="`同时使用 ${item.label}`"
@@ -257,7 +257,7 @@ const canSubmit = computed(() => !run.busy.value && promptLength.value > 0)
 
       <p
         v-if="!identifiableUrl(previewUrl)"
-        class="m-0 mb-10px px-10px py-8px rounded-8px bg-[#f8f1e4] text-warning text-12px"
+        class="m-0 mb-10px px-10px py-8px rounded-8px bg-warning-soft text-warning text-12px"
       >
         这张图不是 jpg、png、webp，不能选区域，可以直接写编辑要求
       </p>

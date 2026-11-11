@@ -722,7 +722,7 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
             :class="[
               COLLECT_CLS,
               filters.collected
-                ? 'bg-[#fffbeb] border-[#fcd34d] text-[#b45309]'
+                ? 'bg-warning-soft border-warning-line text-warning'
                 : 'bg-white border-line text-ink-2 hover:border-line-strong',
             ]"
             @click="filters.collected = !filters.collected"
@@ -786,8 +786,8 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
               v-for="item in items"
               :key="item.taskId"
               :data-task-id="item.taskId"
-              class="sx-squircle flex items-center gap-12px p-12px rounded-18px border border-solid border-line bg-white [transition:border-color_110ms,box-shadow_110ms] hover:(border-#c9cfd6 shadow-[0_1px_2px_rgba(31,35,41,0.05)])"
-              :class="highlightId === item.taskId && '!border-violet shadow-[0_0_0_3px_rgba(124,92,255,0.18)]'"
+              class="sx-squircle flex items-center gap-12px p-12px rounded-18px border border-solid border-line bg-white [transition:border-color_110ms,box-shadow_110ms] hover:(border-control shadow-[0_1px_2px_rgba(31,35,41,0.05)])"
+              :class="highlightId === item.taskId && '!border-violet shadow-focus'"
             >
               <div class="min-w-0 flex-1 flex items-center gap-12px rounded-12px">
                 <!-- 缩略 44 / r6：被屏蔽或加载失败走占位；文本产物显示正文首段 -->

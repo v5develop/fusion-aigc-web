@@ -143,7 +143,7 @@ const focusRing =
                 focusRing,
                 card.cover ? '!px-0' : 'px-14px',
                 card.route
-                  ? 'cursor-pointer hover:border-violet-line hover:bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] hover:shadow-[0_1px_2px_rgba(31,35,41,0.05)] active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.1)]'
+                  ? 'cursor-pointer hover:border-violet-line hover:bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] hover:shadow-[0_1px_2px_rgba(31,35,41,0.05)] active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.1)]'
                   : 'cursor-not-allowed',
               ]"
             >
@@ -161,12 +161,12 @@ const focusRing =
                   @error="onImgError"
                 />
                 <span
-                  class="absolute inset-y-0 right-0 w-18px bg-[linear-gradient(90deg,transparent,#fff)] pointer-events-none"
+                  class="absolute inset-y-0 right-0 w-18px bg-[linear-gradient(90deg,transparent,var(--xq-surface))] pointer-events-none"
                 />
               </span>
               <span
                 v-else
-                class="shrink-0 grid place-items-center w-40px h-40px box-border rounded-8px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff] text-violet-ink"
+                class="shrink-0 grid place-items-center w-40px h-40px box-border rounded-8px border border-solid border-line sx-grad-icon shadow-[inset_0_1px_0_#fff] text-violet-ink"
               >
                 <svg
                   viewBox="0 0 24 24"

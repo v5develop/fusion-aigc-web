@@ -140,7 +140,7 @@ const bookBtnCls =
     <!-- data-paste-area：框里的参考图条（ToolUploadSlot）据此认领「在提示词里粘贴、剪贴板只有文件」的粘贴 -->
     <div
       data-paste-area
-      class="sx-squircle relative flex flex-col box-border min-h-[220px] max-[1439px]:min-h-[320px] rounded-18px border border-solid border-#c9cfd6 bg-[linear-gradient(#fbfcfc,#ffffff)] shadow-[inset_0_0_10px_rgba(31,35,41,0.085),inset_0_1px_0_rgba(31,35,41,0.04)] [transition:box-shadow_160ms] motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)]"
+      class="sx-squircle relative flex flex-col box-border min-h-[220px] max-[1439px]:min-h-[320px] rounded-18px border border-solid border-control bg-[linear-gradient(var(--xq-plate-bottom),var(--xq-surface))] shadow-[inset_0_0_10px_rgba(31,35,41,0.085),inset_0_1px_0_rgba(31,35,41,0.04)] [transition:box-shadow_160ms] motion-reduce:transition-none focus-within:shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)]"
       :class="[disabled ? 'bg-none bg-surface3 cursor-not-allowed' : '', ml ? 'flex-1 p-12px' : 'p-10px']"
     >
       <!-- ml：字段名只给读屏（必填照读），视觉上不单占一行 -->
@@ -222,13 +222,13 @@ const bookBtnCls =
             class="relative after:(content-empty absolute -inset-x-4px -inset-y-6px rounded-[inherit]) [@media(pointer:coarse)]:after:-inset-y-10px flex-none w-34px h-20px box-border p-0 rounded-full border border-solid cursor-pointer [transition:background_180ms_cubic-bezier(0.2,0.7,0.2,1),border-color_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
             :class="
               rewrite
-                ? 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)]'
-                : 'border-#c9cfd6 bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]'
+                ? 'border-violet-border bg-[linear-gradient(var(--xq-violet-top),var(--xq-violet-bottom))]'
+                : 'border-control bg-[linear-gradient(var(--xq-surface3),var(--xq-sunk-bottom))] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]'
             "
             @click="rewrite = !rewrite"
           >
             <span
-              class="absolute top-2px w-14px h-14px rounded-full bg-white shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
+              class="absolute top-2px w-14px h-14px rounded-full bg-#fff shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
               :class="rewrite ? 'left-16px' : 'left-2px'"
               aria-hidden="true"
             />

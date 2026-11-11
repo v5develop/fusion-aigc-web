@@ -420,7 +420,7 @@ const tryClick = (url: string) => {
 // 样式（规范 §5.9 上传槽、§4.1 按钮、§4.2 动效）：1px 控件描边 + 白→#f9fafb，r8；hover 描边 violet-line、底 →#fbf7fd
 const ZONE =
   'relative flex flex-col items-center pb-16px overflow-hidden rounded-lg border border-solid border-control sx-grad-upload ' +
-  'transition-colors duration-mid ease-sx hover:(border-violet-line to-#fbf7fd) motion-reduce:transition-none'
+  'transition-colors duration-mid ease-sx hover:(border-violet-line to-upload-hover-bottom) motion-reduce:transition-none'
 // 右上角「支持多图」角标：柔紫底 + 紫字，左下圆角与槽位 r8 一致
 const LIMIT_TIPS =
   'absolute top-0 right-0 w-124px h-24px flex items-center justify-center text-12px rounded-[0_8px] bg-violet-soft text-violet-ink'
@@ -435,7 +435,7 @@ const DELETE_BTN =
 // card 型触发块：与上传槽同材质；格子档位 r12（内部缩略 r11）
 const CARD_TRIGGER =
   'w-full h-full p-0 flex flex-col items-center justify-center gap-4px cursor-pointer rounded-12px [font-family:inherit] ' +
-  'border border-solid border-control sx-grad-upload hover:(border-violet-line to-#fbf7fd) active:scale-[0.98] ' +
+  'border border-solid border-control sx-grad-upload hover:(border-violet-line to-upload-hover-bottom) active:scale-[0.98] ' +
   'transition-[border-color,transform] duration-mid ease-sx motion-reduce:transition-none sx-focus'
 // 失败格的移除钮：压在格子右上角外沿，不和居中的「上传失败 / 重试」抢位（小格 58 放不下三样）
 const PENDING_REMOVE_BTN =

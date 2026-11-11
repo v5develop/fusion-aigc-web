@@ -65,11 +65,11 @@ function close(refocus = false) {
   >
     <template #trigger>
       <div
-        class="relative flex-none box-border flex items-center gap-12px h-64px mx-12px mt-12px px-14px py-12px rounded-8px border border-solid border-#e9dff2 bg-[linear-gradient(180deg,#fff_0%,#fbf7fe_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
+        class="relative flex-none box-border flex items-center gap-12px h-64px mx-12px mt-12px px-14px py-12px rounded-8px border border-solid border-violet-soft-2 bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-soft-tint)_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
         @keydown.esc="close(true)"
       >
         <span
-          class="flex-none grid place-items-center w-56px h-40px box-border rounded-6px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] text-violet"
+          class="flex-none grid place-items-center w-56px h-40px box-border rounded-6px border border-solid border-line sx-grad-icon text-violet"
           aria-hidden="true"
         >
           <svg
@@ -123,7 +123,7 @@ function close(refocus = false) {
       aria-label="切换工作流模板"
       @keydown.esc.stop="close(true)"
     >
-      <header class="flex-none flex items-center gap-8px h-44px px-14px shadow-[inset_0_-1px_0_#eff1f3]">
+      <header class="flex-none flex items-center gap-8px h-44px px-14px shadow-[inset_0_-1px_0_var(--xq-line-soft)]">
         <b class="flex-1 text-13px font-600 text-muted">切换模板</b>
         <span class="text-11px text-placeholder">{{ total }} 个</span>
       </header>
@@ -151,7 +151,7 @@ function close(refocus = false) {
                   class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-10px gap-y-2px min-h-52px box-border py-7px pl-18px pr-10px rounded-6px border border-solid no-underline transition-colors outline-none focus-visible:(outline-2 outline-solid outline-violet -outline-offset-2)"
                   :class="
                     s.schemaId === current.schemaId
-                      ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                      ? 'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
                       : 'border-transparent bg-transparent hover:bg-surface3'
                   "
                   :aria-current="s.schemaId === current.schemaId ? 'page' : undefined"
@@ -167,7 +167,7 @@ function close(refocus = false) {
                   </span>
                   <span
                     class="col-span-full truncate text-11px leading-16px"
-                    :class="s.schemaId === current.schemaId ? 'text-#8a6d99' : 'text-muted'"
+                    :class="s.schemaId === current.schemaId ? 'text-#8a6d99 [[data-theme=dark]_&]:text-violet-fg' : 'text-muted'"
                   >
                     {{ s.uploads.map((u) => u.label).join(' · ') || '无需本地上传' }}
                   </span>

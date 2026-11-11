@@ -490,7 +490,7 @@ watch(
   outline: none;
   font-size: 16px;
   line-height: 28px;
-  color: #3a3a3a;
+  color: var(--xq-ink-2);
   word-break: break-all;
   min-height: 100px;
   max-height: 160px;
@@ -498,7 +498,7 @@ watch(
 
   &:empty::before {
     content: attr(data-placeholder);
-    color: #bfbfbf;
+    color: var(--xq-placeholder);
     pointer-events: none;
   }
 
@@ -516,9 +516,13 @@ watch(
   }
 
   :deep(.ps-slot--select) {
-    background: #f0ebff;
-    border: 1px solid #d8b4fe;
+    background: var(--xq-violet-soft);
+    border: 1px solid var(--xq-violet-line);
     color: #8e66f9;
+    // 深色：亮紫在深底上发荧光，换藤紫
+    [data-theme='dark'] & {
+      color: var(--xq-violet-fg);
+    }
     gap: 4px;
     cursor: pointer;
 
@@ -533,8 +537,12 @@ watch(
   }
 
   :deep(.ps-slot--upload) {
-    background: #f0ebff;
+    background: var(--xq-violet-soft);
     color: rgba(142, 102, 249, 0.5);
+    // 深色：亮紫在深底上发荧光，换藤紫
+    [data-theme='dark'] & {
+      color: rgb(var(--xq-violet-fg-rgb) / 0.5);
+    }
     gap: 4px;
     cursor: pointer;
 
@@ -542,7 +550,7 @@ watch(
       width: 16px;
       height: 16px;
       border-radius: 2px;
-      background: #fff;
+      background: var(--xq-surface);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -552,8 +560,8 @@ watch(
     &.filled {
       height: 27px;
       padding: 2px 4px;
-      background: #fff;
-      border: 1px solid #f0f0f0;
+      background: var(--xq-surface);
+      border: 1px solid var(--xq-line-soft);
       box-shadow: 0 1px 6px 0 rgba(0, 0, 0, 0.06);
       gap: 6px;
       border-radius: 8px;
@@ -588,8 +596,8 @@ watch(
         width: 14px;
         height: 14px;
         border-radius: 0 4px 0 4px;
-        background: rgba(255, 255, 255, 0.85);
-        color: #8f8f8f;
+        background: rgb(var(--xq-surface-rgb) / 0.85);
+        color: var(--xq-muted);
         font-size: 10px;
         line-height: 14px;
         text-align: center;
@@ -598,7 +606,7 @@ watch(
 
         &:hover {
           color: #f5222d;
-          background: #fff;
+          background: var(--xq-surface);
         }
       }
 
@@ -608,7 +616,7 @@ watch(
 
       .ps-remove {
         cursor: pointer;
-        color: #bfbfbf;
+        color: var(--xq-placeholder);
         font-size: 14px;
         flex-shrink: 0;
         padding: 0 2px;
@@ -635,7 +643,7 @@ watch(
 }
 
 .ps-dropdown {
-  background: #fff;
+  background: var(--xq-surface);
   border-radius: 12px;
   box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.12);
   min-width: 148px;
@@ -647,7 +655,7 @@ watch(
   font-size: 14px;
   line-height: 20px;
   font-weight: 400;
-  color: #8f8f8f;
+  color: var(--xq-muted);
   padding: 8px 16px;
 }
 
@@ -679,21 +687,21 @@ watch(
   border-radius: 8px;
   font-size: 14px;
   line-height: 20px;
-  color: #3a3a3a;
+  color: var(--xq-ink-2);
   cursor: pointer;
   gap: 8px;
 }
 
 .ps-dropdown-item:hover {
-  background: #f5f6f8;
+  background: var(--xq-page);
 }
 
 .ps-dropdown-item.active {
-  background: #f5f6f8;
+  background: var(--xq-page);
 }
 
 .ps-dropdown-item.active .ps-dropdown-label {
-  color: #3a3a3a;
+  color: var(--xq-ink-2);
   font-weight: 400;
 }
 
@@ -702,6 +710,10 @@ watch(
   font-size: 12px;
   flex-shrink: 0;
 }
+/* 深色：亮紫在深底上发荧光，换藤紫 */
+[data-theme='dark'] .ps-dropdown-check {
+  color: var(--xq-violet-fg);
+}
 
 .ps-dropdown-empty {
   height: 40px;
@@ -709,7 +721,7 @@ watch(
   align-items: center;
   padding: 10px 16px;
   font-size: 14px;
-  color: #bfbfbf;
+  color: var(--xq-placeholder);
   cursor: default;
 }
 </style>

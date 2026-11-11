@@ -804,7 +804,7 @@ onBeforeUnmount(() => hideRailTips(true))
             </button>
             <button
               type="button"
-              class="h-22px rounded-sm border border-solid border-white bg-white px-8px text-12px font-600 leading-20px text-violet-ink cursor-pointer shadow-[0_1px_2px_rgba(40,24,48,0.18)] transition-[background,border-color,box-shadow] duration-120 ease-[ease] hover:(border-violet-tint bg-violet-tint) active:(border-#efe6f5 bg-#efe6f5 shadow-[inset_0_1px_2px_rgba(40,24,48,0.12)]) focus-visible:(outline outline-2 outline-solid outline-white outline-offset-1)"
+              class="h-22px rounded-sm border border-solid border-white bg-white px-8px text-12px font-600 leading-20px text-violet-ink cursor-pointer shadow-[0_1px_2px_rgba(40,24,48,0.18)] transition-[background,border-color,box-shadow] duration-120 ease-[ease] hover:(border-violet-tint bg-violet-tint) active:(border-violet-icon-b bg-violet-icon-b shadow-[inset_0_1px_2px_rgba(40,24,48,0.12)]) focus-visible:(outline outline-2 outline-solid outline-white outline-offset-1)"
               @click="emit('update')"
             >
               立即更新
@@ -950,7 +950,7 @@ onBeforeUnmount(() => hideRailTips(true))
                 railMode
                   ? 'contents'
                   : gi
-                    ? 'mt-16px pt-10px shadow-[inset_0_0.8px_0_#efefef,inset_0_2px_3px_-2px_rgba(31,35,41,0.10)]'
+                    ? 'mt-16px pt-10px shadow-[inset_0_0.8px_0_var(--xq-engrave),inset_0_2px_3px_-2px_rgba(31,35,41,0.10)]'
                     : ''
               "
             >

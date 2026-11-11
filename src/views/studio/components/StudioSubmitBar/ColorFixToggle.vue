@@ -32,13 +32,13 @@ const { disabled = false, size = 'md' } = defineProps<{
       class="relative flex-none w-34px h-20px box-border p-0 rounded-full border border-solid cursor-pointer after:(content-empty absolute -inset-x-4px -inset-y-6px rounded-[inherit]) [@media(pointer:coarse)]:after:-inset-y-10px [transition:background_180ms_cubic-bezier(0.2,0.7,0.2,1),border-color_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none sx-focus disabled:(opacity-50 cursor-not-allowed)"
       :class="
         enabled
-          ? 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)]'
-          : 'border-#c9cfd6 bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]'
+          ? 'border-violet-border bg-[linear-gradient(var(--xq-violet-top),var(--xq-violet-bottom))]'
+          : 'border-control bg-[linear-gradient(var(--xq-surface3),var(--xq-sunk-bottom))] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]'
       "
       @click="enabled = !enabled"
     >
       <span
-        class="absolute top-2px w-14px h-14px rounded-full bg-white shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
+        class="absolute top-2px w-14px h-14px rounded-full bg-#fff shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
         :class="enabled ? 'left-16px' : 'left-2px'"
         aria-hidden="true"
       />

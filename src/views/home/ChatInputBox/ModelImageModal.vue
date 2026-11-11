@@ -249,7 +249,7 @@ function onLibScroll(e: Event) {
 .model-image-modal {
   width: 392px;
   height: 410px;
-  background: #f5f6f8;
+  background: var(--xq-page);
   border-radius: 16px;
   display: flex;
   flex-direction: column;
@@ -272,20 +272,20 @@ function onLibScroll(e: Event) {
   font-family: 'PingFang SC', sans-serif;
   font-size: 14px;
   font-weight: 500;
-  color: #8f8f8f;
+  color: var(--xq-muted);
   cursor: pointer;
   line-height: 20px;
 
   &.active {
-    color: #1f1f1f;
+    color: var(--xq-ink);
   }
 }
 
 // ====== 白色内容区 ======
 .modal-body {
   flex: 1;
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--xq-surface);
+  border: 1px solid var(--xq-line-soft);
   border-radius: 16px 16px 0 0;
   padding: 12px;
   display: flex;
@@ -309,7 +309,7 @@ function onLibScroll(e: Event) {
   width: 100%;
   flex: 1;
   margin: 12px;
-  border: 1px dashed #c7c7c7;
+  border: 1px dashed var(--xq-control);
   border-radius: 12px;
   justify-content: center;
   cursor: pointer;
@@ -317,6 +317,10 @@ function onLibScroll(e: Event) {
 
   &.dragging {
     border-color: #8e66f9;
+    // 深色：亮紫在深底上发荧光，换藤紫
+    [data-theme='dark'] & {
+      border-color: var(--xq-violet);
+    }
     background: rgba(142, 102, 249, 0.04);
   }
 }
@@ -325,7 +329,7 @@ function onLibScroll(e: Event) {
   font-family: 'PingFang SC', sans-serif;
   font-size: 14px;
   font-weight: 500;
-  color: #1f1f1f;
+  color: var(--xq-ink);
   line-height: 20px;
 }
 
@@ -333,7 +337,7 @@ function onLibScroll(e: Event) {
   font-family: 'PingFang SC', sans-serif;
   font-size: 14px;
   font-weight: 500;
-  color: #1f1f1f;
+  color: var(--xq-ink);
   line-height: 20px;
   margin-top: 4px;
 
@@ -341,12 +345,12 @@ function onLibScroll(e: Event) {
     display: inline-block;
     width: 18px;
     height: 18px;
-    border: 1px solid #c7c7c7;
+    border: 1px solid var(--xq-control);
     border-radius: 3px;
     font-size: 11px;
     line-height: 18px;
     text-align: center;
-    color: #8f8f8f;
+    color: var(--xq-muted);
     margin-right: 2px;
   }
 }
@@ -355,7 +359,7 @@ function onLibScroll(e: Event) {
   font-family: 'PingFang SC', sans-serif;
   font-size: 14px;
   font-weight: 400;
-  color: #8f8f8f;
+  color: var(--xq-muted);
   line-height: 20px;
   margin-top: 12px;
 }
@@ -390,7 +394,7 @@ function onLibScroll(e: Event) {
 .filter-bar {
   display: flex;
   gap: 4px;
-  background: #f5f6f8;
+  background: var(--xq-page);
   border-radius: 4px;
   padding: 2px;
   margin-bottom: 8px;
@@ -407,12 +411,12 @@ function onLibScroll(e: Event) {
   font-family: 'PingFang SC', sans-serif;
   font-size: 14px;
   font-weight: 500;
-  color: #8f8f8f;
+  color: var(--xq-muted);
   cursor: pointer;
 
   &.active {
-    background: #fff;
-    color: #3a3a3a;
+    background: var(--xq-surface);
+    color: var(--xq-ink-2);
   }
 }
 
@@ -434,7 +438,7 @@ function onLibScroll(e: Event) {
   width: 86px;
   height: 86px;
   border-radius: 8px;
-  background: #f5f6f8;
+  background: var(--xq-page);
   overflow: hidden;
   cursor: pointer;
   flex-shrink: 0;
@@ -444,6 +448,10 @@ function onLibScroll(e: Event) {
 
   &.selected {
     border-color: #8e66f9;
+    // 深色：亮紫在深底上发荧光，换藤紫
+    [data-theme='dark'] & {
+      border-color: var(--xq-violet);
+    }
   }
 
   img {

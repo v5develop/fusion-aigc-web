@@ -153,7 +153,7 @@ const cursorStyle = computed(() =>
       <p class="m-0 text-12px leading-18px text-muted">
         {{ hint || '单击图上要替换的那种颜色（如衣服的主色）。方向键可微调位置，回车取色。' }}
       </p>
-      <p v-if="error" class="m-0 px-12px py-8px rounded-12px bg-#fbeceb text-12px leading-18px text-#b4433e" role="alert">
+      <p v-if="error" class="m-0 px-12px py-8px rounded-12px bg-danger-soft text-12px leading-18px text-danger" role="alert">
         {{ error }}
       </p>
       <div

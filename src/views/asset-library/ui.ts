@@ -16,24 +16,24 @@ export const PILL_CLS =
   'sx-squircle inline-flex items-center gap-5px shrink-0 h-30px px-10px rounded-15px border border-solid text-12px font-500 leading-none whitespace-nowrap cursor-pointer select-none ' +
   'transition-[border-color,background,color,box-shadow] duration-fast sx-focus'
 export const PILL_OFF =
-  'border-line text-ink-2 bg-gradient-to-b from-white to-#f4f5f7 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-#d3d7dd'
+  'border-line text-ink-2 bg-gradient-to-b from-white to-surface3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-line-strong'
 export const PILL_ON =
-  'border-#dfe1e5 text-violet-ink bg-gradient-to-b from-white to-#fbfbfc shadow-[inset_0_2px_5px_rgba(31,35,41,0.10),inset_0_-1px_0_rgba(255,255,255,0.9)]'
+  'border-line text-violet-ink bg-gradient-to-b from-white to-plate-bottom shadow-[inset_0_2px_5px_rgba(31,35,41,0.10),inset_0_-1px_0_rgba(255,255,255,0.9)]'
 
 /** 胶囊里的计数 */
 export const PILL_COUNT_CLS = 'text-11px leading-none tabular-nums opacity-70'
 
 /** 工具钮（选择 / 筛选 / 标签管理）：32 高、胶囊 */
 export const TOOL_CLS =
-  'sx-squircle inline-flex items-center gap-6px shrink-0 h-32px px-12px rounded-16px border border-solid border-control bg-gradient-to-b from-white to-#f8f9fa ' +
+  'sx-squircle inline-flex items-center gap-6px shrink-0 h-32px px-12px rounded-16px border border-solid border-control bg-gradient-to-b from-white to-soft-bottom ' +
   'shadow-[inset_0_1px_0_#fff,0_1px_2px_rgba(31,35,41,0.05)] text-12px font-500 text-ink-2 whitespace-nowrap cursor-pointer select-none ' +
   'hover:(border-violet-line text-violet-ink bg-white) active:shadow-press disabled:(opacity-50 cursor-not-allowed) sx-focus'
 export const TOOL_ON = '!border-violet-line !text-violet-ink !bg-violet-soft !bg-none'
 
 /** 搜索框（原型 relay-search：中性描边 + 内阴影，聚焦只加深内阴影） */
 export const SEARCH_CLS =
-  'sx-squircle flex items-center gap-6px shrink-0 w-190px h-32px ml-auto px-12px rounded-16px border border-solid border-control bg-gradient-to-b from-white to-#f8f9fa text-placeholder ' +
-  'focus-within:(border-#b9bfc4 shadow-[inset_0_2px_6px_rgba(31,35,41,0.13)]) max-md:w-150px'
+  'sx-squircle flex items-center gap-6px shrink-0 w-190px h-32px ml-auto px-12px rounded-16px border border-solid border-control bg-gradient-to-b from-white to-soft-bottom text-placeholder ' +
+  'focus-within:(border-soft-line-focus shadow-[inset_0_2px_6px_rgba(31,35,41,0.13)]) max-md:w-150px'
 
 /** 下载文件名：标题去掉文件系统不认的字符 */
 export function downloadName(title: string, isVideo: boolean): string {

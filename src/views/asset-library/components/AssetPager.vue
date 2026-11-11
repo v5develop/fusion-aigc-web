@@ -10,7 +10,7 @@ const props = defineProps<{ total: number; pageSize: number; disabled?: boolean 
 const pageCount = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
 
 const BTN =
-  'sx-squircle inline-flex items-center h-32px px-14px rounded-16px border border-solid border-control bg-gradient-to-b from-white to-#f8f9fa text-12px text-ink-2 cursor-pointer ' +
+  'sx-squircle inline-flex items-center h-32px px-14px rounded-16px border border-solid border-control bg-gradient-to-b from-white to-soft-bottom text-12px text-ink-2 cursor-pointer ' +
   'hover:enabled:(border-violet-line text-violet-ink bg-white) disabled:(opacity-50 cursor-not-allowed) sx-focus'
 </script>
 

@@ -360,8 +360,8 @@ defineExpose({ addFiles })
         box-shadow: 0 1px 6px 0 rgba(0, 0, 0, 0.03);
         border-radius: 8px;
         &:hover {
-          border-color: #d9c7e3;
-          --un-gradient-to: #fbf7fd;
+          border-color: var(--xq-violet-line);
+          --un-gradient-to: var(--xq-upload-hover-bottom);
         }
         cursor: pointer;
         display: flex;
@@ -369,7 +369,7 @@ defineExpose({ addFiles })
         align-items: center;
         transform: rotate(-@rotate);
         > .icon-ic_home_upload1 {
-          color: #8f8f8f;
+          color: var(--xq-muted);
         }
         > .label {
           font-size: 12px;

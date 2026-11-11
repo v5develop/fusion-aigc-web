@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * 用户中心：左侧竖向菜单（基本资料 / 账户安全 / 账户信息 / 字体显示），右侧白卡展示选中分区。
- * 「字体显示」可用 /user-center?section=display 直达。
+ * 用户中心：左侧竖向菜单（基本资料 / 账户安全 / 账户信息 / 外观与字体），右侧卡片展示选中分区。
+ * 「外观与字体」可用 /user-center?section=display 直达（沿用原「字体显示」的 key，老链接照常可用）。
  * 资料字段（昵称、邮箱、账号、注册时间、状态）store 未暴露，本页直接调 GET /api/v1/auth/user-info。
  */
 import { onMounted, ref } from 'vue'
@@ -23,7 +23,7 @@ const MENU: { key: SectionKey; label: string }[] = [
   { key: 'profile', label: '基本资料' },
   { key: 'security', label: '账户安全' },
   { key: 'account', label: '账户信息' },
-  { key: 'display', label: '字体显示' },
+  { key: 'display', label: '外观与字体' },
 ]
 
 const route = useRoute()

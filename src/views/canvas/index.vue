@@ -92,7 +92,7 @@ const BTN_SHADOW =
   'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]'
 const BTN_BASE =
   'sx-squircle inline-flex items-center justify-center gap-6px rounded-14px border border-solid text-13px font-500 cursor-pointer transition-[background,border-color,box-shadow] duration-120 ease-[ease] focus-visible:(outline outline-2 outline-violet outline-offset-2)'
-const BTN_DEFAULT = `${BTN_BASE} ${BTN_SHADOW} h-32px px-12px border-#c9cfd6 bg-gradient-to-b from-white to-#fbfcfc text-ink-2 hover:(border-#aeb6bf from-surface2 to-surface2 text-ink)`
+const BTN_DEFAULT = `${BTN_BASE} ${BTN_SHADOW} h-32px px-12px border-control bg-gradient-to-b from-white to-plate-bottom text-ink-2 hover:(border-control-hover from-surface2 to-surface2 text-ink)`
 /** 原型 .ch-btn.is-lg：高 34、内边距 16 */
 const BTN_LG = `${BTN_BASE} ${BTN_SHADOW} h-36px px-16px`
 
@@ -327,7 +327,7 @@ const MORE_OPTIONS: DropdownOption[] = [
   { key: 'rename', label: '重命名' },
   { key: 'copy', label: '创建副本' },
   { type: 'divider', key: 'd1' },
-  { key: 'remove', label: () => h('span', { style: 'color:#c0392b' }, '删除') },
+  { key: 'remove', label: () => h('span', { style: 'color:var(--xq-danger-fg)' }, '删除') },
 ]
 
 function onMore(key: string | number, item: ICanvasSummary) {
@@ -464,7 +464,7 @@ async function doSaveAs(title: string) {
                 type="button"
                 :class="[
                   BTN_LG,
-                  'border-violet-line bg-gradient-to-b from-white to-#fbfcfc text-violet-ink hover:(border-#c9b2d8 from-violet-soft to-violet-soft)',
+                  'border-violet-line bg-gradient-to-b from-white to-plate-bottom text-violet-ink hover:(border-violet from-violet-soft to-violet-soft)',
                 ]"
                 :disabled="creating || !!startingTemplate"
                 @click="createBlank()"
@@ -523,7 +523,7 @@ async function doSaveAs(title: string) {
               >
                 <!-- 预览 170h r12：真实编辑态截图，加载失败回落同色调色块 + 迷你节点 -->
                 <span
-                  class="relative block h-170px rounded-12px overflow-hidden [&>i]:(absolute block rounded-3px border-[0.8px] border-solid border-[rgba(51,51,51,0.08)] bg-white/92) border-[0.8px] border-solid border-[rgba(51,51,51,0.06)]"
+                  class="relative block h-170px rounded-12px overflow-hidden [&>i]:(absolute block rounded-3px border-[0.8px] border-solid border-ink/8 bg-white/92) border-[0.8px] border-solid border-[rgba(51,51,51,0.06)]"
                   :class="t.tint"
                   aria-hidden="true"
                 >
@@ -585,10 +585,10 @@ async function doSaveAs(title: string) {
             </div>
             <div
               v-else-if="loadError && !items.length"
-              class="flex flex-col items-center gap-8px px-20px py-32px rounded-14px border border-solid border-#e4b7b4 bg-#fdf5f4 text-13px text-#a1423d text-center"
+              class="flex flex-col items-center gap-8px px-20px py-32px rounded-14px border border-solid border-danger-line bg-danger-soft text-13px text-alert-danger text-center"
               role="alert"
             >
-              <strong class="text-14px text-#a1423d">画布列表没有加载出来</strong>
+              <strong class="text-14px text-alert-danger">画布列表没有加载出来</strong>
               <p class="m-0">{{ loadError }}</p>
               <button type="button" :class="BTN_DEFAULT" @click="reload()">重试</button>
             </div>
@@ -616,7 +616,7 @@ async function doSaveAs(title: string) {
                     />
                     <span
                       v-else
-                      class="relative w-54px h-34px [&>i]:(absolute block w-14px h-9px rounded-2px border-[0.8px] border-solid border-#d9dde5 bg-white)"
+                      class="relative w-54px h-34px [&>i]:(absolute block w-14px h-9px rounded-2px border-[0.8px] border-solid border-line-strong bg-white)"
                       aria-hidden="true"
                     >
                       <i class="top-2px left-2px" />
@@ -734,6 +734,6 @@ async function doSaveAs(title: string) {
 
 // 滚动条 mixin（::-webkit-scrollbar 伪元素）无法用原子类表达
 .canvas-scroll {
-  .scrollbar(@width: 8px, @trackColor: #f7f8f9, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
+  .scrollbar(@width: 8px, @trackColor: var(--xq-surface2), @thumbColor: var(--xq-scrollbar-thumb), @thumbWidth: 4px, @hoverColor: var(--xq-scrollbar-thumb-hover));
 }
 </style>

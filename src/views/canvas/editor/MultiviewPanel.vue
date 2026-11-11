@@ -260,7 +260,7 @@ const retryText = computed(() => {
             <input
               :id="`mv-${slider.key}`"
               type="range"
-              class="flex-1 min-w-0 accent-[#875f9a] cursor-pointer"
+              class="flex-1 min-w-0 accent-[var(--xq-violet)] cursor-pointer"
               :min="slider.min"
               :max="slider.max"
               :step="slider.step"
@@ -321,7 +321,7 @@ const retryText = computed(() => {
             v-for="(item, index) in items"
             :key="item.taskId"
             class="relative grid aspect-square place-items-center overflow-hidden rounded-8px border border-solid"
-            :class="item.status === 'error' ? 'border-[#e4b7b4] bg-[#fbeeed]' : 'border-line bg-page'"
+            :class="item.status === 'error' ? 'border-danger-line bg-danger-soft' : 'border-line bg-page'"
             :title="item.error"
           >
             <img

@@ -311,7 +311,7 @@ const checkPath = 'M5 12.5l4.2 4.2L19 7'
             type="button"
             data-nav="0"
             :tabindex="focusIndex === 0 ? 0 : -1"
-            class="flex flex-col items-center justify-center gap-6px min-h-200px p-12px box-border rounded-lg border border-dashed border-control sx-grad-upload text-violet text-center cursor-pointer transition-colors duration-mid hover:(border-violet-line to-#fbf7fd) disabled:(cursor-wait opacity-60) sx-focus"
+            class="flex flex-col items-center justify-center gap-6px min-h-200px p-12px box-border rounded-lg border border-dashed border-control sx-grad-upload text-violet text-center cursor-pointer transition-colors duration-mid hover:(border-violet-line to-upload-hover-bottom) disabled:(cursor-wait opacity-60) sx-focus"
             :class="dragging && 'sx-drop'"
             :disabled="uploading"
             @click="openCreate()"
@@ -358,7 +358,7 @@ const checkPath = 'M5 12.5l4.2 4.2L19 7'
                 :class="
                   pickedIndex(item) >= 0
                     ? 'sx-grad-primary border-violet-border text-white shadow-btn'
-                    : 'border-white/90 bg-black/18 text-transparent opacity-0 group-hover:opacity-100'
+                    : 'border-[rgba(255,255,255,0.9)] bg-black/18 text-transparent opacity-0 group-hover:opacity-100'
                 "
                 aria-hidden="true"
               >

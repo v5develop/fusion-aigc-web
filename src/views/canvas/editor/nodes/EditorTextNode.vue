@@ -84,7 +84,7 @@ const sourceRefs = computed(() => {
         placeholder="输入提示词…"
         :aria-label="`${data.title || '文字'} 提示词`"
       />
-      <footer class="flex shrink-0 h-32px items-center gap-8px text-[#7f7f7f] text-11px font-500 tabular-nums">
+      <footer class="flex shrink-0 h-32px items-center gap-8px text-muted text-11px font-500 tabular-nums">
         {{ text.length }} / {{ TEXT_MAX }}
       </footer>
       <div v-if="sourceRefs.length" class="flex flex-col gap-4px">
@@ -92,7 +92,7 @@ const sourceRefs = computed(() => {
           v-for="source in sourceRefs"
           :key="`source-${source.id}`"
           type="button"
-          class="flex w-full h-22px items-center gap-8px px-8px border border-solid border-violet-line rounded-4px bg-violet-soft text-violet-ink text-12px text-left cursor-pointer transition-colors duration-120 hover:border-[#c9b2d8] hover:bg-violet-soft-2 nodrag"
+          class="flex w-full h-22px items-center gap-8px px-8px border border-solid border-violet-line rounded-4px bg-violet-soft text-violet-ink text-12px text-left cursor-pointer transition-colors duration-120 hover:border-violet hover:bg-violet-soft-2 nodrag"
           :class="FOCUS_RING"
           :title="`生成节点的图片输入 · ${source.name}`"
           @click.stop="emit('locate', source.id)"

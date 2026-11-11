@@ -24,7 +24,7 @@ const emit = defineEmits<{ click: [event: MouseEvent] }>()
 <template>
   <button
     type="button"
-    class="absolute z-12 grid w-20px h-20px min-w-20px place-items-center p-0 leading-0 border border-solid border-#c9cfd6 rounded-full bg-gradient-to-b from-white to-#f7f8f9 text-ink-2 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),inset_0_0_0_1px_rgba(255,255,255,0.7),0_1px_3px_rgba(31,35,41,0.18)] [&:not(:disabled):hover]:(border-violet text-violet-ink) [&:not(:disabled):active]:(from-#f4f5f6 to-white shadow-[inset_0_1px_2px_rgba(31,35,41,0.12)]) focus-visible:(outline-2 outline-solid outline-violet outline-offset-2) disabled:(opacity-45 cursor-not-allowed) after:(content-empty absolute -inset-6px rounded-full) [@media(pointer:coarse)]:after:-inset-10px"
+    class="absolute z-12 grid w-20px h-20px min-w-20px place-items-center p-0 leading-0 border border-solid border-control rounded-full bg-gradient-to-b from-white to-surface2 text-ink-2 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),inset_0_0_0_1px_rgba(255,255,255,0.7),0_1px_3px_rgba(31,35,41,0.18)] [&:not(:disabled):hover]:(border-violet text-violet-ink) [&:not(:disabled):active]:(from-surface3 to-surface shadow-[inset_0_1px_2px_rgba(31,35,41,0.12)]) focus-visible:(outline-2 outline-solid outline-violet outline-offset-2) disabled:(opacity-45 cursor-not-allowed) after:(content-empty absolute -inset-6px rounded-full) [@media(pointer:coarse)]:after:-inset-10px"
     :class="corner ? '-right-12px -bottom-12px' : ''"
     :aria-label="label"
     :title="label"

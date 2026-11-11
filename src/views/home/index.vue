@@ -95,7 +95,7 @@ const hotNames = new Set(['高清放大', '智能消除', '商品精修', '产�
             :class="[
               focusRing,
               active === tab.key
-                ? 'bg-[#f1ecf3] text-violet font-600'
+                ? 'bg-violet-pill text-violet font-600'
                 : 'bg-white text-ink-2 font-500 hover:text-violet',
             ]"
             @click="active = tab.key"
@@ -142,12 +142,12 @@ const hotNames = new Set(['高清放大', '智能消除', '商品精修', '产�
                 :class="tool.route ? '' : 'opacity-60'"
               />
               <span
-                class="absolute inset-y-0 right-0 w-18px bg-[linear-gradient(90deg,transparent,#fff)] pointer-events-none"
+                class="absolute inset-y-0 right-0 w-18px bg-[linear-gradient(90deg,transparent,var(--xq-surface))] pointer-events-none"
               />
             </span>
             <span v-else class="shrink-0 pl-14px pt-14px">
               <span
-                class="grid place-items-center w-40px h-40px box-border rounded-8px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff] text-violet-ink"
+                class="grid place-items-center w-40px h-40px box-border rounded-8px border border-solid border-line bg-[linear-gradient(135deg,var(--xq-violet-icon-a),var(--xq-violet-icon-b))] shadow-[inset_0_1px_0_#fff] text-violet-ink"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -177,7 +177,7 @@ const hotNames = new Set(['高清放大', '智能消除', '商品精修', '产�
                 >
                 <span
                   v-if="hotNames.has(tool.name)"
-                  class="shrink-0 inline-flex items-center h-16px box-border px-5px rounded-full border border-solid border-violet-line bg-[linear-gradient(#fff,#f8f3fc)] shadow-[0_1px_2px_rgba(31,35,41,0.06)] text-10px font-600 leading-14px text-violet-ink"
+                  class="shrink-0 inline-flex items-center h-16px box-border px-5px rounded-full border border-solid border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] shadow-[0_1px_2px_rgba(31,35,41,0.06)] text-10px font-600 leading-14px text-violet-ink"
                   >最常用</span
                 >
                 <span v-if="!tool.route" class="ll-chip shrink-0 text-muted bg-surface3 border border-line"

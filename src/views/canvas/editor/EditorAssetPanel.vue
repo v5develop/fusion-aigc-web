@@ -161,7 +161,7 @@ function thumbOf(node: CanvasEditorNode) {
 
       <button
         type="button"
-        class="flex shrink-0 h-32px items-center justify-center gap-6px mx-12px mt-8px px-9px border border-solid border-control rounded-4px bg-gradient-to-b from-white to-#fbfcfc text-ink-2 text-13px cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] hover:border-violet-line hover:from-violet-soft hover:to-violet-soft hover:text-violet-ink"
+        class="flex shrink-0 h-32px items-center justify-center gap-6px mx-12px mt-8px px-9px border border-solid border-control rounded-4px bg-gradient-to-b from-white to-plate-bottom text-ink-2 text-13px cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] hover:border-violet-line hover:from-violet-soft hover:to-violet-soft hover:text-violet-ink"
         :class="FOCUS_RING"
         @click="emit('addFromLibrary')"
       >

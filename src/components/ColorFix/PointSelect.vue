@@ -2599,7 +2599,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 
       <div
         v-if="tool === 'wand' || tool === 'brush' || tool === 'marquee' || tool === 'lasso' || hasSelection || doc.post.grow || doc.post.smooth"
-        class="ps-opts flex flex-wrap items-center gap-x-16px gap-y-8px px-12px py-8px rounded-12px bg-#f7f5f9"
+        class="ps-opts flex flex-wrap items-center gap-x-16px gap-y-8px px-12px py-8px rounded-12px bg-surface2"
         role="group"
         aria-label="工具与选区选项"
       >
@@ -2645,7 +2645,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
           <label class="ps-opt cursor-pointer">
             <input
               type="checkbox"
-              class="accent-#875f9a w-14px h-14px m-0"
+              class="accent-violet w-14px h-14px m-0"
               :checked="lastWand?.contiguous ?? wandContiguous"
               @change="onWandContiguous(($event.target as HTMLInputElement).checked)"
             />
@@ -2658,7 +2658,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
               v-model="magnetic"
               type="checkbox"
               role="switch"
-              class="accent-#875f9a w-14px h-14px m-0"
+              class="accent-violet w-14px h-14px m-0"
               :aria-checked="magnetic"
             />
             <span class="ps-opt__label !w-auto">吸附边缘</span>
@@ -2776,7 +2776,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 
       <div
         v-if="modelStarted && !modelReady && !error"
-        class="h-4px rounded-2px bg-#efe9f3 overflow-hidden"
+        class="h-4px rounded-2px bg-violet-soft-2 overflow-hidden"
         role="progressbar"
         aria-label="点选加载进度"
         aria-valuemin="0"
@@ -2784,12 +2784,12 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
         :aria-valuenow="progress"
         :title="loadText"
       >
-        <div class="ps-bar h-full bg-#875f9a" :style="{ width: `${Math.max(4, progress)}%` }" />
+        <div class="ps-bar h-full bg-violet" :style="{ width: `${Math.max(4, progress)}%` }" />
       </div>
 
       <p
         v-if="error"
-        class="m-0 flex items-center gap-8px px-12px py-8px rounded-12px bg-#fbeceb text-12px leading-18px text-#b4433e"
+        class="m-0 flex items-center gap-8px px-12px py-8px rounded-12px bg-danger-soft text-12px leading-18px text-danger"
         role="alert"
       >
         <span class="flex-1">{{ error }}<template v-if="!modelReady">（钢笔、自由、魔棒、画笔不受影响）</template></span>
@@ -2798,7 +2798,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 
       <p
         v-if="pixelError && tool === 'wand'"
-        class="m-0 px-12px py-8px rounded-12px bg-#fbeceb text-12px leading-18px text-#b4433e"
+        class="m-0 px-12px py-8px rounded-12px bg-danger-soft text-12px leading-18px text-danger"
         role="alert"
       >
         {{ pixelError }}
@@ -3084,13 +3084,13 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
             </svg>
             <div
               v-if="doc.box && !dragBox"
-              class="absolute border-2 border-dashed border-#875f9a rounded-4px pointer-events-none"
+              class="absolute border-2 border-dashed border-violet rounded-4px pointer-events-none"
               :style="boxStyle(doc.box)"
               aria-hidden="true"
             />
             <div
               v-if="dragBox"
-              class="absolute border-2 border-dashed border-#875f9a bg-#875f9a/10 rounded-4px pointer-events-none"
+              class="absolute border-2 border-dashed border-violet bg-violet/10 rounded-4px pointer-events-none"
               :style="boxStyle(dragBox)"
               aria-hidden="true"
             />
@@ -3191,10 +3191,10 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 .ps-dot.is-pos {
-  background: #34795a;
+  background: var(--xq-success);
 }
 .ps-dot.is-neg {
-  background: #b4433e;
+  background: var(--xq-danger);
 }
 .ps-dot.is-hover {
   box-shadow:
@@ -3219,7 +3219,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
   align-items: center;
   gap: 8px;
   min-height: 32px;
-  color: #4b5563;
+  color: var(--xq-ink-2);
   font-size: 12px;
 }
 .ps-opt input[type='range'] {
@@ -3235,7 +3235,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 }
 .ps-opt__num {
   min-width: 24px;
-  color: #5f3f6f;
+  color: var(--xq-violet-press-fg);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -3243,7 +3243,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 .ps-opts__sep {
   width: 1px;
   height: 20px;
-  background: #e5e0ea;
+  background: var(--xq-line);
 }
 @media (prefers-reduced-motion: reduce) {
   .ps-bar {

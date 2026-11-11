@@ -12,7 +12,7 @@ defineEmits<{ retry: [] }>()
   <div
     v-if="show"
     role="alert"
-    class="absolute left-1/2 top-0 z-10 flex -translate-x-1/2 items-center gap-12px rounded-b-8px border border-t-0 border-solid border-danger-line bg-danger-soft px-16px py-6px text-13px text-[#8f4b47] shadow-[0_4px_10px_rgba(31,35,41,0.10)]"
+    class="absolute left-1/2 top-0 z-10 flex -translate-x-1/2 items-center gap-12px rounded-b-8px border border-t-0 border-solid border-danger-line bg-danger-soft px-16px py-6px text-13px text-alert-danger shadow-[0_4px_10px_rgba(31,35,41,0.10)]"
   >
     <span>网络异常，已暂停轮询</span>
     <button

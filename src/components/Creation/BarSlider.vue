@@ -130,7 +130,7 @@ function onKeydown(e: KeyboardEvent) {
           v-for="i in n"
           :key="i"
           class="block flex-none w-3px rounded-3px [transition:background-color_160ms_ease] motion-reduce:transition-none"
-          :class="i - 1 <= lit ? 'bg-violet' : 'bg-#e4e4ea'"
+          :class="i - 1 <= lit ? 'bg-violet' : 'bg-line'"
           :style="{ height: `${height}px` }"
           aria-hidden="true"
         />

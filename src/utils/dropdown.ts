@@ -9,23 +9,24 @@ import { textScaleTheme } from '@/utils/textPrefs.ts'
  * 结构性样式见 @/assets/dropdown.less
  */
 
-// 设计稿「路径 247」：4.5×8 的勾，AI智慧紫/AI强调色
+// 设计稿「路径 247」：4.5×8 的勾，颜色取 .fusion-dropdown-row__check 的 color（浅色 AI强调紫 #8E66F9，深色藤紫文字档）
 const CHECK_SVG =
-  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.12 7.42L6.3 10.6L11.96 4.94" stroke="#8E66F9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.12 7.42L6.3 10.6L11.96 4.94" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 
 export const DROPDOWN_THEME_OVERRIDES = textScaleTheme({
-  // 与全局 Dropdown 主题（theme/naive.ts）同一套令牌；行高 40 / 字 14 是这些面板自己的命中尺寸，保持不变
-  color: '#FFFFFF',
+  // 与全局 Dropdown 主题（theme/naive.ts）同一套令牌；行高 40 / 字 14 是这些面板自己的命中尺寸，保持不变。
+  // 颜色写 CSS 变量：这几个键 Naive 原样落进 --n-* 变量、不做混色，跟着 <html data-theme> 切换，不用响应式重建
+  color: 'var(--xq-overlay)',
   padding: '8px 4px',
   borderRadius: '10px',
-  boxShadow: '0 12px 24px rgba(31,35,41,.14), 0 2px 6px rgba(31,35,41,.06)',
+  boxShadow: 'var(--xq-shadow-pop)',
   optionHeightMedium: '40px',
   fontSizeMedium: '14px',
-  optionTextColor: '#1F2329',
-  optionTextColorHover: '#1F2329',
-  optionTextColorActive: '#1F2329',
-  optionColorHover: '#F3F4F5',
-  groupHeaderTextColor: '#5F6673',
+  optionTextColor: 'var(--xq-ink)',
+  optionTextColorHover: 'var(--xq-ink)',
+  optionTextColorActive: 'var(--xq-ink)',
+  optionColorHover: 'var(--xq-surface3)',
+  groupHeaderTextColor: 'var(--xq-muted)',
 })
 
 /** 面板宽度：设计稿中比例/时长为 156px，其余为 194px */

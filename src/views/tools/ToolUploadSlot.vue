@@ -346,16 +346,16 @@ onBeforeUnmount(() => {
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 /** titled 卡下方的小按钮（原型 n-button small「资产添加」）：28 高、12px、白→#fbfcfc 板 + 控制线 */
 const smallBtnCls =
-  'h-28px box-border px-10px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] ' +
+  'h-28px box-border px-10px rounded-4px border border-solid border-control bg-[linear-gradient(var(--xq-surface),var(--xq-plate-bottom))] ' +
   'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] ' +
-  'text-12px font-500 leading-12px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)'
+  'text-12px font-500 leading-12px text-ink-2 cursor-pointer hover:(border-control-hover text-ink) disabled:(opacity-50 cursor-not-allowed)'
 /**
  * 批量空态投放区（原型 C-35 压沿空态，sx-drop-pressed.css）：本体 1px 透明实线 + r8；虚线单独一层 ::before（inset -1、r9）——
  * border-style 不能补间，悬停时虚线 160ms 淡出、rgba(.16) 实线淡入，上沿 / 左右内影 240ms ease-out；拖入换藤紫实线 + 柔紫底、虚线隐去。
  */
 const batchZoneCls =
   'rounded-8px border border-solid [transition:border-color_160ms_ease-out,box-shadow_240ms_ease-out] ' +
-  "before:(content-[''] absolute -inset-1px box-border rounded-9px border border-dashed border-[rgba(31,35,41,0.1)] pointer-events-none) " +
+  "before:(content-[''] absolute -inset-1px box-border rounded-9px border border-dashed border-[rgb(var(--xq-ink-rgb)/0.1)] pointer-events-none) " +
   'before:[transition:opacity_160ms_ease-out] motion-reduce:before:transition-none'
 /**
  * 单图空态（原型 .single-zone 外框）：r8、白→#f9fafb、内影；内框虚线与批量空态同一层 ::before（1px dashed rgba(31,35,41,.1)、inset -1、r9），
@@ -363,7 +363,7 @@ const batchZoneCls =
  */
 const singleZoneCls =
   'rounded-8px border border-solid shadow-[inset_0_1px_3px_rgba(31,35,41,0.04)] [transition:border-color_0.2s_ease,background-color_0.2s_ease] ' +
-  "before:(content-[''] absolute -inset-1px box-border rounded-9px border border-dashed border-[rgba(31,35,41,0.1)] pointer-events-none) " +
+  "before:(content-[''] absolute -inset-1px box-border rounded-9px border border-dashed border-[rgb(var(--xq-ink-rgb)/0.1)] pointer-events-none) " +
   'before:[transition:opacity_160ms_ease-out] motion-reduce:before:transition-none'
 /** B3.1 上传卡（原型 v3:2080-2091）：最宽 434、撑满余高的外壳，1px #e5e7eb、圆角 6、内边距 12；内凹 16 柔影 + 顶 1px 内线，边框 / 底色 200ms 过渡 */
 const cardCls =
@@ -383,13 +383,13 @@ const seamCls = [
   "[.tus-plate+&]:before:content-[''] [.tus-plate+&]:before:absolute [.tus-plate+&]:before:top-0",
   '[.tus-plate+&]:before:left-[-12px] [.tus-plate+&]:before:w-9px [.tus-plate+&]:before:h-130px',
   '[.tus-plate+&]:before:pointer-events-none',
-  '[.tus-plate+&]:before:bg-[linear-gradient(90deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.026)_35%,rgba(31,35,41,0.026)_65%,rgba(31,35,41,0)_100%)]',
+  '[.tus-plate+&]:before:bg-[linear-gradient(90deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.026)_35%,rgb(var(--xq-ink-rgb)/0.026)_65%,rgb(var(--xq-ink-rgb)/0)_100%)]',
   '[.tus-plate+&]:before:[mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
   '[.tus-plate+&]:before:[-webkit-mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
   "[.tus-plate+&]:after:content-[''] [.tus-plate+&]:after:absolute [.tus-plate+&]:after:top-0",
   '[.tus-plate+&]:after:left-[-8px] [.tus-plate+&]:after:w-1px [.tus-plate+&]:after:h-130px',
   '[.tus-plate+&]:after:pointer-events-none',
-  '[.tus-plate+&]:after:bg-[linear-gradient(180deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.09)_14%,rgba(31,35,41,0.09)_86%,rgba(31,35,41,0)_100%)]',
+  '[.tus-plate+&]:after:bg-[linear-gradient(180deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.09)_14%,rgb(var(--xq-ink-rgb)/0.09)_86%,rgb(var(--xq-ink-rgb)/0)_100%)]',
 ]
 </script>
 
@@ -526,8 +526,8 @@ const seamCls = [
             dragging
               ? 'border-violet bg-violet-soft before:opacity-0'
               : disabled || uploading
-                ? 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100'
-                : 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100 hover:(border-violet-line from-white to-#fbf7fd before:opacity-0)',
+                ? 'border-transparent bg-gradient-to-b from-white to-upload-bottom before:opacity-100'
+                : 'border-transparent bg-gradient-to-b from-white to-upload-bottom before:opacity-100 hover:(border-violet-line from-white to-upload-hover-bottom before:opacity-0)',
           ]"
           :disabled="disabled || uploading"
           :aria-describedby="`${id}-hint`"
@@ -547,7 +547,7 @@ const seamCls = [
               :class="ballPlaying ? 'animate-[tus-ball-jump_1300ms_both]' : ''"
             >
               <span
-                class="absolute inset-0 box-border border border-solid border-[#dfe3e8] rounded-full bg-[radial-gradient(circle_at_50%_35%,#fff_0_55%,#fbfbfc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] origin-[50%_100%] motion-reduce:animate-none"
+                class="absolute inset-0 box-border border border-solid border-line-strong rounded-full bg-[radial-gradient(circle_at_50%_35%,var(--xq-surface)_0_55%,var(--xq-plate-bottom)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] origin-[50%_100%] motion-reduce:animate-none"
                 :class="ballPlaying ? 'animate-[tus-ball-shell_1300ms_both]' : ''"
               />
               <span
@@ -579,7 +579,7 @@ const seamCls = [
         <button
           v-if="canPickAsset"
           type="button"
-          class="absolute right-10px top-10px z-30 h-32px box-border px-12px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+          class="absolute right-10px top-10px z-30 h-32px box-border px-12px rounded-4px border border-solid border-control bg-[linear-gradient(var(--xq-surface),var(--xq-plate-bottom))] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-control-hover text-ink) disabled:(opacity-50 cursor-not-allowed)"
           :class="focusRing"
           :disabled="disabled || uploading"
           :aria-label="`从资产库添加${spec.label}`"
@@ -649,10 +649,10 @@ const seamCls = [
             mode === 'batch'
               ? dragging
                 ? 'border-violet bg-violet-soft before:opacity-0'
-                : 'border-transparent bg-transparent before:opacity-100 hover:(border-[rgba(31,35,41,0.16)] before:opacity-0) hover:shadow-[inset_0_12px_22px_-12px_rgba(31,35,41,0.22),inset_8px_0_18px_-14px_rgba(31,35,41,0.1),inset_-8px_0_18px_-14px_rgba(31,35,41,0.1),inset_0_-1px_0_rgba(255,255,255,0.9)]'
+                : 'border-transparent bg-transparent before:opacity-100 hover:(border-[rgb(var(--xq-ink-rgb)/0.16)] before:opacity-0) hover:shadow-[inset_0_12px_22px_-12px_rgba(31,35,41,0.22),inset_8px_0_18px_-14px_rgba(31,35,41,0.1),inset_-8px_0_18px_-14px_rgba(31,35,41,0.1),inset_0_-1px_0_rgba(255,255,255,0.9)]'
               : dragging
                 ? 'border-violet bg-violet-soft before:opacity-0'
-                : 'border-transparent bg-gradient-to-b from-white to-#f9fafb before:opacity-100 hover:(border-violet-line from-white to-#fbf7fd before:opacity-0)',
+                : 'border-transparent bg-gradient-to-b from-white to-upload-bottom before:opacity-100 hover:(border-violet-line from-white to-upload-hover-bottom before:opacity-0)',
           ]"
           :disabled="disabled || uploading"
           :aria-describedby="`${id}-hint`"
@@ -673,7 +673,7 @@ const seamCls = [
               :class="ballPlaying ? 'animate-[tus-ball-jump_1300ms_both]' : ''"
             >
               <span
-                class="absolute inset-0 box-border border border-solid border-[#dfe3e8] rounded-full bg-[radial-gradient(circle_at_50%_35%,#fff_0_55%,#fbfbfc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] origin-[50%_100%] motion-reduce:animate-none"
+                class="absolute inset-0 box-border border border-solid border-line-strong rounded-full bg-[radial-gradient(circle_at_50%_35%,var(--xq-surface)_0_55%,var(--xq-plate-bottom)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] origin-[50%_100%] motion-reduce:animate-none"
                 :class="ballPlaying ? 'animate-[tus-ball-shell_1300ms_both]' : ''"
               />
               <span
@@ -710,7 +710,7 @@ const seamCls = [
         <button
           v-if="canPickAsset"
           type="button"
-          class="absolute right-12px top-12px z-30 h-32px box-border px-12px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+          class="absolute right-12px top-12px z-30 h-32px box-border px-12px rounded-4px border border-solid border-control bg-[linear-gradient(var(--xq-surface),var(--xq-plate-bottom))] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-control-hover text-ink) disabled:(opacity-50 cursor-not-allowed)"
           :class="focusRing"
           :disabled="disabled || uploading"
           :aria-label="`从资产库添加${spec.label}`"
@@ -749,7 +749,7 @@ const seamCls = [
         <button
           v-if="canPickAsset"
           type="button"
-          class="mt-2px h-32px box-border px-12px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer pointer-events-auto [transition:color_0.3s_cubic-bezier(0.4,0,0.2,1),background-color_0.3s_cubic-bezier(0.4,0,0.2,1),opacity_0.3s_cubic-bezier(0.4,0,0.2,1),border-color_0.3s_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+          class="mt-2px h-32px box-border px-12px rounded-4px border border-solid border-control bg-[linear-gradient(var(--xq-surface),var(--xq-plate-bottom))] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer pointer-events-auto [transition:color_0.3s_cubic-bezier(0.4,0,0.2,1),background-color_0.3s_cubic-bezier(0.4,0,0.2,1),opacity_0.3s_cubic-bezier(0.4,0,0.2,1),border-color_0.3s_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none hover:(border-control-hover text-ink) disabled:(opacity-50 cursor-not-allowed)"
           :class="focusRing"
           :disabled="disabled || uploading"
           :aria-label="`从资产库添加${spec.label}`"
@@ -773,7 +773,7 @@ const seamCls = [
       <button
         v-if="canPickAsset && room > 0 && mode === 'batch'"
         type="button"
-        class="absolute right-12px top-12px z-30 h-32px box-border px-12px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+        class="absolute right-12px top-12px z-30 h-32px box-border px-12px rounded-4px border border-solid border-control bg-[linear-gradient(var(--xq-surface),var(--xq-plate-bottom))] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-control-hover text-ink) disabled:(opacity-50 cursor-not-allowed)"
         :class="focusRing"
         :disabled="disabled || uploading"
         :aria-label="`从资产库添加${spec.label}`"
@@ -819,7 +819,7 @@ const seamCls = [
             延迟 320ms 出现、入场 120ms + 4px 上浮；阴影 0 12px 28px .16 + 0 2px 6px .06；纯看不挡点击
           -->
           <div
-            class="hidden group-hover:block group-focus-within:block absolute z-30 w-248px box-border p-4px rounded-8px border border-solid border-line bg-white shadow-[0_12px_28px_rgba(31,35,41,0.16),0_2px_6px_rgba(31,35,41,0.06)] pointer-events-none animate-[tus-preview-in_120ms_ease_320ms_both] motion-reduce:animate-none"
+            class="hidden group-hover:block group-focus-within:block absolute z-30 w-248px box-border p-4px rounded-8px border border-solid border-line bg-overlay shadow-preview pointer-events-none animate-[tus-preview-in_120ms_ease_320ms_both] motion-reduce:animate-none"
             :class="previewPos(i)"
             aria-hidden="true"
           >
@@ -917,7 +917,7 @@ const seamCls = [
             focusRing,
             urls.length
               ? 'border-white bg-white shadow-[0_1px_3px_rgba(31,35,41,0.16)] hover:shadow-[0_2px_6px_rgba(31,35,41,0.2)]'
-              : 'border-#d7dbe0 bg-[linear-gradient(#fff,#f9fafb)] text-placeholder hover:border-violet-line',
+              : 'border-line-strong bg-[linear-gradient(var(--xq-surface),var(--xq-upload-bottom))] text-placeholder hover:border-violet-line',
             dragging && 'sx-drop-ring',
           ]"
           :disabled="disabled || uploading"
@@ -1038,7 +1038,7 @@ const seamCls = [
     <div v-if="canPickAsset && mode === 'pipe' && room > 0" class="flex justify-end mt-6px w-full max-w-[434px]">
       <button
         type="button"
-        class="h-32px box-border px-12px rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-#aeb6bf text-ink) disabled:(opacity-50 cursor-not-allowed)"
+        class="h-32px box-border px-12px rounded-4px border border-solid border-control bg-[linear-gradient(var(--xq-surface),var(--xq-plate-bottom))] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] text-13px font-500 leading-13px text-ink-2 cursor-pointer hover:(border-control-hover text-ink) disabled:(opacity-50 cursor-not-allowed)"
         :class="focusRing"
         :disabled="disabled || uploading"
         :aria-label="`从资产库添加${spec.label}`"

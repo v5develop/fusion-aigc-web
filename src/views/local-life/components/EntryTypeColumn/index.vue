@@ -111,7 +111,7 @@ function onInput(index: number, event: Event) {
       <div
         v-for="(item, index) in items"
         :key="index"
-        class="flex flex-col gap-8px pb-12px border-b border-b-solid border-b-[rgba(31,35,41,0.08)] last-of-type:(pb-0 border-b-0)"
+        class="flex flex-col gap-8px pb-12px border-b border-b-solid border-b-ink/8 last-of-type:(pb-0 border-b-0)"
       >
         <span class="min-h-24px flex items-center gap-8px text-12px font-600 leading-18px text-ink">
           {{ title }} {{ index + 1 }}
@@ -194,7 +194,7 @@ function onInput(index: number, event: Event) {
               'transition-[border-color,background,color] duration-mid ease-sx motion-reduce:transition-none',
               item.images.length >= maxImages
                 ? 'cursor-not-allowed opacity-60'
-                : 'cursor-pointer hover:(border-violet-line to-#fbf7fd text-violet-ink)',
+                : 'cursor-pointer hover:(border-violet-line to-upload-hover-bottom text-violet-ink)',
               item.images.length ? 'h-40px' : 'h-120px',
               focusRing,
             ]"

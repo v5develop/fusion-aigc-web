@@ -88,7 +88,7 @@ const { dragging } = useFileDropPaste(dropRef, {
       <span class="flex-1" :class="NODE_TITLE">{{ data.title || '视频' }}</span>
       <NodeMenu :title="data.title || '视频'" @remove="emit('remove')" />
     </header>
-    <div class="p-10px rounded-b-8px bg-[#f4f6fa]">
+    <div class="p-10px rounded-b-8px bg-[#f4f6fa] [[data-theme=dark]_&]:bg-surface2">
       <div class="relative grid w-full place-items-center overflow-hidden" :style="{ height: `${mediaHeight}px` }">
         <video
           v-if="data.video"
@@ -101,8 +101,8 @@ const { dragging } = useFileDropPaste(dropRef, {
           <button
             ref="dropRef"
             type="button"
-            class="flex flex-col w-full h-full items-center justify-center gap-6px p-0 border border-dashed border-[#d9d9d9] rounded-6px bg-white text-12px cursor-pointer transition-colors duration-120 hover:border-violet-line hover:text-violet nodrag"
-            :class="[FOCUS_RING, dragging && 'sx-drop', uploading ? 'text-violet font-600' : 'text-[#7f7f7f]']"
+            class="flex flex-col w-full h-full items-center justify-center gap-6px p-0 border border-dashed border-line-strong rounded-6px bg-white text-12px cursor-pointer transition-colors duration-120 hover:border-violet-line hover:text-violet nodrag"
+            :class="[FOCUS_RING, dragging && 'sx-drop', uploading ? 'text-violet font-600' : 'text-muted']"
             :disabled="uploading"
             title="上传视频，支持拖拽或粘贴（Ctrl/⌘+V）"
             @click.stop="pick"

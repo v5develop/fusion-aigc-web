@@ -285,7 +285,7 @@ function prevPage() {
           class="sx-squircle flex flex-none gap-10px items-center min-h-74px box-border p-10px border border-solid rounded-18px cursor-pointer transition-[border-color,background-color,box-shadow] duration-fast sx-focus"
           :class="
             d.batch.id === selectedId
-              ? 'border-violet-line bg-gradient-to-b from-white to-#faf4fd shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
+              ? 'border-violet-line bg-gradient-to-b from-white to-violet-soft-tint shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
               : 'border-line bg-white hover:(border-control shadow-[0_1px_2px_rgba(31,35,41,0.05)])'
           "
           tabindex="0"
@@ -357,9 +357,9 @@ function prevPage() {
                   :class="[
                     stackOf(d).length ? 'cursor-zoom-in' : 'cursor-default',
                     stackCount(d) >= 3
-                      ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb,6px_-6px_0_-1px_#fff,6px_-6px_0_0_#e5e7eb]'
+                      ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line),6px_-6px_0_-1px_var(--xq-surface),6px_-6px_0_0_var(--xq-line)]'
                       : stackCount(d) === 2
-                        ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb]'
+                        ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line)]'
                         : '',
                   ]"
                   :aria-label="stackOf(d).length ? '放大图片' : '没有可预览的图片'"
@@ -378,7 +378,7 @@ function prevPage() {
                   <span v-else>{{ (KIND_LABEL[d.batch.kind] ?? '批次').slice(0, 2) }}</span>
                   <span
                     v-if="stackCount(d) > 1"
-                    class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px border border-solid border-white rounded-full bg-ink text-white text-10px font-600 leading-none"
+                    class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px border border-solid border-white rounded-full bg-ink text-surface text-10px font-600 leading-none"
                     aria-hidden="true"
                     >{{ stackCount(d) }}</span
                   >
@@ -589,7 +589,7 @@ function prevPage() {
 
 /* 进行中骨架的流光（原型 .v3-hist__skeleton-*：1.2s 左右扫，减少动效时静止） */
 .stu-shimmer {
-  background: linear-gradient(90deg, #f1f2f4 25%, #f8f9fa 50%, #f1f2f4 75%);
+  background: linear-gradient(90deg, var(--xq-skeleton-a) 25%, var(--xq-skeleton-b) 50%, var(--xq-skeleton-a) 75%);
   background-size: 200% 100%;
   animation: stu-hist-shimmer 1.2s ease-in-out infinite;
 }
@@ -609,6 +609,6 @@ function prevPage() {
 
 /* 滚动条 mixin 无法用原子类表达 */
 .stu-scroll {
-  .scrollbar-autohide(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
+  .scrollbar-autohide(@width: 8px, @trackColor: var(--xq-surface), @thumbColor: rgb(var(--xq-ink-rgb) / 0.1), @thumbWidth: 4px, @hoverColor: rgb(var(--xq-ink-rgb) / 0.35));
 }
 </style>

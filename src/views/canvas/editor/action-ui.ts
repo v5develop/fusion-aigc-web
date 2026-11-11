@@ -11,7 +11,7 @@ export const ACTION_RING = 'outline-none focus-visible:!border-violet focus-visi
 export const ACTION_LABEL = 'block mb-6px text-ink-2 text-12px font-600'
 
 /** 44 高输入 / 选择框 */
-export const ACTION_FIELD = `h-44px px-11px border border-solid border-control rounded-6px bg-white text-ink text-13px shadow-inset-input hover:border-control-hover focus:border-violet focus:shadow-focus outline-none disabled:bg-surface3 disabled:text-placeholder`
+export const ACTION_FIELD = `h-44px px-11px border border-solid border-control rounded-6px bg-surface text-ink text-13px shadow-inset-input hover:border-control-hover focus:border-violet focus:shadow-focus outline-none disabled:bg-surface3 disabled:text-placeholder`
 
 /** 44 高主按钮（提交） */
 export const ACTION_SUBMIT = 'sx-btn-primary w-full !h-44px'
@@ -21,15 +21,15 @@ export const ACTION_BTN = 'sx-btn !h-32px'
 
 /** 区域序号徽标（原型 .identify-box__badge / .identify-chip__badge：藤紫底白字 11px） */
 export const REGION_BADGE =
-  'inline-flex shrink-0 items-center justify-center min-w-16px h-16px px-4px rounded-8px bg-violet text-white text-11px leading-16px font-600'
+  'inline-flex shrink-0 items-center justify-center min-w-16px h-16px px-4px rounded-8px bg-violet text-on-accent text-11px leading-16px font-600'
 
 /** 状态条：进行中 / 失败 / 成功 */
 export const STATUS_INFO =
   'flex items-center gap-8px px-10px py-8px rounded-8px bg-violet-soft text-violet-ink text-12px'
 export const STATUS_ERR =
-  'flex flex-col gap-6px px-10px py-8px rounded-8px border border-solid border-[#e4b7b4] bg-[#fbeeed] text-danger text-12px'
+  'flex flex-col gap-6px px-10px py-8px rounded-8px border border-solid border-danger-line bg-danger-soft text-danger text-12px'
 export const STATUS_OK =
-  'flex items-center gap-8px px-10px py-8px rounded-8px border border-solid border-[#bcd8c9] bg-[#eaf3ee] text-success text-12px'
+  'flex items-center gap-8px px-10px py-8px rounded-8px border border-solid border-success-line bg-success-soft text-success text-12px'
 
 /** 转圈（UnoCSS 内置 animate-spin，无需自定义关键帧） */
 export const SPINNER =

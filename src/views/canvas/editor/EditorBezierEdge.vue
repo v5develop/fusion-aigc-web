@@ -43,16 +43,15 @@ const midpoint = computed(() => ({
   <path
     class="pointer-events-none"
     :d="path"
-    :stroke="color"
     :stroke-width="props.selected ? 3 : 2"
-    :style="{ filter: props.selected ? `drop-shadow(0 0 5px ${color})` : undefined }"
+    :style="{ stroke: color, filter: props.selected ? `drop-shadow(0 0 5px ${color})` : undefined }"
     stroke-linecap="round"
     fill="none"
   />
   <EdgeLabelRenderer v-if="props.selected">
     <button
       type="button"
-      class="absolute z-4 grid w-28px h-28px after:content-empty after:absolute after:-inset-3px place-items-center p-0 border-2 border-solid border-white rounded-full bg-[#ef4444] text-white font-inherit text-16px leading-none cursor-pointer shadow-[0_4px_12px_rgba(239,68,68,0.35)] [pointer-events:all] hover:bg-[#dc2626] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2"
+      class="absolute z-4 grid w-28px h-28px after:content-empty after:absolute after:-inset-3px place-items-center p-0 border-2 border-solid border-surface rounded-full bg-[#ef4444] text-white font-inherit text-16px leading-none cursor-pointer shadow-[0_4px_12px_rgba(239,68,68,0.35)] [pointer-events:all] hover:bg-[#dc2626] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2"
       title="断开连线"
       aria-label="断开连线"
       :style="{ transform: `translate(-50%, -50%) translate(${midpoint.x}px, ${midpoint.y}px)` }"

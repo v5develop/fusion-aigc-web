@@ -422,7 +422,7 @@ const seamCls = [
   '[.stu-slot+&]:before:w-9px',
   '[.stu-slot+&]:before:h-130px',
   '[.stu-slot+&]:before:pointer-events-none',
-  '[.stu-slot+&]:before:bg-[linear-gradient(90deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.026)_35%,rgba(31,35,41,0.026)_65%,rgba(31,35,41,0)_100%)]',
+  '[.stu-slot+&]:before:bg-[linear-gradient(90deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.026)_35%,rgb(var(--xq-ink-rgb)/0.026)_65%,rgb(var(--xq-ink-rgb)/0)_100%)]',
   '[.stu-slot+&]:before:[mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
   '[.stu-slot+&]:before:[-webkit-mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
   "[.stu-slot+&]:after:content-['']",
@@ -432,7 +432,7 @@ const seamCls = [
   '[.stu-slot+&]:after:w-1px',
   '[.stu-slot+&]:after:h-130px',
   '[.stu-slot+&]:after:pointer-events-none',
-  '[.stu-slot+&]:after:bg-[linear-gradient(180deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.09)_14%,rgba(31,35,41,0.09)_86%,rgba(31,35,41,0)_100%)]',
+  '[.stu-slot+&]:after:bg-[linear-gradient(180deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.09)_14%,rgb(var(--xq-ink-rgb)/0.09)_86%,rgb(var(--xq-ink-rgb)/0)_100%)]',
 ]
 </script>
 
@@ -491,7 +491,7 @@ const seamCls = [
             <!-- 张数徽标：最后一张右上角，1 张也显示；悬停 / 摊开时让位给删除钮 -->
             <span
               v-if="index === plates.length - 1"
-              class="absolute top-4px right-4px z-2 grid place-items-center min-w-16px h-16px box-border px-4px border border-solid border-white rounded-full bg-ink text-white text-10px font-600 leading-none tabular-nums shadow-[0_1px_2px_rgba(31,35,41,0.2)] transition-[opacity,transform] duration-160 group-hover/slot:(opacity-0 scale-80) [@media(hover:none)]:opacity-0 motion-reduce:transition-none"
+              class="absolute top-4px right-4px z-2 grid place-items-center min-w-16px h-16px box-border px-4px border border-solid border-white rounded-full bg-ink text-surface text-10px font-600 leading-none tabular-nums shadow-[0_1px_2px_rgba(31,35,41,0.2)] transition-[opacity,transform] duration-160 group-hover/slot:(opacity-0 scale-80) [@media(hover:none)]:opacity-0 motion-reduce:transition-none"
               :class="expanded ? 'opacity-0 scale-70' : ''"
               >{{ count }}</span
             >
@@ -520,7 +520,7 @@ const seamCls = [
         <!-- 有图时继续上传：叠片上盖一层转圈 -->
         <span
           v-if="count && uploading"
-          class="absolute inset-0 z-20 grid place-items-center rounded-12px bg-[rgba(255,255,255,0.6)]"
+          class="absolute inset-0 z-20 grid place-items-center rounded-12px bg-surface/60"
         >
           <n-spin :size="16" />
         </span>

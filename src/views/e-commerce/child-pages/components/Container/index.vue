@@ -130,7 +130,7 @@ onDeactivated(() => {
     >
       <!-- 段一：功能卡（原型 FunctionSwitcher）：高 64、外缘 12、内边距 12 14、gap 12；缩略图 56×40；名称 15/20 -->
       <header
-        class="sx-squircle flex-none flex items-center gap-12px h-64px mx-12px mt-12px px-14px box-border rounded-18px border border-solid border-#e9dff2 bg-gradient-to-b from-white to-#fbf7fe"
+        class="sx-squircle flex-none flex items-center gap-12px h-64px mx-12px mt-12px px-14px box-border rounded-18px border border-solid border-violet-soft-2 bg-gradient-to-b from-white to-upload-hover-bottom"
       >
         <img
           v-if="thumb"

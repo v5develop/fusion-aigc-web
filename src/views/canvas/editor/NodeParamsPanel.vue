@@ -680,7 +680,7 @@ const footHint = computed(() => {
             </button>
             <button
               type="button"
-              class="absolute -top-6px -right-6px z-3 grid w-16px h-16px p-0 place-items-center border border-solid border-line-strong rounded-full bg-white text-muted text-11px leading-none cursor-pointer hover:border-[#e4b7b4] hover:text-danger after:content-empty after:absolute after:-inset-8px"
+              class="absolute -top-6px -right-6px z-3 grid w-16px h-16px p-0 place-items-center border border-solid border-line-strong rounded-full bg-white text-muted text-11px leading-none cursor-pointer hover:border-danger-line hover:text-danger after:content-empty after:absolute after:-inset-8px"
               :class="FOCUS_RING"
               :aria-label="`断开参考 ${item.label}`"
               title="断开这个参考"
@@ -1071,7 +1071,7 @@ const footHint = computed(() => {
             />
             <div
               v-if="maskShown"
-              class="absolute border-2 border-violet border-solid bg-[rgba(135,95,154,0.2)] pointer-events-none"
+              class="absolute border-2 border-violet border-solid bg-violet/20 pointer-events-none"
               :style="{
                 left: `${maskShown.x * 100}%`,
                 top: `${maskShown.y * 100}%`,
@@ -1126,7 +1126,7 @@ const footHint = computed(() => {
               class="relative shrink-0 w-48px h-48px p-0 overflow-hidden border border-solid border-line rounded-4px bg-surface2 cursor-pointer hover:border-violet-line"
               :class="[
                 FOCUS_RING,
-                { '!border-violet shadow-[0_0_0_2px_rgba(135,95,154,0.18)]': selectedIdx === index },
+                { '!border-violet shadow-[0_0_0_2px_rgb(var(--xq-violet-rgb)/0.18)]': selectedIdx === index },
               ]"
               :aria-pressed="selectedIdx === index"
               :aria-label="`候选 ${index + 1}，设为输出`"
@@ -1162,7 +1162,7 @@ const footHint = computed(() => {
       <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" :title="footHint">{{ footHint }}</span>
       <button
         type="button"
-        class="shrink-0 h-28px ml-auto px-12px border border-solid border-control rounded-4px bg-gradient-to-b from-white to-#fbfcfc text-ink-2 text-13px cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(31,35,41,0.05)] hover:border-control-hover hover:text-ink"
+        class="shrink-0 h-28px ml-auto px-12px border border-solid border-control rounded-4px bg-gradient-to-b from-white to-plate-bottom text-ink-2 text-13px cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(31,35,41,0.05)] hover:border-control-hover hover:text-ink"
         :class="FOCUS_RING"
         title="收起控制台"
         @click="store.selectNode('')"

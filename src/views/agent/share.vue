@@ -85,7 +85,7 @@ onMounted(async () => {
           <template v-for="item in items" :key="item.key">
             <div
               v-if="item.role === 'user'"
-              class="max-w-520px self-end rounded-[10px_10px_3px_10px] border border-solid border-#ebdff3 bg-[linear-gradient(#f8f3fc,#f2ebf8)] px-12px py-9px text-13px leading-20px text-ink"
+              class="max-w-520px self-end rounded-[10px_10px_3px_10px] border border-solid border-violet-soft-line bg-[linear-gradient(var(--xq-violet-tint),var(--xq-violet-tint-hover))] px-12px py-9px text-13px leading-20px text-ink"
             >
               <div class="whitespace-pre-wrap break-words">{{ item.text }}</div>
               <div v-if="item.images.length" class="mt-6px flex gap-4px">
@@ -103,7 +103,7 @@ onMounted(async () => {
             <div v-else-if="item.reply" class="flex flex-col gap-8px">
               <ul
                 v-if="item.reply.tools.length"
-                class="m-0 list-none rounded-6px border border-solid border-#eceff2 bg-#fafbfc px-12px py-8px"
+                class="m-0 list-none rounded-6px border border-solid border-line-soft bg-sunk-bottom px-12px py-8px"
                 aria-label="执行清单"
               >
                 <li
@@ -112,7 +112,7 @@ onMounted(async () => {
                   class="flex h-26px items-center gap-8px text-12px text-ink-2"
                 >
                   <span class="min-w-0 flex-1 truncate">{{ t.name }}</span>
-                  <span :class="['flex-none text-11px', t.status === 'failed' ? 'text-danger' : 'text-#a3a9b2']">{{
+                  <span :class="['flex-none text-11px', t.status === 'failed' ? 'text-danger' : 'text-placeholder']">{{
                     t.status === 'completed' ? '已完成' : t.status === 'failed' ? t.message || '失败' : '进行中'
                   }}</span>
                 </li>

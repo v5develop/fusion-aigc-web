@@ -9,6 +9,8 @@ import AutoImport from 'unplugin-auto-import/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 import Components from 'unplugin-vue-components/vite'
 import path from 'path'
+import { isShadowProp, rewriteShadow } from './src/theme/shadow-rewrite'
+import { themeBootScript } from './src/theme/theme-decide'
 
 // 两套环境（test / production）各自直连后端，不再有 dev 代理层：
 // 后端已对任意 Origin 开放 CORS，dev 与构建产物因此走完全相同的链路，
@@ -55,6 +57,32 @@ const textScalePostcss = {
   },
 }
 
+/**
+ * 「外观」深色的构建期阴影改写：手写 box-shadow 里的墨色投影 / 白色顶光换成跟主题走的变量表达式，
+ * 浅色下结果与原值一致。规则与理由见 src/theme/shadow-rewrite.ts（uno 工具类走 uno.config.ts 的 postprocess，同一函数）。
+ */
+const themeShadowPostcss = {
+  postcssPlugin: 'xq-theme-shadow',
+  Declaration(decl: CssDecl) {
+    if ((decl.source?.input?.file ?? '').includes('node_modules')) return
+    if (isShadowProp(decl.prop)) decl.value = rewriteShadow(decl.value)
+  },
+}
+
+/**
+ * 「外观」首帧脚本注入：把 index.html 的 `<!--xq-theme-boot-->` 换成内联脚本，判定函数取自
+ * src/theme/theme-decide.ts（运行时 themePrefs.ts 用的同一个），dev / build 都走 transformIndexHtml。
+ * 占位符丢了直接构建失败，免得悄悄失去防闪。
+ */
+const themeBootPlugin = {
+  name: 'xq-theme-boot',
+  transformIndexHtml(html: string) {
+    const mark = '<!--xq-theme-boot-->'
+    if (!html.includes(mark)) throw new Error(`[xq-theme-boot] index.html 缺少占位符 ${mark}`)
+    return html.replace(mark, () => `<script>\n${themeBootScript()}\n</script>`)
+  },
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // 裸跑 vite 会落到 development，那个 mode 已经没有对应的 .env 文件了；
@@ -73,6 +101,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      themeBootPlugin,
       vue(),
       vueJsx(),
       UnoCSS(),
@@ -105,7 +134,7 @@ export default defineConfig(({ mode }) => {
     },
     css: {
       // 内联 postcss 配置后 Vite 不再找 postcss.config.*（仓库里本来也没有）
-      postcss: { plugins: [textScalePostcss] },
+      postcss: { plugins: [textScalePostcss, themeShadowPostcss] },
       preprocessorOptions: {
         less: {
           resolve: {

@@ -134,7 +134,7 @@ const ICON_PATHS: Record<CreationSettingsIcon, string[]> = {
           class="sx-field-btn relative min-w-0 w-full box-border gap-6px [transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s_ease,box-shadow_0.11s_ease,color_0.11s_ease] motion-reduce:transition-none disabled:(opacity-50 cursor-not-allowed)"
           :class="
             openKey === item.key
-              ? '!border-#b9c0c8 !bg-[linear-gradient(#f3f4f5,#f7f8f9)] !shadow-[inset_0_1px_2px_rgba(31,35,41,0.12),inset_0_0_0_1px_rgba(31,35,41,0.03)]'
+              ? '!border-control-press !bg-[linear-gradient(var(--xq-surface3),var(--xq-surface2))] !shadow-[inset_0_1px_2px_rgba(31,35,41,0.12),inset_0_0_0_1px_rgba(31,35,41,0.03)]'
               : ''
           "
           :disabled="disabled"

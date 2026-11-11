@@ -12,8 +12,8 @@ export function chipClass(active: boolean) {
     'flex-none inline-flex items-center h-32px px-15px rounded-16px border border-solid text-12px whitespace-nowrap cursor-pointer select-none',
     '[transition:border-color_0.12s,background_0.12s,color_0.12s] motion-reduce:transition-none',
     active
-      ? 'border-#dcc9e9 bg-[linear-gradient(#fff,#faf4fd)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] font-600 text-violet-ink'
-      : 'border-white/90 bg-[linear-gradient(rgba(255,255,255,0.82),rgba(246,246,247,0.64))] text-muted hover:border-#aeb4b9 hover:text-ink',
+      ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] shadow-[0_1px_2px_rgba(31,35,41,0.05)] font-600 text-violet-ink'
+      : 'border-white/90 bg-[linear-gradient(rgb(var(--xq-surface-rgb)/0.82),rgb(var(--xq-page-rgb)/0.64))] text-muted hover:border-control-hover hover:text-ink',
     FOCUS,
   ]
 }
@@ -25,8 +25,8 @@ export function subChipClass(active: boolean) {
     'inline-flex items-center h-26px px-10px rounded-13px border border-solid text-12px whitespace-nowrap cursor-pointer select-none',
     '[transition:border-color_0.12s,background_0.12s,color_0.12s] motion-reduce:transition-none',
     active
-      ? 'border-#e3d3ee bg-[linear-gradient(#fff,#fbf8fd)] font-600 text-violet-ink'
-      : 'border-transparent bg-transparent text-muted hover:bg-[linear-gradient(#fff,#fbfcfd)] hover:text-ink',
+      ? 'border-violet-soft-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-soft-tint))] font-600 text-violet-ink'
+      : 'border-transparent bg-transparent text-muted hover:bg-[linear-gradient(var(--xq-surface),var(--xq-sunk-bottom))] hover:text-ink',
     FOCUS,
   ]
 }
@@ -37,4 +37,4 @@ export const CATS_ROW =
 
 /** 搜索框 240×32 r16，右侧放大镜 */
 export const SEARCH_INPUT =
-  'box-border h-32px w-full rounded-16px border border-solid border-white/90 bg-[linear-gradient(rgba(255,255,255,0.82),rgba(246,246,247,0.64))] pl-14px pr-32px text-12px text-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)] outline-none placeholder:text-placeholder focus:border-violet focus:shadow-focus'
+  'box-border h-32px w-full rounded-16px border border-solid border-white/90 bg-[linear-gradient(rgb(var(--xq-surface-rgb)/0.82),rgb(var(--xq-page-rgb)/0.64))] pl-14px pr-32px text-12px text-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)] outline-none placeholder:text-placeholder focus:border-violet focus:shadow-focus'

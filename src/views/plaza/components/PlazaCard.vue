@@ -30,7 +30,7 @@ watch(
 <template>
   <article
     :class="[
-      'group sx-squircle flex flex-col min-w-0 overflow-hidden rounded-18px border border-solid border-#c9cdd0 bg-[linear-gradient(#fff,#f8f9fa)]',
+      'group sx-squircle flex flex-col min-w-0 overflow-hidden rounded-18px border border-solid border-soft-line bg-[linear-gradient(var(--xq-surface),var(--xq-soft-bottom))]',
       'shadow-[0_6px_16px_rgba(31,35,41,0.08),inset_0_1px_0_#fff,inset_0_-3px_6px_rgba(31,35,41,0.04)]',
       '[transition:border-color_0.12s_ease,box-shadow_0.12s_ease] motion-reduce:transition-none',
       'hover:(border-violet-line shadow-[0_6px_18px_rgba(31,35,41,0.08),0_1px_2px_rgba(31,35,41,0.05)])',

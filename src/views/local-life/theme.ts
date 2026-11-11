@@ -1,6 +1,9 @@
 // @unocss-include
+import { computed } from 'vue'
 import type { GlobalThemeOverrides } from 'naive-ui'
 import { textScaleTheme } from '@/utils/textPrefs.ts'
+import { activeTheme } from '@/utils/themePrefs.ts'
+import { palettes, type ThemeName } from '@/theme/tokens.ts'
 
 /**
  * 本地生活表单材质（挂在页面根节点上，作用于其中的 naive 控件），对齐电商功能页的控件语汇：
@@ -37,20 +40,29 @@ export const llFormSkin = [
  * <p>必须显式给 Button textColor*：全局 App.vue 的 common.baseColor 是 'red'，
  * naive 会拿它推导彩色底上的文字色，藤紫按钮会被配出红字。
  */
-const baseLlTheme: GlobalThemeOverrides = {
-  common: {
-    primaryColor: '#875f9a',
-    primaryColorHover: '#9a6fae',
-    primaryColorPressed: '#5f3f6f',
-    primaryColorSuppl: '#9a6fae',
-  },
+const baseLlTheme = (theme: ThemeName): GlobalThemeOverrides => ({
+  // 浅色原值；深色用去饱和提亮的藤紫（同 tokens.ts 的 violet / violet-press），否则深色页里局部又被拉回浅色主色
+  common:
+    theme === 'dark'
+      ? {
+          primaryColor: palettes.dark.violet,
+          primaryColorHover: '#a586b7',
+          primaryColorPressed: palettes.dark['violet-press'],
+          primaryColorSuppl: '#a586b7',
+        }
+      : {
+          primaryColor: '#875f9a',
+          primaryColorHover: '#9a6fae',
+          primaryColorPressed: '#5f3f6f',
+          primaryColorSuppl: '#9a6fae',
+        },
   Button: {
     textColorPrimary: '#ffffff',
     textColorHoverPrimary: '#ffffff',
     textColorPressedPrimary: '#ffffff',
     textColorFocusPrimary: '#ffffff',
     // 全局 baseColor: 'red' 会把 disabled 态的配对文字也染红
-    textColorDisabled: '#6e7681',
+    textColorDisabled: palettes[theme].placeholder,
   },
   /*
    * 输入、选择统一 34 高 / 13px / r4（docs/design/ui-design-spec.md §4.1）。
@@ -59,7 +71,7 @@ const baseLlTheme: GlobalThemeOverrides = {
    */
   Input: {
     // 字数计数与 PromptAssist 同色（placeholder 灰），不用 naive 默认的浅灰
-    countTextColor: '#6e7681',
+    countTextColor: palettes[theme].placeholder,
     heightSmall: '34px',
     fontSizeSmall: '13px',
     paddingSmall: '0 10px',
@@ -85,7 +97,13 @@ const baseLlTheme: GlobalThemeOverrides = {
       },
     },
   },
+})
+
+/** 字号随「字体显示」档位缩放（见 src/utils/textPrefs.ts）；两套各算一次 */
+const llThemes: Record<ThemeName, GlobalThemeOverrides> = {
+  light: textScaleTheme(baseLlTheme('light')),
+  dark: textScaleTheme(baseLlTheme('dark')),
 }
 
-/** 字号随「字体显示」档位缩放（见 src/utils/textPrefs.ts） */
-export const llTheme: GlobalThemeOverrides = textScaleTheme(baseLlTheme)
+/** 随「外观」切换（模板里直接 :theme-overrides="llTheme"，computed 自动解包） */
+export const llTheme = computed(() => llThemes[activeTheme.value])

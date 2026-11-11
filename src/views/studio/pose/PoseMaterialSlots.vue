@@ -284,7 +284,7 @@ const popCls =
           </template>
           <span
             v-if="sourceUrl && sourceUp.uploading.value"
-            class="absolute inset-0 z-20 grid place-items-center rounded-5px bg-[rgba(255,255,255,0.6)]"
+            class="absolute inset-0 z-20 grid place-items-center rounded-5px bg-surface/60"
           >
             <n-spin :size="16" />
           </span>
@@ -334,13 +334,13 @@ const popCls =
       class="z-20 left-0 w-240px p-8px pointer-events-none before:(content-[''] absolute -top-12px inset-x-0 h-12px)"
       aria-hidden="true"
     >
-      <img class="block w-full h-auto max-h-420px rounded-5px object-contain bg-#f6f7f8" :src="sourceUrl" alt="" />
+      <img class="block w-full h-auto max-h-420px rounded-5px object-contain bg-surface2" :src="sourceUrl" alt="" />
       <div class="mt-6px text-9.5px leading-14px text-placeholder">人物图 · 身份与服装都锁这张 · 点击更换</div>
     </div>
 
     <!-- 姿势图：最多 9 张叠片，满 9 张后只拦点击，悬停照样摊开 -->
     <div
-      class="relative flex flex-[0_0_auto] min-w-0 flex-col items-center before:(content-[''] absolute top-0 left-[-12px] w-9px h-100px pointer-events-none bg-[linear-gradient(90deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.026)_35%,rgba(31,35,41,0.026)_65%,rgba(31,35,41,0)_100%)] [mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]) after:(content-[''] absolute top-0 left-[-8px] w-1px h-100px pointer-events-none bg-[linear-gradient(180deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.09)_14%,rgba(31,35,41,0.09)_86%,rgba(31,35,41,0)_100%)])"
+      class="relative flex flex-[0_0_auto] min-w-0 flex-col items-center before:(content-[''] absolute top-0 left-[-12px] w-9px h-100px pointer-events-none bg-[linear-gradient(90deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.026)_35%,rgb(var(--xq-ink-rgb)/0.026)_65%,rgb(var(--xq-ink-rgb)/0)_100%)] [mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]) after:(content-[''] absolute top-0 left-[-8px] w-1px h-100px pointer-events-none bg-[linear-gradient(180deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.09)_14%,rgb(var(--xq-ink-rgb)/0.09)_86%,rgb(var(--xq-ink-rgb)/0)_100%)])"
       @mouseenter="enterPose"
       @mouseleave="leavePose"
     >
@@ -391,7 +391,7 @@ const popCls =
           </template>
           <span
             v-if="poses.length && poseUp.uploading.value"
-            class="absolute inset-0 z-20 grid place-items-center rounded-5px bg-[rgba(255,255,255,0.6)]"
+            class="absolute inset-0 z-20 grid place-items-center rounded-5px bg-surface/60"
           >
             <n-spin :size="16" />
           </span>

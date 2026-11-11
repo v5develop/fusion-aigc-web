@@ -87,7 +87,7 @@ const mealLabels = ['套餐二连图', '套餐图']
 <template>
   <div class="min-w-0 flex flex-col items-center gap-8px" role="img" :aria-label="ariaLabel">
     <div
-      class="aspect-[440/956] w-[min(100%,360px)] box-border rounded-30px border border-solid border-violet-border/40 bg-ink p-6px shadow-preview"
+      class="aspect-[440/956] w-[min(100%,360px)] box-border rounded-30px border border-solid border-violet-border/40 bg-#1f2329 p-6px shadow-preview"
       aria-hidden="true"
     >
       <div

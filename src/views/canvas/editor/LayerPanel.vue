@@ -94,7 +94,7 @@ function onRowKey(event: KeyboardEvent, index: number) {
     <div class="flex-1 min-h-0 overflow-y-auto px-12px pb-12px">
       <p class="m-0 mb-10px text-muted text-12px leading-18px">把图片拆成可以单独使用的图层，每层生成一个图片节点</p>
       <div
-        class="grid place-items-center h-220px p-8px rounded-8px border border-solid border-line [background:repeating-conic-gradient(#e9ecef_0%,#e9ecef_25%,transparent_0%,transparent_50%)_0_0/16px_16px,#f3f4f5]"
+        class="grid place-items-center h-220px p-8px rounded-8px border border-solid border-line [background:repeating-conic-gradient(var(--xq-checker-b)_0%,var(--xq-checker-b)_25%,transparent_0%,transparent_50%)_0_0/16px_16px,var(--xq-surface3)]"
       >
         <img :src="preview" alt="" class="block max-w-full max-h-full object-contain" />
       </div>
@@ -116,7 +116,7 @@ function onRowKey(event: KeyboardEvent, index: number) {
             class="relative flex items-center gap-8px px-8px py-6px rounded-8px border border-solid cursor-pointer"
             :class="[
               ACTION_RING,
-              activeIndex === index ? 'border-violet bg-[rgba(135,95,154,0.12)]' : 'border-transparent hover:bg-page',
+              activeIndex === index ? 'border-violet bg-violet/12' : 'border-transparent hover:bg-page',
             ]"
             role="option"
             :aria-selected="activeIndex === index"

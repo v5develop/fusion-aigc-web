@@ -1129,7 +1129,7 @@ const pillCls =
                 focusRing,
                 selectedTask?.taskId === task.taskId
                   ? 'border-violet shadow-[0_0_0_1px_#875f9a]'
-                  : 'border-line hover:border-#c9cfd6',
+                  : 'border-line hover:border-control',
               ]"
               :aria-label="`${taskCaption(task, props.detail?.batch)} · ${taskChip(task.status).label}`"
               :aria-pressed="selectedTask?.taskId === task.taskId"
@@ -1297,7 +1297,7 @@ const pillCls =
 
 /* 滚动条 mixin 无法用原子类表达 */
 .stu-scroll {
-  .scrollbar-autohide(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
+  .scrollbar-autohide(@width: 8px, @trackColor: var(--xq-surface), @thumbColor: rgb(var(--xq-ink-rgb) / 0.1), @thumbWidth: 4px, @hoverColor: rgb(var(--xq-ink-rgb) / 0.35));
 }
 
 /* 生成中：34 圆藤紫旋转环（2px 环、800ms 一圈）；减少动态效果时放慢到 2.4s 仍保持转动（表示还在跑） */
@@ -1307,8 +1307,8 @@ const pillCls =
   height: 34px;
   box-sizing: border-box;
   margin-bottom: 2px;
-  border: 2px solid #f3edf8;
-  border-top-color: #875f9a;
+  border: 2px solid var(--xq-violet-soft);
+  border-top-color: var(--xq-violet);
   border-radius: 50%;
   animation: spp-spin 800ms linear infinite;
 }

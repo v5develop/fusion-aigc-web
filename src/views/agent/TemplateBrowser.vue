@@ -159,8 +159,8 @@ function chipClass(on: boolean) {
     'flex-none h-32px px-15px rounded-6px border border-solid text-12px whitespace-nowrap cursor-pointer select-none',
     '[transition:border-color_0.12s,background_0.12s,color_0.12s] motion-reduce:transition-none',
     on
-      ? 'border-#dcc9e9 bg-[linear-gradient(#fff,#faf4fd)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] font-600 text-violet-ink'
-      : 'border-white/90 bg-[linear-gradient(rgba(255,255,255,0.82),rgba(246,246,247,0.64))] text-muted hover:(border-#aeb4b9 text-ink)',
+      ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] shadow-[0_1px_2px_rgba(31,35,41,0.05)] font-600 text-violet-ink'
+      : 'border-white/90 bg-[linear-gradient(rgb(var(--xq-surface-rgb)/0.82),rgb(var(--xq-page-rgb)/0.64))] text-muted hover:(border-control-hover text-ink)',
     FOCUS,
   ]
 }
@@ -221,7 +221,7 @@ function chipClass(on: boolean) {
           v-model="query"
           type="search"
           :placeholder="tab === 'headlines' ? '搜索模板' : '搜索已加载的模板'"
-          class="box-border h-32px w-full rounded-16px border border-solid border-white/90 bg-[linear-gradient(rgba(255,255,255,0.82),rgba(246,246,247,0.64))] pl-14px pr-32px text-12px text-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)] outline-none placeholder:text-placeholder focus:(border-violet shadow-focus)"
+          class="box-border h-32px w-full rounded-16px border border-solid border-white/90 bg-[linear-gradient(rgb(var(--xq-surface-rgb)/0.82),rgb(var(--xq-page-rgb)/0.64))] pl-14px pr-32px text-12px text-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)] outline-none placeholder:text-placeholder focus:(border-violet shadow-focus)"
         />
         <svg
           class="pointer-events-none absolute right-10px top-9px h-14px w-14px text-placeholder"

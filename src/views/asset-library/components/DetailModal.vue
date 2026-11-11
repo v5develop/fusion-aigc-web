@@ -259,7 +259,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   }
   .asset-dlg-panel {
     border-left: none;
-    border-top: 1px solid #eff1f3;
+    border-top: 1px solid var(--xq-line-soft);
   }
   .asset-dlg-close {
     top: 12px !important;
@@ -269,8 +269,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 /* 窄屏关闭钮压在舞台上：换成毛玻璃底 */
 @media (max-width: 900px) {
   .asset-dlg-close {
-    background: rgba(255, 255, 255, 0.9) !important;
-    border-color: rgba(255, 255, 255, 0.6) !important;
+    background: rgb(var(--xq-surface-rgb) / 0.9) !important;
+    border-color: var(--xq-glass-line) !important;
     box-shadow: 0 1px 3px rgba(31, 35, 41, 0.18) !important;
   }
 }
@@ -294,6 +294,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 <style lang="less">
 /* 详情层遮罩：原型 rgba(245,246,248,.72)；NModal 的遮罩在 Teleport 里，scoped 够不着 */
 .n-modal-container:has(.asset-dlg) .n-modal-mask {
-  background-color: rgba(245, 246, 248, 0.72);
+  background-color: rgb(var(--xq-page-rgb) / 0.72);
 }
 </style>

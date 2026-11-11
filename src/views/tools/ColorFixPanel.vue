@@ -641,11 +641,11 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   max-width: calc(100% - 24px);
   box-sizing: border-box;
   flex-direction: column;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
   border-radius: 13px;
   background:
     radial-gradient(120% 90% at 100% 0%, rgba(150, 107, 170, 0.1), transparent 62%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(250, 249, 252, 0.97));
+    linear-gradient(180deg, rgb(var(--xq-overlay-rgb) / 0.97), rgb(var(--xq-surface2-rgb) / 0.97));
   box-shadow:
     0 18px 40px -16px rgba(30, 41, 59, 0.32),
     0 4px 12px rgba(31, 35, 41, 0.1),
@@ -688,7 +688,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   align-items: center;
   gap: 8px;
   padding: 0 8px 0 12px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--xq-line);
   cursor: grab;
   touch-action: none;
 }
@@ -705,12 +705,12 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: #c9bfd1;
+  background: var(--xq-violet-line);
 }
 .cfp__title {
   min-width: 0;
   flex: 1;
-  color: #1f2329;
+  color: var(--xq-ink);
   font-size: 13px;
   font-weight: 600;
   line-height: 18px;
@@ -725,7 +725,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #9aa1aa;
+  color: var(--xq-placeholder);
   cursor: pointer;
   transition:
     background 0.12s ease,
@@ -736,12 +736,12 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   height: 14px;
 }
 .cfp__close:hover {
-  background: #f2eef5;
-  color: #6b487c;
+  background: var(--xq-violet-soft);
+  color: var(--xq-violet-ink);
 }
 .cfp__close:focus-visible,
 .cfp__btn:focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: 2px;
 }
 
@@ -751,7 +751,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   gap: 6px;
   margin: 0 12px;
   padding: 9px 0 8px;
-  border-bottom: 1px dashed #ece7f0;
+  border-bottom: 1px dashed var(--xq-line);
   cursor: default;
 }
 .cfp__row {
@@ -763,7 +763,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
 .cfp__label {
   width: 30px;
   flex: 0 0 30px;
-  color: #4a5059;
+  color: var(--xq-ink-2);
   font-size: 11.5px;
   font-weight: 500;
 }
@@ -779,9 +779,9 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   flex-wrap: wrap;
   gap: 8px;
   padding: 2px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
   border-radius: 9px;
-  background: #f5f6f7;
+  background: var(--xq-page);
 }
 .cfp__seg-btn,
 .cfp__chip {
@@ -791,7 +791,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
-  color: #6b7280;
+  color: var(--xq-muted);
   font: inherit;
   font-size: 12px;
   line-height: 26px;
@@ -799,13 +799,13 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   cursor: pointer;
 }
 .cfp__seg-btn[aria-disabled='true'] {
-  color: #b8bdc4;
+  color: var(--xq-control-hover);
   cursor: not-allowed;
 }
 .cfp__seg-btn.is-on {
-  border-color: #d9c8e4;
-  background: linear-gradient(180deg, #fff, #f8f3fc);
-  color: #6b487c;
+  border-color: var(--xq-violet-line);
+  background: linear-gradient(180deg, var(--xq-surface), var(--xq-violet-tint));
+  color: var(--xq-violet-ink);
   font-weight: 600;
 }
 .cfp__seg .cfp__seg-btn::after,
@@ -818,14 +818,14 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   gap: 8px;
 }
 .cfp__chip {
-  border-color: #e5e7eb;
+  border-color: var(--xq-line);
   border-radius: 14px;
-  background: #fff;
+  background: var(--xq-surface);
 }
 .cfp__chip.is-on {
-  border-color: #8b64a0;
-  background: #f4eef8;
-  color: #6b487c;
+  border-color: var(--xq-violet);
+  background: var(--xq-violet-soft);
+  color: var(--xq-violet-ink);
   font-weight: 600;
 }
 .cfp__row--top {
@@ -843,10 +843,10 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   height: 24px;
   box-sizing: border-box;
   padding: 0 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
   border-radius: 12px;
-  background: #fff;
-  color: #5f6673;
+  background: var(--xq-surface);
+  color: var(--xq-muted);
   font: inherit;
   font-size: 12px;
   line-height: 22px;
@@ -857,16 +857,16 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
     background 0.12s ease;
 }
 .cfp__part:hover:not(.is-on) {
-  border-color: #c9cfd6;
+  border-color: var(--xq-control);
 }
 .cfp__part.is-on {
-  border-color: #8b64a0;
-  background: #f4eef8;
-  color: #6b487c;
+  border-color: var(--xq-violet);
+  background: var(--xq-violet-soft);
+  color: var(--xq-violet-ink);
   font-weight: 600;
 }
 .cfp__part:focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: 2px;
 }
 .cfp__switch {
@@ -877,7 +877,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   padding: 0;
   border: 0;
   border-radius: 9px;
-  background: #d5d9de;
+  background: var(--xq-control);
   cursor: pointer;
   transition: background 0.12s ease;
 }
@@ -888,12 +888,12 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--xq-surface);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   transition: transform 0.12s ease;
 }
 .cfp__switch.is-on {
-  background: #875f9a;
+  background: var(--xq-violet);
 }
 .cfp__switch.is-on i {
   transform: translateX(12px);
@@ -901,11 +901,11 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
 .cfp__range {
   min-width: 0;
   flex: 1;
-  accent-color: #875f9a;
+  accent-color: var(--xq-violet);
 }
 .cfp__num {
   width: 18px;
-  color: #6b487c;
+  color: var(--xq-violet-ink);
   font-size: 11px;
   text-align: right;
 }
@@ -914,7 +914,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   align-items: center;
   gap: 8px;
   margin: 0;
-  color: #9aa1aa;
+  color: var(--xq-placeholder);
   font-size: 11px;
   line-height: 16px;
 }
@@ -935,7 +935,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   gap: 8px;
   margin: 0 12px;
   padding: 9px 0 8px;
-  border-bottom: 1px dashed #ece7f0;
+  border-bottom: 1px dashed var(--xq-line);
   cursor: default;
 }
 .cfp__label--wide {
@@ -943,7 +943,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   flex: 0 0 auto;
 }
 .cfp__soft {
-  color: #9aa1aa;
+  color: var(--xq-placeholder);
   font-size: 11px;
 }
 .cfp__swatches {
@@ -960,7 +960,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   flex: 0 0 22px;
   box-sizing: border-box;
   padding: 0;
-  border: 1px solid rgba(31, 35, 41, 0.14);
+  border: 1px solid rgb(var(--xq-ink-rgb) / 0.14);
   border-radius: 50%;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
   cursor: pointer;
@@ -973,14 +973,14 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   cursor: default;
 }
 .cfp__swatch.is-empty {
-  background: repeating-conic-gradient(#eceef0 0% 25%, #fff 0% 50%) 0 0 / 8px 8px;
+  background: repeating-conic-gradient(var(--xq-checker-b) 0% 25%, var(--xq-checker-a) 0% 50%) 0 0 / 8px 8px;
 }
 .cfp__swatch.is-on {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: 2px;
 }
 .cfp__swatch:focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: 2px;
 }
 .cfp__chip--sm {
@@ -989,7 +989,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   line-height: 22px;
 }
 .cfp__arrow {
-  color: #9aa1aa;
+  color: var(--xq-placeholder);
   font-size: 13px;
 }
 .cfp__picker {
@@ -1007,16 +1007,16 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   height: 28px;
   box-sizing: border-box;
   padding: 0 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
   border-radius: 7px;
-  background: #fff;
-  color: #1f2329;
+  background: var(--xq-surface);
+  color: var(--xq-ink);
   font: inherit;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .cfp__hex:focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: 1px;
 }
 .cfp__num--wide {
@@ -1024,7 +1024,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
 }
 .cfp__subtitle {
   margin: 8px 12px -4px;
-  color: #6b487c;
+  color: var(--xq-violet-ink);
   font-size: 11.5px;
   font-weight: 600;
   line-height: 16px;
@@ -1039,7 +1039,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   position: sticky;
   top: 0;
   z-index: 1;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgb(var(--xq-surface-rgb) / 0.96);
 }
 /* 停靠：铺满全屏层右栏，不浮、不拖 */
 .cfp.is-docked {
@@ -1085,7 +1085,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
 .cfp__seg-btn:focus-visible,
 .cfp__chip:focus-visible,
 .cfp__switch:focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: 2px;
 }
 
@@ -1102,13 +1102,13 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   gap: 8px;
   margin: 0 12px;
   padding: 8px 0 10px;
-  border-top: 1px dashed #ece7f0;
+  border-top: 1px dashed var(--xq-line);
   cursor: default;
 }
 .cfp__hint {
   min-width: 0;
   flex: 1;
-  color: #9aa1aa;
+  color: var(--xq-placeholder);
   font-size: 11px;
   line-height: 16px;
 }
@@ -1117,10 +1117,10 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   flex: 0 0 auto;
   box-sizing: border-box;
   padding: 0 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
   border-radius: 12px;
-  background: linear-gradient(#fff, #f7f8f9);
-  color: #4a5059;
+  background: linear-gradient(var(--xq-surface), var(--xq-surface2));
+  color: var(--xq-ink-2);
   font: inherit;
   font-size: 11px;
   line-height: 22px;
@@ -1128,15 +1128,15 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   cursor: pointer;
 }
 .cfp__btn:hover:not(:disabled) {
-  border-color: #c9cfd6;
+  border-color: var(--xq-control);
 }
 .cfp__btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 .cfp__btn.is-primary {
-  border-color: #8b64a0;
-  background: linear-gradient(180deg, #966baa, #83598f);
+  border-color: var(--xq-violet);
+  background: linear-gradient(180deg, var(--xq-violet-top), var(--xq-violet-bottom));
   color: #fff;
   font-weight: 600;
 }

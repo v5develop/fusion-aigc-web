@@ -5,11 +5,9 @@
 // 这里只处理 naive 变量覆盖不到的结构性差异。
 
 .fusion-dropdown.n-dropdown {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--xq-line);
   border-radius: 10px;
-  box-shadow:
-    0 12px 24px rgba(31, 35, 41, 0.14),
-    0 2px 6px rgba(31, 35, 41, 0.06);
+  box-shadow: var(--xq-shadow-pop);
   // 面板 8px(padding) + 36px(标题) + 320px(8 行 × 40px) + 8px(padding)
   max-height: 372px;
   overflow-x: hidden;
@@ -24,7 +22,7 @@
   }
 
   &::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.09);
+    background-color: var(--xq-scrollbar-thumb);
     border-radius: 226px;
   }
 
@@ -59,9 +57,9 @@
     position: sticky;
     top: 0;
     z-index: 2;
-    background-color: #fff;
+    background-color: var(--xq-overlay);
 
-    // 标题白色背景向上延伸盖住面板顶部 8px 内边距，
+    // 标题底色（浮层面）向上延伸盖住面板顶部 8px 内边距，
     // 否则吸顶时滚动的选项会从标题上方那条内边距缝隙透出来
     &::before {
       content: '';
@@ -70,13 +68,13 @@
       right: -4px;
       bottom: 100%;
       height: 8px;
-      background-color: #fff;
+      background-color: var(--xq-overlay);
     }
   }
 }
 
 .fusion-dropdown-option--selected .n-dropdown-option-body::before {
-  background: linear-gradient(180deg, #ffffff 0%, #f8f3fc 100%);
+  background: linear-gradient(180deg, var(--xq-surface) 0%, var(--xq-violet-tint) 100%);
 }
 
 .fusion-dropdown-row {
@@ -106,4 +104,10 @@
 
 .fusion-dropdown-row__check {
   margin-left: auto;
+  // 勾用 currentColor：浅色保持设计稿的 AI 强调紫，深色换藤紫文字档（亮紫在深底上发荧光）
+  color: #8e66f9;
+
+  [data-theme='dark'] & {
+    color: var(--xq-violet-fg);
+  }
 }

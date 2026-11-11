@@ -211,9 +211,9 @@ const handlePaste = (e: ClipboardEvent) => {
   padding: 15px;
   border-radius: 24px;
   opacity: 1;
-  background: #ffffff;
+  background: var(--xq-surface);
   box-sizing: border-box;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--xq-line-soft);
   margin: 0 auto;
   > .main-content {
     height: 100px;
@@ -232,10 +232,10 @@ const handlePaste = (e: ClipboardEvent) => {
       white-space: wrap;
       word-break: break-all;
       font-size: 16px;
-      .scrollbar(@width: 5px, @thumbColor: #dcdcdc);
+      .scrollbar(@width: 5px, @thumbColor: var(--xq-scrollbar-thumb));
       &:empty::before {
         content: attr(data-placeholder);
-        color: #9e9e9e;
+        color: var(--xq-muted);
         pointer-events: none;
       }
     }

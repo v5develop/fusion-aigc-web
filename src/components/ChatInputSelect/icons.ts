@@ -44,7 +44,7 @@ export function ratioIconSvg(label: string): string {
   else rw = Math.max(4, Math.round((w / h) * max))
   const x = (16 - rw) / 2
   const y = (16 - rh) / 2
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="${x}" y="${y}" width="${rw}" height="${rh}" rx="1.4" stroke="#3A3A3A" stroke-width="1.2"/></svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="${x}" y="${y}" width="${rw}" height="${rh}" rx="1.4" stroke="currentColor" stroke-width="1.2"/></svg>`
 }
 
 export type IconCategory = 'ratio' | 'duration' | 'model' | 'resolution' | 'entryCode' | 'num'

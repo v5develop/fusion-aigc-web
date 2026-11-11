@@ -45,12 +45,12 @@ function onClick() {
     :aria-disabled="(interactive && disabled) || undefined"
     :class="[
       'group sx-squircle relative flex h-148px w-full overflow-hidden rounded-18px border border-solid p-0 text-left',
-      'bg-[linear-gradient(#fff,#f8f9fa)] [content-visibility:auto] [contain-intrinsic-size:auto_148px]',
+      'bg-[linear-gradient(var(--xq-surface),var(--xq-soft-bottom))] [content-visibility:auto] [contain-intrinsic-size:auto_148px]',
       '[transition:border-color_0.12s_ease,box-shadow_0.12s_ease] motion-reduce:transition-none',
       'focus-visible:(outline outline-2 outline-violet outline-offset-2)',
       picked
         ? 'border-#b48bc6 shadow-[0_0_0_1px_#b48bc6,0_6px_16px_rgba(31,35,41,0.08)]'
-        : 'border-#c9cdd0 shadow-[0_6px_16px_rgba(31,35,41,0.08),inset_0_1px_0_#fff,inset_0_-3px_6px_rgba(31,35,41,0.04)] hover:(border-violet-line shadow-[0_6px_18px_rgba(31,35,41,0.08),0_1px_2px_rgba(31,35,41,0.05)])',
+        : 'border-soft-line shadow-[0_6px_16px_rgba(31,35,41,0.08),inset_0_1px_0_#fff,inset_0_-3px_6px_rgba(31,35,41,0.04)] hover:(border-violet-line shadow-[0_6px_18px_rgba(31,35,41,0.08),0_1px_2px_rgba(31,35,41,0.05)])',
       !interactive ? 'cursor-default' : disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
     ]"
     @click="onClick"
@@ -75,7 +75,7 @@ function onClick() {
       <span v-else class="grid h-full w-full place-items-center text-11px text-placeholder">暂无效果图</span>
       <span
         v-if="interactive"
-        class="absolute bottom-8px right-8px inline-flex h-26px items-center gap-3px rounded-4px bg-[linear-gradient(#8a639f,#7a548c)] px-9px text-11px font-600 text-white opacity-0 translate-y-4px [transition:opacity_0.14s_ease,transform_0.14s_ease] group-hover:(opacity-100 translate-y-0) group-focus-visible:(opacity-100 translate-y-0) [@media(hover:none)]:hidden"
+        class="absolute bottom-8px right-8px inline-flex h-26px items-center gap-3px rounded-4px bg-[linear-gradient(var(--xq-violet-top),var(--xq-violet-bottom))] px-9px text-11px font-600 text-white opacity-0 translate-y-4px [transition:opacity_0.14s_ease,transform_0.14s_ease] group-hover:(opacity-100 translate-y-0) group-focus-visible:(opacity-100 translate-y-0) [@media(hover:none)]:hidden"
         aria-hidden="true"
       >
         {{ cta }}
@@ -98,7 +98,7 @@ function onClick() {
 
     <span
       v-if="picked"
-      class="absolute right-8px top-8px z-3 grid h-18px w-18px place-items-center rounded-full bg-#8a63a0 text-white shadow-[0_2px_6px_rgba(31,35,41,0.22),inset_0_1px_0_rgba(255,255,255,0.25)]"
+      class="absolute right-8px top-8px z-3 grid h-18px w-18px place-items-center rounded-full bg-violet-top text-white shadow-[0_2px_6px_rgba(31,35,41,0.22),inset_0_1px_0_rgba(255,255,255,0.25)]"
       aria-hidden="true"
     >
       <svg class="h-11px w-11px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">

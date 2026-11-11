@@ -119,7 +119,7 @@ provide(LL_WORKBENCH_KEY, {
       >
         <!-- 功能卡（同电商 Container 段一）：外缘 12、r8、#e9dff2 描边、白 → #fbf7fe 渐变，作为左栏的顶部高光面 -->
         <header
-          class="sx-squircle flex-none flex items-center gap-12px h-64px m-12px px-14px box-border rounded-18px border border-solid border-#e9dff2 bg-gradient-to-b from-white to-#fbf7fe shadow-plate"
+          class="sx-squircle flex-none flex items-center gap-12px h-64px m-12px px-14px box-border rounded-18px border border-solid border-violet-soft-2 bg-gradient-to-b from-white to-upload-hover-bottom shadow-plate"
         >
           <h1 class="m-0 min-w-0 truncate text-16px font-600 leading-[1.4] text-ink">{{ title }}</h1>
         </header>

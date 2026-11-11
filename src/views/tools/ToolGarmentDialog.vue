@@ -83,7 +83,7 @@ const { dragging } = useFileDropPaste(bodyEl, {
 
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 /** 单品片 / 分段片选中：柔紫线 + 白→#f8f3fc + 紫字 600 */
-const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] text-violet-ink font-600'
+const onCls = 'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] text-violet-ink font-600'
 </script>
 
 <template>
@@ -145,7 +145,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
 
       <div
         v-if="!g.selected.length"
-        class="p-18px rounded-6px border border-dashed border-line bg-#fbfcfc text-11px text-center text-placeholder"
+        class="p-18px rounded-6px border border-dashed border-line bg-plate-bottom text-11px text-center text-placeholder"
       >
         先在上面选 1–3 件单品，再上传对应的服装图。
       </div>
@@ -154,7 +154,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
         <div class="relative w-full h-220px">
           <button
             type="button"
-            class="relative block w-full h-full box-border overflow-hidden rounded-6px border border-dashed border-line bg-#fbfcfc text-11px text-placeholder cursor-pointer"
+            class="relative block w-full h-full box-border overflow-hidden rounded-6px border border-dashed border-line bg-plate-bottom text-11px text-placeholder cursor-pointer"
             :class="focusRing"
             :aria-label="g.look ? '换一张整套合影' : '上传一张整套合影'"
             @click="pick({ kind: 'look' })"
@@ -261,7 +261,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
         }}</span>
         <button
           type="button"
-          class="h-34px box-border px-18px rounded-6px border border-solid border-#6a487b bg-[linear-gradient(180deg,#8a639f,#7a548c)] text-white text-13px font-600 cursor-pointer shadow-[0_1px_2px_rgba(31,35,41,0.16),inset_0_1px_0_rgba(255,255,255,0.18)]"
+          class="h-34px box-border px-18px rounded-6px border border-solid border-violet-border bg-[linear-gradient(180deg,var(--xq-violet-top),var(--xq-violet-bottom))] text-white text-13px font-600 cursor-pointer shadow-[0_1px_2px_rgba(31,35,41,0.16),inset_0_1px_0_rgba(255,255,255,0.18)]"
           :class="focusRing"
           @click="show = false"
         >

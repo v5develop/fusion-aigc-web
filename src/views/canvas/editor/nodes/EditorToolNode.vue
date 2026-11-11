@@ -254,13 +254,13 @@ function onCropUp() {
 
     <!-- 原型 .wf-tool-node__body：内边距 0 12 12、gap 8 -->
     <div class="flex flex-col gap-8px px-12px pb-12px">
-      <div class="m-0 text-[#7f7f7f] text-12px">{{ summary }}</div>
+      <div class="m-0 text-muted text-12px">{{ summary }}</div>
 
       <!-- 反推结果：可编辑文本 + 复制 / 插入画布 -->
       <template v-if="isI2p && (resultText || data.status === 'done')">
         <textarea
           v-model="editableText"
-          class="block w-full min-h-96px max-h-200px px-9px py-7px border border-solid border-[#e3e6ee] rounded-6px bg-[#f7f8fb] text-ink-2 text-12px leading-[1.55] resize-y outline-none focus:border-violet nodrag nowheel"
+          class="block w-full min-h-96px max-h-200px px-9px py-7px border border-solid border-line rounded-6px bg-surface2 text-ink-2 text-12px leading-[1.55] resize-y outline-none focus:border-violet nodrag nowheel"
           :maxlength="3000"
           aria-label="反推结果（可编辑）"
         />
@@ -278,7 +278,7 @@ function onCropUp() {
         <!-- 裁剪：在输入图上拖拽框选（比例坐标写回 data.crop） -->
         <div v-if="isCrop && cropSource" class="flex flex-col gap-4px">
           <span class="text-muted text-11px">在图上拖拽框选裁剪区域，拖四角调整</span>
-          <div class="flex justify-center px-6px py-6px rounded-6px bg-[#f4f6fa]">
+          <div class="flex justify-center px-6px py-6px rounded-6px bg-[#f4f6fa] [[data-theme=dark]_&]:bg-surface2">
             <div
               ref="cropBox"
               class="relative inline-block max-w-full select-none touch-none cursor-crosshair nodrag nowheel"
@@ -309,7 +309,7 @@ function onCropUp() {
               </div>
               <div
                 data-crop-rect
-                class="absolute border-2 border-solid border-violet bg-[rgba(135,95,154,0.12)] cursor-move"
+                class="absolute border-2 border-solid border-violet bg-violet/12 cursor-move"
                 :class="data.crop?.shape === 'circle' ? 'rounded-full' : ''"
                 :style="{
                   left: `${cropShown.x * 100}%`,
@@ -322,7 +322,7 @@ function onCropUp() {
                   v-for="corner in cropHandles"
                   :key="corner.key"
                   :data-crop-handle="corner.key"
-                  class="absolute w-10px h-10px border-2 border-solid border-white rounded-2px bg-violet -translate-x-50% -translate-y-50% after:content-empty after:absolute after:-inset-11px"
+                  class="absolute w-10px h-10px border-2 border-solid border-#fff rounded-2px bg-violet -translate-x-50% -translate-y-50% after:content-empty after:absolute after:-inset-11px"
                   :class="corner.cls"
                   :aria-label="`拖动${corner.label}调整裁剪框`"
                 />
@@ -332,7 +332,7 @@ function onCropUp() {
         </div>
         <div
           v-if="resultImage"
-          class="canvas-media relative grid w-full place-items-center overflow-hidden min-h-110px border border-solid border-[#e9ecf2] rounded-6px bg-[#f4f6fa]"
+          class="canvas-media relative grid w-full place-items-center overflow-hidden min-h-110px border border-solid border-line rounded-6px bg-[#f4f6fa] [[data-theme=dark]_&]:bg-surface2"
         >
           <img
             :src="resultImage"
@@ -354,7 +354,7 @@ function onCropUp() {
         </div>
         <div
           v-else-if="!(isCrop && cropSource)"
-          class="flex flex-col items-center gap-6px justify-center min-h-80px border border-dashed border-[#d9d9d9] rounded-6px text-[#9d9d9d] text-12px"
+          class="flex flex-col items-center gap-6px justify-center min-h-80px border border-dashed border-line-strong rounded-6px text-placeholder text-12px"
         >
           <EditorIcon name="tool" :size="20" />
           <span>{{ isRunning ? '处理中…' : isTryon ? '连服装与模特图后执行' : '连一条图片输入后执行' }}</span>

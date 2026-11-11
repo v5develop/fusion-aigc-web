@@ -147,13 +147,13 @@ const hint = computed(() =>
   <div>
     <!-- 顶部留 20px：序号 / 标签贴在框外上方 -->
     <div
-      class="flex justify-center px-8px pt-22px pb-8px overflow-hidden rounded-8px border border-solid border-line [background:repeating-conic-gradient(#e9ecef_0%,#e9ecef_25%,transparent_0%,transparent_50%)_0_0/16px_16px,#f3f4f5]"
+      class="flex justify-center px-8px pt-22px pb-8px overflow-hidden rounded-8px border border-solid border-line [background:repeating-conic-gradient(var(--xq-checker-b)_0%,var(--xq-checker-b)_25%,transparent_0%,transparent_50%)_0_0/16px_16px,var(--xq-surface3)]"
     >
       <div class="relative inline-block max-w-full">
         <img :src="url" alt="" draggable="false" class="block max-w-full max-h-300px w-auto h-auto select-none" />
         <div
           ref="overlayRef"
-          class="absolute inset-0 touch-none outline-none rounded-2px focus-visible:shadow-[0_0_0_3px_rgba(135,95,154,0.35)]"
+          class="absolute inset-0 touch-none outline-none rounded-2px focus-visible:shadow-[0_0_0_3px_rgb(var(--xq-focus-rgb)/0.35)]"
           :class="disabled ? 'cursor-not-allowed' : 'cursor-crosshair'"
           tabindex="0"
           role="application"
@@ -175,8 +175,8 @@ const hint = computed(() =>
               :class="[
                 region.status === 'pending' ? 'border-dashed' : 'border-solid',
                 region.status === 'error'
-                  ? 'border-danger bg-[rgba(180,67,62,0.10)]'
-                  : 'border-violet bg-[rgba(135,95,154,0.12)]',
+                  ? 'border-danger bg-danger/10'
+                  : 'border-violet bg-violet/12',
               ]"
               :style="markerStyle(region)"
               @pointerenter="emit('hover', region.key)"
@@ -204,7 +204,7 @@ const hint = computed(() =>
               @pointerleave="emit('hover', '')"
             >
               <span
-                class="absolute -left-6px -top-6px w-12px h-12px border-2 border-solid border-white rounded-full shadow-[0_0_0_1px_rgba(31,35,41,0.25)]"
+                class="absolute -left-6px -top-6px w-12px h-12px border-2 border-solid border-#fff rounded-full shadow-[0_0_0_1px_rgba(31,35,41,0.25)]"
                 :class="[
                   region.status === 'error' ? 'bg-danger' : 'bg-violet',
                   region.status === 'pending' ? 'opacity-60' : '',
@@ -228,7 +228,7 @@ const hint = computed(() =>
           <!-- 拖拽 / 键盘框选中的预览框（待定态虚线） -->
           <div
             v-if="draftBox"
-            class="absolute border-2 border-dashed border-violet rounded-4px bg-[rgba(135,95,154,0.12)] pointer-events-none"
+            class="absolute border-2 border-dashed border-violet rounded-4px bg-violet/12 pointer-events-none"
             :style="boxStyle(draftBox)"
           />
           <!-- 键盘准星：只在键盘聚焦时出现 -->

@@ -21,7 +21,7 @@ const template = () => {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        backgroundColor: 'rgb(var(--xq-surface-rgb) / 0.3)',
         zIndex: 9999,
       }}
     >

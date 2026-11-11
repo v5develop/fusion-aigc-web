@@ -624,13 +624,14 @@ const selectThemeOverrides: NonNullable<SelectProps['themeOverrides']> = {
       borderRadius: '4px',
       fontSizeMedium: '13px',
       heightMedium: '34px',
-      border: '1px solid #c9cfd6',
-      borderHover: '1px solid #aeb6bf',
-      borderActive: '1px solid #875F9A',
-      borderFocus: '1px solid #875F9A',
-      boxShadowActive: '0 0 0 3px rgba(135,95,154,0.14)',
-      boxShadowFocus: '0 0 0 3px rgba(135,95,154,0.14)',
-      caretColor: '#875F9A',
+      // 这些键 Naive 原样落进 --n-* 变量不做混色，写 CSS 变量即可随主题切换
+      border: '1px solid var(--xq-control)',
+      borderHover: '1px solid var(--xq-control-hover)',
+      borderActive: '1px solid var(--xq-violet)',
+      borderFocus: '1px solid var(--xq-violet)',
+      boxShadowActive: 'var(--xq-shadow-focus)',
+      boxShadowFocus: 'var(--xq-shadow-focus)',
+      caretColor: 'var(--xq-violet)',
     },
   },
 }
@@ -638,18 +639,18 @@ const selectThemeOverrides: NonNullable<SelectProps['themeOverrides']> = {
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 /** 输入框（§4.1）：高 34、r4、#c9cfd6 描边 + 内影，hover #aeb6bf，聚焦 violet 描边 + 3px 外环 */
 const inputCls =
-  'w-full h-34px box-border rounded-4px border border-solid border-#c9cfd6 bg-white px-10px text-13px text-ink ' +
+  'w-full h-34px box-border rounded-4px border border-solid border-control bg-white px-10px text-13px text-ink ' +
   'shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] outline-none ' +
-  'placeholder:text-placeholder hover:border-#aeb6bf focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.14)])'
+  'placeholder:text-placeholder hover:border-control-hover focus:(border-violet shadow-focus)'
 /** 逐张备注输入（原型 WorkflowNotesList.vue:243-258）：高 30、11px、r6、line 描边 + 内影 */
 const noteInputCls =
   'min-w-0 flex-1 h-30px box-border rounded-6px border border-solid border-line bg-white px-10px text-11px leading-18px text-ink ' +
   'shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] outline-none ' +
-  'placeholder:text-placeholder focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.14)]) disabled:(bg-surface3 cursor-not-allowed)'
+  'placeholder:text-placeholder focus:(border-violet shadow-focus) disabled:(bg-surface3 cursor-not-allowed)'
 /** 结果列头部操作按钮（§5.11）：高 28、内边距 0 8、r4、11px */
 const headBtn =
-  'inline-flex items-center gap-4px h-28px px-8px box-border rounded-4px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] ' +
-  'text-11px text-ink-2 no-underline cursor-pointer hover:(border-#aeb6bf text-ink) ' +
+  'inline-flex items-center gap-4px h-28px px-8px box-border rounded-4px border border-solid border-control bg-[linear-gradient(var(--xq-plate-top),var(--xq-plate-bottom))] ' +
+  'text-11px text-ink-2 no-underline cursor-pointer hover:(border-control-hover text-ink) ' +
   focusRing
 </script>
 
@@ -951,7 +952,7 @@ const headBtn =
         >
           <span
             v-if="mapped && history.loading.value"
-            class="flex-none w-16px h-16px box-border rounded-full border-2 border-solid border-#ede3f2 border-t-violet animate-spin animate-duration-800"
+            class="flex-none w-16px h-16px box-border rounded-full border-2 border-solid border-violet-soft-2 border-t-violet animate-spin animate-duration-800"
             aria-hidden="true"
           />
           <span class="min-w-0 flex flex-col gap-2px">
@@ -970,8 +971,8 @@ const headBtn =
             class="group relative flex items-stretch gap-10px h-74px box-border p-10px rounded-18px border border-solid [transition:border-color_110ms,background_110ms,box-shadow_110ms] motion-reduce:transition-none"
             :class="
               current?.workflowHistoryId === item.workflowHistoryId
-                ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#faf4fd_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
-                : 'border-line bg-white hover:(border-#aeb4b9 shadow-[0_8px_18px_rgba(31,35,41,0.08)])'
+                ? 'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
+                : 'border-line bg-white hover:(border-control-hover shadow-[0_8px_18px_rgba(31,35,41,0.08)])'
             "
           >
             <!-- 整卡选中：按钮铺满卡面（删除按钮压在其上） -->
@@ -987,9 +988,9 @@ const headBtn =
               class="relative flex-none w-44px h-44px self-center box-border rounded-14px border border-solid border-line bg-surface3 flex items-center justify-center pointer-events-none"
               :class="
                 outputsOf(item).images.length > 2
-                  ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb,6px_-6px_0_-1px_#fff,6px_-6px_0_0_#e5e7eb]'
+                  ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line),6px_-6px_0_-1px_var(--xq-surface),6px_-6px_0_0_var(--xq-line)]'
                   : outputsOf(item).images.length === 2
-                    ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb]'
+                    ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line)]'
                     : ''
               "
             >
@@ -1002,7 +1003,7 @@ const headBtn =
               <span v-else class="text-11px text-placeholder">—</span>
               <span
                 v-if="outputsOf(item).images.length > 1"
-                class="absolute z-2 -top-4px -right-4px grid place-items-center min-w-16px h-16px box-border px-4px rounded-full border border-solid border-white bg-ink text-10px font-600 leading-none text-white"
+                class="absolute z-2 -top-4px -right-4px grid place-items-center min-w-16px h-16px box-border px-4px rounded-full border border-solid border-white bg-ink text-10px font-600 leading-none text-surface"
                 aria-hidden="true"
                 >{{ outputsOf(item).images.length }}</span
               >
@@ -1010,7 +1011,7 @@ const headBtn =
             <span class="min-w-0 flex-1 self-stretch flex flex-col justify-between gap-4px pointer-events-none">
               <span v-if="!isWorkflowTerminal(item.status)" class="flex items-center gap-6px">
                 <span
-                  class="relative flex-1 h-4px rounded-full bg-#eceef0 shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden"
+                  class="relative flex-1 h-4px rounded-full bg-sunken shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden"
                 >
                   <span
                     class="absolute inset-y-0 left-0 rounded-full sx-grad-progress [transition:width_160ms_linear] motion-reduce:transition-none"
@@ -1030,10 +1031,10 @@ const headBtn =
                 <button
                   v-if="isWorkflowTerminal(item.status)"
                   type="button"
-                  class="relative z-1 grid place-items-center w-24px h-24px box-border p-0 rounded-6px border border-solid border-line bg-[linear-gradient(#fff,#f8f9fa)] text-muted pointer-events-auto shadow-[inset_0_1px_0_#fff,0_1px_1px_rgba(31,35,41,0.04)] sx-hit sx-reveal"
+                  class="relative z-1 grid place-items-center w-24px h-24px box-border p-0 rounded-6px border border-solid border-line bg-[linear-gradient(var(--xq-surface),var(--xq-soft-bottom))] text-muted pointer-events-auto shadow-[inset_0_1px_0_#fff,0_1px_1px_rgba(31,35,41,0.04)] sx-hit sx-reveal"
                   :class="[
                     focusRing,
-                    canRestore(item) ? 'cursor-pointer hover:(border-#aeb4b9 bg-white text-ink)' : 'cursor-not-allowed',
+                    canRestore(item) ? 'cursor-pointer hover:(border-control-hover bg-white text-ink)' : 'cursor-not-allowed',
                   ]"
                   :aria-disabled="canRestore(item) ? undefined : 'true'"
                   :aria-label="item.data?.requestParams ? '重新编辑' : `重新编辑（${RESTORE_DISABLED_TIP}）`"
@@ -1119,7 +1120,7 @@ const headBtn =
             role="status"
           >
             <span
-              class="w-34px h-34px box-border rounded-full border-2 border-solid border-#ede3f2 border-t-violet animate-spin animate-duration-800"
+              class="w-34px h-34px box-border rounded-full border-2 border-solid border-violet-soft-2 border-t-violet animate-spin animate-duration-800"
               aria-hidden="true"
             />
             <span class="text-11px text-muted">任务进行中，结果出来后会自动显示</span>
@@ -1127,14 +1128,14 @@ const headBtn =
           <template v-else>
             <p
               v-if="current.status !== 'SUCCEED' && current.status !== 'PARTIAL_SUCCEED'"
-              class="m-0 px-10px py-8px rounded-6px border border-solid border-danger-line bg-danger-soft text-12px leading-18px text-#8f4b47"
+              class="m-0 px-10px py-8px rounded-6px border border-solid border-danger-line bg-danger-soft text-12px leading-18px text-alert-danger"
               role="status"
             >
               {{ errorOf(current) || '任务未成功，点数已按规则退回' }}
             </p>
             <p
               v-else-if="current.status === 'PARTIAL_SUCCEED'"
-              class="m-0 px-10px py-8px rounded-6px border border-solid border-warning-line bg-warning-soft text-12px leading-18px text-#7d5a20"
+              class="m-0 px-10px py-8px rounded-6px border border-solid border-warning-line bg-warning-soft text-12px leading-18px text-alert-warning"
               role="status"
             >
               部分任务未成功，未成功的点数已按规则退回
@@ -1142,7 +1143,7 @@ const headBtn =
             <!-- 舞台：最小高 320、20px 棋盘格、内影，产物 contain 居中 -->
             <div
               v-if="stageOutput"
-              class="flex items-center justify-center min-h-320px box-border overflow-hidden rounded-8px border border-solid border-line bg-[conic-gradient(#f3f4f5_25%,#fff_0_50%,#f3f4f5_0_75%,#fff_0)] bg-[length:20px_20px] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
+              class="flex items-center justify-center min-h-320px box-border overflow-hidden rounded-8px border border-solid border-line bg-[conic-gradient(var(--xq-surface3)_25%,var(--xq-surface)_0_50%,var(--xq-surface3)_0_75%,var(--xq-surface)_0)] bg-[length:20px_20px] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
             >
               <video
                 v-if="stageOutput.kind === 'videos'"
@@ -1171,8 +1172,8 @@ const headBtn =
                   :class="[
                     focusRing,
                     i === activeOutput
-                      ? 'border-violet shadow-[0_0_0_1px_#875f9a]'
-                      : 'border-line hover:border-#c9cfd6',
+                      ? 'border-violet shadow-[0_0_0_1px_var(--xq-violet)]'
+                      : 'border-line hover:border-control',
                   ]"
                   :aria-pressed="i === activeOutput"
                   :aria-label="`${o.kind === 'videos' ? '结果视频' : '结果图'} ${o.index + 1}`"

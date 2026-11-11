@@ -69,7 +69,7 @@ function pick(opt: CreationOption<string>) {
         <span
           v-if="opt.description"
           class="flex-none text-11px leading-16px whitespace-nowrap"
-          :class="modelValue === opt.value ? 'text-[#8a6d99]' : 'text-muted'"
+          :class="modelValue === opt.value ? 'text-[#8a6d99] [[data-theme=dark]_&]:text-violet-fg' : 'text-muted'"
           >{{ opt.description }}</span
         >
       </button>

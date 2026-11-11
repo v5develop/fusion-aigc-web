@@ -43,6 +43,12 @@ interface ThirdServiceBridge {
    * 无参无返回，重复调用无害（弹窗幂等）。
    */
   requestDoubaoRelogin?: () => void
+  /**
+   * 站点外观变化时通知宿主（用户在「外观与字体」里切换、跟随系统 / 按时间到点自动切换都会调用）。
+   * 宿主可据此同步窗口标题栏、背景色，避免深色站点配浅色窗框。可选：旧版桌面端没有，站点不依赖它。
+   * mode 是用户的选择，theme 是此刻生效的结果。
+   */
+  setAppearance?: (appearance: { mode: 'light' | 'dark' | 'system' | 'schedule'; theme: 'light' | 'dark' }) => void
 }
 
 interface Window {

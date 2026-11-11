@@ -122,7 +122,7 @@ function cancelEdit() {
     <span class="w-px my-7px bg-line" aria-hidden="true"></span>
     <button
       type="button"
-      class="grid w-32px place-items-center border-none bg-transparent p-0 text-ink-2 cursor-pointer [transition:background_110ms,color_110ms] motion-reduce:transition-none hover:enabled:(bg-surface3 text-ink) active:enabled:(bg-#edeff1 shadow-[inset_0_1px_2px_rgba(31,35,41,0.12)]) disabled:(cursor-not-allowed text-placeholder) sx-focus"
+      class="grid w-32px place-items-center border-none bg-transparent p-0 text-ink-2 cursor-pointer [transition:background_110ms,color_110ms] motion-reduce:transition-none hover:enabled:(bg-surface3 text-ink) active:enabled:(bg-sunken shadow-[inset_0_1px_2px_rgba(31,35,41,0.12)]) disabled:(cursor-not-allowed text-placeholder) sx-focus"
       :disabled="disabled || clamped <= min"
       :aria-label="`减少${ariaLabel ?? ''}，最小 ${min}`"
       @click="step(-1)"
@@ -141,7 +141,7 @@ function cancelEdit() {
     </button>
     <button
       type="button"
-      class="grid w-32px place-items-center border-none bg-transparent p-0 text-ink-2 cursor-pointer [transition:background_110ms,color_110ms] motion-reduce:transition-none rounded-r-8px hover:enabled:(bg-surface3 text-ink) active:enabled:(bg-#edeff1 shadow-[inset_0_1px_2px_rgba(31,35,41,0.12)]) disabled:(cursor-not-allowed text-placeholder) sx-focus"
+      class="grid w-32px place-items-center border-none bg-transparent p-0 text-ink-2 cursor-pointer [transition:background_110ms,color_110ms] motion-reduce:transition-none rounded-r-8px hover:enabled:(bg-surface3 text-ink) active:enabled:(bg-sunken shadow-[inset_0_1px_2px_rgba(31,35,41,0.12)]) disabled:(cursor-not-allowed text-placeholder) sx-focus"
       :disabled="disabled || clamped >= max"
       :aria-label="`增加${ariaLabel ?? ''}，最大 ${max}`"
       @click="step(1)"

@@ -18,14 +18,17 @@ defineOptions({ name: 'prompt-library-page' })
 
 const message = useMessage()
 
-// 材质对齐（原型 material-align.css）：按钮 r14 · 输入/选择 r15 · 弹窗卡片 r18；仅本页生效
-const pageTheme: GlobalThemeOverrides = {
-  ...llTheme,
-  Button: { ...llTheme.Button, borderRadiusSmall: '14px', borderRadiusMedium: '14px' },
-  Input: { ...llTheme.Input, borderRadius: '15px' },
-  InternalSelection: { ...llTheme.InternalSelection, borderRadius: '15px' },
-  Card: { ...llTheme.Card, borderRadius: '18px' },
-}
+// 材质对齐（原型 material-align.css）：按钮 r14 · 输入/选择 r15 · 弹窗卡片 r18；仅本页生效（llTheme 随外观切换）
+const pageTheme = computed<GlobalThemeOverrides>(() => {
+  const t = llTheme.value
+  return {
+    ...t,
+    Button: { ...t.Button, borderRadiusSmall: '14px', borderRadiusMedium: '14px' },
+    Input: { ...t.Input, borderRadius: '15px' },
+    InternalSelection: { ...t.InternalSelection, borderRadius: '15px' },
+    Card: { ...t.Card, borderRadius: '18px' },
+  }
+})
 
 const PAGE_SIZE = 20
 
@@ -256,7 +259,7 @@ function onSaved() {
                 <button type="button" :class="ACTION" @click.stop="openEdit(item)">编辑</button>
                 <n-popconfirm @positive-click="removeItem(item)">
                   <template #trigger>
-                    <button type="button" :class="[ACTION, '!text-danger hover:!text-#c1524c']" @click.stop>
+                    <button type="button" :class="[ACTION, '!text-danger hover:!text-danger-hover-fg']" @click.stop>
                       删除
                     </button>
                   </template>
@@ -320,6 +323,6 @@ function onSaved() {
 
 // 滚动条 mixin 无法用原子类表达
 .prompt-library {
-  .scrollbar(@width: 8px, @trackColor: #f7f8f9, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
+  .scrollbar(@width: 8px, @trackColor: var(--xq-surface2), @thumbColor: rgb(var(--xq-ink-rgb) / 0.1), @thumbWidth: 4px, @hoverColor: rgb(var(--xq-ink-rgb) / 0.35));
 }
 </style>

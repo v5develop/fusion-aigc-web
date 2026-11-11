@@ -130,7 +130,7 @@ const MODAL_HEAD =
   'relative flex h-52px flex-none items-center gap-8px border-b border-solid border-line pl-18px pr-10px'
 /** 关闭钮：与全局 Naive 关闭钮同档——视觉 28、命中 32（触屏 40） */
 const MODAL_X =
-  'relative ml-auto grid h-28px w-28px flex-none place-items-center rounded-full border-none bg-transparent p-0 text-#8a919c cursor-pointer hover:(bg-surface3 text-ink) after:(content-empty absolute -inset-2px rounded-full) [@media(pointer:coarse)]:after:-inset-6px'
+  'relative ml-auto grid h-28px w-28px flex-none place-items-center rounded-full border-none bg-transparent p-0 text-placeholder cursor-pointer hover:(bg-surface3 text-ink) after:(content-empty absolute -inset-2px rounded-full) [@media(pointer:coarse)]:after:-inset-6px'
 /** 文字链（加载更多等）：12px、28 高 */
 const LINK_BTN =
   'h-28px rounded-14px border-none bg-transparent px-10px text-12px text-violet-ink cursor-pointer hover:(bg-violet-tint text-violet-press) disabled:(cursor-not-allowed opacity-50) sx-focus'
@@ -140,9 +140,9 @@ const QUICK = '!h-32px !rounded-16px !px-14px !text-13px'
 const CONV_CARD =
   'sx-squircle group relative flex items-center gap-10px rounded-18px border border-solid py-10px pl-10px pr-14px [transition:border-color_.11s,background_.11s,box-shadow_.11s] motion-reduce:transition-none'
 const CONV_ON =
-  'border-#dcc9e9 bg-[linear-gradient(#fff,#faf4fd)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
+  'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
 const CONV_OFF =
-  'sx-soft hover:(border-#aeb4b9 shadow-[0_8px_18px_rgba(31,35,41,0.09),inset_0_1px_0_#fff,inset_0_-3px_6px_rgba(31,35,41,0.04)])'
+  'sx-soft hover:(border-control-hover shadow-[0_8px_18px_rgba(31,35,41,0.09),inset_0_1px_0_#fff,inset_0_-3px_6px_rgba(31,35,41,0.04)])'
 /** 会话卡里的改名 / 删除：视觉 20 r4，命中外扩到 32（两颗之间 12，外扩 6 不互相覆盖） */
 const CONV_ACT =
   'relative grid h-20px w-20px place-items-center rounded-4px border-none bg-transparent p-0 text-muted cursor-pointer after:(content-empty absolute -inset-6px) sx-focus'
@@ -150,7 +150,7 @@ const CONV_ACT =
 const TITLE_MAX = 120
 /** 消息悬停操作：视觉 22 圆钮，命中 32（竖排间距 10，外扩 5） */
 const MSG_TOOL =
-  'relative grid h-22px w-22px place-items-center rounded-full border border-solid border-line bg-white p-0 text-#a3a9b2 shadow-[0_1px_2px_rgba(31,35,41,0.04)] cursor-pointer hover:(border-control-hover text-ink) after:(content-empty absolute -inset-5px rounded-full) sx-focus'
+  'relative grid h-22px w-22px place-items-center rounded-full border border-solid border-line bg-white p-0 text-placeholder shadow-[0_1px_2px_rgba(31,35,41,0.04)] cursor-pointer hover:(border-control-hover text-ink) after:(content-empty absolute -inset-5px rounded-full) sx-focus'
 /** 结果图悬停操作（原型 .shot-ops）：22 高白瓷，命中 32（间距 10，外扩 5） */
 const SHOT_OP =
   'relative inline-grid h-22px flex-none place-items-center rounded-11px sx-soft p-0 text-12px leading-none text-ink-2 cursor-pointer [transition:transform_.1s,box-shadow_.1s,border-color_.1s,color_.1s] enabled:hover:(border-violet-line bg-none bg-white text-violet-ink) enabled:active:(translate-y-1px scale-96 shadow-[inset_0_2px_4px_rgba(31,35,41,0.14)]) disabled:(cursor-not-allowed opacity-60) after:(content-empty absolute -inset-5px rounded-[inherit]) sx-focus'
@@ -158,12 +158,12 @@ const SHOT_OP =
 const OPT =
   'sx-squircle flex min-h-36px min-w-0 items-center gap-8px rounded-18px border border-solid px-14px py-6px text-left text-13px leading-20px cursor-pointer disabled:cursor-default [transition:border-color_.12s,background_.12s] motion-reduce:transition-none sx-focus'
 const OPT_OFF = 'border-line bg-white text-ink-2 enabled:hover:border-control-hover'
-const OPT_ON = 'border-violet-line bg-[linear-gradient(#fff,#f8f3fc)] font-500 text-ink'
+const OPT_ON = 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] font-500 text-ink'
 /** 技能卡（原型 .skill-card）：64 高 r18 白瓷 */
 const SKILL_CARD =
   'sx-squircle flex h-64px min-w-0 items-center gap-10px rounded-18px border border-solid px-14px text-left [transition:border-color_.11s,background_.11s,box-shadow_.11s] motion-reduce:transition-none'
-const SKILL_ON = 'border-violet-line bg-[linear-gradient(#fff,#f8f3fc)] shadow-soft'
-const SKILL_OFF = 'sx-soft hover:(border-control bg-[linear-gradient(#fff,#fbfcfd)])'
+const SKILL_ON = 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] shadow-soft'
+const SKILL_OFF = 'sx-soft hover:(border-control bg-[linear-gradient(var(--xq-surface),var(--xq-sunk-bottom))])'
 const LIST_SIZE = 20
 const MSG_SIZE = 50
 
@@ -2540,7 +2540,7 @@ onUnmounted(() => {
       <Transition name="agent-mask">
         <div
           v-if="narrow && drawerOpen"
-          class="absolute inset-0 z-19 bg-[rgba(31,35,41,0.32)]"
+          class="absolute inset-0 z-19 bg-[var(--xq-scrim)]"
           aria-hidden="true"
           @click="drawerOpen = false"
         />
@@ -2748,7 +2748,7 @@ onUnmounted(() => {
                           title="删除"
                           :aria-label="`删除：${c.title}`"
                           :aria-expanded="deleteId === c.agentConversationId"
-                          :class="[CONV_ACT, 'hover:(bg-#fdf1f0 text-danger)']"
+                          :class="[CONV_ACT, 'hover:(bg-danger-soft text-danger)']"
                           @click="deleteId = c.agentConversationId"
                         >
                           <svg
@@ -2932,11 +2932,11 @@ onUnmounted(() => {
             <div class="mx-auto flex w-full max-w-1040px flex-col">
               <section class="relative pb-6px pt-60px text-center">
                 <span
-                  class="pointer-events-none absolute inset-x-0 top-0 h-340px bg-[radial-gradient(rgba(107,72,124,0.11)_1px,transparent_1.2px)] bg-[length:14px_14px] [mask-image:radial-gradient(ellipse_56%_72%_at_50%_26%,#000_20%,transparent_76%)]"
+                  class="pointer-events-none absolute inset-x-0 top-0 h-340px bg-[radial-gradient(rgb(var(--xq-violet-ink-rgb)/0.11)_1px,transparent_1.2px)] bg-[length:14px_14px] [mask-image:radial-gradient(ellipse_56%_72%_at_50%_26%,#000_20%,transparent_76%)]"
                   aria-hidden="true"
                 />
                 <span
-                  class="pointer-events-none absolute left-1/2 top-[-70px] h-380px w-[min(940px,100%)] -translate-x-1/2 bg-[radial-gradient(50%_60%_at_50%_40%,rgba(135,95,154,0.10),transparent_70%)]"
+                  class="pointer-events-none absolute left-1/2 top-[-70px] h-380px w-[min(940px,100%)] -translate-x-1/2 bg-[radial-gradient(50%_60%_at_50%_40%,rgb(var(--xq-violet-rgb)/0.10),transparent_70%)]"
                   aria-hidden="true"
                 />
                 <h2 class="agent-rise relative z-1 m-0 text-28px font-600 leading-38px tracking-[.02em] text-ink">
@@ -3073,7 +3073,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 消息区：#fafafa + 点阵（往上化开），顶部 56px 渐隐；内容从浮起的输入框下面滚过去 -->
+          <!-- 消息区：近白（surface2）+ 点阵（往上化开），顶部 56px 渐隐；内容从浮起的输入框下面滚过去 -->
           <div v-else class="relative z-1 flex min-h-0 flex-1 flex-col">
             <span class="stream-fade pointer-events-none absolute inset-x-1px top-0 z-3 h-56px" aria-hidden="true" />
             <div
@@ -3243,7 +3243,7 @@ onUnmounted(() => {
                           class="think-spin h-12px w-12px flex-none"
                           viewBox="0 0 24 24"
                           fill="none"
-                          stroke="#6b487c"
+                          stroke="currentColor"
                           stroke-width="2"
                           stroke-linecap="round"
                           aria-hidden="true"
@@ -3331,16 +3331,16 @@ onUnmounted(() => {
                             <span
                               :class="[
                                 'min-w-0 flex-1 truncate',
-                                toolState(t.status, item) === 'ok' ? 'text-#8a919c' : '',
+                                toolState(t.status, item) === 'ok' ? 'text-placeholder' : '',
                               ]"
                               >{{ t.name }}</span
                             >
                             <span
                               v-if="toolState(t.status, item) === 'fail'"
-                              class="max-w-[50%] flex-none truncate text-11px leading-16px text-#c24545"
+                              class="max-w-[50%] flex-none truncate text-11px leading-16px text-danger-strong"
                               >{{ t.message || '失败' }}</span
                             >
-                            <span v-else class="flex-none text-11px leading-16px text-#a3a9b2 tabular-nums">{{
+                            <span v-else class="flex-none text-11px leading-16px text-placeholder tabular-nums">{{
                               TOOL_STATE_TEXT[toolState(t.status, item)]
                             }}</span>
                           </li>
@@ -3359,7 +3359,7 @@ onUnmounted(() => {
                         <template v-if="item.form.done && item.form.superseded">
                           <!-- 没作答就被后面的消息取代：只读「已失效」，不把服务端默认值当答案展示 -->
                           <div
-                            class="flex items-center gap-8px border-b border-solid border-line bg-#f3f4f6 px-18px py-12px text-13px font-600 leading-20px text-ink-2"
+                            class="flex items-center gap-8px border-b border-solid border-line bg-surface3 px-18px py-12px text-13px font-600 leading-20px text-ink-2"
                           >
                             <svg
                               class="h-14px w-14px flex-none"
@@ -3374,7 +3374,7 @@ onUnmounted(() => {
                             </svg>
                             <span class="min-w-0 truncate">{{ item.reply.form.title || '参数确认' }}</span>
                             <span
-                              class="inline-flex h-18px flex-none items-center rounded-3px bg-#e5e7eb px-6px text-11px font-500 leading-18px text-muted"
+                              class="inline-flex h-18px flex-none items-center rounded-3px bg-line px-6px text-11px font-500 leading-18px text-muted"
                               >已失效</span
                             >
                           </div>
@@ -3451,9 +3451,9 @@ onUnmounted(() => {
                                 class="flex min-w-0 flex-wrap items-center gap-5px text-13px font-600 leading-20px text-ink"
                                 aria-hidden="true"
                               >
-                                {{ q.title }}<i v-if="q.required" class="ml-4px not-italic font-600 text-#c24545">*</i>
+                                {{ q.title }}<i v-if="q.required" class="ml-4px not-italic font-600 text-danger-strong">*</i>
                               </div>
-                              <span class="flex-none text-11px leading-16px text-#a3a9b2 tabular-nums"
+                              <span class="flex-none text-11px leading-16px text-placeholder tabular-nums"
                                 >第 {{ item.form.step + 1 }} / {{ item.reply.form.questions.length }} 步</span
                               >
                             </div>
@@ -3501,7 +3501,7 @@ onUnmounted(() => {
                                   :class="[
                                     'h-13px w-13px flex-none rounded-full border border-solid',
                                     optionPicked(item, q, o)
-                                      ? 'border-violet bg-violet shadow-[inset_0_0_0_2px_#fff]'
+                                      ? 'border-violet bg-violet shadow-[inset_0_0_0_2px_var(--xq-surface)]'
                                       : 'border-control bg-white',
                                   ]"
                                   aria-hidden="true"
@@ -3535,7 +3535,7 @@ onUnmounted(() => {
                                   :class="[
                                     'h-13px w-13px flex-none rounded-full border border-solid',
                                     optionPicked(item, q, c)
-                                      ? 'border-violet bg-violet shadow-[inset_0_0_0_2px_#fff]'
+                                      ? 'border-violet bg-violet shadow-[inset_0_0_0_2px_var(--xq-surface)]'
                                       : 'border-control bg-white',
                                   ]"
                                   aria-hidden="true"
@@ -3570,14 +3570,14 @@ onUnmounted(() => {
                                     'block h-5px [transition:width_.18s] motion-reduce:transition-none',
                                     k === item.form.step
                                       ? 'w-12px rounded-2px bg-ink'
-                                      : 'w-5px rounded-full bg-#e0e2e6',
+                                      : 'w-5px rounded-full bg-line-strong',
                                   ]"
                                 />
                               </span>
                               <span
                                 v-if="item.form.stepError || item.form.error"
                                 role="alert"
-                                class="min-w-0 truncate text-12px leading-18px text-#c24545"
+                                class="min-w-0 truncate text-12px leading-18px text-danger-strong"
                                 :title="item.form.stepError || item.form.error"
                                 >{{ item.form.stepError || item.form.error }}</span
                               >
@@ -3608,7 +3608,7 @@ onUnmounted(() => {
                               >
                             </template>
                             <template v-else>
-                              <span class="text-#c24545">点数不足</span>
+                              <span class="text-danger-strong">点数不足</span>
                               <span
                                 >本次约 {{ quoteFor(item)!.totalPoints }} 点数 · 余额
                                 {{ quoteFor(item)!.balance }} 点数</span
@@ -3662,10 +3662,10 @@ onUnmounted(() => {
                             :class="[
                               'shot sx-squircle group relative aspect-[3/4] overflow-hidden rounded-12px border',
                               tile.state === 'image'
-                                ? 'border-solid border-line bg-#f3f4f5 shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                                ? 'border-solid border-line bg-surface3 shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
                                 : tile.state === 'pending'
-                                  ? 'flex flex-col items-center justify-center gap-8px border-dashed border-#d9c9e4 bg-[linear-gradient(160deg,#faf7fc,#f1ebf6)] text-violet-ink'
-                                  : 'flex flex-col items-center justify-center gap-6px border-solid border-#ecd9d9 bg-[repeating-linear-gradient(135deg,#fbf7f7_0_8px,#f7f0f0_8px_16px)] text-#a24a4a',
+                                  ? 'flex flex-col items-center justify-center gap-8px border-dashed border-violet-line bg-[linear-gradient(160deg,var(--xq-violet-tint),var(--xq-violet-tint-hover))] text-violet-ink'
+                                  : 'flex flex-col items-center justify-center gap-6px border-solid border-danger-line bg-[repeating-linear-gradient(135deg,var(--xq-danger-soft-top)_0_8px,var(--xq-danger-soft)_8px_16px)] text-alert-danger',
                             ]"
                           >
                             <template v-if="tile.state === 'image' && tile.url">
@@ -3695,7 +3695,7 @@ onUnmounted(() => {
                               <template v-if="multiCard === card.key">
                                 <span
                                   v-if="multiPicks.includes(tile.url)"
-                                  class="pointer-events-none absolute inset-0 z-1 rounded-[inherit] shadow-[inset_0_0_0_2px_#875f9a]"
+                                  class="pointer-events-none absolute inset-0 z-1 rounded-[inherit] shadow-[inset_0_0_0_2px_var(--xq-violet)]"
                                   aria-hidden="true"
                                 />
                                 <span
@@ -3703,7 +3703,7 @@ onUnmounted(() => {
                                     'pointer-events-none absolute right-8px top-8px z-3 grid h-20px w-20px place-items-center rounded-full border border-solid backdrop-blur-4px [transition:background_.12s,border-color_.12s]',
                                     multiPicks.includes(tile.url)
                                       ? 'border-violet bg-violet text-white'
-                                      : 'border-white/90 bg-[rgba(20,20,24,0.34)] text-transparent',
+                                      : 'border-#fff/90 bg-[rgba(20,20,24,0.34)] text-transparent',
                                   ]"
                                   aria-hidden="true"
                                 >
@@ -3769,14 +3769,14 @@ onUnmounted(() => {
                             </template>
                             <template v-else-if="tile.state === 'pending'">
                               <span
-                                class="w-spin box-border h-16px w-16px rounded-full border-2 border-solid border-#e0d3ea border-t-violet-ink"
+                                class="w-spin box-border h-16px w-16px rounded-full border-2 border-solid border-violet-soft-line border-t-violet-ink"
                                 aria-hidden="true"
                               />
                               <span class="text-11px leading-16px">生成中</span>
                             </template>
                             <template v-else>
                               <span
-                                class="grid h-18px w-18px place-items-center rounded-full bg-#f3dede text-11px font-700"
+                                class="grid h-18px w-18px place-items-center rounded-full bg-danger-line text-11px font-700"
                                 aria-hidden="true"
                                 >!</span
                               >
@@ -3795,14 +3795,14 @@ onUnmounted(() => {
                           :class="[
                             'mt-10px flex items-center gap-8px rounded-10px border border-solid px-10px py-8px text-12px leading-18px',
                             card.done
-                              ? 'border-#ecdfc8 bg-#fdf9f1 text-#8a6a2f'
-                              : 'border-#ecd9d9 bg-#fdf6f6 text-#a24a4a',
+                              ? 'border-warning-line bg-warning-soft text-warning'
+                              : 'border-danger-line bg-danger-soft text-alert-danger',
                           ]"
                         >
                           <span
                             :class="[
                               'grid h-16px w-16px flex-none place-items-center rounded-full text-10px font-700',
-                              card.done ? 'bg-#f3e3c6' : 'bg-#f3dede',
+                              card.done ? 'bg-warning-line' : 'bg-danger-line',
                             ]"
                             aria-hidden="true"
                             >!</span
@@ -3822,7 +3822,7 @@ onUnmounted(() => {
                           </button>
                         </div>
                         <div v-if="card.urls.length > 1" class="mt-10px flex items-center gap-8px">
-                          <span class="text-11px leading-16px text-#a3a9b2 tabular-nums"
+                          <span class="text-11px leading-16px text-placeholder tabular-nums"
                             >{{ card.urls.length }} 张</span
                           >
                           <span class="flex-1" />
@@ -3855,7 +3855,7 @@ onUnmounted(() => {
                       <div v-if="item.stopped" class="text-12px leading-18px text-placeholder">已停止</div>
                       <div v-if="item.reply.error" role="alert" class="flex flex-wrap items-center gap-8px">
                         <span
-                          class="sx-squircle inline-flex items-center rounded-10px border border-solid border-#ecd9d9 bg-#fdf6f6 px-10px py-6px text-12px leading-18px text-#a24a4a"
+                          class="sx-squircle inline-flex items-center rounded-10px border border-solid border-danger-line bg-danger-soft px-10px py-6px text-12px leading-18px text-alert-danger"
                           >{{ item.reply.error }}</span
                         >
                         <button v-if="item.retryContent && !streaming" type="button" :class="BTN" @click="retry(item)">
@@ -3976,7 +3976,7 @@ onUnmounted(() => {
                 >
                   <div v-if="selectedTemplate" class="mb-8px self-start">
                     <span
-                      class="inline-flex h-24px max-w-full items-center gap-5px whitespace-nowrap rounded-12px border border-solid border-#e3d3ee bg-[linear-gradient(#fff,#fbf8fd)] pl-9px pr-4px text-12px text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
+                      class="inline-flex h-24px max-w-full items-center gap-5px whitespace-nowrap rounded-12px border border-solid border-violet-soft-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-soft-tint))] pl-9px pr-4px text-12px text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
                     >
                       <svg
                         class="h-11px w-11px flex-none text-violet"
@@ -3995,7 +3995,7 @@ onUnmounted(() => {
                         title="移除模板"
                         :aria-label="`移除模板：${selectedTemplate.title}`"
                         :disabled="streaming"
-                        class="relative grid h-16px w-16px flex-none place-items-center rounded-full border-none bg-transparent p-0 text-#a3a9b2 cursor-pointer hover:(bg-[rgba(107,72,124,0.10)] text-violet-ink) after:(content-empty absolute -inset-8px rounded-full) disabled:(cursor-not-allowed opacity-50) sx-focus"
+                        class="relative grid h-16px w-16px flex-none place-items-center rounded-full border-none bg-transparent p-0 text-placeholder cursor-pointer hover:(bg-violet-ink/10 text-violet-ink) after:(content-empty absolute -inset-8px rounded-full) disabled:(cursor-not-allowed opacity-50) sx-focus"
                         @click="clearTemplate"
                       >
                         <svg
@@ -4167,15 +4167,15 @@ onUnmounted(() => {
                           :class="[
                             'sx-squircle flex h-30px min-w-0 items-center gap-6px rounded-15px border border-solid px-9px text-left text-12px cursor-pointer [transition:background_.12s,border-color_.12s,color_.12s] motion-reduce:transition-none sx-focus',
                             languageCode === l.code
-                              ? 'border-#dcc9e9 bg-[linear-gradient(#fff,#faf4fd)] font-600 text-violet-ink'
-                              : 'border-transparent bg-transparent text-ink-2 hover:(border-soft-line bg-[linear-gradient(#fff,#fbfcfd)])',
+                              ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] font-600 text-violet-ink'
+                              : 'border-transparent bg-transparent text-ink-2 hover:(border-soft-line bg-[linear-gradient(var(--xq-surface),var(--xq-sunk-bottom))])',
                           ]"
                           @click="pickLanguage(l.code)"
                         >
                           <span
                             :class="[
                               'min-w-26px flex-none rounded-6px px-4px text-center text-10px leading-15px',
-                              languageCode === l.code ? 'bg-#f3e9f9 text-violet-ink' : 'bg-#f4f5f7 text-#8a919c',
+                              languageCode === l.code ? 'bg-violet-soft text-violet-ink' : 'bg-surface3 text-placeholder',
                             ]"
                             aria-hidden="true"
                             >{{ l.code }}</span
@@ -4212,7 +4212,7 @@ onUnmounted(() => {
                       aria-label="发送"
                       :disabled="!draft.trim() || skillMissing"
                       :aria-describedby="skillMissing ? 'agent-skill-required' : undefined"
-                      class="ml-2px grid h-36px w-36px flex-none place-items-center rounded-full border border-solid border-violet-border bg-[linear-gradient(#8a639f,#7a548c)] p-0 text-white shadow-btn cursor-pointer [transition:background_.12s,box-shadow_.12s] enabled:hover:bg-[linear-gradient(#9a6fae,#875c9a)] disabled:(border-violet-line bg-none bg-#e2d7ea shadow-none cursor-not-allowed) sx-focus"
+                      class="ml-2px grid h-36px w-36px flex-none place-items-center rounded-full border border-solid border-violet-border bg-[linear-gradient(var(--xq-violet-top),var(--xq-violet-bottom))] p-0 text-white shadow-btn cursor-pointer [transition:background_.12s,box-shadow_.12s] enabled:hover:bg-[linear-gradient(var(--xq-violet-hover-top),var(--xq-violet-hover-bottom))] disabled:(border-violet-line bg-none bg-violet-disabled shadow-none cursor-not-allowed) sx-focus"
                       @click="send(draft, attachments, selectedTemplate, { fromDraft: true })"
                     >
                       <svg
@@ -4228,7 +4228,7 @@ onUnmounted(() => {
                     </button>
                   </div>
                 </div>
-                <p v-if="!isHome" class="m-0 mt-6px text-center text-11px leading-16px text-#a3a9b2">
+                <p v-if="!isHome" class="m-0 mt-6px text-center text-11px leading-16px text-placeholder">
                   AI 生成内容仅供参考，请仔细甄别
                 </p>
               </div>
@@ -4252,7 +4252,7 @@ onUnmounted(() => {
             class="flex-none whitespace-nowrap text-15px font-600 leading-20px text-ink"
             >选择技能</strong
           >
-          <span v-if="skillForm" class="flex-none rounded-3px bg-surface3 px-5px py-1px text-11px text-#a3a9b2">{{
+          <span v-if="skillForm" class="flex-none rounded-3px bg-surface3 px-5px py-1px text-11px text-placeholder">{{
             skillForm.id ? '编辑技能' : '新建技能'
           }}</span>
           <div
@@ -4269,7 +4269,7 @@ onUnmounted(() => {
               :class="[
                 'sx-squircle h-28px flex-none whitespace-nowrap rounded-16px border border-solid px-12px text-12px cursor-pointer [transition:border-color_300ms_cubic-bezier(.4,0,.2,1),background-color_300ms_cubic-bezier(.4,0,.2,1),box-shadow_300ms_cubic-bezier(.4,0,.2,1),color_300ms_cubic-bezier(.4,0,.2,1)] motion-reduce:transition-none sx-focus',
                 skillTab === t.name
-                  ? 'border-violet-line bg-[linear-gradient(#fff,#f8f3fc)] font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                  ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
                   : 'border-transparent bg-transparent text-muted hover:text-ink',
               ]"
               @click="skillTab = t.name"
@@ -4348,7 +4348,7 @@ onUnmounted(() => {
             :maxlength="USER_SKILL_PROMPT_MAX"
             rows="5"
             placeholder="请输入技能提示词，将作为该技能的系统指令"
-            class="sx-squircle box-border min-h-140px w-full flex-1 resize-none rounded-14px sx-soft px-12px py-10px text-13px leading-20px text-ink outline-none placeholder:text-placeholder focus:(border-#b9bfc4 shadow-soft-focus)"
+            class="sx-squircle box-border min-h-140px w-full flex-1 resize-none rounded-14px sx-soft px-12px py-10px text-13px leading-20px text-ink outline-none placeholder:text-placeholder focus:(border-soft-line-focus shadow-soft-focus)"
           />
           <div class="mt-10px flex justify-end gap-8px">
             <button type="button" :class="BTN" @click="skillForm = null">取消</button>
@@ -4366,7 +4366,7 @@ onUnmounted(() => {
               type="button"
               :class="[
                 SKILL_CARD,
-                'cursor-pointer border-dashed border-soft-line bg-transparent hover:(border-violet-line bg-#fcfafd) sx-focus',
+                'cursor-pointer border-dashed border-soft-line bg-transparent hover:(border-violet-line bg-violet-tint/50) sx-focus',
               ]"
               @click="openSkillCreate"
             >
@@ -4400,8 +4400,8 @@ onUnmounted(() => {
                 :class="[
                   'grid h-32px w-32px flex-none place-items-center rounded-full border border-solid border-line text-12px font-600 tracking-[-.02em] text-violet-ink',
                   pendingSkillId === s.agentSkillId
-                    ? 'bg-[linear-gradient(135deg,#f1e6f8,#e9daf2)]'
-                    : 'bg-[linear-gradient(135deg,#f6effa,#efe6f5)]',
+                    ? 'bg-[linear-gradient(135deg,var(--xq-violet-soft),var(--xq-violet-soft-2))]'
+                    : 'sx-grad-icon',
                 ]"
                 aria-hidden="true"
                 >{{ skillInitial(s) }}</span
@@ -4437,7 +4437,7 @@ onUnmounted(() => {
             <template v-if="skillTab === MY_SKILL_GROUP">
               <div v-for="u in visibleUserSkills" :key="`u${u.userSkillId}`" :class="[SKILL_CARD, SKILL_OFF]">
                 <span
-                  class="grid h-32px w-32px flex-none place-items-center rounded-full border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] text-12px font-600 text-violet-ink"
+                  class="grid h-32px w-32px flex-none place-items-center rounded-full border border-solid border-line sx-grad-icon text-12px font-600 text-violet-ink"
                   aria-hidden="true"
                   >{{ Array.from(u.title?.trim() || '技')[0] }}</span
                 >
@@ -4510,7 +4510,7 @@ onUnmounted(() => {
             </div>
           </div>
           <span
-            class="pointer-events-none absolute bottom-0 left-0 right-0 h-18px bg-[linear-gradient(rgba(255,255,255,0),#fff)]"
+            class="pointer-events-none absolute bottom-0 left-0 right-0 h-18px bg-[linear-gradient(rgb(var(--xq-surface-rgb)/0),var(--xq-surface))]"
             aria-hidden="true"
           />
         </div>
@@ -4573,7 +4573,7 @@ onUnmounted(() => {
       >
         <div :class="MODAL_HEAD">
           <strong id="agent-image-dialog-title" class="text-15px font-600 leading-20px text-ink">上传素材</strong>
-          <span class="rounded-3px bg-surface3 px-5px py-1px text-11px text-#a3a9b2">{{ DROP_PASTE_HINT }}</span>
+          <span class="rounded-3px bg-surface3 px-5px py-1px text-11px text-placeholder">{{ DROP_PASTE_HINT }}</span>
           <button type="button" aria-label="关闭" :class="MODAL_X" @click="imageDialogShow = false">
             <svg
               class="h-16px w-16px"
@@ -4596,8 +4596,8 @@ onUnmounted(() => {
             :class="[
               'sx-squircle h-32px rounded-16px border border-solid px-14px text-13px cursor-pointer [transition:border-color_.12s,background_.12s,color_.12s] motion-reduce:transition-none sx-focus',
               imageTab === t.key
-                ? 'border-#dcc9e9 bg-[linear-gradient(#fff,#faf4fd)] font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
-                : 'border-soft-line sx-soft-bg text-muted hover:(border-#aeb4b9 text-ink)',
+                ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                : 'border-soft-line sx-soft-bg text-muted hover:(border-control-hover text-ink)',
             ]"
             @click="imageTab = t.key"
           >
@@ -4608,12 +4608,12 @@ onUnmounted(() => {
           <div
             v-if="imageTab === 'local'"
             :class="[
-              'sx-squircle box-border flex h-full min-h-340px flex-col items-center justify-center gap-8px rounded-14px border border-dashed text-12px text-#a3a9b2',
-              dragging ? 'border-violet bg-violet-soft' : 'border-soft-line bg-#fcfcfd',
+              'sx-squircle box-border flex h-full min-h-340px flex-col items-center justify-center gap-8px rounded-14px border border-dashed text-12px text-placeholder',
+              dragging ? 'border-violet bg-violet-soft' : 'border-soft-line bg-surface2',
             ]"
           >
             <span
-              class="grid h-44px w-44px place-items-center rounded-12px bg-surface3 text-#b3b9c2"
+              class="grid h-44px w-44px place-items-center rounded-12px bg-surface3 text-placeholder"
               aria-hidden="true"
             >
               <n-spin v-if="uploading" size="small" />
@@ -4654,7 +4654,7 @@ onUnmounted(() => {
           </div>
           <div
             v-else
-            class="sx-squircle box-border flex h-full min-h-340px flex-col items-center justify-center gap-8px rounded-14px border border-dashed border-soft-line bg-#fcfcfd text-12px text-#a3a9b2"
+            class="sx-squircle box-border flex h-full min-h-340px flex-col items-center justify-center gap-8px rounded-14px border border-dashed border-soft-line bg-surface2 text-12px text-placeholder"
           >
             <span>当前还能添加 {{ imageRoom }} 张图片</span>
             <button type="button" :class="BTN_PRIMARY" @click="openAssetPicker">从资产库添加</button>
@@ -4709,9 +4709,9 @@ onUnmounted(() => {
 .agent-root,
 .agent-modal {
   /* 白瓷材质（定稿 A）：面 / 线 / 影（原型 :2079） */
-  --soft-bg: linear-gradient(#fff, #f8f9fa);
-  --soft-line: #c9cdd0;
-  --soft-shadow: 0 6px 16px rgba(31, 35, 41, 0.08), inset 0 1px 0 #fff, inset 0 -3px 6px rgba(31, 35, 41, 0.04);
+  --soft-bg: linear-gradient(var(--xq-surface), var(--xq-soft-bottom));
+  --soft-line: var(--xq-soft-line);
+  --soft-shadow: var(--xq-shadow-soft);
 }
 
 /* 曲率：页内元素一律超椭圆（原型 :2073）；正圆（rounded-full）不挂，转圈的 / 头像要保持正圆 */
@@ -4785,15 +4785,15 @@ onUnmounted(() => {
   justify-content: center;
   gap: 0;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.92);
+  border: 1px solid rgb(var(--xq-surface-rgb) / 0.92);
   border-radius: 17px;
-  background: linear-gradient(rgba(255, 255, 255, 0.94), rgba(246, 246, 247, 0.84));
+  background: linear-gradient(rgb(var(--xq-surface-rgb) / 0.94), rgb(var(--xq-page-rgb) / 0.84));
   box-shadow:
     0 8px 20px rgba(31, 35, 41, 0.14),
     0 2px 5px rgba(31, 35, 41, 0.06),
     inset 0 1px 0 #fff,
     inset 0 -2px 4px rgba(31, 35, 41, 0.05);
-  color: #4b5563;
+  color: var(--xq-ink-2);
   cursor: pointer;
   overflow: hidden;
   will-change: width;
@@ -4809,17 +4809,17 @@ onUnmounted(() => {
   flex: none;
 }
 .glass-ic:hover:not(:disabled) {
-  background: linear-gradient(rgba(255, 255, 255, 0.94), rgba(246, 241, 250, 0.82));
+  background: linear-gradient(rgb(var(--xq-surface-rgb) / 0.94), rgb(var(--xq-violet-tint-rgb) / 0.82));
   box-shadow:
     0 10px 24px rgba(31, 35, 41, 0.18),
     0 2px 5px rgba(31, 35, 41, 0.07),
     inset 0 1px 0 #fff,
     inset 0 -2px 4px rgba(31, 35, 41, 0.05);
-  color: #6b487c;
+  color: var(--xq-violet-ink);
 }
 .glass-ic[aria-pressed='true'] {
-  color: #6b487c;
-  background: linear-gradient(rgba(255, 255, 255, 0.96), rgba(243, 237, 248, 0.9));
+  color: var(--xq-violet-ink);
+  background: linear-gradient(rgb(var(--xq-surface-rgb) / 0.96), rgb(var(--xq-violet-soft-rgb) / 0.9));
 }
 .glass-ic:disabled {
   opacity: 0.5;
@@ -4852,12 +4852,12 @@ onUnmounted(() => {
 
 /* 回到底部：32 磨砂圆钮（原型 :1596） */
 .glass-round {
-  border: 1px solid rgba(255, 255, 255, 0.78);
-  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgb(var(--xq-surface-rgb) / 0.78);
+  background: rgb(var(--xq-surface-rgb) / 0.7);
   -webkit-backdrop-filter: blur(18px) saturate(180%);
   backdrop-filter: blur(18px) saturate(180%);
   box-shadow: 0 6px 18px rgba(31, 35, 41, 0.1);
-  color: #5f6673;
+  color: var(--xq-muted);
 }
 
 /* 悬浮提示：按钮下方的小黑片（原型 :2066-2068） */
@@ -4874,8 +4874,9 @@ onUnmounted(() => {
   transform: translateX(-50%) translateY(-2px);
   padding: 4px 8px;
   border-radius: 6px;
-  background: rgba(31, 35, 41, 0.94);
-  color: #fff;
+  /* 反相小片：浅色墨底白字，深色浅底深字（深底上黑片没有边） */
+  background: rgb(var(--xq-ink-rgb) / 0.94);
+  color: var(--xq-page);
   font-size: 11px;
   line-height: 16px;
   white-space: nowrap;
@@ -4894,7 +4895,7 @@ onUnmounted(() => {
 
 /* ---- 对话背景：中性近白 + 28px 点阵从下往上化开；顶部 56px 渐隐（原型 bg-b :1591-1592、:1600） ---- */
 .agent-chat.is-conv {
-  background: #fafafa;
+  background: var(--xq-surface2);
 }
 .agent-chat.is-conv::before {
   content: '';
@@ -4902,7 +4903,7 @@ onUnmounted(() => {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image: radial-gradient(circle, #dadce0 1px, transparent 1px);
+  background-image: radial-gradient(circle, var(--xq-line-strong) 1px, transparent 1px);
   background-size: 28px 28px;
   background-position: 50% 100%;
   -webkit-mask-image: radial-gradient(
@@ -4914,7 +4915,7 @@ onUnmounted(() => {
   mask-image: radial-gradient(ellipse 96% 92% at 50% 100%, #000 10%, rgba(0, 0, 0, 0.62) 52%, rgba(0, 0, 0, 0) 88%);
 }
 .stream-fade {
-  background: linear-gradient(rgba(250, 250, 250, 0.72), transparent);
+  background: linear-gradient(rgb(var(--xq-surface2-rgb) / 0.72), transparent);
 }
 
 /* ---- 输入框：首页与对话同一个框，只换材质（原型 .home .ref-composer :1615 / .chat-composer :1875） ---- */
@@ -4924,49 +4925,56 @@ onUnmounted(() => {
     border-color 0.12s;
 }
 .composer.is-home {
-  border-color: #c9cdd0;
-  background: linear-gradient(rgba(255, 255, 255, 0.86), rgba(246, 246, 247, 0.7));
+  border-color: var(--xq-soft-line);
+  background: linear-gradient(rgb(var(--xq-surface-rgb) / 0.86), rgb(var(--xq-page-rgb) / 0.7));
   -webkit-backdrop-filter: blur(16px) saturate(170%);
   backdrop-filter: blur(16px) saturate(170%);
   box-shadow:
     0 16px 40px rgba(31, 35, 41, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 0 0 1px rgba(201, 207, 214, 0.22);
+    inset 0 0 0 1px rgb(var(--xq-control-rgb) / 0.22);
 }
 .composer.is-home:focus-within {
-  border-color: #b9bfc4;
+  border-color: var(--xq-soft-line-focus);
   box-shadow:
     inset 0 2px 6px rgba(31, 35, 41, 0.1),
     inset 0 1px 2px rgba(31, 35, 41, 0.06),
     0 16px 40px rgba(31, 35, 41, 0.1);
 }
 .composer.is-chat {
-  border-color: rgba(255, 255, 255, 0.9);
-  background: linear-gradient(rgba(255, 255, 255, 0.82), rgba(246, 246, 247, 0.64));
+  border-color: rgb(var(--xq-surface-rgb) / 0.9);
+  background: linear-gradient(rgb(var(--xq-surface-rgb) / 0.82), rgb(var(--xq-page-rgb) / 0.64));
   -webkit-backdrop-filter: blur(16px) saturate(170%);
   backdrop-filter: blur(16px) saturate(170%);
   box-shadow:
     0 16px 40px rgba(31, 35, 41, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 0 0 1px rgba(201, 207, 214, 0.22);
+    inset 0 0 0 1px rgb(var(--xq-control-rgb) / 0.22);
 }
 .composer.is-chat:focus-within {
-  border-color: #c9cdd0;
+  border-color: var(--xq-soft-line);
   box-shadow:
     0 16px 40px rgba(31, 35, 41, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 0 0 1px rgba(201, 207, 214, 0.34);
+    inset 0 0 0 1px rgb(var(--xq-control-rgb) / 0.34);
+}
+/* 深色：磨砂件的「白边」换成极淡的亮线（深底上 surface 色的边等于没有边） */
+[data-theme='dark'] .glass-ic,
+[data-theme='dark'] .glass-round,
+[data-theme='dark'] .composer.is-chat,
+[data-theme='dark'] .ai-avatar {
+  border-color: var(--xq-glass-line);
 }
 /* 拖入图片：藤紫虚线 + 柔紫底（不占位） */
 .composer.is-drop {
-  outline: 1px dashed #875f9a;
+  outline: 1px dashed var(--xq-violet);
   outline-offset: -1px;
-  background: #f3edf8;
+  background: var(--xq-violet-soft);
 }
 
 /* 分享模式条：藤紫磨砂（原型 :1862） */
 .share-bar {
-  background: rgba(248, 243, 252, 0.88);
+  background: rgb(var(--xq-violet-tint-rgb) / 0.88);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   backdrop-filter: blur(18px) saturate(160%);
   box-shadow: 0 8px 22px rgba(31, 35, 41, 0.1);
@@ -4986,8 +4994,8 @@ onUnmounted(() => {
   border-radius: 50%;
   corner-shape: round;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.98);
-  background: linear-gradient(180deg, #fff 0%, #fbfbfc 52%, #f0f1f3 100%);
+  border: 1px solid rgb(var(--xq-surface-rgb) / 0.98);
+  background: linear-gradient(180deg, var(--xq-surface) 0%, var(--xq-sunk-bottom) 52%, var(--xq-sunken) 100%);
   box-shadow:
     0 0 0 1px rgba(31, 35, 41, 0.055),
     0 6px 14px rgba(31, 35, 41, 0.12),
@@ -5021,7 +5029,7 @@ onUnmounted(() => {
   width: 9px;
   height: 9px;
   transform: rotate(45deg);
-  background: #fff;
+  background: var(--xq-surface);
   border-left: 1px solid var(--soft-line);
   border-bottom: 1px solid var(--soft-line);
   border-bottom-left-radius: 2px;
@@ -5037,7 +5045,7 @@ onUnmounted(() => {
   height: 13px;
   margin-left: 2px;
   vertical-align: -2px;
-  background: #6b487c;
+  background: var(--xq-violet-ink);
   animation: agent-caret 1s steps(1) infinite;
 }
 @keyframes agent-caret {
@@ -5048,16 +5056,16 @@ onUnmounted(() => {
 
 /* 执行清单状态圆圈：同一个圆框只换笔画和颜色（原型 :1761-1777） */
 .st-ic.is-ok {
-  color: #3f7a56;
+  color: var(--xq-success-fg);
 }
 .st-ic.is-fail {
-  color: #c24545;
+  color: var(--xq-danger-strong);
 }
 .st-ic.is-idle {
-  color: #c8ccd1;
+  color: var(--xq-control);
 }
 .st-ic.is-run {
-  color: #875f9a;
+  color: var(--xq-violet-fg);
 }
 .st-ic.is-run svg {
   animation: agent-spin 0.9s linear infinite;
@@ -5066,7 +5074,7 @@ onUnmounted(() => {
   stroke-dasharray: 15 42;
 }
 .st-track {
-  stroke: rgba(135, 95, 154, 0.22);
+  stroke: rgb(var(--xq-violet-rgb) / 0.22);
 }
 .think-spin {
   animation: agent-spin 1.4s linear infinite;
@@ -5113,7 +5121,7 @@ onUnmounted(() => {
   height: 190px;
   z-index: 0;
   pointer-events: none;
-  background-image: radial-gradient(circle, #d8dade 1px, transparent 1px);
+  background-image: radial-gradient(circle, var(--xq-line-strong) 1px, transparent 1px);
   background-size: 24px 24px;
   background-position: 50% 100%;
   -webkit-mask-image: linear-gradient(180deg, transparent, #000 72%);

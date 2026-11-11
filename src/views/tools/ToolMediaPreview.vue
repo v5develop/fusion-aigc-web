@@ -103,10 +103,10 @@ function trapTab(e: KeyboardEvent) {
 const toolCls =
   'grid w-32px h-32px place-items-center p-0 rounded-8px border-none bg-white/10 text-white cursor-pointer no-underline ' +
   'enabled:hover:bg-white/22 disabled:(opacity-40 cursor-not-allowed) outline-none ' +
-  'focus-visible:(outline-2 outline-solid outline-white outline-offset-2)'
+  'focus-visible:(outline-2 outline-solid outline-#fff outline-offset-2)'
 const navCls =
   'absolute top-1/2 -translate-y-1/2 z-2 grid w-44px h-44px place-items-center p-0 rounded-full border-none bg-white/20 ' +
-  'text-white cursor-pointer hover:bg-white/32 outline-none focus-visible:(outline-2 outline-solid outline-white outline-offset-2)'
+  'text-white cursor-pointer hover:bg-white/32 outline-none focus-visible:(outline-2 outline-solid outline-#fff outline-offset-2)'
 const iconAttrs = {
   viewBox: '0 0 24 24',
   fill: 'none',
@@ -262,7 +262,7 @@ const iconAttrs = {
           role="tab"
           :aria-selected="i === clamped"
           :aria-label="item.name || `第 ${i + 1} 项`"
-          class="relative flex-none w-56px h-56px overflow-hidden p-0 rounded-8px border-none bg-white/12 cursor-pointer outline-2 outline-solid -outline-offset-2 focus-visible:outline-white"
+          class="relative flex-none w-56px h-56px overflow-hidden p-0 rounded-8px border-none bg-white/12 cursor-pointer outline-2 outline-solid -outline-offset-2 focus-visible:outline-#fff"
           :class="i === clamped ? 'outline-violet' : 'outline-transparent'"
           @click="go(i)"
         >

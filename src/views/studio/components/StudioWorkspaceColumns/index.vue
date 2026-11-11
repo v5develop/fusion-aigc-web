@@ -208,7 +208,7 @@ defineExpose({
           >
             <template #trigger>
               <div
-                class="relative mx-12px mt-12px flex h-64px box-border flex-none items-center gap-8px rounded-10px border border-solid border-#e9dff2 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7fe_100%)] pl-8px pr-14px py-12px shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
+                class="relative mx-12px mt-12px flex h-64px box-border flex-none items-center gap-8px rounded-10px border border-solid border-violet-soft-2 bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-upload-hover-bottom)_100%)] pl-8px pr-14px py-12px shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
               >
                 <IconButton label="返回 AI 图片" variant="quiet" @click="back">
                   <svg
@@ -231,7 +231,7 @@ defineExpose({
                 >
                   <!-- 缩略 56×40（原型 .fn-switch__thumb：r6、1px line、135° 淡紫渐变、顶部 1px 白内高光） -->
                   <span
-                    class="grid h-40px w-56px flex-none place-items-center overflow-hidden rounded-6px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] text-violet shadow-[inset_0_1px_0_#fff]"
+                    class="grid h-40px w-56px flex-none place-items-center overflow-hidden rounded-6px border border-solid border-line sx-grad-icon text-violet shadow-[inset_0_1px_0_#fff]"
                   >
                     <img
                       v-if="headCover"
@@ -305,7 +305,7 @@ defineExpose({
                     class="flex h-32px min-w-0 cursor-pointer items-center gap-6px rounded-6px border border-solid px-6px text-left sx-focus"
                     :class="
                       entry.kind === kind
-                        ? 'border-violet-line bg-[linear-gradient(#ffffff,#f3edf8)] text-violet-ink'
+                        ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-soft))] text-violet-ink'
                         : 'border-transparent bg-transparent text-ink-2 hover:bg-surface3'
                     "
                     :aria-current="entry.kind === kind ? 'page' : undefined"
@@ -313,7 +313,7 @@ defineExpose({
                     @click="onSwitch(entry.path)"
                   >
                     <span
-                      class="grid h-22px w-22px flex-none place-items-center rounded-5px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] text-violet shadow-[inset_0_1px_0_#fff]"
+                      class="grid h-22px w-22px flex-none place-items-center rounded-5px border border-solid border-line sx-grad-icon text-violet shadow-[inset_0_1px_0_#fff]"
                     >
                       <svg
                         class="h-13px w-13px"
@@ -384,7 +384,7 @@ defineExpose({
 
 /* 滚动条 mixin 无法用原子类表达 */
 .stu-scroll {
-  .scrollbar-autohide(@width: 8px, @trackColor: #fff, @thumbColor: rgba(0, 0, 0, 0.1), @thumbWidth: 4px, @hoverColor: rgba(0, 0, 0, 0.35));
+  .scrollbar-autohide(@width: 8px, @trackColor: var(--xq-surface), @thumbColor: rgb(var(--xq-ink-rgb) / 0.1), @thumbWidth: 4px, @hoverColor: rgb(var(--xq-ink-rgb) / 0.35));
 }
 </style>
 

@@ -308,19 +308,19 @@ const emptyCls =
   'border border-solid border-white bg-white text-placeholder shadow-[0_1px_3px_rgba(31,35,41,0.16)] hover:shadow-[0_2px_6px_rgba(31,35,41,0.2)]'
 /** 浮层卡：1px line · r8 · 白 · 0 12 32 .18 + 0 2 8 .08；顶上 12 高透明桥，入场 120ms + 4px 上浮 */
 const popCls =
-  'absolute top-138px box-border p-10px rounded-8px border border-solid border-line bg-white text-left ' +
+  'absolute top-138px box-border p-10px rounded-8px border border-solid border-line bg-overlay text-left ' +
   'shadow-[0_12px_32px_rgba(31,35,41,0.18),0_2px_8px_rgba(31,35,41,0.08)] animate-[tus-preview-in_120ms_ease_both] motion-reduce:animate-none ' +
   "before:(content-[''] absolute -top-12px inset-x-0 h-12px)"
 /** 切口：两块隔 16，缝里居中一条细线（9 宽柔边带 + 1px 中线，上下渐隐） */
 const seamCls = [
   "[.ttm-slot+&]:before:content-[''] [.ttm-slot+&]:before:absolute [.ttm-slot+&]:before:top-0",
   '[.ttm-slot+&]:before:left-[-12px] [.ttm-slot+&]:before:w-9px [.ttm-slot+&]:before:h-130px [.ttm-slot+&]:before:pointer-events-none',
-  '[.ttm-slot+&]:before:bg-[linear-gradient(90deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.026)_35%,rgba(31,35,41,0.026)_65%,rgba(31,35,41,0)_100%)]',
+  '[.ttm-slot+&]:before:bg-[linear-gradient(90deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.026)_35%,rgb(var(--xq-ink-rgb)/0.026)_65%,rgb(var(--xq-ink-rgb)/0)_100%)]',
   '[.ttm-slot+&]:before:[mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
   '[.ttm-slot+&]:before:[-webkit-mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]',
   "[.ttm-slot+&]:after:content-[''] [.ttm-slot+&]:after:absolute [.ttm-slot+&]:after:top-0",
   '[.ttm-slot+&]:after:left-[-8px] [.ttm-slot+&]:after:w-1px [.ttm-slot+&]:after:h-130px [.ttm-slot+&]:after:pointer-events-none',
-  '[.ttm-slot+&]:after:bg-[linear-gradient(180deg,rgba(31,35,41,0)_0%,rgba(31,35,41,0.09)_14%,rgba(31,35,41,0.09)_86%,rgba(31,35,41,0)_100%)]',
+  '[.ttm-slot+&]:after:bg-[linear-gradient(180deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.09)_14%,rgb(var(--xq-ink-rgb)/0.09)_86%,rgb(var(--xq-ink-rgb)/0)_100%)]',
 ]
 const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5'
 const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 0 0 7 18.5z'

@@ -708,7 +708,7 @@ const trashIcon = ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6
                   :class="[
                     'h-56px w-full flex cursor-pointer items-center justify-center gap-8px rounded-lg border border-dashed border-line-strong sx-grad-upload',
                     'text-13px text-muted transition-[border-color,background,color] duration-mid ease-sx motion-reduce:transition-none',
-                    'hover:(border-violet-line to-#fbf7fd text-violet-ink)',
+                    'hover:(border-violet-line to-upload-hover-bottom text-violet-ink)',
                     focusRing,
                   ]"
                   @click="openProfilePicker"

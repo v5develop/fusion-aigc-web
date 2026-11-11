@@ -138,7 +138,7 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   width: 414px;
   padding: 32px;
-  background: #fff;
+  background: var(--xq-surface);
   border-radius: 16px;
   display: flex;
   flex-direction: column;
@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
       font-size: 20px;
       font-weight: 600;
       line-height: 28px;
-      color: #3a3a3a; // 中性色/正文文字
+      color: var(--xq-ink-2); // 中性色/正文文字
     }
 
     > .desc {
@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
       font-weight: 500;
       line-height: 20px;
       text-align: center;
-      color: #8f8f8f; // 中性色/辅助文字
+      color: var(--xq-muted); // 中性色/辅助文字
     }
   }
 
@@ -196,8 +196,13 @@ onBeforeUnmount(() => {
     }
 
     > .ghost {
-      background: #f0ebff; // AI智慧紫/AI浅底色
+      background: var(--xq-violet-soft); // AI智慧紫/AI浅底色
       color: #8e66f9; // AI智慧紫/AI强调色
+
+      // 深色：亮紫在深底上发荧光，换藤紫文字档
+      [data-theme='dark'] & {
+        color: var(--xq-violet-fg);
+      }
     }
 
     > .primary {

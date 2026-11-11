@@ -23,6 +23,7 @@ import ColorFixZoomView from './ColorFixZoomView.vue'
 import type { ResultColorFix } from './useResultColorFix.ts'
 import type { ColorFixViewMode } from './types.ts'
 import { MASK_VIEW_HINTS, MASK_VIEW_LABELS, type MaskViewMode } from './selection-ops.ts'
+import { activeTheme } from '@/utils/themePrefs.ts'
 
 const {
   cf,
@@ -165,15 +166,18 @@ const SEG =
 <template>
   <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal :show="show" :mask-closable="false" :auto-focus="true" transform-origin="center" @update:show="(v: boolean) => !v && exit()">
+    <!-- 全屏调色台始终是深色（看图要暗环境）：根节点锁 data-theme="dark"，里面的令牌一律取深色；
+         右侧参数台跟随站点外观（浅色时仍是白卡），所以单独把主题还给它 -->
     <div
-      class="cf-fs flex flex-col bg-#16181b text-white"
+      data-theme="dark"
+      class="cf-fs flex flex-col bg-surface text-white"
       role="dialog"
       aria-modal="true"
       :aria-label="`${title} · 全屏调色`"
       tabindex="-1"
       @keydown="onKey"
     >
-      <header class="cf-fs-head flex flex-wrap items-center gap-8px px-16px py-8px bg-#202227 border-b border-b-solid border-white/8">
+      <header class="cf-fs-head flex flex-wrap items-center gap-8px px-16px py-8px bg-overlay border-b border-b-solid border-white/8">
         <b class="min-w-0 max-w-[28vw] truncate text-14px font-600 leading-20px">{{ title }}</b>
         <div role="radiogroup" aria-label="查看方式" class="flex items-center gap-2px p-3px rounded-full bg-white/8">
           <button
@@ -230,7 +234,7 @@ const SEG =
       </header>
       <div class="cf-fs-body flex-1 min-h-0 flex">
         <ColorFixZoomView ref="zoom" class="cf-fs-stage flex-1 min-w-0" :cf="cf" :mode="mode" :labels="labels" :show-mask="showMask" :mask-view="shownView" />
-        <aside class="cf-fs-dock flex flex-col bg-white text-ink" aria-label="校色参数">
+        <aside :data-theme="activeTheme" class="cf-fs-dock flex flex-col bg-surface text-ink" aria-label="校色参数">
           <ColorFixResultPanel :cf="cf" :title="title" :local-adjust="localAdjust" docked large />
         </aside>
       </div>

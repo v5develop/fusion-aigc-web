@@ -130,9 +130,9 @@ const EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都
             class="relative flex-none grid place-items-center w-44px h-44px self-center box-border rounded-14px border border-solid border-line bg-surface3 text-placeholder"
             :class="
               stackOf(item).length >= 3
-                ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb,6px_-6px_0_-1px_#fff,6px_-6px_0_0_#e5e7eb]'
+                ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line),6px_-6px_0_-1px_var(--xq-surface),6px_-6px_0_0_var(--xq-line)]'
                 : stackOf(item).length === 2
-                  ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb]'
+                  ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line)]'
                   : ''
             "
             aria-hidden="true"
@@ -148,7 +148,7 @@ const EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都
             <span v-else class="text-11px">{{ groupMediaType === 'video' ? '视频' : '—' }}</span>
             <span
               v-if="stackOf(item).length > 1"
-              class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px rounded-full border border-solid border-white bg-ink text-10px font-600 leading-none text-white"
+              class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px rounded-full border border-solid border-white bg-ink text-10px font-600 leading-none text-surface"
               >{{ stackOf(item).length }}</span
             >
           </span>
@@ -163,7 +163,7 @@ const EMPTY_HINT = '左边传好素材、点底部按钮提交，每次生成都
             <!-- 进行中：4px 进度条（轨 #eceef0 内凹，紫渐变填充）+ 百分比 11/600；完成后该行由状态胶囊顶替 -->
             <span v-if="isRunning(item)" class="flex items-center gap-6px">
               <span
-                class="relative flex-1 h-4px rounded-full bg-#eceef0 shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden"
+                class="relative flex-1 h-4px rounded-full bg-ghost-press shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden"
               >
                 <span
                   class="absolute inset-y-0 left-0 rounded-full sx-grad-progress [transition:width_160ms_linear] motion-reduce:transition-none"

@@ -9,6 +9,8 @@ export interface IVideoItem {
 <script setup lang="ts">
 import { upload } from '@/api/oss-upload.ts'
 import IconButton from '@/components/IconButton/index.vue'
+import { palettes } from '@/theme/tokens.ts'
+import { activeTheme } from '@/utils/themePrefs.ts'
 import { ACCEPT_VIDEO } from '@/utils/utils'
 import { useDialog, useMessage } from 'naive-ui'
 import { computed, defineAsyncComponent, ref, watch, onMounted, onBeforeUnmount } from 'vue'
@@ -236,11 +238,11 @@ const getDefaultThumbnail = (): string => {
   canvas.height = 48
   const ctx = canvas.getContext('2d')
   if (ctx) {
-    // 灰色背景（sunken #eff1f3）
-    ctx.fillStyle = '#eff1f3'
+    // 画成位图后不再随主题变，所以按生成时的主题取色：底 sunken、播放三角 muted
+    const pal = palettes[activeTheme.value]
+    ctx.fillStyle = pal.sunken
     ctx.fillRect(0, 0, 48, 48)
-    // 播放按钮形状（muted #5f6673）
-    ctx.fillStyle = '#5f6673'
+    ctx.fillStyle = pal.muted
     ctx.beginPath()
     ctx.moveTo(16, 12)
     ctx.lineTo(36, 24)
@@ -504,7 +506,7 @@ onMounted(async () => {
 // 样式（规范 §5.9 上传槽、§4.1 按钮、§4.2 动效）：1px 控件描边 + 白→#f9fafb，r8；hover 描边 violet-line、底 →#fbf7fd
 const ZONE =
   'relative flex flex-col items-center pb-16px overflow-hidden rounded-lg border border-solid border-control sx-grad-upload ' +
-  'transition-colors duration-mid ease-sx hover:(border-violet-line to-#fbf7fd) motion-reduce:transition-none'
+  'transition-colors duration-mid ease-sx hover:(border-violet-line to-upload-hover-bottom) motion-reduce:transition-none'
 const LIMIT_TIPS =
   'absolute top-0 right-0 w-130px h-24px flex items-center justify-center text-12px rounded-[0_8px] bg-violet-soft text-violet-ink'
 const UPLOAD_BTN =

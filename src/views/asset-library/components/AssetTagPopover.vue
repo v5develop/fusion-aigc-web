@@ -252,7 +252,7 @@ async function createTag() {
       ref="menuEl"
       role="dialog"
       aria-label="打标签"
-      class="fixed z-[6000] w-260px p-6px border border-solid border-[#e2e5e9] rounded-8px bg-white shadow-[0_14px_36px_rgba(31,35,41,0.18)]"
+      class="fixed z-[6000] w-260px p-6px border border-solid border-line rounded-8px bg-white shadow-[0_14px_36px_rgba(31,35,41,0.18)]"
       :style="{ left: `${pos.left}px`, top: `${pos.top}px` }"
       @keydown.esc.stop.prevent="close(true)"
       @focusout="onFocusOut"
@@ -294,19 +294,19 @@ async function createTag() {
           data-tag-option
           :aria-pressed="isOn(o)"
           class="flex items-center gap-8px w-full h-30px px-8px border-none rounded-5px text-11px text-left cursor-pointer focus-visible:(outline outline-2 outline-violet outline-offset-[-2px])"
-          :class="isOn(o) ? 'bg-[#f7f1fb] text-[#5c3f6c] font-600' : 'bg-transparent text-[#4b5563] hover:bg-[#f5f2f8]'"
+          :class="isOn(o) ? 'bg-violet-tint text-violet-press font-600' : 'bg-transparent text-ink-2 hover:bg-violet-tint'"
           @click="pick(o)"
           @keydown.down="moveFocus($event, 1)"
           @keydown.up="moveFocus($event, -1)"
         >
           <span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{{ o.label }}</span>
           <em v-if="o.count !== null" class="not-italic text-9px text-[#a3a9b1]">{{ o.count }}</em>
-          <i class="w-10px not-italic text-9px text-[#6b487c]" aria-hidden="true">{{ isOn(o) ? '✓' : '' }}</i>
+          <i class="w-10px not-italic text-9px text-violet-ink" aria-hidden="true">{{ isOn(o) ? '✓' : '' }}</i>
         </button>
       </div>
       <button
         type="button"
-        class="w-full h-30px mt-4px px-8px border-t border-line-soft rounded-b-5px bg-transparent text-11px text-left text-[#6b487c] cursor-pointer hover:bg-[#f5f2f8] focus-visible:(outline outline-2 outline-violet outline-offset-[-2px])"
+        class="w-full h-30px mt-4px px-8px border-t border-line-soft rounded-b-5px bg-transparent text-11px text-left text-violet-ink cursor-pointer hover:bg-violet-tint focus-visible:(outline outline-2 outline-violet outline-offset-[-2px])"
         @click="openCreate"
         @keydown.up="moveFocus($event, -1)"
       >

@@ -117,7 +117,7 @@ const downloadGroup = async (group: any) => {
     align-items: center;
     justify-content: center;
     padding: 80px 0;
-    color: #999;
+    color: var(--xq-muted);
     > i {
       font-size: 48px;
       margin-bottom: 12px;

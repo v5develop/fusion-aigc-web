@@ -22,6 +22,8 @@ import { Background } from '@vue-flow/background'
 // 缺了它连线会被 SVG 裁掉（看不到线），节点 / 端口也会落回文档流而错位。
 import '@vue-flow/core/dist/style.css'
 import { llTheme } from '@/views/local-life/theme.ts'
+import { activeTheme } from '@/utils/themePrefs.ts'
+import { palettes } from '@/theme/tokens.ts'
 import EditorIcon from './EditorIcon.vue'
 import CanvasTip from './CanvasTip.vue'
 import EditorBezierEdge from './EditorBezierEdge.vue'
@@ -108,6 +110,14 @@ const dotGrid = computed(() => {
   while (gap * zoom > 42) gap /= 2
   return { gap, size: 1.15 / zoom }
 })
+/**
+ * 点阵与小地图蒙版随主题：SVG 的 fill 属性不认 CSS 变量，取真色值。
+ * 浅色保持原型墨色 20% 点 / 藤紫 8% 蒙版；深色点用 canvas-dot 令牌（压在 page 底上刚好可见、不抢节点），蒙版提亮成藤紫 14%。
+ */
+const dotColor = computed(() => (activeTheme.value === 'dark' ? palettes.dark['canvas-dot'] : 'rgba(31, 35, 41, 0.20)'))
+const minimapMaskColor = computed(() =>
+  activeTheme.value === 'dark' ? 'rgba(150, 119, 170, 0.14)' : 'rgba(106, 72, 123, 0.08)',
+)
 
 const canvasId = computed(() => String(route.params.id ?? ''))
 
@@ -699,8 +709,8 @@ const saveText = computed(() => {
 
 /** 保存状态小标（原型 .wf-save-state：surface-3 底 / muted / 11px；失败红、冲突琥珀、待存琥珀字） */
 const saveStateClass = computed(() => {
-  if (saveState.value === 'error') return 'bg-[#fbeeed] text-danger'
-  if (saveState.value === 'conflict') return 'bg-[#f8f1e4] text-warning'
+  if (saveState.value === 'error') return 'bg-danger-soft text-danger'
+  if (saveState.value === 'conflict') return 'bg-warning-soft text-warning'
   if (saveState.value === 'saving' || saveState.value === 'dirty') return 'bg-surface3 text-warning'
   return 'bg-surface3 text-muted'
 })
@@ -870,9 +880,9 @@ async function confirmAndRun(ids: string[], scope: 'pick' | 'all' = 'pick'): Pro
         'span',
         {
           class:
-            'flex min-h-56px flex-col justify-center gap-2px px-10px py-8px border-[0.8px] border-solid border-[#ececef] rounded-12px bg-[#fbfbfc] text-[#7f7f7f] text-11px',
+            'flex min-h-56px flex-col justify-center gap-2px px-10px py-8px border-[0.8px] border-solid border-line rounded-12px bg-surface2 text-muted text-11px',
         },
-        [h('b', { class: 'text-[#333] text-16px font-600 tabular-nums leading-22px' }, value), label],
+        [h('b', { class: 'text-ink text-16px font-600 tabular-nums leading-22px' }, value), label],
       )
     const countLabel = hasTool ? '个待执行节点' : '个模型节点'
     const title = scope === 'all' ? '执行全部模型节点' : toRun.length > 1 ? `执行 ${toRun.length} 个节点` : '执行前确认'
@@ -886,13 +896,13 @@ async function confirmAndRun(ids: string[], scope: 'pick' | 'all' = 'pick'): Pro
         style: { width: '380px', maxWidth: 'calc(100vw - 32px)' },
         content: () =>
           h('div', [
-            h('p', { class: 'm-0 text-[#7f7f7f] text-12px leading-18px' }, lead),
+            h('p', { class: 'm-0 text-muted text-12px leading-18px' }, lead),
             h('div', { class: 'grid grid-cols-3 gap-8px mt-14px mb-4px' }, [
               fact(String(toRun.length), countLabel),
               fact(estimate.toLocaleString(), '预计点数'),
               fact(balance.value != null ? balance.value.toLocaleString() : '—', '当前余额'),
             ]),
-            ...notes.map((note) => h('p', { class: 'm-0 mt-8px text-[#7f7f7f] text-11px leading-[1.5]' }, note)),
+            ...notes.map((note) => h('p', { class: 'm-0 mt-8px text-muted text-11px leading-[1.5]' }, note)),
           ]),
         positiveText: '开始执行',
         negativeText: '取消',
@@ -2356,7 +2366,7 @@ function openHelp() {
       'kbd',
       {
         class:
-          'inline-block min-w-20px px-6px py-1px border border-solid border-[#d9d2d7] border-b-2 rounded-5px bg-white text-[#4b454a] text-11px leading-[1.5] text-center',
+          'inline-block min-w-20px px-6px py-1px border border-solid border-line-strong border-b-2 rounded-5px bg-surface text-ink-2 text-11px leading-[1.5] text-center',
         style: "font-family:'SFMono-Regular',Consolas,monospace",
       },
       text,
@@ -2371,10 +2381,10 @@ function openHelp() {
           'div',
           {
             class:
-              'grid grid-cols-[auto_1fr] items-center gap-x-20px gap-y-8px mt-4px mb-14px text-[#4b454a] text-13px',
+              'grid grid-cols-[auto_1fr] items-center gap-x-20px gap-y-8px mt-4px mb-14px text-ink-2 text-13px',
           },
           rows.flatMap(([label, parts]) => [
-            h('span', { class: 'text-[#7d767b] text-12px' }, label),
+            h('span', { class: 'text-muted text-12px' }, label),
             h(
               'span',
               { class: 'flex flex-wrap items-center gap-3px' },
@@ -2393,10 +2403,16 @@ function openHelp() {
 
 // ---------------- 小地图节点配色（原型 minimapNodeColor：模块 / 生成 / 其他三档） ----------------
 
+// 深色：同一三档的明度台阶反过来（模块最暗、生成最亮带藤紫），压在深色小地图底上依旧分得清
+const MINIMAP_NODE_COLORS = {
+  light: { module: '#ece5f0', model: '#cbb7d6', other: '#ded5e2' },
+  dark: { module: '#2a2530', model: '#6f5a80', other: '#454150' },
+} as const
 function minimapNodeColor(node: { type?: string }): string {
-  if (node.type === 'module') return '#ece5f0'
-  if (node.type === 'model') return '#cbb7d6'
-  return '#ded5e2'
+  const c = MINIMAP_NODE_COLORS[activeTheme.value]
+  if (node.type === 'module') return c.module
+  if (node.type === 'model') return c.model
+  return c.other
 }
 
 // ---------------- 拖文件 / 资产到空白画布：逐张上传并在落点建图片节点（错开 24px） ----------------
@@ -2522,7 +2538,7 @@ useFileDropPaste(stageRef, {
 <template>
   <n-config-provider :theme-overrides="llTheme" abstract>
     <div ref="pageEl" class="flex flex-col h-100vh overflow-hidden bg-page">
-      <header class="flex shrink-0 items-center gap-8px h-48px px-12px border-b border-b-solid border-line bg-white">
+      <header class="flex shrink-0 items-center gap-8px h-48px px-12px border-b border-b-solid border-line bg-surface">
         <IconButton label="返回画布首页" variant="quiet" class="shrink-0" @click="backToList">
           <EditorIcon name="arrowBack" :size="18" />
         </IconButton>
@@ -2530,7 +2546,7 @@ useFileDropPaste(stageRef, {
           v-if="titleEditing"
           ref="titleInputRef"
           v-model="title"
-          class="w-240px h-30px px-8px border border-solid border-violet rounded-4px bg-white text-ink text-14px font-600 leading-20px outline-none shadow-[0_0_0_3px_rgba(135,95,154,0.14),inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
+          class="w-240px h-30px px-8px border border-solid border-violet rounded-4px bg-surface text-ink text-14px font-600 leading-20px outline-none shadow-[var(--xq-shadow-focus),var(--xq-shadow-inset-input)]"
           maxlength="100"
           placeholder="未命名画布"
           aria-label="画布标题"
@@ -2601,7 +2617,7 @@ useFileDropPaste(stageRef, {
             </button>
             <div
               v-if="showExportMenu"
-              class="sx-squircle absolute right-0 top-38px z-[6000] w-190px flex flex-col rounded-14px border border-solid border-[#e5e1e4] bg-white p-6px shadow-[0_16px_36px_rgba(31,35,41,0.14)]"
+              class="sx-squircle absolute right-0 top-38px z-[6000] w-190px flex flex-col rounded-14px border border-solid border-line bg-overlay p-6px shadow-[0_16px_36px_rgba(31,35,41,0.14)]"
               :class="POP_FADE"
               role="menu"
               @click.stop
@@ -2648,7 +2664,7 @@ useFileDropPaste(stageRef, {
         <!-- 舞台：原型 .wf-canvas 底色 #f5f5f5；框选框藤紫描边 + 8% 浅底；非法连线红色虚线 -->
         <div
           ref="stageRef"
-          class="relative flex-1 min-w-0 overflow-hidden bg-[#f5f5f5]"
+          class="relative flex-1 min-w-0 overflow-hidden bg-[#f5f5f5] [[data-theme=dark]_&]:bg-page"
           @dblclick="onStageDblClick"
           @dragover="onStageDragOver"
           @dragleave="onStageDragLeave"
@@ -2660,7 +2676,7 @@ useFileDropPaste(stageRef, {
             :id="FLOW_ID"
             v-model:nodes="nodes"
             v-model:edges="edges"
-            class="w-full h-full [&_.vue-flow\_\_pane]:cursor-default [&_.vue-flow\_\_selection]:border [&_.vue-flow\_\_selection]:border-solid [&_.vue-flow\_\_selection]:border-violet [&_.vue-flow\_\_selection]:bg-[rgba(135,95,154,0.08)] [&_.vue-flow\_\_connection-path.invalid]:!stroke-[#b4433e] [&_.vue-flow\_\_connection-path.invalid]:[stroke-dasharray:5_4]"
+            class="w-full h-full [&_.vue-flow\_\_pane]:cursor-default [&_.vue-flow\_\_selection]:border [&_.vue-flow\_\_selection]:border-solid [&_.vue-flow\_\_selection]:border-violet [&_.vue-flow\_\_selection]:bg-violet/8 [&_.vue-flow\_\_connection-path.invalid]:!stroke-danger [&_.vue-flow\_\_connection-path.invalid]:[stroke-dasharray:5_4]"
             :default-viewport="{ x: 40, y: 20, zoom: 0.86 }"
             :min-zoom="0.2"
             :max-zoom="2"
@@ -2676,7 +2692,7 @@ useFileDropPaste(stageRef, {
             :delete-key-code="null"
             :connect-on-click="false"
             :connection-mode="ConnectionMode.Strict"
-            :connection-line-style="{ stroke: '#875f9a', strokeWidth: 2, strokeLinecap: 'round' }"
+            :connection-line-style="{ stroke: 'var(--xq-violet-fg)', strokeWidth: 2, strokeLinecap: 'round' }"
             :is-valid-connection="isValidConnection"
             @node-click="onNodeClick"
             @pane-click="onPaneClick"
@@ -2690,7 +2706,7 @@ useFileDropPaste(stageRef, {
             @node-drag="onNodeDrag"
             @node-drag-stop="onNodeDragStop"
           >
-            <Background :gap="dotGrid.gap" :size="dotGrid.size" pattern-color="rgba(31, 35, 41, 0.20)" />
+            <Background :gap="dotGrid.gap" :size="dotGrid.size" :pattern-color="dotColor" />
 
             <!-- 小地图（原型 .wf-minimap：150×96、右下 16、r14、白 92%、蒙版藤紫 8%、节点圆角 3、可拖动 / 滚轮缩放） -->
             <MiniMap
@@ -2699,7 +2715,7 @@ useFileDropPaste(stageRef, {
               :height="96"
               :pannable="true"
               :zoomable="true"
-              mask-color="rgba(106, 72, 123, 0.08)"
+              :mask-color="minimapMaskColor"
               :node-color="minimapNodeColor"
               node-radius="3"
               class="canvas-minimap"
@@ -2753,7 +2769,7 @@ useFileDropPaste(stageRef, {
           <div
             v-if="loading || !nodes.length"
             class="absolute top-50% left-50% z-6 flex flex-col items-center gap-6px px-24px py-20px border border-dashed border-line-strong rounded-8px bg-white/94 text-muted text-center shadow-[0_1px_2px_rgba(16,24,40,0.06)] -translate-x-50% -translate-y-50% pointer-events-none"
-            :class="stageDropActive && '!border-violet !bg-[rgba(244,238,247,0.94)]'"
+            :class="stageDropActive && '!border-violet !bg-violet-soft/94'"
             :role="loading ? 'status' : undefined"
           >
             <strong class="text-ink text-14px">{{
@@ -2801,7 +2817,7 @@ useFileDropPaste(stageRef, {
             <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
             <button
               type="button"
-              class="h-28px px-8px border border-solid border-transparent rounded-4px bg-transparent text-danger text-13px cursor-pointer hover:bg-[#fbeeed] hover:text-[#9b3935]"
+              class="h-28px px-8px border border-solid border-transparent rounded-4px bg-transparent text-danger text-13px cursor-pointer hover:bg-danger-soft hover:text-alert-danger"
               :class="FOCUS_RING"
               @click="deleteSelection"
             >
@@ -2896,7 +2912,7 @@ useFileDropPaste(stageRef, {
             <button
               type="button"
               :class="SELECTION_BTN"
-              class="!text-danger hover:!border-[#e4b7b4] hover:!bg-[#fbeeed] hover:!text-[#9b3935]"
+              class="!text-danger hover:!border-danger-line hover:!bg-danger-soft hover:!text-alert-danger"
               data-tip="删除选中节点"
               data-tip-key="Delete"
               @click="confirmDeleteNodes"
@@ -2920,7 +2936,7 @@ useFileDropPaste(stageRef, {
             <div
               v-if="showAlignPop"
               ref="alignPopEl"
-              class="sx-squircle absolute left-1/2 top-[calc(100%+8px)] z-[6000] grid w-240px grid-cols-2 gap-2px rounded-14px border border-solid border-[#e5e1e4] bg-white p-8px -translate-x-1/2 shadow-[0_16px_36px_rgba(31,35,41,0.14)]"
+              class="sx-squircle absolute left-1/2 top-[calc(100%+8px)] z-[6000] grid w-240px grid-cols-2 gap-2px rounded-14px border border-solid border-line bg-overlay p-8px -translate-x-1/2 shadow-[0_16px_36px_rgba(31,35,41,0.14)]"
               :class="POP_FADE"
               role="menu"
               aria-label="对齐与分布"
@@ -3050,7 +3066,7 @@ useFileDropPaste(stageRef, {
             >
               <EditorIcon name="grid" :size="16" />
             </IconButton>
-            <span class="w-1px h-18px mx-2px bg-[#ececef]" aria-hidden="true" />
+            <span class="w-1px h-18px mx-2px bg-line" aria-hidden="true" />
             <IconButton label="缩小" no-title data-tip="缩小" variant="quiet" @click="zoomOut()">
               <EditorIcon name="minus" :size="16" />
             </IconButton>
@@ -3077,7 +3093,7 @@ useFileDropPaste(stageRef, {
             >
               <EditorIcon name="fit" :size="16" />
             </IconButton>
-            <span class="w-1px h-18px mx-2px bg-[#ececef]" aria-hidden="true" />
+            <span class="w-1px h-18px mx-2px bg-line" aria-hidden="true" />
             <IconButton
               label="撤销"
               no-title
@@ -3161,7 +3177,7 @@ useFileDropPaste(stageRef, {
           <div
             v-if="ctxMenu"
             ref="ctxMenuEl"
-            class="sx-squircle absolute z-[6000] w-208px flex flex-col rounded-14px bg-white/62 text-ink-2 backdrop-blur-[18px] backdrop-saturate-[1.6] shadow-[0_0_0_0.5px_rgba(15,23,42,0.10),0_18px_44px_rgba(15,23,42,0.16)]"
+            class="sx-squircle absolute z-[6000] w-208px flex flex-col rounded-14px bg-white/62 text-ink-2 backdrop-blur-[18px] backdrop-saturate-[1.6] shadow-[0_0_0_0.5px_rgb(var(--xq-ink-rgb)/0.10),0_18px_44px_rgba(31,35,41,0.16)]"
             :class="POP_FADE"
             :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }"
             role="menu"
@@ -3272,17 +3288,17 @@ useFileDropPaste(stageRef, {
           <!-- 首启引导（原型 .wf-onboard：底部 78 居中、max-w 560、#e2d6e9 描边 r14、白 96% 毛玻璃；知道了即退并记忆） -->
           <div
             v-if="showOnboard && !loading"
-            class="sx-squircle absolute bottom-78px left-1/2 z-20 flex max-w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-center gap-10px rounded-14px border border-solid border-[#e2d6e9] bg-white/96 py-10px pl-16px pr-12px backdrop-blur-[10px] shadow-[0_12px_28px_rgba(31,35,41,0.10)]"
+            class="sx-squircle absolute bottom-78px left-1/2 z-20 flex max-w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-center gap-10px rounded-14px border border-solid border-violet-line bg-white/96 py-10px pl-16px pr-12px backdrop-blur-[10px] shadow-[0_12px_28px_rgba(31,35,41,0.10)]"
             :class="POP_FADE"
             role="status"
           >
-            <b class="shrink-0 whitespace-nowrap text-13px font-600 text-[#5b3f6b]">第一次用画布？</b>
-            <p class="m-0 min-w-0 flex-1 text-12px leading-[1.5] text-[#7d767b]">
+            <b class="shrink-0 whitespace-nowrap text-13px font-600 text-violet-ink">第一次用画布？</b>
+            <p class="m-0 min-w-0 flex-1 text-12px leading-[1.5] text-muted">
               双击空白添加节点 · 右键更多 · 拖节点右侧圆点连线 · 空格 / 底部工具条拖动画布
             </p>
             <button
               type="button"
-              class="relative h-26px shrink-0 rounded-full border border-solid border-[#d8c9df] bg-white px-10px text-12px text-[#6a487b] cursor-pointer hover:border-[#c9b2d8] hover:bg-[#faf7fc] after:content-empty after:absolute after:-inset-y-3px after:-inset-x-0"
+              class="relative h-26px shrink-0 rounded-full border border-solid border-violet-line bg-surface px-10px text-12px text-violet-ink cursor-pointer hover:border-violet hover:bg-violet-tint after:content-empty after:absolute after:-inset-y-3px after:-inset-x-0"
               :class="FOCUS_RING"
               @click="dismissOnboard"
             >
@@ -3335,7 +3351,7 @@ useFileDropPaste(stageRef, {
 /*
  * 画布浮层的行样式（UnoCSS 写起来重复，落全局类；画布页专用命名，不与工具页冲突）：
  * - ctx-*：右键 / 节点「…」菜单（原型 .wf-node-menu：行 36h gap 10 px10 r6、14px 图标；组 4×6；分隔内缩 14）
- * - export-item：导出菜单（原型 .wf-export-menu：32h gap 8 r8 12.5px，悬停 #f4eef7）
+ * - export-item：导出菜单（原型 .wf-export-menu：32h gap 8 r8 12.5px，悬停柔紫 #f4eef7 → violet-soft）
  * - align-*：对齐弹层（原型 .wf-align-pop：30h r8 12px 左对齐；小标 11px #a39ca0）
  */
 .ctx-group {
@@ -3347,7 +3363,7 @@ useFileDropPaste(stageRef, {
   display: block;
   height: 1px;
   margin: 0 14px;
-  background: rgba(15, 23, 42, 0.08);
+  background: rgb(var(--xq-ink-rgb) / 0.08);
 }
 .ctx-head {
   display: flex;
@@ -3355,7 +3371,7 @@ useFileDropPaste(stageRef, {
   gap: 2px;
   min-width: 0;
   padding: 11px 14px 9px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid rgb(var(--xq-ink-rgb) / 0.08);
 }
 .ctx-item {
   display: flex;
@@ -3367,7 +3383,7 @@ useFileDropPaste(stageRef, {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #4b5563;
+  color: var(--xq-ink-2);
   font: inherit;
   font-size: 13px;
   text-align: left;
@@ -3378,25 +3394,25 @@ useFileDropPaste(stageRef, {
 }
 .ctx-kbd {
   margin-left: auto;
-  color: #9ca3af;
+  color: var(--xq-placeholder);
   font-size: 11px;
   white-space: nowrap;
 }
 .ctx-item:hover:not(:disabled):not([aria-disabled='true']),
 .ctx-item:focus-visible {
-  background: rgba(15, 23, 42, 0.06);
-  color: #1f2329;
+  background: rgb(var(--xq-ink-rgb) / 0.06);
+  color: var(--xq-ink);
   outline: none;
 }
 .ctx-item:focus-visible {
-  box-shadow: inset 0 0 0 2px rgba(135, 95, 154, 0.55);
+  box-shadow: inset 0 0 0 2px rgb(var(--xq-focus-rgb) / 0.55);
 }
 .ctx-item.is-danger {
-  color: #b4433e;
+  color: var(--xq-danger-fg);
 }
 .ctx-item.is-danger:hover:not([aria-disabled='true']) {
-  background: rgba(239, 68, 68, 0.1);
-  color: #9b3935;
+  background: var(--xq-danger-soft);
+  color: var(--xq-alert-danger);
 }
 .ctx-item:disabled,
 .ctx-item[aria-disabled='true'] {
@@ -3413,7 +3429,7 @@ useFileDropPaste(stageRef, {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #4b454a;
+  color: var(--xq-ink-2);
   font: inherit;
   font-size: 12.5px;
   text-align: left;
@@ -3423,8 +3439,8 @@ useFileDropPaste(stageRef, {
   flex: none;
 }
 .export-item:hover:not(:disabled) {
-  background: #f4eef7;
-  color: #5b3f6b;
+  background: var(--xq-violet-soft);
+  color: var(--xq-violet-ink);
 }
 .export-item:disabled {
   opacity: 0.45;
@@ -3433,7 +3449,7 @@ useFileDropPaste(stageRef, {
 .align-label {
   grid-column: span 2;
   padding: 4px 8px 2px;
-  color: #a39ca0;
+  color: var(--xq-placeholder);
   font-size: 11px;
   letter-spacing: 0.04em;
 }
@@ -3445,19 +3461,19 @@ useFileDropPaste(stageRef, {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #4b454a;
+  color: var(--xq-ink-2);
   font: inherit;
   font-size: 12px;
   text-align: left;
   cursor: pointer;
 }
 .align-item:hover {
-  background: #f4eef7;
-  color: #5b3f6b;
+  background: var(--xq-violet-soft);
+  color: var(--xq-violet-ink);
 }
 .export-item:focus-visible,
 .align-item:focus-visible {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-violet);
   outline-offset: -2px;
 }
 /* 空态按钮（原型 .wf-canvas-empty button：30h r4 藤紫浅底；命中区补到 32） */
@@ -3465,10 +3481,10 @@ useFileDropPaste(stageRef, {
   position: relative;
   height: 30px;
   padding: 0 12px;
-  border: 1px solid #ddcfe6;
+  border: 1px solid var(--xq-violet-line);
   border-radius: 14px;
-  background: #f4eef7;
-  color: #6a487b;
+  background: var(--xq-violet-soft);
+  color: var(--xq-violet-ink);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -3480,8 +3496,8 @@ useFileDropPaste(stageRef, {
   inset: -1px 0;
 }
 .empty-btn:hover {
-  border-color: #c9b2d8;
-  background: #ede3f2;
+  border-color: var(--xq-violet);
+  background: var(--xq-violet-soft-2);
 }
 /*
  * 模板模块底板（非成组）只作视觉框：Vue Flow 给监听了 node-click 的节点外层写行内 pointer-events:all，
@@ -3492,12 +3508,12 @@ useFileDropPaste(stageRef, {
   pointer-events: none !important;
 }
 /* 小地图（原型 .wf-minimap）：右下 16、r14、白 92%、细描边 + 短投影 */
-.canvas-minimap {
+.vue-flow__minimap.canvas-minimap {
   right: 16px !important;
   bottom: 16px !important;
-  border: 1px solid #e5e1e4;
+  border: 1px solid var(--xq-line);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgb(var(--xq-surface-rgb) / 0.92);
   box-shadow: 0 8px 20px rgba(16, 24, 40, 0.1);
   overflow: hidden;
 }

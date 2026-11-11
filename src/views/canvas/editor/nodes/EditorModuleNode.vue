@@ -67,7 +67,7 @@ const tint = computed(() => {
     :style="{ width: `${width}px`, height: `${height}px`, background: tint }"
   >
     <div class="absolute top-12px left-14px flex items-baseline gap-6px">
-      <strong class="text-13px font-600 text-[rgba(31,35,41,0.66)] tracking-[0.02em]">{{
+      <strong class="text-13px font-600 text-ink/66 tracking-[0.02em]">{{
         data.title || '模块'
       }}</strong>
       <span class="text-muted text-11px">{{ subtitle }}</span>

@@ -109,7 +109,7 @@ function bannerClass(b: LandingBanner) {
     heroTransform,
     focusRing,
     b.accent
-      ? 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_1px_rgba(90,60,110,0.18),0_2px_4px_rgba(90,60,110,0.18)]'
+      ? 'border-violet-border bg-[linear-gradient(var(--xq-violet-top),var(--xq-violet-bottom))] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_1px_rgba(90,60,110,0.18),0_2px_4px_rgba(90,60,110,0.18)]'
       : 'border-line bg-white shadow-[0_10px_16px_rgba(0,0,0,0.04)]',
     b.route
       ? 'cursor-pointer hover:border-violet-line hover:shadow-[0_2px_4px_rgba(31,35,41,0.06),0_10px_24px_rgba(31,35,41,0.08)] active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.08)]'
@@ -171,7 +171,7 @@ const hasCover = (name: string) => !!toolCover(name)
               :class="
                 b.accent
                   ? 'bg-[linear-gradient(90deg,rgba(95,63,111,0.92)_0%,rgba(95,63,111,0.72)_48%,rgba(95,63,111,0.18)_100%)]'
-                  : 'bg-[linear-gradient(90deg,#fff_0%,#fff_46%,rgba(255,255,255,0.72)_66%,rgba(255,255,255,0)_100%)]'
+                  : 'bg-[linear-gradient(90deg,var(--xq-surface)_0%,var(--xq-surface)_46%,rgb(var(--xq-surface-rgb)/0.72)_66%,rgb(var(--xq-surface-rgb)/0)_100%)]'
               "
             />
             <span class="relative z-2 h-full box-border flex flex-col items-start py-14px px-16px">
@@ -241,7 +241,7 @@ const hasCover = (name: string) => !!toolCover(name)
                 focusRing,
                 hasCover(tool.name) ? '!px-0' : 'px-14px',
                 tool.route
-                  ? 'cursor-pointer hover:border-violet-line hover:bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] hover:shadow-[0_1px_2px_rgba(31,35,41,0.05)] active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.1)]'
+                  ? 'cursor-pointer hover:border-violet-line hover:bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] hover:shadow-[0_1px_2px_rgba(31,35,41,0.05)] active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.1)]'
                   : 'cursor-not-allowed',
               ]"
             >
@@ -259,12 +259,12 @@ const hasCover = (name: string) => !!toolCover(name)
                   :class="tool.route ? '' : 'opacity-60'"
                 />
                 <span
-                  class="absolute inset-y-0 right-0 w-18px bg-[linear-gradient(90deg,transparent,#fff)] pointer-events-none"
+                  class="absolute inset-y-0 right-0 w-18px bg-[linear-gradient(90deg,transparent,var(--xq-surface))] pointer-events-none"
                 />
               </span>
               <span
                 v-else
-                class="shrink-0 grid place-items-center w-40px h-40px box-border rounded-8px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff] text-violet-ink"
+                class="shrink-0 grid place-items-center w-40px h-40px box-border rounded-8px border border-solid border-line bg-[linear-gradient(135deg,var(--xq-violet-icon-a),var(--xq-violet-icon-b))] shadow-[inset_0_1px_0_#fff] text-violet-ink"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -295,7 +295,7 @@ const hasCover = (name: string) => !!toolCover(name)
                   >
                   <span
                     v-if="tool.hot"
-                    class="shrink-0 inline-flex items-center h-16px box-border px-5px rounded-full border border-solid border-violet-line bg-[linear-gradient(#fff,#f8f3fc)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-10px font-600 leading-14px text-violet-ink"
+                    class="shrink-0 inline-flex items-center h-16px box-border px-5px rounded-full border border-solid border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-10px font-600 leading-14px text-violet-ink"
                     >最常用</span
                   >
                   <span v-if="!tool.route" class="ll-chip shrink-0 text-muted bg-surface3 border border-line"
@@ -348,7 +348,7 @@ const hasCover = (name: string) => !!toolCover(name)
             <RouterLink
               :to="shelfTarget(t)"
               @click="stashPlazaTemplate(t)"
-              class="flex flex-col box-border p-7px rounded-18px border border-solid border-line bg-[linear-gradient(180deg,#fff_0%,#faf6fd_100%)] shadow-[0_2px_6px_rgba(31,35,41,0.05)] no-underline sx-squircle transition-[border-color,box-shadow,transform] duration-140 hover:border-violet-line hover:shadow-[0_8px_18px_rgba(31,35,41,0.09)] hover:-translate-y-1px motion-reduce:transition-none motion-reduce:hover:transform-none"
+              class="flex flex-col box-border p-7px rounded-18px border border-solid border-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-upload-hover-bottom)_100%)] shadow-[0_2px_6px_rgba(31,35,41,0.05)] no-underline sx-squircle transition-[border-color,box-shadow,transform] duration-140 hover:border-violet-line hover:shadow-[0_8px_18px_rgba(31,35,41,0.09)] hover:-translate-y-1px motion-reduce:transition-none motion-reduce:hover:transform-none"
               :class="focusRing"
             >
               <span class="relative block w-full aspect-[16/9] overflow-hidden rounded-9px bg-surface2">
@@ -361,7 +361,7 @@ const hasCover = (name: string) => !!toolCover(name)
                 />
                 <span
                   v-if="t.tags?.length"
-                  class="absolute left-6px top-6px inline-flex items-center h-18px px-6px rounded-full bg-white/92 text-10px text-[#4a4f57] shadow-[0_1px_3px_rgba(31,35,41,0.12)]"
+                  class="absolute left-6px top-6px inline-flex items-center h-18px px-6px rounded-full bg-white/92 text-10px text-ink-2 shadow-[0_1px_3px_rgba(31,35,41,0.12)]"
                   >{{ t.tags[0] }}</span
                 >
               </span>

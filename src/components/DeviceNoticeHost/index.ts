@@ -2,6 +2,8 @@ import { defineComponent, h, onMounted, onBeforeUnmount } from 'vue'
 import { useMessage } from 'naive-ui'
 import type { MessageReactive } from 'naive-ui'
 import type { VNodeChild } from 'vue'
+import { palettes } from '@/theme/tokens.ts'
+import { activeTheme } from '@/utils/themePrefs.ts'
 
 /**
  * DeviceNoticeHost - 桌面端「设备侧提示」的展示宿主（不渲染任何 DOM）
@@ -110,7 +112,13 @@ export default defineComponent({
               h(
                 'span',
                 {
-                  style: { marginLeft: '12px', color: '#8E66F9', cursor: 'pointer', whiteSpace: 'nowrap' },
+                  // 浅色沿用 AI 强调紫；深色换藤紫文字档（亮紫在深色浮层上发荧光）
+                  style: {
+                    marginLeft: '12px',
+                    color: activeTheme.value === 'dark' ? palettes.dark['violet-fg'] : '#8E66F9',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  },
                   onClick: onRelogin,
                 },
                 '去登录',

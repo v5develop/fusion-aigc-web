@@ -1,12 +1,30 @@
 <!doctype html>
-<html lang="">
+<html lang="" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 256x256" />
     <link rel="icon" type="image/svg+xml" href="/brand/xiaoqi-mark.svg" />
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>小岐AI</title>
+    <!--
+      外观首帧：JS 模块加载前先按偏好写好 data-theme，深色用户打开不会先白一下。
+      脚本由 vite.config.ts 的 xq-theme-boot 插件在这里注入（dev / build 一致），判定函数与运行时
+      src/utils/themePrefs.ts 共用 src/theme/theme-decide.ts 的 decideTheme，只此一份。
+    -->
+    <!--xq-theme-boot-->
+    <!-- 样式表到达前的兜底底色（开发环境 CSS 由 JS 注入，晚于首帧） -->
+    <style>
+      /* meta color-scheme 是 light dark：不钉住的话，系统深色 + 站点浅色时样式表到达前画布会先黑一下 */
+      html[data-theme='light'] {
+        color-scheme: light;
+      }
+      html[data-theme='dark'] {
+        background: #0f1014;
+        color-scheme: dark;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

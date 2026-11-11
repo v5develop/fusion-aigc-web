@@ -135,7 +135,7 @@ async function create() {
           tabindex="0"
           :aria-pressed="selected?.id === t.id"
           class="relative flex flex-col gap-6px p-10px overflow-hidden border border-solid border-line rounded-8px bg-white text-left cursor-pointer transition-[box-shadow,border-color] duration-120 ease-[ease] hover:(border-violet-line shadow-[0_1px_2px_rgba(16,24,40,0.06)]) focus-visible:(outline outline-2 outline-solid outline-violet outline-offset-2)"
-          :class="{ '!border-violet !shadow-[0_0_0_1px_#875f9a]': selected?.id === t.id }"
+          :class="{ '!border-violet !shadow-[0_0_0_1px_var(--xq-violet)]': selected?.id === t.id }"
           @click="selected = t"
           @keydown.enter.self.prevent="selected = t"
           @keydown.space.self.prevent="selected = t"

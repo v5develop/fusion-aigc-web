@@ -126,7 +126,7 @@ async function handleLogin() {
   <div class="login-page min-h-100vh flex flex-col md:flex-row bg-page text-ink">
     <!-- 品牌面板（桌面端）：品牌块 + 标题 + 四个能力卡片 + 版权 -->
     <aside
-      class="relative hidden md:flex md:w-[44%] lg:w-[46%] flex-col justify-between overflow-hidden px-48px py-44px bg-gradient-to-br from-violet-soft via-#f8f4fa to-violet-soft-2 border-r border-violet-line"
+      class="relative hidden md:flex md:w-[44%] lg:w-[46%] flex-col justify-between overflow-hidden px-48px py-44px bg-gradient-to-br from-violet-soft via-violet-tint to-violet-soft-2 border-r border-violet-line"
     >
       <div
         class="pointer-events-none absolute -top-120px -right-100px w-360px h-360px rounded-full bg-violet/12 blur-[64px]"
@@ -166,7 +166,7 @@ async function handleLogin() {
               aria-hidden="true"
             />
             <span
-              class="flex items-center justify-center w-36px h-36px rounded-10px bg-gradient-to-b from-violet-top to-violet-bottom border border-violet-border text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_6px_14px_-6px_rgba(95,63,111,0.55)]"
+              class="flex items-center justify-center w-36px h-36px rounded-10px bg-gradient-to-b from-violet-top to-violet-bottom border border-violet-border text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_6px_14px_-6px_rgba(95,63,111,0.55)]"
               aria-hidden="true"
             >
               <svg
@@ -270,7 +270,7 @@ async function handleLogin() {
             role="alert"
           >
             <span
-              class="flex items-center justify-center flex-shrink-0 w-16px h-16px mt-2px rounded-full bg-danger text-white text-11px font-700 leading-none"
+              class="flex items-center justify-center flex-shrink-0 w-16px h-16px mt-2px rounded-full bg-danger text-on-accent text-11px font-700 leading-none"
               aria-hidden="true"
             >
               !
@@ -286,14 +286,15 @@ async function handleLogin() {
 <style scoped lang="less">
 // naive-ui 把 --n-* 变量写在元素内联 style 上，类选择器覆盖必须 !important。
 // 全局 baseColor 为 'red'，彩色按钮的 text-color 系列必须显式给出（见 CLAUDE.md）。
-@violet: #875f9a;
-@violet-hover: #9a6fae;
-@violet-press: #5f3f6f;
-@violet-ink: #6b487c;
-@violet-soft: #f3edf8;
-@violet-soft-2: #ede3f2;
-@violet-line: #d9c7e3;
-@focus-ring: 0 0 0 3px rgba(135, 95, 154, 0.16);
+// 颜色走主题令牌（src/theme/tokens.ts），浅色值与原先一致，深色自动切换
+@violet: var(--xq-violet);
+@violet-hover: var(--xq-violet-hover-top);
+@violet-press: var(--xq-violet-press);
+@violet-ink: var(--xq-violet-ink);
+@violet-soft: var(--xq-violet-soft);
+@violet-soft-2: var(--xq-violet-soft-2);
+@violet-line: var(--xq-violet-line);
+@focus-ring: var(--xq-shadow-focus);
 
 .login-input {
   --n-border-radius: 15px !important;
@@ -310,17 +311,17 @@ async function handleLogin() {
   --n-color-hover: @violet-soft-2 !important;
   --n-color-pressed: @violet-soft-2 !important;
   --n-color-focus: @violet-soft !important;
-  --n-color-disabled: #f7f8f9 !important;
+  --n-color-disabled: var(--xq-surface2) !important;
   --n-text-color: @violet-ink !important;
-  --n-text-color-hover: @violet-press !important;
-  --n-text-color-pressed: @violet-press !important;
+  --n-text-color-hover: var(--xq-violet-press-fg) !important;
+  --n-text-color-pressed: var(--xq-violet-press-fg) !important;
   --n-text-color-focus: @violet-ink !important;
-  --n-text-color-disabled: #6e7681 !important;
+  --n-text-color-disabled: var(--xq-placeholder) !important;
   --n-border: 1px solid @violet-line !important;
   --n-border-hover: 1px solid @violet !important;
   --n-border-pressed: 1px solid @violet-press !important;
   --n-border-focus: 1px solid @violet !important;
-  --n-border-disabled: 1px solid #e5e7eb !important;
+  --n-border-disabled: 1px solid var(--xq-line) !important;
   --n-ripple-color: @violet !important;
 }
 
@@ -332,13 +333,13 @@ async function handleLogin() {
   --n-color-hover: @violet-hover !important;
   --n-color-pressed: @violet-press !important;
   --n-color-focus: @violet-hover !important;
-  --n-color-disabled: #cbb9d5 !important;
+  --n-color-disabled: var(--xq-violet-disabled) !important;
   --n-text-color: #fff !important;
   --n-text-color-hover: #fff !important;
   --n-text-color-pressed: #fff !important;
   --n-text-color-focus: #fff !important;
   --n-text-color-disabled: #fff !important;
-  --n-border: 1px solid #6a487b !important;
+  --n-border: 1px solid var(--xq-violet-border) !important;
   --n-border-hover: 1px solid @violet !important;
   --n-border-pressed: 1px solid @violet-press !important;
   --n-border-focus: 1px solid @violet !important;
@@ -346,6 +347,12 @@ async function handleLogin() {
   --n-ripple-color: @violet !important;
   font-weight: 600;
   letter-spacing: 2px;
+}
+/* 深色：主色 violet 提亮后白字不足 4.5，登录主按钮改用品牌渐变的深端，保证白字可读 */
+[data-theme='dark'] .login-btn {
+  --n-color: var(--xq-violet-bottom) !important;
+  --n-color-hover: var(--xq-violet-top) !important;
+  --n-color-focus: var(--xq-violet-top) !important;
 }
 
 .send-btn:focus-visible,

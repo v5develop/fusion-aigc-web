@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * 字体显示：字号档位 + 字体（预设 / 本机已安装字体），改动立即全站生效，按账号存本机。
- * 机制与取舍见 src/utils/textPrefs.ts；本机字体列举见 src/utils/localFonts.ts。
+ * 外观与字体：外观（浅色 / 深色 / 跟随系统 / 按时间，见 AppearancePrefs）+ 字号档位 + 字体（预设 / 本机已安装字体），
+ * 改动立即全站生效，按账号存本机。
+ * 机制与取舍见 src/utils/themePrefs.ts、src/utils/textPrefs.ts；本机字体列举见 src/utils/localFonts.ts。
  */
 import { computed, h, onMounted, ref, watch, type VNodeChild } from 'vue'
 import type { SelectOption } from 'naive-ui'
@@ -25,6 +26,8 @@ import {
   supportsLocalFontAccess,
   type LocalFontOption,
 } from '@/utils/localFonts.ts'
+import { DEFAULT_THEME_PREFS, resetThemePrefs, themePrefs } from '@/utils/themePrefs.ts'
+import AppearancePrefs from './AppearancePrefs.vue'
 
 const FONT_CHOICES: { value: TextFont; label: string; desc: string }[] = [
   { value: 'default', label: '默认', desc: '站点字体' },
@@ -98,11 +101,17 @@ function pickFamily(family: string | null) {
 
 function onReset() {
   resetTextPrefs()
+  resetThemePrefs()
   fontChoice.value = DEFAULT_TEXT_PREFS.font
 }
 
 const isDefault = computed(
-  () => textPrefs.value.scale === DEFAULT_TEXT_PREFS.scale && textPrefs.value.font === DEFAULT_TEXT_PREFS.font,
+  () =>
+    textPrefs.value.scale === DEFAULT_TEXT_PREFS.scale &&
+    textPrefs.value.font === DEFAULT_TEXT_PREFS.font &&
+    themePrefs.value.mode === DEFAULT_THEME_PREFS.mode &&
+    themePrefs.value.dayStart === DEFAULT_THEME_PREFS.dayStart &&
+    themePrefs.value.nightStart === DEFAULT_THEME_PREFS.nightStart,
 )
 
 /** 选了「本机字体」但还没挑具体字体：什么都没生效、也没保存，界面要明说 */
@@ -152,9 +161,11 @@ const segItem = (on: boolean) => [
 <template>
   <section aria-labelledby="uc-display-title" class="flex flex-col gap-24px">
     <div class="flex items-center justify-between gap-12px">
-      <h2 id="uc-display-title" class="m-0 sx-title-section">字体显示</h2>
+      <h2 id="uc-display-title" class="m-0 sx-title-section">外观与字体</h2>
       <button type="button" class="sx-btn" :disabled="isDefault" @click="onReset">恢复默认</button>
     </div>
+
+    <AppearancePrefs />
 
     <fieldset class="m-0 p-0 border-0 flex flex-col gap-8px min-w-0">
       <legend class="p-0 mb-8px text-13px font-500 text-ink-2">字体大小</legend>
@@ -260,7 +271,7 @@ const segItem = (on: boolean) => [
 <style scoped>
 /* 单选框视觉隐藏在 label 里：键盘聚焦时把焦点环画到整个分段项上（方向键在组内切换是原生 radio 行为） */
 .uc-seg-item:has(input:focus-visible) {
-  outline: 2px solid #875f9a;
+  outline: 2px solid var(--xq-focus);
   outline-offset: 2px;
 }
 </style>

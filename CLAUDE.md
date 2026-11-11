@@ -61,6 +61,11 @@ useDebounce(reactiveObj, callback, 300)
 ### 样式规范
 - **本地生活模块（src/views/local-life）及之后的新功能使用 UnoCSS**（uno.config.ts：presetUno + ll-* shortcuts），复杂选择器仍可落 `<style scoped lang="less">`
 - **配色对齐小岐AI 官方「新锤子风 · 藤紫」设计系统**（参考包：小岐AI-5181-s1.1 `foundation/sx-scoped.css`）：藤紫主色 #875f9a（渐变 top #8a639f / bottom #7a548c / press #5f3f6f）、中性 ink #1f2329 / ink-2 #4b5563 / muted #5f6673、语义色 danger #b4433e / success #34795a / warning #94651f（一律 soft 底 + 深字）、轻拟物材质（1px 细描边 + 短投影 + 内凹按压）。局部 naive-ui 主题见 `src/views/local-life/theme.ts`
+- **浅色 / 深色主题（2026-11-11）**：颜色唯一来源 `src/theme/tokens.ts`（浅色 = 原色值，深色另配），uno preflight 注入成 `--xq-*` 变量，theme.colors / boxShadow 全部指向变量；Naive 主题由 `src/theme/naive.ts` 按 `activeTheme` 响应式生成（深色叠 `darkTheme`）。偏好在 `src/utils/themePrefs.ts`（浅色 / 深色 / 跟随系统 / 按时间，按账号存本机），`index.html` 首帧内联脚本写 `data-theme`（由 vite 插件 `xq-theme-boot` 注入，判定函数与运行时共用 `src/theme/theme-decide.ts` 的 `decideTheme`，必须自包含）；离散 API（`createDiscreteApi`）要传 `discreteConfigProviderProps`，否则深色下弹浅色卡
+  - **新代码不写死色**：用令牌类（`bg-surface` `bg-surface2/3` `bg-page` `bg-overlay` `text-ink/ink-2/muted/placeholder` `border-line/control` `shadow-pop`…）或 Less 里 `var(--xq-ink)`、`rgb(var(--xq-ink-rgb) / .5)`；JS 里要真色值用 `palettes[activeTheme.value]`
+  - 桥接：`bg-white` / `from-white` / `border-white`（不透明度 ≥ 60）= 卡面 surface，`text-white` 不变；`text-violet` / `text-danger` / `text-success` / `text-warning` / `text-violet-press` 自动取 `*-fg` 文字档（深色提亮）。真要死白写 `bg-#fff`
+  - 手写 `box-shadow` 里的墨色 / 白色顶光由构建期改写跟主题走（`src/theme/shadow-rewrite.ts`，PostCSS + uno postprocess），不用逐处改
+  - 子树可锁定主题：加 `data-theme="dark"`（校色全屏）/ `"light"`（设置页预览卡）；图片 / 视频内容不随主题变
 - 老页面保持亮紫 #8e66f9 与独立 less：全局变量定义在 src/assets/variables.less，页面级样式使用独立 .less 文件，组件样式使用 `<style scoped lang="less">`
 - ⚠️ UnoCSS 已 blocklist 内置 `container` utility——老代码大量用 `.container` 做布局类名，不能放开
 - ⚠️ 不要新建与 UnoCSS 内置 utility 撞名的全局类（如 `container`、`grid`）

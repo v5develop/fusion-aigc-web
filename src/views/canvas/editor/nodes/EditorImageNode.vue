@@ -89,7 +89,7 @@ const { uploading, pick, uploadFile, cancelUpload, onFile } = useNodeUpload({
 })
 
 /** 操作条按钮：视觉 28（原型 30，按审计收到 28），间距 8、::after 外扩 4 → 命中 36 不互相覆盖 */
-const BAR_BTN = `relative grid w-28px h-28px p-0 place-items-center border-none rounded-5px bg-transparent text-[#2a303b] cursor-pointer hover:bg-[rgba(15,23,42,0.06)] hover:text-ink after:content-empty after:absolute after:-inset-4px nodrag ${FOCUS_RING}`
+const BAR_BTN = `relative grid w-28px h-28px p-0 place-items-center border-none rounded-5px bg-transparent text-ink cursor-pointer hover:bg-ink/6 hover:text-ink after:content-empty after:absolute after:-inset-4px nodrag ${FOCUS_RING}`
 
 function makeTool(tool: 'crop' | 'upscale') {
   store.addConnectedToolNode(props.id, tool)
@@ -146,7 +146,7 @@ const { dragging } = useFileDropPaste(dropRef, {
           <button
             ref="dropRef"
             type="button"
-            class="flex flex-col w-full h-full items-center justify-center gap-8px p-0 border border-dashed border-[#d8dce6] rounded-6px bg-[#fafbfc] text-11px cursor-pointer transition-colors duration-120 hover:border-[#c9b4d6] hover:bg-[#faf7fc] hover:text-violet nodrag"
+            class="flex flex-col w-full h-full items-center justify-center gap-8px p-0 border border-dashed border-line-strong rounded-6px bg-sunk-bottom text-11px cursor-pointer transition-colors duration-120 hover:border-violet-line hover:bg-violet-tint hover:text-violet nodrag"
             :class="[FOCUS_RING, dragging && 'sx-drop', uploading ? 'text-violet-ink' : 'text-placeholder']"
             :disabled="uploading"
             title="上传图片，支持拖拽或粘贴（Ctrl/⌘+V）"

@@ -41,7 +41,7 @@ const options = computed<DropdownOption[]>(() =>
     key: i.key,
     label: i.label,
     disabled: i.disabled,
-    props: i.danger ? { style: { color: '#b4433e' } } : undefined,
+    props: i.danger ? { style: { color: 'var(--xq-danger-fg)' } } : undefined,
   })),
 )
 

@@ -128,7 +128,7 @@ const DOT: Record<Status, string> = {
       :class="
         selected
           ? 'border-violet-line bg-[linear-gradient(180deg,#ffffff_0%,#faf4fd_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
-          : 'border-line bg-white hover:(border-#aeb4b9 shadow-[0_8px_18px_rgba(31,35,41,0.08)])'
+          : 'border-line bg-white hover:(border-control-hover shadow-[0_8px_18px_rgba(31,35,41,0.08)])'
       "
     >
       <button
@@ -151,9 +151,9 @@ const DOT: Record<Status, string> = {
         class="relative flex-none grid place-items-center w-44px h-44px self-center box-border rounded-14px border border-solid border-line bg-surface3 text-placeholder pointer-events-none"
         :class="
           count >= 3
-            ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb,6px_-6px_0_-1px_#fff,6px_-6px_0_0_#e5e7eb]'
+            ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line),6px_-6px_0_-1px_var(--xq-surface),6px_-6px_0_0_var(--xq-line)]'
             : count === 2
-              ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb]'
+              ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line)]'
               : ''
         "
         aria-hidden="true"
@@ -170,7 +170,7 @@ const DOT: Record<Status, string> = {
         <span v-else class="text-11px">{{ placeholder }}</span>
         <span
           v-if="count > 1"
-          class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px rounded-full border border-solid border-white bg-ink text-10px font-600 leading-none text-white"
+          class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px rounded-full border border-solid border-white bg-ink text-10px font-600 leading-none text-surface"
           >{{ count }}</span
         >
       </span>
@@ -188,7 +188,7 @@ const DOT: Record<Status, string> = {
           <!-- 进行中：4px 进度条（轨 #eceef0 内凹，紫渐变填充）+ 百分比 11/600 -->
           <template v-if="status === 'running'">
             <span
-              class="relative flex-1 min-w-12px h-4px rounded-full bg-#eceef0 shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden pointer-events-none"
+              class="relative flex-1 min-w-12px h-4px rounded-full bg-ghost-press shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden pointer-events-none"
               role="progressbar"
               :aria-valuenow="percent"
               aria-valuemin="0"

@@ -49,7 +49,7 @@ const numberOf = (region: IActionRegion) => regions.value.indexOf(region) + 1
         </button>
       </div>
 
-      <p v-if="!supported" class="m-0 mb-10px px-10px py-8px rounded-8px bg-[#f8f1e4] text-warning text-12px">
+      <p v-if="!supported" class="m-0 mb-10px px-10px py-8px rounded-8px bg-warning-soft text-warning text-12px">
         识别只支持 jpg、png、webp 图片，请换一张图
       </p>
       <RegionStage

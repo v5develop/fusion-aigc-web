@@ -188,7 +188,7 @@ onMounted(() => {
           >
             <span
               class="grid shrink-0 w-28px h-28px place-items-center rounded-4px"
-              :class="item.tone === 'video' ? 'bg-[#fbeeed] text-danger' : 'bg-violet-soft text-violet'"
+              :class="item.tone === 'video' ? 'bg-danger-soft text-danger' : 'bg-violet-soft text-violet'"
             >
               <EditorIcon :name="item.icon" :size="16" />
             </span>

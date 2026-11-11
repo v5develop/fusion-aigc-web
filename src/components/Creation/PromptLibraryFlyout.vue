@@ -256,11 +256,11 @@ onBeforeUnmount(() => {
     data-canvas-popover
   >
     <!-- 头：标题 + 关闭 -->
-    <div class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_#e5e7eb]">
+    <div class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_var(--xq-line)]">
       <b class="min-w-0 flex-1 text-13px font-600 text-ink">{{ heading || '我的提示词' }}</b>
       <button
         type="button"
-        class="flex-none inline-flex items-center gap-4px h-32px px-10px rounded-8px border border-solid border-line bg-white text-12px text-ink-2 cursor-pointer hover:(border-#c9cfd6 text-ink) sx-focus"
+        class="flex-none inline-flex items-center gap-4px h-32px px-10px rounded-8px border border-solid border-line bg-white text-12px text-ink-2 cursor-pointer hover:(border-control text-ink) sx-focus"
         @click="openUpload"
       >
         <svg
@@ -326,7 +326,7 @@ onBeforeUnmount(() => {
           type="search"
           placeholder="搜场景、卖点、风格…"
           aria-label="搜索提示词"
-          class="w-full h-32px box-border rounded-16px border border-solid border-#c9cfd6 bg-white pl-27px pr-8px text-12px text-ink outline-none shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] [transition:border-color_110ms,box-shadow_110ms] hover:border-#aeb6bf focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.14)]) placeholder:text-placeholder"
+          class="w-full h-32px box-border rounded-16px border border-solid border-control bg-white pl-27px pr-8px text-12px text-ink outline-none shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] [transition:border-color_110ms,box-shadow_110ms] hover:border-control-hover focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.14)]) placeholder:text-placeholder"
         />
       </div>
       <div class="flex flex-wrap gap-4px" role="group" aria-label="适用模型">
@@ -339,7 +339,7 @@ onBeforeUnmount(() => {
           :class="
             model === m
               ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] font-600 text-violet-ink'
-              : 'border-line bg-white text-muted hover:(border-#c9cfd6 text-ink)'
+              : 'border-line bg-white text-muted hover:(border-control text-ink)'
           "
           @click="model = m"
         >
@@ -356,7 +356,7 @@ onBeforeUnmount(() => {
           :class="
             group === g
               ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] font-600 text-violet-ink'
-              : 'border-line bg-white text-muted hover:(border-#c9cfd6 text-ink)'
+              : 'border-line bg-white text-muted hover:(border-control text-ink)'
           "
           @click="group = group === g ? '' : g"
         >
@@ -372,7 +372,7 @@ onBeforeUnmount(() => {
         <span class="text-11px text-muted">提示词库暂时读不到</span>
         <button
           type="button"
-          class="h-32px px-14px rounded-14px border border-solid border-line bg-white text-13px text-ink-2 cursor-pointer hover:border-#c9cfd6"
+          class="h-32px px-14px rounded-14px border border-solid border-line bg-white text-13px text-ink-2 cursor-pointer hover:border-control"
           @click="load()"
         >
           重试
@@ -483,7 +483,7 @@ onBeforeUnmount(() => {
 
     <!-- 计数脚 -->
     <div
-      class="flex-none flex items-center h-26px px-12px text-11px text-placeholder tabular-nums shadow-[inset_0_0.8px_0_#eff1f3]"
+      class="flex-none flex items-center h-26px px-12px text-11px text-placeholder tabular-nums shadow-[inset_0_0.8px_0_var(--xq-line-soft)]"
     >
       <template v-if="showCounts && countsText">{{ countsText }} · 点击卡片填入</template>
       <template v-else>共 {{ total }} 条 · 点击卡片填入提示词</template>

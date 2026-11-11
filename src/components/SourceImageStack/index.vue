@@ -55,7 +55,7 @@ const containerStyle = computed(() => {
     width: 38px;
     height: 48px;
     border-radius: 2px;
-    border: 0.5px solid #fff;
+    border: 0.5px solid var(--xq-surface);
     flex-shrink: 0;
     overflow: hidden;
     position: relative;

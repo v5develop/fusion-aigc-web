@@ -2043,11 +2043,11 @@ const HISTORY_EMPTY_HINT = '左边传好素材、点底部按钮提交，每次�
 /** 图标框（原型 .v3-item__icon / .fn-switch__thumb）：1px line、r6、135° 柔紫渐变 + 顶 1px 白内线，图标藤紫 */
 const tileCls =
   'flex-none grid place-items-center box-border rounded-6px border border-solid border-line ' +
-  'bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff]'
+  'bg-[linear-gradient(135deg,var(--xq-violet-icon-a),var(--xq-violet-icon-b))] shadow-[inset_0_1px_0_#fff]'
 /** 结果舞台（原型 `.v3-preview__stage`）：1px line、r8、surface2 + 20px 淡棋盘格、inset-input 内影 */
 const stageCls =
   'relative overflow-hidden box-border rounded-8px border border-solid border-line bg-surface2 ' +
-  '[background-image:repeating-conic-gradient(#eef0f2_0_25%,transparent_0_50%)] bg-[length:20px_20px] ' +
+  '[background-image:repeating-conic-gradient(var(--xq-checker-b)_0_25%,transparent_0_50%)] bg-[length:20px_20px] ' +
   'shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]'
 /** 结果列空态（原型 `.v3-preview__empty`）：最小高 220、内边距 18、gap 5，说明 11/1.55 muted */
 const resultEmptyCls =
@@ -2056,21 +2056,21 @@ const resultEmptyCls =
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 /** 输入框（原型 `.sx-input` 材质对齐档）：高 34、1px #c9cfd6、r15、inset-input；hover #aeb6bf；焦点 violet 描边 + 3px 光晕 α.14 */
 const inputCls =
-  'w-full h-34px box-border rounded-15px border border-solid border-#c9cfd6 bg-white px-10px text-13px text-ink ' +
+  'w-full h-34px box-border rounded-15px border border-solid border-control bg-white px-10px text-13px text-ink ' +
   'shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] ' +
-  '[transition:border-color_110ms,box-shadow_110ms] hover:border-#aeb6bf ' +
+  '[transition:border-color_110ms,box-shadow_110ms] hover:border-control-hover ' +
   'focus:(border-violet outline-none shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),0_0_0_3px_rgba(135,95,154,0.14)]) ' +
   'disabled:(border-line bg-surface3 text-placeholder cursor-not-allowed)'
 /** 历史骨架扫光（原型 hist-shimmer）：90° #f1f2f4 25% / #f8f9fa 50% / #f1f2f4 75%、底图 200% 宽，1.2s ease-in-out 循环 */
 const shimmerCls =
-  'bg-[linear-gradient(90deg,#f1f2f4_25%,#f8f9fa_50%,#f1f2f4_75%)] bg-[length:200%_100%] ' +
+  'bg-[linear-gradient(90deg,var(--xq-skeleton-a)_25%,var(--xq-skeleton-b)_50%,var(--xq-skeleton-a)_75%)] bg-[length:200%_100%] ' +
   'animate-[tool-hist-shimmer_1.2s_ease-in-out_infinite] motion-reduce:animate-none'
 /** 板材小按钮（原型 `.sx-btn`）：#c9cfd6 描边 + 白→#fbfcfc + 内高光；按下 #b9c0c8 + #f3f4f5→#f7f8f9 + inset-press */
 const plateBtnCls =
-  'border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] text-ink-2 cursor-pointer ' +
+  'border border-solid border-control bg-[linear-gradient(var(--xq-surface),var(--xq-plate-bottom))] text-ink-2 cursor-pointer ' +
   'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)] ' +
-  'active:(border-#b9c0c8 bg-[linear-gradient(#f3f4f5,#f7f8f9)] shadow-[inset_0_1px_2px_rgba(31,35,41,0.12),inset_0_0_0_1px_rgba(31,35,41,0.03)]) ' +
-  '[transition:border-color_110ms,color_110ms,background_110ms] hover:(border-#aeb6bf text-ink bg-[linear-gradient(#fff,#f7f8f9)])'
+  'active:(border-control-press bg-[linear-gradient(var(--xq-surface3),var(--xq-surface2))] shadow-[inset_0_1px_2px_rgba(31,35,41,0.12),inset_0_0_0_1px_rgba(31,35,41,0.03)]) ' +
+  '[transition:border-color_110ms,color_110ms,background_110ms] hover:(border-control-hover text-ink bg-[linear-gradient(var(--xq-surface),var(--xq-surface2))])'
 </script>
 
 <template>
@@ -2104,7 +2104,7 @@ const plateBtnCls =
         class="flex min-h-0 flex-col box-border overflow-hidden bg-white"
         :class="
           catalogOverlay
-            ? 'absolute left-0 top-0 z-40 h-full w-160px border border-solid border-#e2e2e2 rounded-10px shadow-[0_12px_32px_rgba(31,35,41,0.18)]'
+            ? 'absolute left-0 top-0 z-40 h-full w-160px border border-solid border-shell-line rounded-10px shadow-[0_12px_32px_rgba(31,35,41,0.18)]'
             : 'h-full w-full border-l border-solid border-shell-line shadow-[10px_0_16px_-12px_rgba(31,35,41,0.22)]'
         "
       >
@@ -2145,7 +2145,7 @@ const plateBtnCls =
         <div class="relative flex-1 min-h-0">
           <!-- 上下渐隐：只在还能往那个方向滚时出现（opacity 160ms） -->
           <span
-            class="pointer-events-none absolute inset-x-0 top-0 z-1 h-16px bg-[linear-gradient(#fff,rgba(255,255,255,0))] [transition:opacity_0.16s_ease]"
+            class="pointer-events-none absolute inset-x-0 top-0 z-1 h-16px bg-[linear-gradient(var(--xq-surface),rgb(var(--xq-surface-rgb)/0))] [transition:opacity_0.16s_ease]"
             :class="fadeTop ? 'opacity-100' : 'opacity-0'"
             aria-hidden="true"
           />
@@ -2174,7 +2174,7 @@ const plateBtnCls =
                   catalogCollapsed
                     ? 'contents'
                     : gi
-                      ? 'mt-16px pt-10px shadow-[inset_0_0.8px_0_#efefef,inset_0_2px_3px_-2px_rgba(31,35,41,0.1)]'
+                      ? 'mt-16px pt-10px shadow-[inset_0_0.8px_0_var(--xq-engrave),inset_0_2px_3px_-2px_rgba(31,35,41,0.1)]'
                       : ''
                 "
                 :aria-labelledby="`tool-catalog-group-${gi}`"
@@ -2206,7 +2206,7 @@ const plateBtnCls =
                         e.route ? focusRing : 'cursor-not-allowed',
                         e.id === toolId
                           ? [
-                              'border-line bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_3px_rgba(31,35,41,0.1),inset_0_-1px_0_#fff]',
+                              'border-line bg-[linear-gradient(var(--xq-surface3),var(--xq-sunk-bottom))] shadow-[inset_0_1px_3px_rgba(31,35,41,0.1),inset_0_-1px_0_#fff]',
                               catalogCollapsed ? 'text-ink' : '',
                             ]
                           : [
@@ -2268,7 +2268,7 @@ const plateBtnCls =
             </template>
           </div>
           <span
-            class="pointer-events-none absolute inset-x-0 bottom-0 z-1 h-16px bg-[linear-gradient(to_top,#fff,rgba(255,255,255,0))] [transition:opacity_0.16s_ease]"
+            class="pointer-events-none absolute inset-x-0 bottom-0 z-1 h-16px bg-[linear-gradient(to_top,var(--xq-surface),rgb(var(--xq-surface-rgb)/0))] [transition:opacity_0.16s_ease]"
             :class="fadeBottom ? 'opacity-100' : 'opacity-0'"
             aria-hidden="true"
           />
@@ -2291,7 +2291,7 @@ const plateBtnCls =
           : 'animate-[tool-rail-tip-in_420ms_cubic-bezier(0.22,0.61,0.36,1)_both]',
         tip.route ? 'cursor-pointer' : 'cursor-not-allowed',
         hoveredRail === tip.id || tip.id === toolId
-          ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-violet-ink font-600'
+          ? 'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-violet-ink font-600'
           : 'border-line bg-white shadow-[0_6px_16px_rgba(31,35,41,0.12),0_1px_2px_rgba(31,35,41,0.06)] text-ink',
         hoveredRail === tip.id && !tipsClosing
           ? '[transform:translateY(calc(-50%_-_0.5px))_scale(1)]'
@@ -2325,7 +2325,7 @@ const plateBtnCls =
         <div class="flex-none pt-12px px-12px">
           <div
             :ref="setSwitcherCard"
-            class="sx-squircle group relative flex items-center gap-12px h-64px box-border px-14px py-12px rounded-18px border border-solid border-[#e9dff2] bg-[linear-gradient(180deg,#fff_0%,#fbf7fe_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
+            class="sx-squircle group relative flex items-center gap-12px h-64px box-border px-14px py-12px rounded-18px border border-solid border-[var(--xq-violet-soft-line)] bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-upload-hover-bottom)_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]"
           >
             <div
               class="min-w-0 flex-1 flex items-center gap-12px h-40px pointer-events-none group-hover:opacity-82"
@@ -2401,10 +2401,10 @@ const plateBtnCls =
               :ref="setSwitcherPop"
               role="dialog"
               aria-label="切换功能"
-              class="fixed z-[6000] flex flex-col box-border overflow-hidden rounded-10px border border-solid border-line bg-white shadow-[0_12px_24px_rgba(31,35,41,0.14),0_2px_6px_rgba(31,35,41,0.06)]"
+              class="fixed z-[6000] flex flex-col box-border overflow-hidden rounded-10px border border-solid border-line bg-overlay shadow-pop"
               :style="switcherStyle"
             >
-              <div class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_#e5e7eb]">
+              <div class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_var(--xq-line)]">
                 <b class="min-w-0 flex-1 text-13px font-600 text-muted">切换功能</b>
                 <div
                   class="inline-flex flex-none gap-2px p-2px box-border rounded-6px border border-solid border-line bg-surface3"
@@ -2420,7 +2420,7 @@ const plateBtnCls =
                     :class="[
                       focusRing,
                       switcherKind === k.key
-                        ? 'border-line bg-[linear-gradient(#fff,#f7f8f9)] shadow-[0_1px_2px_rgba(31,35,41,0.07),inset_0_1px_0_#fff] text-ink font-600'
+                        ? 'border-line bg-[linear-gradient(var(--xq-surface),var(--xq-surface2))] shadow-[0_1px_2px_rgba(31,35,41,0.07),inset_0_1px_0_#fff] text-ink font-600'
                         : 'border-transparent bg-transparent text-muted hover:text-ink',
                     ]"
                     :aria-selected="switcherKind === k.key"
@@ -2447,7 +2447,7 @@ const plateBtnCls =
                 <section
                   v-for="(g, gi) in switcherCatalog.groups"
                   :key="g.label"
-                  :class="gi ? 'mt-2px shadow-[inset_0_0.8px_0_#eff1f3]' : ''"
+                  :class="gi ? 'mt-2px shadow-[inset_0_0.8px_0_var(--xq-line-soft)]' : ''"
                   :aria-labelledby="`${switcherId}-g${gi}`"
                 >
                   <p :id="`${switcherId}-g${gi}`" class="m-0 pt-2px px-14px pb-4px text-11px font-500 text-muted">
@@ -2468,13 +2468,13 @@ const plateBtnCls =
                         :class="[
                           e.route ? focusRing : 'cursor-not-allowed opacity-60',
                           e.id === toolId
-                            ? 'border-violet-line bg-[linear-gradient(#fff,#f3edf8)] text-violet-ink'
+                            ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-soft))] text-violet-ink'
                             : ['border-transparent text-ink-2', e.route ? 'hover:bg-surface3' : ''],
                         ]"
                         @click="e.route && (switcherOpen = false)"
                       >
                         <span
-                          class="grid flex-[0_0_22px] w-22px h-22px place-items-center box-border rounded-5px border border-solid border-line bg-[linear-gradient(135deg,#f6effa,#efe6f5)] shadow-[inset_0_1px_0_#fff] text-violet"
+                          class="grid flex-[0_0_22px] w-22px h-22px place-items-center box-border rounded-5px border border-solid border-line bg-[linear-gradient(135deg,var(--xq-violet-icon-a),var(--xq-violet-icon-b))] shadow-[inset_0_1px_0_#fff] text-violet"
                           aria-hidden="true"
                         >
                           <svg
@@ -2752,13 +2752,13 @@ const plateBtnCls =
                     class="sx-squircle grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-8px box-border p-8px rounded-12px border border-solid [transition:border-color_110ms,background_110ms] motion-reduce:transition-none"
                     :class="
                       isChanged(r)
-                        ? 'border-violet-line bg-[linear-gradient(#fff,#faf6fc)] shadow-[inset_3px_0_0_#875f9a]'
+                        ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-upload-hover-bottom))] shadow-[inset_3px_0_0_var(--xq-violet)]'
                         : 'border-line bg-white'
                     "
                   >
                     <span
                       class="min-w-0 truncate text-13px leading-18px"
-                      :class="isChanged(r) ? 'text-muted line-through decoration-#c9cfd6' : 'text-ink-2'"
+                      :class="isChanged(r) ? 'text-muted line-through decoration-control' : 'text-ink-2'"
                       :title="r.targetText"
                       >{{ r.targetText }}</span
                     >
@@ -2856,7 +2856,7 @@ const plateBtnCls =
           </p>
           <div
             v-if="inlineSetting"
-            class="sx-squircle flex items-center gap-6px w-full h-44px box-border pl-11px pr-3px rounded-14px border border-solid border-#c9cfd6 bg-[linear-gradient(#fff,#fbfcfc)] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]"
+            class="sx-squircle flex items-center gap-6px w-full h-44px box-border pl-11px pr-3px rounded-14px border border-solid border-control bg-[linear-gradient(var(--xq-surface),var(--xq-plate-bottom))] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(31,35,41,0.04),0_1px_2px_rgba(31,35,41,0.05)]"
             :class="submitting ? 'opacity-60' : ''"
           >
             <span class="grid flex-[0_0_16px] w-16px h-16px place-items-center text-violet" aria-hidden="true">
@@ -2899,7 +2899,7 @@ const plateBtnCls =
                 :class="[
                   focusRing,
                   values[inlineSetting.key] === opt.value
-                    ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-violet-ink font-600'
+                    ? 'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-violet-ink font-600'
                     : 'border-transparent bg-transparent text-muted hover:text-ink',
                 ]"
                 @click="values[inlineSetting.key] = opt.value"
@@ -2989,13 +2989,13 @@ const plateBtnCls =
                       :class="[
                         focusRing,
                         values[f.key]
-                          ? 'border-violet-border bg-[linear-gradient(#8a639f,#7a548c)]'
-                          : 'border-#c9cfd6 bg-[linear-gradient(#f3f4f5,#fafbfc)] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]',
+                          ? 'border-violet-border bg-[linear-gradient(var(--xq-violet-top),var(--xq-violet-bottom))]'
+                          : 'border-control bg-[linear-gradient(var(--xq-surface3),var(--xq-sunk-bottom))] shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)]',
                       ]"
                       @click="values[f.key] = !values[f.key]"
                     >
                       <span
-                        class="absolute top-2px w-14px h-14px rounded-full bg-white shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
+                        class="absolute top-2px w-14px h-14px rounded-full bg-#fff shadow-[0_1px_3px_rgba(31,35,41,0.2)] [transition:left_180ms_cubic-bezier(0.2,0.7,0.2,1)] motion-reduce:transition-none"
                         :class="values[f.key] ? 'left-16px' : 'left-2px'"
                         aria-hidden="true"
                       />
@@ -3117,7 +3117,7 @@ const plateBtnCls =
             class="sx-submit relative box-border select-none [transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s,box-shadow_0.11s,color_0.11s] motion-reduce:transition-none"
             :class="
               submitting
-                ? '!bg-none !bg-[linear-gradient(#7a548c,#6b487c)] !border-#5f3f6f !text-white !cursor-progress'
+                ? '!bg-none !bg-[linear-gradient(var(--xq-violet-bottom),#6b487c)] !border-violet-press !text-white !cursor-progress'
                 : ''
             "
             :disabled="!!disabledReason || submitting"
@@ -3175,7 +3175,7 @@ const plateBtnCls =
         <!-- 空态：至少一张历史卡大小（198×65）：虚线浅底卡 + 28 圆底时钟（16），标题 13/600/18、说明 11/15 全文换行 -->
         <div
           v-else-if="!history.items.value.length"
-          class="flex-none min-h-65px box-border flex items-center gap-8px px-10px py-10px rounded-8px border border-dashed border-line-strong bg-[linear-gradient(#fff,#f7f8f9)]"
+          class="flex-none min-h-65px box-border flex items-center gap-8px px-10px py-10px rounded-8px border border-dashed border-line-strong bg-[linear-gradient(var(--xq-surface),var(--xq-surface2))]"
         >
           <span
             class="flex-none grid place-items-center w-28px h-28px box-border rounded-full border border-solid border-line bg-white text-violet-ink"
@@ -3231,8 +3231,8 @@ const plateBtnCls =
                 class="sx-squircle group relative flex items-stretch gap-10px box-border h-74px p-10px rounded-18px border border-solid [transition:border-color_110ms,background_110ms,box-shadow_110ms] motion-reduce:transition-none"
                 :class="
                   current?.aiToolHistoryId === item.aiToolHistoryId && !showSync
-                    ? 'border-violet-line bg-[linear-gradient(180deg,#ffffff_0%,#faf4fd_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
-                    : 'border-line bg-[linear-gradient(180deg,#ffffff_0%,#f8f9fa_100%)] shadow-[0_6px_16px_rgba(31,35,41,0.08),inset_0_1px_0_#fff] hover:(border-#aeb4b9 shadow-[0_8px_18px_rgba(31,35,41,0.1),inset_0_1px_0_#fff])'
+                    ? 'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05),inset_0_1px_0_#fff]'
+                    : 'border-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-soft-bottom)_100%)] shadow-[0_6px_16px_rgba(31,35,41,0.08),inset_0_1px_0_#fff] hover:(border-control-hover shadow-[0_8px_18px_rgba(31,35,41,0.1),inset_0_1px_0_#fff])'
                 "
               >
                 <!-- 整卡选中：铺满的透明按钮（卡内还有操作按钮，按钮里不能再套按钮） -->
@@ -3260,7 +3260,7 @@ const plateBtnCls =
                     </span>
                     <span class="flex items-center gap-6px">
                       <span
-                        class="relative flex-1 min-w-6px h-4px rounded-full bg-#eceef0 shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden"
+                        class="relative flex-1 min-w-6px h-4px rounded-full bg-sunken shadow-[inset_0_1px_1px_rgba(31,35,41,0.06)] overflow-hidden"
                       >
                         <span
                           class="absolute inset-y-0 left-0 rounded-full sx-grad-progress [transition:width_160ms_linear] motion-reduce:transition-none"
@@ -3290,9 +3290,9 @@ const plateBtnCls =
                     :class="[
                       stackOf(item)[0] ? ['cursor-zoom-in', focusRing] : 'pointer-events-none',
                       stackOf(item).length >= 3
-                        ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb,6px_-6px_0_-1px_#fff,6px_-6px_0_0_#e5e7eb]'
+                        ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line),6px_-6px_0_-1px_var(--xq-surface),6px_-6px_0_0_var(--xq-line)]'
                         : stackOf(item).length === 2
-                          ? 'shadow-[3px_-3px_0_-1px_#fff,3px_-3px_0_0_#e5e7eb]'
+                          ? 'shadow-[3px_-3px_0_-1px_var(--xq-surface),3px_-3px_0_0_var(--xq-line)]'
                           : '',
                     ]"
                     @click="stackOf(item)[0] && openThumbs(stackOf(item), 0, promptOf(item))"
@@ -3310,7 +3310,7 @@ const plateBtnCls =
                     <span v-else class="text-11px">{{ schema.media === 'video' ? '视频' : '—' }}</span>
                     <span
                       v-if="stackOf(item).length > 1"
-                      class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px rounded-full border border-solid border-white bg-ink text-11px font-600 leading-none text-white"
+                      class="absolute z-2 -top-4px -right-4px grid min-w-16px h-16px box-border place-items-center px-4px rounded-full border border-solid border-surface bg-ink text-11px font-600 leading-none text-surface"
                       aria-hidden="true"
                       >{{ stackOf(item).length }}</span
                     >
@@ -3473,7 +3473,7 @@ const plateBtnCls =
             </li>
             <li
               v-if="!historyPaged.length"
-              class="col-span-full flex flex-col items-center justify-center gap-5px h-65px box-border px-10px rounded-8px border border-dashed border-line-strong bg-[linear-gradient(#fff,#f7f8f9)] text-center"
+              class="col-span-full flex flex-col items-center justify-center gap-5px h-65px box-border px-10px rounded-8px border border-dashed border-line-strong bg-[linear-gradient(var(--xq-surface),var(--xq-surface2))] text-center"
             >
               <b class="text-13px font-600 leading-18px text-ink-2">没有匹配的记录</b>
               <span class="text-11px leading-15px text-muted">换个关键词再试</span>
@@ -3557,7 +3557,7 @@ const plateBtnCls =
                 :class="[
                   focusRing,
                   resultMode === m.key
-                    ? 'border-violet-line bg-[linear-gradient(180deg,#ffffff_0%,#f8f3fc_100%)] font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                    ? 'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
                     : 'border-transparent bg-transparent font-400 text-muted hover:text-ink',
                 ]"
                 :aria-pressed="resultMode === m.key"
@@ -3766,7 +3766,7 @@ const plateBtnCls =
                 class="relative block w-full overflow-hidden aspect-square box-border p-0 rounded-4px border border-solid bg-surface3 cursor-pointer"
                 :class="[
                   focusRing,
-                  selectedIndex === i ? 'border-violet shadow-[0_0_0_1px_#875f9a]' : 'border-line hover:border-#c9cfd6',
+                  selectedIndex === i ? 'border-violet shadow-[0_0_0_1px_var(--xq-violet)]' : 'border-line hover:border-control',
                 ]"
                 :aria-label="`候选 ${i + 1}`"
                 :aria-pressed="selectedIndex === i"
@@ -3796,7 +3796,7 @@ const plateBtnCls =
             -->
               <div
                 v-if="item.type === 'image'"
-                class="hidden [@media(hover:hover)]:group-hover:block absolute bottom-[calc(100%+8px)] z-30 w-248px box-border p-4px rounded-8px border border-solid border-line bg-white shadow-[0_12px_28px_rgba(31,35,41,0.16),0_2px_6px_rgba(31,35,41,0.06)] pointer-events-none animate-[tus-preview-in_120ms_ease_320ms_both] motion-reduce:animate-none"
+                class="hidden [@media(hover:hover)]:group-hover:block absolute bottom-[calc(100%+8px)] z-30 w-248px box-border p-4px rounded-8px border border-solid border-line bg-overlay shadow-preview pointer-events-none animate-[tus-preview-in_120ms_ease_320ms_both] motion-reduce:animate-none"
                 :class="i % 4 >= 2 ? 'right-0' : 'left-0'"
                 aria-hidden="true"
               >

@@ -136,7 +136,7 @@ onBeforeUnmount(() => {
     class="sx-field-btn relative min-w-0 w-full box-border gap-6px [transition:background_0.11s_cubic-bezier(0.2,0.7,0.2,1),border-color_0.11s_ease,box-shadow_0.11s_ease] motion-reduce:transition-none disabled:(opacity-50 cursor-not-allowed)"
     :class="
       open
-        ? '!border-#b9c0c8 !bg-[linear-gradient(#f3f4f5,#f7f8f9)] !shadow-[inset_0_1px_2px_rgba(31,35,41,0.12),inset_0_0_0_1px_rgba(31,35,41,0.03)]'
+        ? '!border-control-press !bg-[linear-gradient(var(--xq-surface3),var(--xq-surface2))] !shadow-[inset_0_1px_2px_rgba(31,35,41,0.12),inset_0_0_0_1px_rgba(31,35,41,0.03)]'
         : ''
     "
     :disabled="disabled"
@@ -204,7 +204,7 @@ onBeforeUnmount(() => {
         ref="panel"
         role="dialog"
         :aria-label="label"
-        class="sx-squircle fixed z-[6000] flex flex-col box-border overflow-hidden rounded-18px border border-solid border-line bg-white shadow-[0_12px_24px_rgba(31,35,41,0.14),0_2px_6px_rgba(31,35,41,0.06)]"
+        class="sx-squircle fixed z-[6000] flex flex-col box-border overflow-hidden rounded-18px border border-solid border-line bg-overlay shadow-pop"
         :style="panelStyle"
         @focusout="onFocusOut"
         @keydown.esc.stop.prevent="close()"
@@ -235,7 +235,7 @@ onBeforeUnmount(() => {
               class="h-34px min-w-0 box-border px-8px rounded-10px border border-solid text-12px font-500 truncate cursor-pointer sx-focus"
               :class="
                 o.value === modelValue
-                  ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-violet-ink font-600'
+                  ? 'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)] text-violet-ink font-600'
                   : 'border-transparent bg-transparent text-ink hover:bg-surface3'
               "
               :title="o.label"
@@ -251,7 +251,7 @@ onBeforeUnmount(() => {
               class="flex items-center gap-6px min-h-44px box-border pr-6px rounded-10px border border-solid"
               :class="
                 o.value === modelValue
-                  ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+                  ? 'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
                   : 'border-transparent hover:bg-surface3'
               "
             >

@@ -2,13 +2,14 @@ import axios from 'axios'
 import type { AxiosResponse, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
 import type { ApiResponse } from './types'
 import { createDiscreteApi } from 'naive-ui'
+import { discreteConfigProviderProps } from '@/theme/naive'
 import { refreshToken, getAuthToken } from '@/api/union'
 import { adoptSession, isAccountVerified, markAccountVerified, saveTokens } from '@/utils/auth-session'
 import { clearRecentAssets } from '@/utils/asset-recent'
 import { resolveUnionToken } from '@/utils/union-bridge'
 import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billing-guide'
 
-const { message } = createDiscreteApi(['message'])
+const { message } = createDiscreteApi(['message'], { configProviderProps: discreteConfigProviderProps })
 const refreshTokenApi = '/api/v1/auth/refresh'
 const unionTokenLoginApi = '/api/v1/auth/union-token-login'
 

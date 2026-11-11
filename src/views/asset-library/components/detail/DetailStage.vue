@@ -281,8 +281,8 @@ function openLightbox() {
 <style scoped lang="less">
 .asset-stage {
   /* 中性看图台：浅灰底 + 极淡的点阵，透明图也能看清边界 */
-  background-color: #eceef1;
-  background-image: radial-gradient(rgba(31, 35, 41, 0.07) 1px, transparent 1px);
+  background-color: var(--xq-checker-b);
+  background-image: radial-gradient(rgb(var(--xq-ink-rgb) / 0.07) 1px, transparent 1px);
   background-size: 16px 16px;
 }
 .asset-stage-media {
@@ -295,7 +295,7 @@ function openLightbox() {
     0 12px 32px -12px rgba(31, 35, 41, 0.28);
   /* 透明图：棋盘格衬底 */
   background:
-    repeating-conic-gradient(#f3f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px;
+    repeating-conic-gradient(var(--xq-surface3) 0% 25%, var(--xq-checker-a) 0% 50%) 50% / 16px 16px;
 }
 video.asset-stage-media {
   background: #000;

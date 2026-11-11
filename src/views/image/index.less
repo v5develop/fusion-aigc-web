@@ -38,7 +38,7 @@
   > .input-box {
     width: 100%;
     max-width: 1044px;
-    box-shadow: 0 -14px 16px 10px #f5f6f8;
+    box-shadow: 0 -14px 16px 10px var(--xq-page);
     padding: 0 10px 40px 10px;
     position: relative;
     z-index: 11;
@@ -55,7 +55,7 @@
       font-size: 28px;
       font-weight: bold;
       text-align: center;
-      color: #1f1f1f;
+      color: var(--xq-ink);
       margin: 0 0 40px;
     }
   }
@@ -91,7 +91,7 @@
     font-family: 'PingFang SC', sans-serif;
     font-size: 24px;
     font-weight: 600;
-    color: #1f1f1f;
+    color: var(--xq-ink);
     margin: 0 0 21px;
     line-height: 1;
   }
@@ -309,5 +309,40 @@
 @keyframes single-action-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+// ==================== 深色 ====================
+// 老页面的灰阶浅色下保持原值；深色换成主题令牌（src/theme/tokens.ts）。图片 / 视频本身与压在图上的深色药丸不动
+[data-theme='dark'] {
+  // 顶部粉紫光晕在深底上太抢：压暗一档
+  .picture > .top_bg::before {
+    opacity: 0.35;
+  }
+  :deep(.scroller)::-webkit-scrollbar-thumb {
+    background-color: var(--xq-scrollbar-thumb);
+  }
+  .message-group__prompt,
+  .action-btn,
+  .action-btn__icon {
+    color: var(--xq-ink-2);
+  }
+  .message-group__prompt-meta,
+  .message-group__disclaimer {
+    color: var(--xq-muted);
+  }
+  .message-group__image-wrap,
+  .message-group__image-wrap .pending {
+    background: var(--xq-surface3);
+  }
+  .message-group__image-wrap .video {
+    background: var(--xq-violet-soft);
+  }
+  .action-btn {
+    background: var(--xq-surface3);
+
+    &:hover {
+      background: var(--xq-ghost-press);
+    }
   }
 }

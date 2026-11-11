@@ -51,7 +51,7 @@ const segBtn =
   'h-32px box-border px-10px rounded-6px border border-solid text-12px whitespace-nowrap cursor-pointer sx-focus ' +
   '[transition:border-color_.15s,background_.15s,color_.15s] motion-reduce:transition-none disabled:(opacity-45 cursor-not-allowed)'
 const segOn =
-  'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] text-violet-ink font-600 shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+  'border-violet-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] text-violet-ink font-600 shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
 const segOff = 'border-transparent bg-transparent text-muted hover:enabled:text-ink'
 const chipBtn =
   'h-32px box-border px-12px rounded-full border border-solid text-12px whitespace-nowrap cursor-pointer sx-focus ' +
@@ -59,8 +59,8 @@ const chipBtn =
 const chipOn = 'border-violet-line bg-violet-soft text-violet-ink font-500'
 const chipOff = 'border-line bg-white text-ink-2 hover:enabled:border-control-hover'
 const inputCls =
-  'w-full h-34px box-border rounded-12px border border-solid border-#c9cfd6 bg-white pl-10px pr-56px text-12px text-ink ' +
-  'shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)] outline-none placeholder:text-placeholder hover:border-#aeb6bf ' +
+  'w-full h-34px box-border rounded-12px border border-solid border-control bg-white pl-10px pr-56px text-12px text-ink ' +
+  'shadow-[inset_0_1px_2px_rgba(31,35,41,0.055)] outline-none placeholder:text-placeholder hover:border-control-hover ' +
   'focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.14)]) disabled:(bg-surface3 text-placeholder cursor-not-allowed)'
 </script>
 
@@ -211,7 +211,7 @@ const inputCls =
                 :key="url"
                 type="button"
                 class="relative w-40px h-40px p-0 overflow-hidden box-border rounded-6px border border-solid cursor-pointer sx-focus disabled:cursor-not-allowed"
-                :class="segRefs(i).includes(url) ? 'border-violet shadow-[0_0_0_1px_#875f9a]' : 'border-line'"
+                :class="segRefs(i).includes(url) ? 'border-violet shadow-[0_0_0_1px_var(--xq-violet)]' : 'border-line'"
                 :aria-pressed="segRefs(i).includes(url)"
                 :aria-label="`参考图 @${n + 1}`"
                 :disabled="disabled"
@@ -254,7 +254,7 @@ const inputCls =
             :key="url"
             type="button"
             class="relative w-40px h-40px p-0 overflow-hidden box-border rounded-6px border border-solid cursor-pointer sx-focus disabled:cursor-not-allowed"
-            :class="edit.refs.includes(url) ? 'border-violet shadow-[0_0_0_1px_#875f9a]' : 'border-line'"
+            :class="edit.refs.includes(url) ? 'border-violet shadow-[0_0_0_1px_var(--xq-violet)]' : 'border-line'"
             :aria-pressed="edit.refs.includes(url)"
             :aria-label="`参考图 @${n + 1}`"
             :disabled="disabled"

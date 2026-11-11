@@ -16,13 +16,14 @@
  * <p>`union_deviceId` 标识的是这台机器/这个浏览器，不是某个人——清掉它等于每次换号
  * 都变成一台新设备，联盟侧的设备上报会被污染。
  */
-const DEVICE_SCOPED_KEYS = new Set(['union_deviceId'])
+const DEVICE_SCOPED_KEYS = new Set(['union_deviceId', 'xq-theme-device'])
 
 /**
  * 按账号分开存的 key 前缀：key 里已带账号指纹，换号不会串，清掉反而让 A→B→A 丢掉 A 的设置。
- * 目前只有「字体显示」偏好（src/utils/textPrefs.ts 的 TEXT_PREFS_KEY_PREFIX，这里写字面量避免依赖）。
+ * 目前是「字体显示」与「外观」偏好（src/utils/textPrefs.ts 的 TEXT_PREFS_KEY_PREFIX、
+ * src/utils/themePrefs.ts 的 THEME_PREFS_KEY_PREFIX，这里写字面量避免依赖）。
  */
-const ACCOUNT_KEYED_PREFIXES = ['xq-text-prefs:']
+const ACCOUNT_KEYED_PREFIXES = ['xq-text-prefs:', 'xq-theme-prefs:']
 
 /**
  * 当前账号的身份：后端用户 id（登录响应的 `userId`、`/auth/user-info` 的 `id`）。
