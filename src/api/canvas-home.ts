@@ -46,7 +46,10 @@ export interface ICanvasSaveResp {
   coverUrl: string
 }
 
-/** 候选结果（对象数组，URL 已转存我方公有桶） */
+/**
+ * 候选结果（对象数组）。run 的 libraryStatus 为空时 URL 已在素材库公有桶、长期可用；
+ * 为 pending / failed 时是服务端按私有资源现签的 10 分钟地址（每次查询重签），不能存进节点内容。
+ */
 export interface ICanvasCandidate {
   url: string
   width: number
@@ -78,7 +81,16 @@ export interface ICanvasRunResult {
   retryable: boolean
   createdAt: number
   finishedAt: number
+  /**
+   * 产物转存素材库的状态（只增 2026-11-11，仅 succeeded 可能有值；缺省 / 不认识按空处理）：
+   * 空 = 已在素材库（或不适用）；pending = 已交付、后台转存中，candidates / videoUrl 是 10 分钟现签地址；
+   * failed = 转存永久失败，仍可看可下载（同样是现签地址），素材库里没有这条。
+   */
+  libraryStatus?: CanvasLibraryStatusRaw
 }
+
+/** 接口原样的 library_status：'' / 缺省 = 已在素材库；其余值见 ICanvasRunResult.libraryStatus */
+export type CanvasLibraryStatusRaw = '' | 'pending' | 'failed' | (string & {})
 
 export interface ICanvasRuns {
   items: ICanvasRunResult[]

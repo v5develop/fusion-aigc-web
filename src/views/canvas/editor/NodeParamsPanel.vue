@@ -10,6 +10,7 @@ import type { VNode } from 'vue'
 import type { SelectOption } from 'naive-ui'
 import EditorIcon from './EditorIcon.vue'
 import RunErrorNotice from './RunErrorNotice.vue'
+import LibraryStatusHint from './LibraryStatusHint.vue'
 import { compareRefOrder, normalizeHandle, toolLabel } from './graph.ts'
 import { editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
 import { canvasUploadMedia } from '@/api/canvas-home.ts'
@@ -370,6 +371,14 @@ const maskSourceImage = computed(() => {
   const media = source?.data as { resultImage?: string; image?: string } | undefined
   return media?.resultImage ?? media?.image ?? ''
 })
+/** 上游产物的现签地址过期：让上游节点换一次签名 */
+function onMaskSourceError() {
+  const edge = store.edges.value.find(
+    (item) => item.target === props.node.id && (item.targetHandle ?? 'image') === 'image',
+  )
+  const sourceId = edge?.source ?? toolNode.value?.sourceNodeId
+  if (sourceId) store.refreshNodeMedia(sourceId)
+}
 const maskDraft = ref<{ x: number; y: number; w: number; h: number } | null>(null)
 let maskStart: { x: number; y: number } | null = null
 const maskShown = computed(() => maskDraft.value ?? toolNode.value?.maskBox ?? null)
@@ -656,6 +665,7 @@ const footHint = computed(() => {
                 alt=""
                 draggable="false"
                 class="block w-44px h-44px border border-solid border-line rounded-4px bg-surface3 object-cover"
+                @error="store.refreshNodeMedia(item.sourceId)"
               />
               <span
                 v-else
@@ -1057,6 +1067,7 @@ const footHint = computed(() => {
               alt=""
               draggable="false"
               class="block max-w-full max-h-200px pointer-events-none"
+              @error="onMaskSourceError"
             />
             <div
               v-if="maskShown"
@@ -1121,9 +1132,19 @@ const footHint = computed(() => {
               :aria-label="`候选 ${index + 1}，设为输出`"
               @click="onSelectCandidate(index)"
             >
-              <img :src="url" :alt="`候选 ${index + 1}`" draggable="false" class="block w-full h-full object-cover" />
+              <img
+                :src="url"
+                :alt="`候选 ${index + 1}`"
+                draggable="false"
+                class="block w-full h-full object-cover"
+                @error="store.refreshNodeMedia(node.id)"
+              />
             </button>
           </div>
+          <LibraryStatusHint
+            v-if="node.data.status !== 'running' && node.data.status !== 'queued'"
+            :status="node.data.libraryStatus"
+          />
         </div>
         <div v-if="(node.data as { resultText?: string }).resultText" class="mt-10px">
           <span :class="LABEL">反推结果</span>

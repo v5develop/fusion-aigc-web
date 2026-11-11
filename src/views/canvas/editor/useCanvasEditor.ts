@@ -44,6 +44,13 @@ import {
   validateConnection,
 } from './graph.ts'
 import { remapClipboard, type ICanvasClipboard } from './clipboard.ts'
+import {
+  LIBRARY_PENDING_TIP,
+  hasTransientMedia,
+  isLibraryPending,
+  normalizeLibraryStatus,
+  stripLibraryStatus,
+} from './library-status.ts'
 import type {
   CanvasEditorEdge,
   CanvasEditorNode,
@@ -110,6 +117,9 @@ const RUNTIME_KEYS = new Set([
   'requestedCount',
   'candidates',
   'selectedCandidate',
+  // 产物转存素材库状态（只读，GET 回填 / 轮询写回；服务端保存时也剥离）
+  'libraryStatus',
+  'library_status',
 ])
 /** 成品字段：在模型 / 工具节点上是运行态（输入节点的 image / video 是用户内容，要保留） */
 const PRODUCT_KEYS = new Set(['image', 'video', 'assetId', 'resultText', 'resultImage'])
@@ -126,14 +136,25 @@ function slimData(node: CanvasEditorNode): Record<string, unknown> {
   return out
 }
 
-/** 白名单序列化：Vue Flow 会往节点对象上挂内部字段，保存只取契约结构 */
-function buildSnapshot(): CanvasEditorSnapshot {
+/** 节点 data 深拷贝，去掉只读的 libraryStatus（服务端也会剥，这里防御性先剥）；keepReadOnly = 撤销历史用，保留 */
+function cloneDataForSave(node: CanvasEditorNode, keepReadOnly = false): CanvasEditorNodeData {
+  const data = JSON.parse(JSON.stringify(node.data)) as Record<string, unknown>
+  if (!keepReadOnly) stripLibraryStatus(data)
+  return data as unknown as CanvasEditorNodeData
+}
+
+/**
+ * 白名单序列化：Vue Flow 会往节点对象上挂内部字段，保存只取契约结构。
+ * keepReadOnly：撤销历史快照保留 libraryStatus——被删节点经撤销恢复时没有 live 值可沿用，
+ * 剥掉会把现签地址当成「已在素材库」放开给只认地址的入口。
+ */
+function buildSnapshot(keepReadOnly = false): CanvasEditorSnapshot {
   return {
     nodes: nodes.value.map((node) => ({
       id: node.id,
       type: node.type,
       position: { x: node.position.x, y: node.position.y },
-      data: JSON.parse(JSON.stringify(node.data)) as CanvasEditorNodeData,
+      data: cloneDataForSave(node, keepReadOnly),
       ...(node.draggable === false ? { draggable: false } : {}),
       ...(node.selectable === false ? { selectable: false } : {}),
       ...(typeof node.zIndex === 'number' ? { zIndex: node.zIndex } : {}),
@@ -205,7 +226,7 @@ function contentSignature(): string {
 }
 
 function captureHistory(): IHistoryEntry {
-  return { snapshot: buildSnapshot(), signature: contentSignature() }
+  return { snapshot: buildSnapshot(true), signature: contentSignature() }
 }
 
 function clearHistoryTimer(): void {
@@ -273,6 +294,8 @@ async function restoreHistory(entry: IHistoryEntry): Promise<void> {
     await nextTick()
     if (targetId !== canvasId) return
     resumePollers()
+    // 撤销恢复了被删的转存中节点：接着跟转存状态（已在跟的节点不会重复起）
+    resumeLibraryWatches()
   } finally {
     historyRestoring = false
     if (targetId === canvasId && ready.value) historyBase = captureHistory()
@@ -330,6 +353,11 @@ function updateNodeData(id: string, patch: Record<string, unknown>): void {
 /** 旧快照缺字段的兜底：工具参数、模型参考图上限 / 能力表 */
 function normalizeNodeData(node: CanvasEditorNode): void {
   const data = node.data
+  // 转存素材库状态：只认 pending / failed（兼容下划线写法），其余按「已在素材库」去掉
+  const raw = data as unknown as Record<string, unknown>
+  const libraryStatus = normalizeLibraryStatus(raw.libraryStatus ?? raw.library_status)
+  stripLibraryStatus(raw)
+  if (libraryStatus) data.libraryStatus = libraryStatus
   if (data.kind === 'tool') {
     if (data.tool === 'crop' && !data.crop) {
       data.crop = { shape: 'rect', x: 0.1, y: 0.1, w: 0.6, h: 0.6 }
@@ -406,7 +434,11 @@ async function init(id: string): Promise<boolean> {
     saveTimer = null
   }
   stopAllPollers()
+  stopAllLibraryWatches()
   productRunIds.clear()
+  productRequestIds.clear()
+  mediaFetchedAt.clear()
+  mediaRefreshLog.clear()
   pendingUnknownRuns.clear()
   submittingNodes.clear()
   cancelRequested.clear()
@@ -435,6 +467,10 @@ async function init(id: string): Promise<boolean> {
     reconcileCatalogLimits()
     resetHistory()
     resumePollers()
+    // 回填的现签地址此刻刚签出：记下取到的时间（提交前判断是否要先换新签名）；转存中的节点低频跟到状态变空
+    const loadedAt = Date.now()
+    for (const node of nextNodes) if (signedProductOf(node)) mediaFetchedAt.set(node.id, loadedAt)
+    resumeLibraryWatches()
     return true
   } catch (error) {
     if (seq !== initSeq) return false
@@ -920,7 +956,9 @@ function hiddenCandidatesOf(data: CanvasEditorNodeData): Set<number> {
   const hidden = data.hiddenCandidates
   if (!hidden) return new Set()
   const valid = hidden.fp
-    ? hidden.fp === candidatesFingerprint(data.candidates)
+    ? hidden.fp === candidatesFingerprint(data.candidates) ||
+      // 现签地址转存进素材库后 URL 整体换掉：同一个成功 run 产出的仍是同一批
+      (Boolean(hidden.rid) && data.status === 'done' && hidden.rid === data.runId)
     : (hidden.runId ?? '') === (data.runId ?? '')
   return valid ? new Set(hidden.indices) : new Set()
 }
@@ -941,8 +979,10 @@ async function removeCandidate(nodeId: string, index: number): Promise<void> {
     return
   }
   // 注：撤销会把 hiddenCandidates 退回去（它是快照内容），但下面改选候选写回服务端的 select-candidate 不会撤销
+  const rid = productRunIds.get(nodeId) ?? (node.data.status === 'done' ? node.data.runId : undefined)
   node.data.hiddenCandidates = {
     fp: candidatesFingerprint(list),
+    ...(rid ? { rid } : {}),
     indices: [...hidden].sort((a, b) => a - b),
   }
   const handle = `candidate-${index + 1}`
@@ -1251,7 +1291,23 @@ async function runNode(nodeId: string, reuse?: ICanvasRunReq, opts?: { quiet?: b
   }
   let req = reuse
   if (!req) {
-    const built = buildRunRequest(node)
+    // 上游产物是取到超过 5 分钟的现签地址：先换新签名再组请求（图片引用服务端按 candidate_index 现取，
+    // 视频引用只认请求里的地址，过期就会失败）
+    const stale = staleUpstreamIds(nodeId)
+    if (stale.length) {
+      const targetId = canvasId
+      submittingNodes.add(nodeId)
+      try {
+        await Promise.all(stale.map((id) => fetchProductMedia(id)))
+      } finally {
+        submittingNodes.delete(nodeId)
+      }
+      if (targetId !== canvasId) return false
+    }
+    // await 期间节点对象可能被撤销 / 重做整体替换：按 id 重新取
+    const fresh = findNode(nodeId)
+    if (!fresh) return false
+    const built = buildRunRequest(fresh)
     if (!built.req) {
       message.warning(`「${node.data.title}」${built.error ?? '参数不完整'}`)
       return false
@@ -1435,30 +1491,18 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
   if (!node) return true
   if (!run?.status) return false
   const data = node.data
+  // 写回前先记下「这批候选里移除了哪些、来自哪个成功 run」：转存后 URL 整体换掉时据此保留
+  const before = productStateOf(nodeId)
   data.requestId = run.requestId || data.requestId
   data.runId = run.runId || data.runId
   if (run.status === 'succeeded') {
-    const urls = (run.candidates ?? []).map((item) => item.url)
-    const selected = Math.min(Math.max(run.selectedIndex ?? 0, 0), Math.max(urls.length - 1, 0))
-    data.candidates = urls
-    data.selectedCandidate = selected
-    if (data.kind === 'video') {
-      // 视频 run 的 candidates[0] 是封面图
-      if (run.videoUrl) data.video = run.videoUrl
-      data.image = urls[selected] ?? urls[0]
-    } else if (data.kind === 'model' || data.kind === 'tool') {
-      data.image = urls[selected] ?? urls[0]
-    }
-    if (run.text && data.kind === 'tool') data.resultText = run.text
-    // 换了一批候选（新的一次成功运行）：之前移除的候选作废；同一批（轮询重复写回）保留
-    if (data.hiddenCandidates && hiddenCandidatesOf(data).size === 0) data.hiddenCandidates = undefined
+    writeProduct(nodeId, run, before)
     data.status = 'done'
     data.progress = 100
     data.requestedCount = run.requestedCount ?? data.requestedCount
     data.errorMessage = undefined
     data.errorCode = undefined
     data.retryable = undefined
-    productRunIds.set(nodeId, run.runId)
     stopPolling(run.requestId)
     return true
   }
@@ -1484,6 +1528,261 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
   data.status = run.status === 'running' ? 'running' : 'queued'
   data.progress = run.progress ?? data.progress
   return false
+}
+
+/** 写回产物前的快照：当前有效的移除下标 + 产出它们的成功 run（hiddenCandidates.rid / 本会话缓存） */
+function productStateOf(nodeId: string): { hidden: Set<number>; rid?: string } {
+  const node = findNode(nodeId)
+  if (!node) return { hidden: new Set() }
+  return {
+    hidden: hiddenCandidatesOf(node.data),
+    rid: productRunIds.get(nodeId) ?? node.data.hiddenCandidates?.rid,
+  }
+}
+
+/**
+ * 成功 run 的产物写回节点（候选 / 选中 / 成品图 / 视频 / 反推文本 / 转存素材库状态），
+ * 不碰 status / requestId / runId（由调用方决定：执行轮询会一并改，转存刷新不改）。
+ */
+function writeProduct(nodeId: string, run: ICanvasRunResult, before: { hidden: Set<number>; rid?: string }): void {
+  const node = findNode(nodeId)
+  if (!node) return
+  const data = node.data
+  const urls = (run.candidates ?? []).map((item) => item.url)
+  const selected = Math.min(Math.max(run.selectedIndex ?? 0, 0), Math.max(urls.length - 1, 0))
+  data.candidates = urls
+  data.selectedCandidate = selected
+  if (data.kind === 'video') {
+    // 视频 run 的 candidates[0] 是封面图
+    if (run.videoUrl) data.video = run.videoUrl
+    data.image = urls[selected] ?? urls[0]
+  } else if (data.kind === 'model' || data.kind === 'tool') {
+    data.image = urls[selected] ?? urls[0]
+  }
+  if (run.text && data.kind === 'tool') data.resultText = run.text
+  const sameRun = Boolean(run.runId) && before.rid === run.runId
+  if (sameRun && before.hidden.size) {
+    // 同一个成功 run（转存后现签地址换成长期地址）：移除过的候选照旧隐藏，指纹跟着新地址走
+    const fp = candidatesFingerprint(urls)
+    const hidden = data.hiddenCandidates
+    if (!hidden || hidden.fp !== fp || hidden.rid !== run.runId) {
+      // 这是程序跟着换地址，不是用户改动：没有待落定的用户改动时顺手挪基线，不记成一步撤销
+      const rebase = Boolean(historyBase) && !historyRestoring && historyBase?.signature === contentSignature()
+      data.hiddenCandidates = { fp, rid: run.runId, indices: [...before.hidden].sort((a, b) => a - b) }
+      if (rebase) historyBase = captureHistory()
+    }
+  } else if (data.hiddenCandidates && hiddenCandidatesOf(data).size === 0) {
+    // 换了一批候选（新的一次成功运行）：之前移除的候选作废；同一批（轮询重复写回）保留
+    data.hiddenCandidates = undefined
+  }
+  const libraryStatus = normalizeLibraryStatus(
+    run.libraryStatus ?? (run as { library_status?: unknown }).library_status,
+  )
+  if (libraryStatus) data.libraryStatus = libraryStatus
+  else delete data.libraryStatus
+  // 换了一批产物才重置换签名次数（同一批反复失败不会无限换）
+  if (!sameRun) mediaRefreshLog.delete(nodeId)
+  mediaFetchedAt.set(nodeId, Date.now())
+  if (run.runId) productRunIds.set(nodeId, run.runId)
+  if (run.requestId) productRequestIds.set(nodeId, run.requestId)
+  syncLibraryWatch(nodeId, run.requestId)
+}
+
+// ---------------- 产物转存素材库（先交付、后进素材库，契约 3.3） ----------------
+
+interface ILibraryWatch {
+  timer: ReturnType<typeof setTimeout> | null
+  requestId: string
+  delay: number
+  startedAt: number
+  errors: number
+}
+
+/**
+ * 成功后低频跟转存状态：3s 起、每次 ×1.5、封顶 10s；页面隐藏时不查。
+ * 跟满 10 分钟仍是 pending 时不放弃，改为每 60s 查一次（后端转存重试累计约 50 分钟），
+ * 直到状态变空 / failed、节点删除或切画布，否则只认地址的入口会一直禁用到重新打开画布。
+ */
+const LIBRARY_POLL_FIRST = 3000
+const LIBRARY_POLL_MAX = 10_000
+const LIBRARY_POLL_LIMIT = 10 * 60_000
+const LIBRARY_POLL_SLOW = 60_000
+/** 现签地址 10 分钟有效：取到超过 5 分钟的，提交下游前先换新签名 */
+const SIGNED_URL_SAFE_MS = 5 * 60_000
+/** 地址过期（图片 / 视频加载失败）换签名：同一节点 20 秒内只换一次，同一批产物最多换 3 次 */
+const MEDIA_REFRESH_COOLDOWN = 20_000
+const MEDIA_REFRESH_MAX = 3
+
+const libraryWatches = new Map<string, ILibraryWatch>()
+/** 节点 id → 最近一次成功 run 的 request_id（转存刷新 / 换签名用；节点上的 requestId 可能已是更新的一次失败 / 在跑的 run） */
+const productRequestIds = new Map<string, string>()
+/** 节点 id → 现签地址取到的时间 */
+const mediaFetchedAt = new Map<string, number>()
+/** 节点 id → 换签名记录（限流） */
+const mediaRefreshLog = new Map<string, { at: number; count: number }>()
+
+function stopLibraryWatch(nodeId: string): void {
+  const entry = libraryWatches.get(nodeId)
+  if (entry?.timer) clearTimeout(entry.timer)
+  libraryWatches.delete(nodeId)
+}
+
+function stopAllLibraryWatches(): void {
+  for (const nodeId of [...libraryWatches.keys()]) stopLibraryWatch(nodeId)
+}
+
+/** 节点产物转存中就跟着查，状态变空 / failed 即停 */
+function syncLibraryWatch(nodeId: string, requestId: string | undefined): void {
+  const node = findNode(nodeId)
+  if (node && requestId && isLibraryPending(node.data)) startLibraryWatch(nodeId, requestId)
+  else stopLibraryWatch(nodeId)
+}
+
+function startLibraryWatch(nodeId: string, requestId: string): void {
+  if (libraryWatches.get(nodeId)?.requestId === requestId) return
+  stopLibraryWatch(nodeId)
+  const entry: ILibraryWatch = { timer: null, requestId, delay: LIBRARY_POLL_FIRST, startedAt: Date.now(), errors: 0 }
+  libraryWatches.set(nodeId, entry)
+  const targetId = canvasId
+  const tick = (): void => {
+    if (libraryWatches.get(nodeId) !== entry) return
+    if (targetId !== canvasId || !findNode(nodeId)) {
+      stopLibraryWatch(nodeId)
+      return
+    }
+    const slow = Date.now() - entry.startedAt > LIBRARY_POLL_LIMIT
+    if (document.visibilityState === 'hidden') {
+      entry.timer = setTimeout(tick, LIBRARY_POLL_MAX)
+      return
+    }
+    canvasRunGet(requestId)
+      .then((res) => {
+        if (libraryWatches.get(nodeId) !== entry || targetId !== canvasId) return
+        entry.errors = 0
+        if (res.data) applyProductRefresh(nodeId, res.data)
+        if (libraryWatches.get(nodeId) !== entry) return
+        entry.delay = slow ? LIBRARY_POLL_SLOW : Math.min(LIBRARY_POLL_MAX, Math.round(entry.delay * 1.5))
+        entry.timer = setTimeout(tick, entry.delay)
+      })
+      .catch(() => {
+        if (libraryWatches.get(nodeId) !== entry) return
+        entry.errors += 1
+        // 查询失败退避重试（10s → 20s → … 封顶 60s），不放弃：
+        // 否则 pending 停住，只认地址的入口会一直禁用到重新打开画布
+        entry.timer = setTimeout(tick, Math.min(LIBRARY_POLL_MAX * 2 ** (entry.errors - 1), 60_000))
+      })
+  }
+  entry.timer = setTimeout(tick, entry.delay)
+}
+
+/**
+ * 转存刷新 / 换签名拿到的产物 run 写回节点：只换地址与转存状态，不碰节点执行状态
+ * （节点上可能已有更新的一次 run 在跑或失败了）；本会话已知有更新的成功 run 时丢弃。
+ */
+function applyProductRefresh(nodeId: string, run: ICanvasRunResult): void {
+  const node = findNode(nodeId)
+  if (!node || run.status !== 'succeeded') return
+  const known = productRunIds.get(nodeId)
+  if (known && run.runId && known !== run.runId) return
+  writeProduct(nodeId, run, productStateOf(nodeId))
+}
+
+/** 节点最近一次成功 run 的 request_id：本会话缓存 → 节点最近一次 run 就是成功的 → 查运行历史 */
+async function resolveProductRequestId(nodeId: string): Promise<string | undefined> {
+  const cached = productRequestIds.get(nodeId)
+  if (cached) return cached
+  const node = findNode(nodeId)
+  if (!node) return undefined
+  if (node.data.status === 'done' && node.data.requestId) return node.data.requestId
+  if (!canvasId) return undefined
+  const targetId = canvasId
+  try {
+    const res = await canvasRuns(targetId, 50, nodeId)
+    if (targetId !== canvasId) return undefined
+    const hit = res.data?.items?.find((item) => item.nodeId === nodeId && item.status === 'succeeded')
+    if (hit?.requestId) {
+      productRequestIds.set(nodeId, hit.requestId)
+      if (hit.runId && !productRunIds.has(nodeId)) productRunIds.set(nodeId, hit.runId)
+      return hit.requestId
+    }
+  } catch {
+    // 查不到就算了：产物照常显示
+  }
+  return undefined
+}
+
+/** 重新 GET 产物 run，换上新签名 / 长期地址（不限流，调用方自己控频） */
+async function fetchProductMedia(nodeId: string): Promise<boolean> {
+  const targetId = canvasId
+  const requestId = await resolveProductRequestId(nodeId)
+  if (!requestId || targetId !== canvasId) return false
+  try {
+    const res = await canvasRunGet(requestId)
+    if (targetId !== canvasId || !res.data) return false
+    applyProductRefresh(nodeId, res.data)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 现签地址过期（节点图片 / 视频加载失败、403）时重新 GET 产物 run 换一次签名。转存中 / 转存失败的产物、
+ * 视频成品（video_url 读时现签）、免费档水印视图都会过期，所以不按 libraryStatus 拦，只认执行类节点的产物；
+ * 同一节点 20 秒内只换一次、同一批最多 3 次，不会因为对象真的没了而无限重试。
+ */
+function refreshNodeMedia(nodeId: string): void {
+  const node = findNode(nodeId)
+  if (!node || (node.type !== 'model' && node.type !== 'tool') || node.data.inputOnly) return
+  if (!node.data.candidates?.length && !node.data.video) return
+  const now = Date.now()
+  const log = mediaRefreshLog.get(nodeId)
+  if (log && (now - log.at < MEDIA_REFRESH_COOLDOWN || log.count >= MEDIA_REFRESH_MAX)) return
+  mediaRefreshLog.set(nodeId, { at: now, count: (log?.count ?? 0) + 1 })
+  void fetchProductMedia(nodeId)
+}
+
+/** 加载后：转存中的节点接着低频跟到状态变空 */
+function resumeLibraryWatches(): void {
+  const targetId = canvasId
+  for (const node of nodes.value) {
+    if (!isLibraryPending(node.data)) continue
+    const nodeId = node.id
+    void resolveProductRequestId(nodeId).then((requestId) => {
+      if (targetId === canvasId && requestId) syncLibraryWatch(nodeId, requestId)
+    })
+  }
+}
+
+/**
+ * 节点产物地址是否是读时现签（会过期）：转存中 / 转存失败的产物，以及视频成品（video_url 读时现签；
+ * 视频引用服务端不按 candidate_index 现取，只认请求里的地址）
+ */
+function signedProductOf(node: CanvasEditorNode): boolean {
+  if ((node.type !== 'model' && node.type !== 'tool') || node.data.inputOnly) return false
+  return hasTransientMedia(node.data) || (node.data.kind === 'video' && Boolean(node.data.video))
+}
+
+/** 目标节点的直接上游里，产物是现签地址且已取到超过 5 分钟的节点 */
+function staleUpstreamIds(nodeId: string): string[] {
+  const now = Date.now()
+  const ids = new Set(edges.value.filter((edge) => edge.target === nodeId).map((edge) => edge.source))
+  const sourceNodeId = findNode(nodeId)?.data.sourceNodeId
+  if (sourceNodeId) ids.add(sourceNodeId)
+  return [...ids].filter((id) => {
+    const node = findNode(id)
+    return node && signedProductOf(node) && now - (mediaFetchedAt.get(id) ?? 0) > SIGNED_URL_SAFE_MS
+  })
+}
+
+/**
+ * 节点产物的地址能否被复制进别的节点内容（拖成新节点、按地址设为参考 / 编辑等只认地址的入口）。
+ * 转存中返回提示文案（入口禁用、悬停看原因）；可用返回空串。转存失败的地址同样是现签，但不会再变成长期地址，
+ * 只允许即时使用（看、下载、即时提交），不写进节点内容。
+ */
+function mediaBlockReason(nodeId: string): string {
+  const node = findNode(nodeId)
+  return node && isLibraryPending(node.data) ? LIBRARY_PENDING_TIP : ''
 }
 
 /**
@@ -1709,6 +2008,7 @@ export function useCanvasEditor() {
         saveTimer = null
       }
       stopAllPollers()
+      stopAllLibraryWatches()
       ready.value = false
       selectedNodeId.value = ''
       resetHistory()
@@ -1745,6 +2045,10 @@ export function useCanvasEditor() {
     outputHandleOf,
     removeCandidate,
     hiddenCandidatesOf,
+    /** 产物现签地址过期（加载失败 / 403）时换一次签名（限流） */
+    refreshNodeMedia,
+    /** 产物地址能否复制进别的节点内容：转存中返回提示文案，可用返回空串 */
+    mediaBlockReason,
     reorderReference,
     addReferenceFrom,
     // 撤销 / 重做

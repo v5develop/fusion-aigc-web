@@ -116,8 +116,16 @@ export interface CanvasNodeData {
    * 用户移除的候选下标（下标不重排，candidate-N 连线照旧对应）。
    * fp = 产出这批候选的 URL 列表指纹：候选换了（新的一次成功运行）才作废；失败重跑 / 刷新回填不影响。
    * runId 是旧数据的键（没有 fp 时按 runId 比对）。
+   * rid = 产出这批候选的成功 run 的 run_id：现签地址转存进素材库后 URL 会整体换掉（fp 变了），
+   * 但还是同一批候选，此时按 rid 认（节点最近一次 run 就是它且已成功）。
    */
-  hiddenCandidates?: { fp?: string; runId?: string; indices: number[] }
+  hiddenCandidates?: { fp?: string; runId?: string; rid?: string; indices: number[] }
+  /**
+   * 产物转存素材库的状态（只读：GET /canvases/{id} 回填、run 轮询写回；保存前剥掉，服务端也剥）。
+   * 缺省 = 已在素材库 / 不适用；pending = 转存中、failed = 转存失败——这两种时 candidates / image / video
+   * 是 10 分钟现签地址，不能复制进别的节点内容（见 library-status.ts）。
+   */
+  libraryStatus?: 'pending' | 'failed'
 }
 
 export interface CanvasEditorNode {

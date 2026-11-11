@@ -8,6 +8,7 @@ import { modelLabelOf } from '@/utils/model-label'
 import { ref, watch } from 'vue'
 import { canvasGet, canvasRuns } from '@/api/canvas-home.ts'
 import type { ICanvasDetail, ICanvasRunResult } from '@/api/canvas-home.ts'
+import LibraryStatusHint from './editor/LibraryStatusHint.vue'
 
 const show = defineModel<boolean>('show', { required: true })
 
@@ -130,6 +131,7 @@ function formatTime(ms?: number) {
               <div v-if="r.status === 'failed' && r.error" class="mt-6px text-12px text-danger leading-18px break-all">
                 {{ r.error }}
               </div>
+              <LibraryStatusHint v-if="r.status === 'succeeded'" :status="r.libraryStatus" />
             </div>
           </div>
           <div v-else class="ll-empty py-40px">还没有运行记录</div>

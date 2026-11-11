@@ -37,6 +37,7 @@ import ImageActionPanel from './ImageActionPanel.vue'
 import { IMAGE_ACTIONS, activeImageAction, collectImageSources, openImageAction } from './image-actions.ts'
 import CanvasColorFixDialog from './CanvasColorFixDialog.vue'
 import { activeColorFix, colorFixSources, openColorFix } from './color-fix-action.ts'
+import { hasTransientMedia } from './library-status.ts'
 import EditorAssetPanel from './EditorAssetPanel.vue'
 import TitleModal from '../TitleModal.vue'
 import TemplateInsertDialog from './TemplateInsertDialog.vue'
@@ -1805,13 +1806,15 @@ const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
   const act: INodeMenuItem[] = []
   if (hasImageActions(node)) {
     const hasImage = collectImageSources(node.id).length > 0
+    // 产物还在转存素材库：这些动作只认地址，等转存完（几秒）再用
+    const blocked = store.mediaBlockReason(node.id)
     for (const item of IMAGE_ACTIONS) {
       act.push({
         key: `action:${item.kind}`,
         label: item.label,
         icon: item.icon,
         disabled: !hasImage,
-        hint: hasImage ? undefined : '先上传或生成图片',
+        hint: hasImage ? undefined : blocked || '先上传或生成图片',
         run: menuAction((n) => openImageAction(n.id, item.kind)),
       })
     }
@@ -1821,7 +1824,7 @@ const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
       label: '校色',
       icon: 'sliders',
       disabled: !ownImage,
-      hint: ownImage ? '调整偏色（支持局部选区），生成新的结果图节点' : '这个节点还没有图片',
+      hint: ownImage ? '调整偏色（支持局部选区），生成新的结果图节点' : blocked || '这个节点还没有图片',
       run: menuAction((n) => openColorFix(n.id)),
     })
   }
@@ -1949,8 +1952,14 @@ function slimDataOf(node: CanvasEditorNode): Record<string, unknown> {
     'candidates',
     'selectedCandidate',
     'requestedCount',
+    'libraryStatus',
+    'library_status',
   ]) {
     delete data[key]
+  }
+  // 产物还是现签临时地址（转存素材库中 / 失败）：10 分钟后失效，不写进导出文件
+  if (hasTransientMedia(node.data) && (node.type === 'model' || node.type === 'tool') && !node.data.inputOnly) {
+    for (const key of ['image', 'video', 'resultImage']) delete data[key]
   }
   return data
 }

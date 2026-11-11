@@ -31,6 +31,7 @@ import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
 import { ColorFixPill } from '@/components/ColorFix'
 import { openColorFix } from '../color-fix-action.ts'
+import LibraryStatusHint from '../LibraryStatusHint.vue'
 
 const props = defineProps<{
   id: string
@@ -54,6 +55,17 @@ const notReady = computed(() => store.catalog.value?.tools?.find((t) => t.tool =
 const width = computed(() => props.data.width ?? 340)
 
 const resultImage = computed(() => props.data.resultImage ?? props.data.image)
+
+/** 产物还在转存素材库：校色只认地址，先不给用 */
+const colorFixBlocked = computed(() => store.mediaBlockReason(props.id))
+function onColorFix(e: MouseEvent) {
+  e.stopPropagation()
+  if (colorFixBlocked.value) {
+    editorMessage.info(colorFixBlocked.value)
+    return
+  }
+  openColorFix(props.id, resultImage.value)
+}
 const resultText = computed(() => props.data.resultText ?? '')
 
 const summary = computed(() => {
@@ -106,6 +118,12 @@ function insertText() {
 // ---- 裁剪：节点内拖拽框选 ----
 const isCrop = computed(() => props.data.tool === 'crop')
 const cropSource = computed(() => (isCrop.value ? toolSourceImage(store.nodes.value, store.edges.value, props.id) : ''))
+/** 上游产物的现签地址过期：让上游节点换一次签名（与 toolSourceImage 同口径找上游） */
+function onCropSourceError() {
+  const edge = store.edges.value.find((item) => item.target === props.id && (item.targetHandle ?? 'image') === 'image')
+  const sourceId = edge?.source ?? props.data.sourceNodeId
+  if (sourceId) store.refreshNodeMedia(sourceId)
+}
 const cropBox = ref<HTMLElement | null>(null)
 type CropHandle = 'nw' | 'ne' | 'sw' | 'se'
 const CROP_MIN = 0.05
@@ -274,6 +292,7 @@ function onCropUp() {
                 alt="裁剪输入图"
                 draggable="false"
                 class="block max-w-full max-h-220px pointer-events-none"
+                @error="onCropSourceError"
               />
               <!-- 框外压暗：单独一层裁在图片范围内（交互层不裁，四角把手的命中区才不会被切掉） -->
               <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
@@ -315,18 +334,22 @@ function onCropUp() {
           v-if="resultImage"
           class="canvas-media relative grid w-full place-items-center overflow-hidden min-h-110px border border-solid border-[#e9ecf2] rounded-6px bg-[#f4f6fa]"
         >
-          <img :src="resultImage" :alt="data.title" draggable="false" class="block w-full max-h-240px object-contain" />
+          <img
+            :src="resultImage"
+            :alt="data.title"
+            draggable="false"
+            class="block w-full max-h-240px object-contain"
+            @error="store.refreshNodeMedia(id)"
+          />
           <ColorFixPill
             v-if="data.tool !== 'i2p'"
             label="校色"
             :aria-label="`校色：${data.title || '工具结果'}`"
+            :aria-disabled="colorFixBlocked ? 'true' : undefined"
+            :title="colorFixBlocked || undefined"
             class="absolute top-8px right-8px z-3 nodrag opacity-0 [.canvas-media:hover_&]:opacity-100 [.is-selected_&]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-            @click="
-              (e: MouseEvent) => {
-                e.stopPropagation()
-                openColorFix(id, resultImage)
-              }
-            "
+            :class="colorFixBlocked ? '!cursor-not-allowed !text-muted' : ''"
+            @click="onColorFix"
           />
         </div>
         <div
@@ -336,6 +359,7 @@ function onCropUp() {
           <EditorIcon name="tool" :size="20" />
           <span>{{ isRunning ? '处理中…' : isTryon ? '连服装与模特图后执行' : '连一条图片输入后执行' }}</span>
         </div>
+        <LibraryStatusHint v-if="resultImage && !isRunning" :status="data.libraryStatus" />
       </template>
 
       <div v-if="isRunning" class="h-3px overflow-hidden rounded-999px bg-violet-soft-2">

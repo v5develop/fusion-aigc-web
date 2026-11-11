@@ -28,6 +28,8 @@ const RUNTIME_KEYS = [
   'requestedCount',
   'selectedCandidate',
   'hiddenCandidates',
+  'libraryStatus',
+  'library_status',
 ] as const
 /** 成品字段：模型 / 工具节点去掉（参考素材节点 inputOnly 除外） */
 const RESULT_KEYS = ['candidates', 'image', 'video', 'assetId', 'mediaId', 'resultText', 'resultImage'] as const

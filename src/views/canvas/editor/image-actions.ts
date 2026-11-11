@@ -11,6 +11,7 @@
 import { reactive, ref } from 'vue'
 import { get, toApiError } from '@/api/index.ts'
 import { canvasIdentify, type CanvasPoint, type ICanvasIdentifyReq } from '@/api/agent.ts'
+import { isLibraryPending } from './library-status.ts'
 import { useCanvasEditor } from './useCanvasEditor.ts'
 import type { CanvasEditorNode, CanvasNodeData } from './types.ts'
 
@@ -55,6 +56,8 @@ export interface IImageSource {
 function nodeImages(node: CanvasEditorNode): { url: string; handle: string }[] {
   const data = node.data
   if (node.type === 'image') return data.image ? [{ url: data.image, handle: 'image' }] : []
+  // 产物还在转存素材库：地址是 10 分钟现签，这些只认地址的动作（结果另建节点、区域按地址记）先不给用，转存完自动出现
+  if (isLibraryPending(data)) return []
   if (node.type === 'model') {
     if (data.kind !== 'model' || data.inputOnly) return []
     const list = data.candidates?.length ? data.candidates : data.image ? [data.image] : []

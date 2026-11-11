@@ -12,6 +12,7 @@ import { useNodeId } from '@vue-flow/core'
 import { NODE_ICON_BTN, NODE_MENU_HOST } from './ui.ts'
 import { IMAGE_ACTIONS, collectImageSources, openImageAction, type ImageActionKind } from './image-actions.ts'
 import { colorFixSources, openColorFix } from './color-fix-action.ts'
+import { useCanvasEditor } from './useCanvasEditor.ts'
 
 const props = defineProps<{
   /** 节点标题，用于无障碍名 */
@@ -38,18 +39,21 @@ function openHost(event: MouseEvent) {
 // ---------- 退回下拉 ----------
 const hasImage = computed(() => (props.imageActionsFor ? collectImageSources(props.imageActionsFor).length > 0 : false))
 const hasOwnImage = computed(() => (props.imageActionsFor ? colorFixSources(props.imageActionsFor).length > 0 : false))
+const store = useCanvasEditor()
+/** 产物还在转存素材库时的禁用原因（只认地址的动作要等转存完） */
+const blocked = computed(() => (props.imageActionsFor ? store.mediaBlockReason(props.imageActionsFor) : ''))
 
 const options = computed<DropdownOption[]>(() => [
   ...(props.imageActionsFor
     ? [
         ...IMAGE_ACTIONS.map((item) => ({
           key: `action:${item.kind}`,
-          label: hasImage.value ? item.label : `${item.label}（先上传或生成图片）`,
+          label: hasImage.value ? item.label : `${item.label}（${blocked.value || '先上传或生成图片'}）`,
           disabled: !hasImage.value,
         })),
         {
           key: 'colorfix',
-          label: hasOwnImage.value ? '校色' : '校色（先上传或生成图片）',
+          label: hasOwnImage.value ? '校色' : `校色（${blocked.value || '先上传或生成图片'}）`,
           disabled: !hasOwnImage.value,
         },
         { key: 'divider', type: 'divider' },

@@ -36,6 +36,8 @@ import NodeResize from '../NodeResize.vue'
 import NodeLightbox from './NodeLightbox.vue'
 import { ColorFixPill } from '@/components/ColorFix'
 import { openColorFix } from '../color-fix-action.ts'
+import LibraryStatusHint from '../LibraryStatusHint.vue'
+import { editorMessage } from '../useCanvasEditor.ts'
 
 const props = defineProps<{
   id: string
@@ -175,6 +177,22 @@ function downloadName(index: number) {
 function onRemoveCandidate(index: number) {
   void store.removeCandidate(props.id, index)
 }
+
+/** 现签地址过期（加载失败 / 403）：换一次签名（store 内限流，不会循环） */
+function onMediaError() {
+  store.refreshNodeMedia(props.id)
+}
+
+/** 产物还在转存素材库：校色只认地址，先不给用 */
+const colorFixBlocked = computed(() => store.mediaBlockReason(props.id))
+function onColorFix(e: MouseEvent) {
+  e.stopPropagation()
+  if (colorFixBlocked.value) {
+    editorMessage.info(colorFixBlocked.value)
+    return
+  }
+  openColorFix(props.id, props.data.image)
+}
 </script>
 
 <template>
@@ -235,6 +253,7 @@ function onRemoveCandidate(index: number) {
           preload="metadata"
           class="block w-full h-full rounded-6px bg-black object-contain nodrag nowheel"
           @loadedmetadata="onMediaLoad"
+          @error="onMediaError"
         />
         <button
           v-else-if="data.image"
@@ -251,6 +270,7 @@ function onRemoveCandidate(index: number) {
             draggable="false"
             class="block w-full h-full object-contain"
             @load="onMediaLoad"
+            @error="onMediaError"
           />
           <!-- 悬停提示条（原型 .wf-model-node__hint）：深色细条 11px；键盘聚焦与触屏常显 -->
           <span
@@ -264,13 +284,11 @@ function onRemoveCandidate(index: number) {
           v-if="!isVideo && data.image && !data.inputOnly"
           label="校色"
           :aria-label="`校色：${data.title || '生成结果'}`"
+          :aria-disabled="colorFixBlocked ? 'true' : undefined"
+          :title="colorFixBlocked || undefined"
           class="absolute top-8px right-8px z-3 nodrag opacity-0 [.canvas-media:hover_&]:opacity-100 [.is-selected_&]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-          @click="
-            (e: MouseEvent) => {
-              e.stopPropagation()
-              openColorFix(id, data.image)
-            }
-          "
+          :class="colorFixBlocked ? '!cursor-not-allowed !text-muted' : ''"
+          @click="onColorFix"
         />
         <div v-else class="flex flex-col items-center justify-center gap-8px text-muted text-11px">
           <span class="grid w-40px h-40px place-items-center border border-solid border-line rounded-full text-ink-2">
@@ -293,6 +311,7 @@ function onRemoveCandidate(index: number) {
       >
         成功 {{ candidates.length }}/{{ data.requestedCount }} · 只计成功张数
       </div>
+      <LibraryStatusHint v-if="!isRunning && candidates.length" :status="data.libraryStatus" />
 
       <!--
         候选缩略图（原型 .wf-model-node__candidate）：缩略图本身点一下设为输出；悬停出 2×2 操作
@@ -326,6 +345,7 @@ function onRemoveCandidate(index: number) {
               :alt="`候选 ${item.index + 1}`"
               draggable="false"
               class="block w-full h-full object-cover"
+              @error="onMediaError"
             />
           </button>
           <div

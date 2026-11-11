@@ -6,6 +6,7 @@
  */
 import type { CanvasEditorEdge, CanvasEditorNode, CanvasEditorNodeData, CanvasToolKind } from './types'
 import { candidateIndexOf } from './types'
+import { hasTransientMedia } from './library-status.ts'
 import type { ICanvasRunRef } from '@/api/canvas-home.ts'
 import { modelLabelOf } from '@/utils/model-label'
 
@@ -214,6 +215,23 @@ function sourceMediaOf(
 }
 
 /**
+ * 来源节点产物是现签临时地址（转存素材库中 / 失败，见 library-status.ts）时，主输出口的引用也带上
+ * candidate_index（= 当前选中的候选），让服务端按 run 现取地址，不依赖请求里可能已过期的 URL。
+ * 只在主输出口取的就是那张候选时才带（工具节点有 resultImage 时另取它，不带）。
+ */
+function transientCandidateIndex(node: CanvasEditorNode): number {
+  const data = node.data
+  if (!hasTransientMedia(data) || !data.candidates?.length) return -1
+  if (data.kind === 'tool') {
+    if (data.tool === 'i2p' || data.resultImage) return -1
+  } else if (data.kind !== 'model' && data.kind !== 'video') {
+    return -1
+  }
+  const index = data.selectedCandidate ?? 0
+  return data.candidates[index] ? index : -1
+}
+
+/**
  * 工具节点的输入图（连到 image 口的上游成品；没连线时用 data.sourceNodeId 指定的上游）。
  * 与 buildReferences 同口径：候选单独连线取对应候选。节点上的裁剪框选 / 预览用。
  */
@@ -263,6 +281,7 @@ export function buildReferences(
     if (!source || source.type === 'module') continue
     const candidateIndex = candidateIndexOf(edge.sourceHandle)
     const media = sourceMediaOf(source, candidateIndex)
+    const refIndex = candidateIndex >= 0 ? candidateIndex : transientCandidateIndex(source)
     raw.push({
       handle,
       nodeId: source.id,
@@ -272,7 +291,7 @@ export function buildReferences(
       assetId: media.assetId,
       mediaId: media.mediaId,
       sourceHandle: edge.sourceHandle ?? undefined,
-      candidateIndex: candidateIndex >= 0 ? candidateIndex : undefined,
+      candidateIndex: refIndex >= 0 ? refIndex : undefined,
       order: edge.data?.order ?? 0,
     })
   }
@@ -282,7 +301,15 @@ export function buildReferences(
     const upstream = nodeById.get(target.data.sourceNodeId)
     const media = upstream ? sourceMediaOf(upstream, -1) : undefined
     if (upstream && media?.image) {
-      raw.push({ handle: 'image', nodeId: upstream.id, image: media.image, assetId: media.assetId, order: 0 })
+      const refIndex = transientCandidateIndex(upstream)
+      raw.push({
+        handle: 'image',
+        nodeId: upstream.id,
+        image: media.image,
+        assetId: media.assetId,
+        ...(refIndex >= 0 ? { candidateIndex: refIndex } : {}),
+        order: 0,
+      })
     }
   }
   const groups: Record<string, IRawRef[]> = {}
