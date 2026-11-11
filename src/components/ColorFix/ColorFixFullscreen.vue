@@ -75,7 +75,7 @@ const showMask = computed(() => hasMask.value && (maskPinned.value || maskFlash.
 const status = computed(() => {
   if (cf.maskBusy.value)
     return cf.maskSlow.value ? '首次识别较慢，约需 1 分钟，可先调整其它参数' : '正在识别选区…'
-  if (cf.maskPending.value) return cf.region.value.mode === 'auto' && cf.maskError.value ? cf.maskError.value : '选区还没准备好，当前显示原图'
+  if (cf.maskPending.value) return cf.region.value.mode === 'auto' && cf.maskError.value ? cf.maskError.value : '有选区还没准备好（该层暂不生效）'
   if (cf.failed.value) return cf.maskLoadFailed.value ? COLORFIX_MASK_LOAD_FAILED : '校色效果未能生成，已显示原图'
   if (cf.baking.value) return '正在生成校色效果…'
   return ''

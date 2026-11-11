@@ -22,9 +22,20 @@
  *
  * <p>停靠（`docked`，2026-11-11 全屏调色）：不浮、不拖，铺满父容器（高度由父级给，内容超出时本体滚动），没有 ×
  * （退出由全屏层负责）；其余内容与交互完全相同。
+ *
+ * <p>图层与替换颜色（2026-11-11，都可选、不传与旧版一致）：
+ * <ul>
+ *   <li>插槽 `layers`：头部下方放图层列表（components/ColorFix/ColorFixLayerList）；</li>
+ *   <li>`recolor-enabled` + `v-model:recolor`：在选区与滑杆之间出「替换颜色」——开关、源色（自动 = 选区主色 / 吸管从图上取）
+ *       → 目标色（色板 + 十六进制 + 取色器）、强度；先于五个滑杆生效。点吸管发 pickSource，由调用方开取色弹窗。</li>
+ * </ul>
+ * 浮动形态内容高于所在列时本体滚动（最高 = 列高 − 24）。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ColorFixSlider from '@/views/studio/colorfix/ColorFixSlider.vue'
+import IconButton from '@/components/IconButton/index.vue'
+import { normalizeHex } from '@/utils/colorfix-math.ts'
+import { COLORFIX_RECOLOR_DEFAULT, type ColorFixRecolor } from '@/components/ColorFix/layers.ts'
 import { COLORFIX_DEFAULT, COLORFIX_RANGES, colorFixEquals, type ColorFixParams } from '@/utils/colorfix.ts'
 import {
   COLORFIX_PART_LABELS,
@@ -69,6 +80,12 @@ const props = withDefaults(
     maskActions?: { key: string; label: string }[]
     /** 停靠在全屏调色右侧：不浮、不拖、无 × */
     docked?: boolean
+    /** 出「替换颜色」区块（配 v-model:recolor） */
+    recolorEnabled?: boolean
+    /** 源色为自动时算出来的选区主色（'#rrggbb'；null = 还没算出 / 选区未就绪） */
+    recolorAutoSource?: string | null
+    /** 滑杆区上方的小标题（如当前图层名）；'' = 不显示 */
+    slidersTitle?: string
   }>(),
   {
     open: true,
@@ -86,12 +103,17 @@ const props = withDefaults(
     maskRetry: false,
     maskActions: () => [],
     docked: false,
+    recolorEnabled: false,
+    recolorAutoSource: null,
+    slidersTitle: '',
   },
 )
 
 const params = defineModel<ColorFixParams>({ required: true })
 /** 局部调色选区；不绑定 = 不出选区区块 */
 const region = defineModel<ColorFixRegion | undefined>('region')
+/** 替换为目标颜色；null = 关（只在 recolor-enabled 时有用） */
+const recolor = defineModel<ColorFixRecolor | null>('recolor', { default: null })
 
 const emit = defineEmits<{
   /** 点了「完成」或 × */
@@ -106,6 +128,8 @@ const emit = defineEmits<{
   retryMask: []
   /** 点了选区提示下的替代操作（maskActions 的 key） */
   maskAction: [key: string]
+  /** 点了「从图上吸取源色」 */
+  pickSource: []
 }>()
 
 const R = COLORFIX_RANGES
@@ -258,6 +282,42 @@ function pickMode(mode: ColorFixRegionMode) {
   if (mode === 'paint' && !props.hasPainted) emit('paint')
 }
 
+// ---------------- 替换颜色 ----------------
+
+/** 常用目标色（服装 / 商品最常换的几种） */
+const SWATCHES: { hex: string; name: string }[] = [
+  { hex: '#1f2329', name: '黑' },
+  { hex: '#f5f5f2', name: '白' },
+  { hex: '#8a8f98', name: '灰' },
+  { hex: '#b4433e', name: '红' },
+  { hex: '#d9822b', name: '橙' },
+  { hex: '#e3c14d', name: '黄' },
+  { hex: '#34795a', name: '绿' },
+  { hex: '#2f6db5', name: '蓝' },
+  { hex: '#875f9a', name: '紫' },
+  { hex: '#c8a27a', name: '卡其' },
+]
+const recolorOn = computed(() => !!recolor.value)
+function setRecolor(patch: Partial<ColorFixRecolor>) {
+  recolor.value = { ...(recolor.value ?? COLORFIX_RECOLOR_DEFAULT), ...patch }
+}
+function toggleRecolor() {
+  recolor.value = recolor.value ? null : { ...COLORFIX_RECOLOR_DEFAULT }
+}
+/** 十六进制输入：输入中只改草稿，回车 / 失焦合法才写入，不合法恢复 */
+const hexDraft = ref('')
+watch(
+  () => recolor.value?.target,
+  (t) => (hexDraft.value = t ?? ''),
+  { immediate: true },
+)
+function commitHex() {
+  const hex = normalizeHex(hexDraft.value)
+  if (hex) setRecolor({ target: hex })
+  else hexDraft.value = recolor.value?.target ?? ''
+}
+const sourceShown = computed(() => recolor.value?.source ?? props.recolorAutoSource ?? '')
+
 const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   { key: 'hue', label: '色相' },
   { key: 'sat', label: '饱和度' },
@@ -301,6 +361,8 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
           </svg>
         </button>
       </header>
+
+      <slot name="layers" />
 
       <div v-if="region" class="cfp__region" role="group" aria-label="调色选区">
         <div class="cfp__row">
@@ -434,6 +496,115 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
         </div>
       </div>
 
+      <div v-if="recolorEnabled" class="cfp__recolor" role="group" aria-label="替换为目标颜色">
+        <div class="cfp__row">
+          <span class="cfp__label cfp__label--wide">替换颜色</span>
+          <button
+            type="button"
+            role="switch"
+            class="cfp__switch sx-hit"
+            :class="{ 'is-on': recolorOn }"
+            :aria-checked="recolorOn"
+            aria-label="替换为目标颜色"
+            @click="toggleRecolor"
+          >
+            <i aria-hidden="true" />
+          </button>
+          <span class="cfp__note-text cfp__soft">{{ recolorOn ? '保留明暗纹理，只换颜色' : '把这一层里的主色换成指定颜色' }}</span>
+        </div>
+        <template v-if="recolor">
+          <div class="cfp__row">
+            <span class="cfp__label">源色</span>
+            <span
+              class="cfp__swatch is-big"
+              :style="{ background: sourceShown || undefined }"
+              :class="{ 'is-empty': !sourceShown }"
+              role="img"
+              :aria-label="sourceShown ? `源色 ${sourceShown}` : '源色：选区未就绪'"
+              :title="recolor.source ? `吸取的源色 ${recolor.source}` : sourceShown ? `自动：选区主色 ${sourceShown}` : '选区就绪后自动取主色'"
+            />
+            <button
+              type="button"
+              class="cfp__chip sx-hit cfp__chip--sm"
+              :class="{ 'is-on': recolor.source === null }"
+              :aria-pressed="recolor.source === null"
+              title="自动：取选区里面积最大的颜色"
+              @click="setRecolor({ source: null })"
+            >
+              自动
+            </button>
+            <IconButton label="从图上吸取源色" size="sm" variant="quiet" @click="emit('pickSource')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m2 22 1-1h3l9-9M3 21v-3l9-9M15 6l3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z" />
+              </svg>
+            </IconButton>
+            <span class="cfp__arrow" aria-hidden="true">→</span>
+            <span
+              class="cfp__swatch is-big"
+              :style="{ background: recolor.target }"
+              role="img"
+              :aria-label="`目标色 ${recolor.target}`"
+            />
+            <span class="cfp__picker" title="更多颜色" aria-label="更多目标颜色（取色器）" role="group">
+              <n-color-picker
+                size="small"
+                :value="recolor.target"
+                :show-alpha="false"
+                :modes="['hex']"
+                :swatches="SWATCHES.map((s) => s.hex)"
+                :render-label="() => ''"
+                @update:value="(v: string) => { const h = normalizeHex(v); if (h) setRecolor({ target: h }) }"
+              />
+            </span>
+          </div>
+          <div class="cfp__row">
+            <span class="cfp__label">目标</span>
+            <span class="cfp__swatches" role="radiogroup" aria-label="常用目标色">
+              <button
+                v-for="sw in SWATCHES"
+                :key="sw.hex"
+                type="button"
+                role="radio"
+                class="cfp__swatch sx-hit"
+                :class="{ 'is-on': recolor.target === sw.hex }"
+                :style="{ background: sw.hex }"
+                :aria-checked="recolor.target === sw.hex"
+                :aria-label="`目标色：${sw.name}`"
+                :title="sw.name"
+                @click="setRecolor({ target: sw.hex })"
+              />
+            </span>
+          </div>
+          <div class="cfp__row">
+            <span class="cfp__label" />
+            <input
+              v-model="hexDraft"
+              class="cfp__hex"
+              type="text"
+              maxlength="7"
+              spellcheck="false"
+              aria-label="目标颜色十六进制，如 #2f6db5"
+              placeholder="#2f6db5"
+              @keydown.enter.prevent="commitHex"
+              @blur="commitHex"
+            />
+            <span class="cfp__label cfp__label--soft">强度</span>
+            <input
+              class="cfp__range"
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              :value="recolor.strength"
+              aria-label="替换强度"
+              @input="setRecolor({ strength: Number(($event.target as HTMLInputElement).value) })"
+            />
+            <b class="cfp__num cfp__num--wide" aria-hidden="true">{{ recolor.strength }}</b>
+          </div>
+        </template>
+      </div>
+
+      <p v-if="slidersTitle" class="cfp__subtitle">{{ slidersTitle }}</p>
       <div class="cfp__sliders">
         <ColorFixSlider
           v-for="s in SLIDERS"
@@ -753,6 +924,119 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   min-width: 0;
   flex: 1;
 }
+/* 替换颜色 */
+.cfp__recolor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 12px;
+  padding: 9px 0 8px;
+  border-bottom: 1px dashed #ece7f0;
+  cursor: default;
+}
+.cfp__label--wide {
+  width: auto;
+  flex: 0 0 auto;
+}
+.cfp__soft {
+  color: #9aa1aa;
+  font-size: 11px;
+}
+.cfp__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+/* 色块：视觉 22，sx-hit 外扩 → 命中 30+；选中加藤紫外圈 */
+.cfp__swatch {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid rgba(31, 35, 41, 0.14);
+  border-radius: 50%;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+.cfp__swatch.is-big {
+  width: 26px;
+  height: 26px;
+  flex-basis: 26px;
+  border-radius: 7px;
+  cursor: default;
+}
+.cfp__swatch.is-empty {
+  background: repeating-conic-gradient(#eceef0 0% 25%, #fff 0% 50%) 0 0 / 8px 8px;
+}
+.cfp__swatch.is-on {
+  outline: 2px solid #875f9a;
+  outline-offset: 2px;
+}
+.cfp__swatch:focus-visible {
+  outline: 2px solid #875f9a;
+  outline-offset: 2px;
+}
+.cfp__chip--sm {
+  height: 24px;
+  padding: 0 8px;
+  line-height: 22px;
+}
+.cfp__arrow {
+  color: #9aa1aa;
+  font-size: 13px;
+}
+.cfp__picker {
+  width: 32px;
+  flex: 0 0 32px;
+}
+.cfp__picker :deep(.n-color-picker) {
+  width: 32px;
+}
+.cfp__picker :deep(.n-color-picker__value) {
+  display: none;
+}
+.cfp__hex {
+  width: 84px;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: #fff;
+  color: #1f2329;
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.cfp__hex:focus-visible {
+  outline: 2px solid #875f9a;
+  outline-offset: 1px;
+}
+.cfp__num--wide {
+  width: 24px;
+}
+.cfp__subtitle {
+  margin: 8px 12px -4px;
+  color: #6b487c;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 16px;
+}
+/* 浮动形态：内容高于所在列时本体滚动 */
+.cfp:not(.is-docked) {
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cfp:not(.is-docked) .cfp__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.96);
+}
 /* 停靠：铺满全屏层右栏，不浮、不拖 */
 .cfp.is-docked {
   position: relative;
@@ -780,8 +1064,12 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   font-size: 14px;
 }
 .cfp.is-docked .cfp__region,
+.cfp.is-docked .cfp__recolor,
 .cfp.is-docked .cfp__foot {
   margin: 0 16px;
+}
+.cfp.is-docked .cfp__subtitle {
+  margin: 10px 16px -6px;
 }
 .cfp.is-docked .cfp__sliders {
   padding: 12px 16px 4px;

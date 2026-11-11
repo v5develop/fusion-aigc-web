@@ -1,33 +1,43 @@
 /**
  * 结果图校色的页面无关状态机（见 ./index.ts 顶部的接入说明）。
  *
- * <p>职责：五参数 + 选区（整图 / 自动识别 / 手动涂抹，反选、柔化）按结果键持久化；参数 / 选区变化后停手烘真像素
- * （utils/colorfix colorFixImage，按 原图 + 蒙版 + 参数 缓存）；导出（下载 / 存资产）按长边 ≤4096 只缩不放、无损 PNG、
- * 保留透明通道。
+ * <p>职责：校色图层（./layers.ts：整图底层 + 最多 7 个选区图层，各自 五参数 / 替换颜色 / 选区 / 反选 / 柔化 / 可见）按结果键
+ * 持久化；图层或蒙版变化后停手烘真像素（自下而上逐层透过软蒙版合成）；导出（下载 / 存资产）按长边 ≤4096 只缩不放、
+ * 无损 PNG、保留透明通道。
+ *
+ * <p>兼容：`params` / `region` 仍在，读写的是「当前选中的图层」——老的参数台（ColorFixPanel v-model）原样能用；
+ * 只有底层（或底层全零 + 一个选区图层）时出图与旧版逐像素一致（同走 colorFixImage）。存储照写旧键
+ * （`colorfix:` / `colorfix-region:`，见 layers.ts legacyOf），另写 `colorfix-layers:`；只认旧键的老代码照常工作。
  *
  * <p>预览：
  * <ul>
- *   <li>整图：烘好前原图挂 CSS filter（previewStyle），与烘出来的结果一致，拖动跟手；</li>
- *   <li>有选区：CSS filter 只能整图生效，改为画布小图预览——停手 60ms 先烘长边 720 的小图，再 260ms 烘 1600 的预览图；
+ *   <li>只有整图底层在起作用：烘好前原图挂 CSS filter（previewStyle），拖动跟手；</li>
+ *   <li>有选区 / 多层 / 替换颜色：画布小图预览——停手 60ms 先烘长边 720 的小图，再 260ms 烘 1600 的预览图；
  *       新图出来前沿用上一张烘好的（同一张原图时）。</li>
  * </ul>
- * 选了「自动识别 / 手动涂抹」但蒙版还没就绪（识别中 / 还没涂）：不做任何校色（显示原图），面板给提示；导出同理返回原图。
+ * 选区图层的蒙版还没就绪（识别中 / 还没涂 / 识别失败）：预览先跳过这一层，导出拒绝（调用方退回原图）。
  *
  * <p>「校色开着」（active）= 可用 && 有图 && 有效（调过参数 / 本条存过参数）或参数台开着——与工具页 v1 语义一致：
  * 只点开参数台没动参数，不落存储，下次切回仍算没校色。
+ *
+ * <p>图层撤销 / 重做：结构操作（加 / 删 / 复制 / 排序 / 显隐 / 改名）各算一步，滑杆等连续调整停手 400ms 合成一步；
+ * 只记图层本身，蒙版不进历史（删掉的图层撤销回来蒙版还在：蒙版要到「移除校色」才删）。
  */
-import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowReactive, watch, type Ref } from 'vue'
 import {
   ColorFixMaskLoadError,
   COLORFIX_DEFAULT,
   COLORFIX_EXPORT_MAX_SIDE,
+  COLORFIX_ZERO,
   colorFixDataUrlToBlob,
+  colorFixDominantColor,
   colorFixFilter,
-  colorFixImage,
+  colorFixRenderLayers,
   colorFixSanitize,
   loadColorFix,
   saveColorFix,
   type ColorFixParams,
+  type ColorFixRenderLayer,
 } from '@/utils/colorfix.ts'
 import { downloadImage } from '@/utils/download'
 import {
@@ -50,13 +60,33 @@ import {
   type ColorFixSegmentSuggestion,
 } from './segment.ts'
 import {
+  copyPaintedMask,
   deletePaintedMask,
+  legacySignature,
+  loadLayers,
   loadPaintedMask,
   loadRegion,
   onPaintedMaskChange,
+  saveLayers,
   saveRegion,
   savePaintedMask,
 } from './mask-store.ts'
+import {
+  BASE_LAYER_ID,
+  COLORFIX_LAYERS_MAX,
+  autoLayerName,
+  cloneLayers,
+  isBaseLayer,
+  layerEffective,
+  layerMaskScope,
+  layersFromLegacy,
+  legacyOf,
+  newLayerId,
+  nextLayerIndex,
+  recolorActive,
+  type ColorFixLayer,
+  type ColorFixRecolor,
+} from './layers.ts'
 import { clearStoredColorFix } from './stored.ts'
 import { pointSegmentBlocked } from './point-support.ts'
 import { triggerDownload, withImageExt, withPngExt } from './files.ts'
@@ -66,7 +96,8 @@ export { triggerDownload }
 /** 远端保存（可选）：本机 localStorage 照写，另外停手 500ms 调 save；load 在切到这个键时调一次（本机没有时才采用） */
 export interface ColorFixRemoteSaver {
   load?(key: string): Promise<ColorFixParams | null> | ColorFixParams | null
-  save?(key: string, params: ColorFixParams, region: ColorFixRegion): Promise<unknown> | void
+  /** params / region 为折回旧形状的值（见 layers.ts legacyOf）；layers 为完整图层（新增参数，老实现可忽略） */
+  save?(key: string, params: ColorFixParams, region: ColorFixRegion, layers?: ColorFixLayer[]): Promise<unknown> | void
 }
 
 export interface ResultColorFixOptions {
@@ -89,7 +120,7 @@ export interface ResultColorFixOptions {
   defaults?: ColorFixParams
   /** 没存过选区时的初始选区（如商拍有 mask_url 时传 { mode: 'auto', target: 'garment' }）；默认整图 */
   defaultRegion?: Partial<ColorFixRegion>
-  /** 提供哪些选区方式；默认三种都给（自动识别在接口 404 / segmenter=null 时自动隐藏） */
+  /** 提供哪些选区方式；默认都给（自动识别在接口 404 / segmenter=null 时自动隐藏） */
   regionModes?: ColorFixRegionMode[]
   /** 自动识别函数；null = 不提供自动识别（有 maskUrl 时仍可用那一个目标） */
   segmenter?: ColorFixSegmenter | null
@@ -101,6 +132,35 @@ const PREVIEW_SIDE = 1600
 const QUICK_SIDE = 720
 /** 自动识别等这么久还没出来：换成「首次识别较慢」的提示 */
 const MASK_SLOW_MS = 15_000
+/** 连续调整合成一步撤销的停手时间 */
+const HISTORY_BURST_MS = 400
+const HISTORY_MAX = 60
+
+/** 一个选区图层的蒙版状态 */
+interface LayerMaskState {
+  auto: string
+  paint: string
+  point: string
+  paintVolatile: boolean
+  pointVolatile: boolean
+  busy: boolean
+  error: string
+  retryable: boolean
+  suggest: ColorFixSegmentSuggestion[]
+  slow: boolean
+}
+const MASK_EMPTY: LayerMaskState = {
+  auto: '',
+  paint: '',
+  point: '',
+  paintVolatile: false,
+  pointVolatile: false,
+  busy: false,
+  error: '',
+  retryable: false,
+  suggest: [],
+  slow: false,
+}
 
 export function useResultColorFix(opts: ResultColorFixOptions) {
   const defaults = opts.defaults ?? COLORFIX_DEFAULT
@@ -109,8 +169,15 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   const src = computed(() => (enabled.value && opts.src.value) || '')
   const key = computed(() => opts.key.value || '')
 
-  const params = ref<ColorFixParams>({ ...defaults })
-  const region = ref<ColorFixRegion>(regionDefault())
+  const initialLayers = () => layersFromLegacy(defaults, regionDefault())
+  const firstSelected = (list: ColorFixLayer[]) => list.find((l) => !isBaseLayer(l))?.id ?? BASE_LAYER_ID
+
+  const layers = ref<ColorFixLayer[]>(initialLayers())
+  const selectedLayerId = ref<string>(firstSelected(layers.value))
+  const selectedLayer = computed<ColorFixLayer>(
+    () => layers.value.find((l) => l.id === selectedLayerId.value) ?? layers.value[0]!,
+  )
+
   /** 本条是否校色过：参数台里动过参数 / 选区，或存储里有这条的参数 */
   const touched = ref(false)
   const panelOpen = ref(false)
@@ -122,6 +189,41 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
    * 让位，免得同一份状态出两套弹窗。状态与参数台共用，退出全屏编辑原样保留。
    */
   const fullscreen = ref(false)
+
+  // ---------------- 图层编辑 ----------------
+
+  function updateLayer(id: string, patch: Partial<ColorFixLayer>) {
+    layers.value = layers.value.map((l) => (l.id === id ? { ...l, ...patch } : l))
+  }
+
+  /** 选区变了：自动名字跟着变（识别目标 / 部位） */
+  function renameForRegion(l: ColorFixLayer, region: ColorFixRegion): string {
+    if (!l.autoName || isBaseLayer(l)) return l.name
+    if (region.mode === 'auto') return autoLayerName(region, 0)
+    if (/^选区 \d+$/.test(l.name)) return l.name
+    return autoLayerName(region, nextLayerIndex(layers.value.filter((x) => x.id !== l.id)))
+  }
+
+  /** 当前选中图层的五参数（兼容旧接口：读写都落到选中的那一层） */
+  const params = computed<ColorFixParams>({
+    get: () => selectedLayer.value.params,
+    set: (p) => updateLayer(selectedLayer.value.id, { params: { ...p } }),
+  })
+  /** 当前选中图层的选区（底层恒为整图，写入忽略 mode） */
+  const region = computed<ColorFixRegion>({
+    get: () => selectedLayer.value.region,
+    set: (r) => {
+      const l = selectedLayer.value
+      if (isBaseLayer(l)) return
+      const next: ColorFixRegion = { ...r, mode: r.mode === 'whole' ? l.region.mode : r.mode }
+      updateLayer(l.id, { region: next, name: renameForRegion(l, next) })
+    },
+  })
+  /** 当前选中图层的「替换为目标颜色」；null = 关 */
+  const recolor = computed<ColorFixRecolor | null>({
+    get: () => selectedLayer.value.recolor,
+    set: (r) => updateLayer(selectedLayer.value.id, { recolor: r ? { ...r } : null }),
+  })
 
   // ---------------- 选区与蒙版 ----------------
 
@@ -152,236 +254,482 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       ? colorFixGarmentParts.value
       : [],
   )
-  /** 当前选区实际生效的部位（服务端不支持 / 非服装为空 = 全部服装） */
-  const activeParts = computed(() => colorFixRequestParts(region.value.target, region.value.parts))
   const regionModes = computed<ColorFixRegionMode[]>(() =>
     (opts.regionModes ?? ['whole', 'auto', 'paint', 'point']).filter(
       (m) => m !== 'auto' || autoTargets.value.length > 0,
     ),
   )
 
-  const autoMask = ref('')
-  const maskBusy = ref(false)
-  const maskError = ref('')
-  /** 识别失败可以手动重试（超时 / 6001 服务不可用 / 太频繁等；4001 没识别到不给） */
-  const maskRetryable = ref(false)
-  /** 识别失败时建议的替代方式（4001 没识别到：换人物 / 点选 / 手动涂抹） */
-  const maskSuggest = ref<ColorFixSegmentSuggestion[]>([])
-  /** 识别已等了 {@link MASK_SLOW_MS} 以上（首次识别慢，面板换成「约需 1 分钟」的提示） */
-  const maskSlow = ref(false)
-  /** 手动重试计数：变了就重新识别（失败的不进缓存，会真正重发） */
-  const maskRetryTick = ref(0)
-  const paintedMask = ref('')
-  /** 涂抹蒙版只留在内存（太大 / IndexedDB 不可用），刷新后会丢 */
-  const paintedVolatile = ref(false)
+  /** 各选区图层的蒙版状态（按图层 id） */
+  const masks = shallowReactive(new Map<string, LayerMaskState>())
+  const maskOf = (id: string): LayerMaskState => masks.get(id) ?? MASK_EMPTY
+  function patchMask(id: string, patch: Partial<LayerMaskState>) {
+    masks.set(id, { ...maskOf(id), ...patch })
+  }
 
-  /** 涂抹蒙版的作用域：结果键 + 原图（同一记录多张候选各有各的涂抹）；没有键时只按原图（只在内存） */
-  const paintScope = computed(() => (src.value ? `${key.value}::${src.value}` : ''))
-
-  /** 当前生效的蒙版地址；整图 / 蒙版未就绪为 '' */
-  const effectiveMask = computed(() => {
-    const m = region.value.mode
-    if (m === 'auto') return autoMask.value
-    if (m === 'paint') return paintedMask.value
-    if (m === 'point') return pointMask.value
+  /** 某层当前生效的蒙版；底层 / 未就绪为 '' */
+  function effectiveMaskOf(l: ColorFixLayer): string {
+    if (isBaseLayer(l)) return ''
+    const m = maskOf(l.id)
+    if (l.region.mode === 'auto') return m.auto
+    if (l.region.mode === 'paint') return m.paint
+    if (l.region.mode === 'point') return m.point
     return ''
-  })
-  /** 选了局部选区但蒙版还没就绪 */
-  const maskPending = computed(() => region.value.mode !== 'whole' && !effectiveMask.value)
-
-  // 选区方式不再可用（如接口 404）时回到整图
-  watch(regionModes, (modes) => {
-    if (!modes.includes(region.value.mode)) region.value = { ...region.value, mode: 'whole' }
-  })
-
-  let segTicket = 0
-  let segAbort: AbortController | null = null
-  let slowTimer: ReturnType<typeof setTimeout> | null = null
-  function stopSegment() {
-    segAbort?.abort()
-    segAbort = null
-    if (slowTimer) clearTimeout(slowTimer)
-    slowTimer = null
-    maskSlow.value = false
   }
+  const pendingOf = (l: ColorFixLayer) => !isBaseLayer(l) && !effectiveMaskOf(l)
+
+  // --- 自动识别：每层一条，换目标 / 部位 / 图 / 重试就重来 ---
+
+  interface SegCtl {
+    ticket: number
+    abort: AbortController | null
+    slowTimer: ReturnType<typeof setTimeout> | null
+    sig: string
+  }
+  const segCtls = new Map<string, SegCtl>()
+  const retryTicks = shallowReactive(new Map<string, number>())
+
+  function stopSeg(ctl: SegCtl) {
+    ctl.abort?.abort()
+    ctl.abort = null
+    if (ctl.slowTimer) clearTimeout(ctl.slowTimer)
+    ctl.slowTimer = null
+  }
+
+  async function runAuto(l: ColorFixLayer, ctl: SegCtl) {
+    const my = ++ctl.ticket
+    // 上一轮的 abort 推迟到这一轮登记之后：同一份识别（键没变，如部位数组换了引用）接着等，不从头重来
+    const prevAbort = ctl.abort
+    ctl.abort = null
+    if (ctl.slowTimer) clearTimeout(ctl.slowTimer)
+    ctl.slowTimer = null
+    patchMask(l.id, { error: '', retryable: false, suggest: [], slow: false })
+    const image = src.value
+    if (l.region.mode !== 'auto' || !image) {
+      prevAbort?.abort()
+      patchMask(l.id, { busy: false })
+      return
+    }
+    const target = l.region.target
+    const parts = colorFixRequestParts(target, l.region.parts)
+    const presetHit = target === maskTarget ? colorFixPresetFor(parts, presetMask.value, presetParts.value) : ''
+    if (presetHit) {
+      prevAbort?.abort()
+      patchMask(l.id, { auto: presetHit, busy: false })
+      return
+    }
+    patchMask(l.id, { auto: '' })
+    if (!segmenter || !colorFixSegmentSupported.value) {
+      prevAbort?.abort()
+      patchMask(l.id, { busy: false, error: '当前环境不支持自动识别，请改用手动涂抹' })
+      return
+    }
+    patchMask(l.id, { busy: true })
+    const abort = new AbortController()
+    ctl.abort = abort
+    ctl.slowTimer = setTimeout(() => {
+      if (my === ctl.ticket) patchMask(l.id, { slow: true })
+    }, MASK_SLOW_MS)
+    try {
+      const call = segmenter(image, target, parts, { signal: abort.signal })
+      prevAbort?.abort()
+      const url = await call
+      if (my === ctl.ticket) patchMask(l.id, { auto: url })
+    } catch (err) {
+      if (my === ctl.ticket && !abort.signal.aborted) {
+        const f = colorFixSegmentFailure(err, target)
+        if (f)
+          patchMask(l.id, {
+            error: f.message,
+            retryable: f.retryable && colorFixSegmentSupported.value,
+            suggest: f.suggest ?? [],
+          })
+      }
+    } finally {
+      prevAbort?.abort()
+      if (my === ctl.ticket) {
+        if (ctl.slowTimer) clearTimeout(ctl.slowTimer)
+        ctl.slowTimer = null
+        if (ctl.abort === abort) ctl.abort = null
+        patchMask(l.id, { busy: false, slow: false })
+      }
+    }
+  }
+
+  const autoSigs = computed(() =>
+    layers.value
+      .filter((l) => !isBaseLayer(l))
+      .map((l) => {
+        const parts = l.region.mode === 'auto' ? colorFixRequestParts(l.region.target, l.region.parts).join(',') : ''
+        const sig =
+          l.region.mode === 'auto'
+            ? `auto|${l.region.target}|${parts}|${src.value}|${presetMask.value}|${JSON.stringify(presetParts.value)}|${retryTicks.get(l.id) ?? 0}`
+            : `off|${src.value}`
+        return [l.id, sig] as const
+      }),
+  )
   watch(
-    () =>
-      [
-        region.value.mode,
-        region.value.target,
-        src.value,
-        presetMask.value,
-        activeParts.value.join(','),
-        presetParts.value,
-        maskRetryTick.value,
-      ] as const,
-    async ([mode, target, image, preset]) => {
-      const my = ++segTicket
-      // 换目标 / 换图 / 切走 / 关闭（src 置空）：放弃上一轮识别（网关超时的退避重发一并停掉）。
-      // 上一轮的 abort 推迟到这一轮登记之后：同一份识别（键没变，如部位数组换了引用）接着等，不从头重来
-      const prevAbort = segAbort
-      segAbort = null
-      stopSegment()
-      maskError.value = ''
-      maskRetryable.value = false
-      maskSuggest.value = []
-      if (mode !== 'auto' || !image) {
-        prevAbort?.abort()
-        maskBusy.value = false
-        return
+    autoSigs,
+    (list) => {
+      const alive = new Set(list.map(([id]) => id))
+      for (const [id, ctl] of segCtls) {
+        if (alive.has(id)) continue
+        ctl.ticket += 1
+        stopSeg(ctl)
+        segCtls.delete(id)
       }
-      const parts = activeParts.value
-      const presetHit = target === maskTarget ? colorFixPresetFor(parts, preset, presetParts.value) : ''
-      if (presetHit) {
-        prevAbort?.abort()
-        autoMask.value = presetHit
-        maskBusy.value = false
-        return
-      }
-      autoMask.value = ''
-      if (!segmenter || !colorFixSegmentSupported.value) {
-        prevAbort?.abort()
-        maskError.value = '当前环境不支持自动识别，请改用手动涂抹'
-        return
-      }
-      maskBusy.value = true
-      const ctrl = new AbortController()
-      segAbort = ctrl
-      slowTimer = setTimeout(() => {
-        if (my === segTicket) maskSlow.value = true
-      }, MASK_SLOW_MS)
-      try {
-        const call = segmenter(image, target, parts, { signal: ctrl.signal })
-        prevAbort?.abort()
-        const url = await call
-        if (my === segTicket) autoMask.value = url
-      } catch (err) {
-        if (my === segTicket && !ctrl.signal.aborted) {
-          const f = colorFixSegmentFailure(err, target)
-          if (f) {
-            maskError.value = f.message
-            maskRetryable.value = f.retryable && colorFixSegmentSupported.value
-            maskSuggest.value = f.suggest ?? []
-          }
+      for (const [id, sig] of list) {
+        let ctl = segCtls.get(id)
+        if (ctl && ctl.sig === sig) continue
+        if (!ctl) {
+          ctl = { ticket: 0, abort: null, slowTimer: null, sig }
+          segCtls.set(id, ctl)
         }
-      } finally {
-        prevAbort?.abort()
-        if (my === segTicket) {
-          maskBusy.value = false
-          if (slowTimer) clearTimeout(slowTimer)
-          slowTimer = null
-          maskSlow.value = false
-          if (segAbort === ctrl) segAbort = null
-        }
+        ctl.sig = sig
+        const l = layers.value.find((x) => x.id === id)
+        if (l) void runAuto(l, ctl)
       }
     },
     { immediate: true },
   )
+
+  // --- 手动蒙版（涂抹 / 点选）：每层两份作用域，换图 / 换键就重读 ---
+
+  const storeTickets = new Map<string, number>()
+  async function loadStoredMasks(id: string) {
+    const my = (storeTickets.get(id) ?? 0) + 1
+    storeTickets.set(id, my)
+    const paintScope = layerMaskScope(key.value, src.value, id, 'paint')
+    const pointScope = layerMaskScope(key.value, src.value, id, 'point')
+    patchMask(id, { paint: '', point: '', paintVolatile: false, pointVolatile: false })
+    const [paint, point] = await Promise.all([
+      paintScope ? loadPaintedMask(paintScope) : '',
+      pointScope ? loadPaintedMask(pointScope) : '',
+    ])
+    if (storeTickets.get(id) === my) patchMask(id, { paint, point })
+  }
+  const storeSigs = computed(() =>
+    layers.value.filter((l) => !isBaseLayer(l)).map((l) => `${l.id}|${key.value}|${src.value}`),
+  )
+  const storeLoaded = new Map<string, string>()
+  watch(
+    storeSigs,
+    (list) => {
+      const alive = new Set<string>()
+      for (const sig of list) {
+        const id = sig.slice(0, sig.indexOf('|'))
+        alive.add(id)
+        if (storeLoaded.get(id) === sig) continue
+        storeLoaded.set(id, sig)
+        void loadStoredMasks(id)
+      }
+      for (const id of [...storeLoaded.keys()]) {
+        if (alive.has(id)) continue
+        storeLoaded.delete(id)
+        storeTickets.set(id, (storeTickets.get(id) ?? 0) + 1)
+        masks.delete(id)
+      }
+    },
+    { immediate: true },
+  )
+
+  // 别处替换 / 删除 / 淘汰了同一作用域的蒙版（旧 objectURL 会被回收）：重新读一次，不清空现有值、不动 volatile 标记
+  const stopMaskSync = onPaintedMaskChange((scope) => {
+    for (const l of layers.value) {
+      if (isBaseLayer(l)) continue
+      for (const mode of ['paint', 'point'] as const) {
+        if (scope !== layerMaskScope(key.value, src.value, l.id, mode)) continue
+        const my = (storeTickets.get(l.id) ?? 0) + 1
+        storeTickets.set(l.id, my)
+        void loadPaintedMask(scope).then((url) => {
+          if (storeTickets.get(l.id) === my) patchMask(l.id, { [mode]: url })
+        })
+      }
+    }
+  })
   onBeforeUnmount(() => {
-    segTicket += 1
-    stopSegment()
+    stopMaskSync()
+    for (const ctl of segCtls.values()) {
+      ctl.ticket += 1
+      stopSeg(ctl)
+    }
   })
 
-  /** 识别失败后手动重试 */
-  function retryMask() {
-    if (region.value.mode === 'auto' && !maskBusy.value) maskRetryTick.value += 1
+  // --- 选中图层的蒙版状态（参数台 / 全屏状态行沿用旧字段名） ---
+
+  const selMask = computed(() => maskOf(selectedLayer.value.id))
+  const selAuto = computed(() => selectedLayer.value.region.mode === 'auto' && !isBaseLayer(selectedLayer.value))
+  const maskBusy = computed(() => selAuto.value && selMask.value.busy)
+  const maskError = computed(() => (selAuto.value ? selMask.value.error : ''))
+  /** 识别失败可以手动重试（超时 / 6001 服务不可用 / 太频繁等；4001 没识别到不给） */
+  const maskRetryable = computed(() => selAuto.value && selMask.value.retryable)
+  /** 识别失败时建议的替代方式（4001 没识别到：换人物 / 点选 / 手动涂抹） */
+  const maskSuggest = computed(() => (selAuto.value ? selMask.value.suggest : []))
+  /** 识别已等了 {@link MASK_SLOW_MS} 以上（首次识别慢，面板换成「约需 1 分钟」的提示） */
+  const maskSlow = computed(() => selAuto.value && selMask.value.slow)
+  const paintedMask = computed(() => selMask.value.paint)
+  /** 涂抹蒙版只留在内存（太大 / IndexedDB 不可用），刷新后会丢 */
+  const paintedVolatile = computed(() => selMask.value.paintVolatile)
+  const pointMask = computed(() => selMask.value.point)
+  const pointVolatile = computed(() => selMask.value.pointVolatile)
+  /** 选中图层当前生效的蒙版地址；底层 / 蒙版未就绪为 ''（全屏「显示选区」用） */
+  const effectiveMask = computed(() => effectiveMaskOf(selectedLayer.value))
+
+  /** 识别失败后手动重试（选中图层） */
+  function retryMask(layerId = selectedLayer.value.id) {
+    const l = layers.value.find((x) => x.id === layerId)
+    if (l && l.region.mode === 'auto' && !maskOf(l.id).busy) retryTicks.set(l.id, (retryTicks.get(l.id) ?? 0) + 1)
   }
 
-  let paintTicket = 0
-  watch(
-    paintScope,
-    async (scope) => {
-      const my = ++paintTicket
-      paintedMask.value = ''
-      paintedVolatile.value = false
-      if (!scope) return
-      const url = await loadPaintedMask(scope)
-      if (my === paintTicket) paintedMask.value = url
-    },
-    { immediate: true },
-  )
+  // ---------------- 图层操作 ----------------
 
-  /** 手动涂抹完成：存蒙版（IndexedDB / 内存）并切到「手动涂抹」 */
-  async function applyPaintedMask(blob: Blob) {
-    const scope = paintScope.value
+  const canAddLayer = computed(() => layers.value.length < COLORFIX_LAYERS_MAX)
+
+  // 撤销 / 重做（只记图层）
+  type Snapshot = { layers: ColorFixLayer[]; selected: string }
+  const past = ref<Snapshot[]>([])
+  const future = ref<Snapshot[]>([])
+  let committed = JSON.stringify(layers.value)
+  let committedSnap: Snapshot = { layers: cloneLayers(layers.value), selected: selectedLayerId.value }
+  let burstTimer: ReturnType<typeof setTimeout> | null = null
+  /** 正在合成一步连续调整（撤销按钮据此可点） */
+  const bursting = ref(false)
+  const snapshot = (): Snapshot => ({ layers: cloneLayers(layers.value), selected: selectedLayerId.value })
+  function markCommitted() {
+    committed = JSON.stringify(layers.value)
+    committedSnap = snapshot()
+  }
+  function flushBurst() {
+    if (!burstTimer) return
+    clearTimeout(burstTimer)
+    burstTimer = null
+    bursting.value = false
+    markCommitted()
+  }
+  function pushPast(s: Snapshot) {
+    past.value = [...past.value, s].slice(-HISTORY_MAX)
+    future.value = []
+  }
+  function resetHistory() {
+    if (burstTimer) clearTimeout(burstTimer)
+    burstTimer = null
+    bursting.value = false
+    past.value = []
+    future.value = []
+    markCommitted()
+  }
+  /** 连续调整（watch 里调）：一段停手前的改动合成一步 */
+  function noteEdit() {
+    if (JSON.stringify(layers.value) === committed) return
+    if (!burstTimer) pushPast(committedSnap)
+    else clearTimeout(burstTimer)
+    bursting.value = true
+    burstTimer = setTimeout(() => {
+      burstTimer = null
+      bursting.value = false
+      markCommitted()
+    }, HISTORY_BURST_MS)
+  }
+  /** 结构操作：独立一步 */
+  function structural(run: () => void) {
+    flushBurst()
+    const before = snapshot()
+    run()
+    if (JSON.stringify(layers.value) === committed) return
+    pushPast(before)
+    markCommitted()
+  }
+  function restore(s: Snapshot) {
+    layers.value = cloneLayers(s.layers)
+    selectedLayerId.value = layers.value.some((l) => l.id === s.selected) ? s.selected : BASE_LAYER_ID
+    markCommitted()
+  }
+  const canUndoLayers = computed(() => past.value.length > 0 || bursting.value)
+  const canRedoLayers = computed(() => future.value.length > 0)
+  function undoLayers() {
+    flushBurst()
+    const prev = past.value[past.value.length - 1]
+    if (!prev) return
+    past.value = past.value.slice(0, -1)
+    future.value = [...future.value, snapshot()]
+    restore(prev)
+  }
+  function redoLayers() {
+    flushBurst()
+    const next = future.value[future.value.length - 1]
+    if (!next) return
+    future.value = future.value.slice(0, -1)
+    past.value = [...past.value, snapshot()]
+    restore(next)
+  }
+
+  function selectLayer(id: string) {
+    if (layers.value.some((l) => l.id === id)) selectedLayerId.value = id
+  }
+
+  /**
+   * 新建选区图层（参数从零起调）并选中；超过上限返回 ''。mode = 点选 / 涂抹 时直接打开对应弹窗。
+   */
+  function addLayer(mode: 'auto' | 'point' | 'paint' = 'point', init: Partial<ColorFixRegion> = {}): string {
+    if (!canAddLayer.value) return ''
+    const target = init.target ?? (autoTargets.value.includes('garment') ? 'garment' : autoTargets.value[0] ?? 'garment')
+    const r: ColorFixRegion = { ...COLORFIX_REGION_DEFAULT, ...init, mode, target }
+    const l: ColorFixLayer = {
+      id: newLayerId(),
+      name: autoLayerName(r, nextLayerIndex(layers.value)),
+      autoName: true,
+      visible: true,
+      params: { ...COLORFIX_ZERO },
+      region: r,
+      recolor: null,
+    }
+    structural(() => {
+      layers.value = [...layers.value, l]
+      selectedLayerId.value = l.id
+    })
+    if (mode === 'point' && src.value && !pointSegmentBlocked.value) pointOpen.value = true
+    if (mode === 'paint' && src.value) painterOpen.value = true
+    return l.id
+  }
+
+  /** 复制图层（蒙版一并复制到新图层名下）；底层不能复制，超过上限返回 '' */
+  function duplicateLayer(id: string): string {
+    const at = layers.value.findIndex((l) => l.id === id)
+    const from = layers.value[at]
+    if (!from || isBaseLayer(from) || !canAddLayer.value) return ''
+    const copy: ColorFixLayer = {
+      ...cloneLayers([from])[0]!,
+      id: newLayerId(),
+      name: `${from.name} 副本`.slice(0, 24),
+      autoName: false,
+    }
+    structural(() => {
+      const list = [...layers.value]
+      list.splice(at + 1, 0, copy)
+      layers.value = list
+      selectedLayerId.value = copy.id
+    })
+    const k = key.value
+    const image = src.value
+    void (async () => {
+      for (const mode of ['paint', 'point'] as const) {
+        const fromScope = layerMaskScope(k, image, from.id, mode)
+        const toScope = layerMaskScope(k, image, copy.id, mode)
+        if (!fromScope || !toScope) continue
+        const saved = k
+          ? await copyPaintedMask(fromScope, toScope)
+          : maskOf(from.id)[mode]
+            ? { url: maskOf(from.id)[mode], persisted: false }
+            : null
+        if (saved && image === src.value && layers.value.some((l) => l.id === copy.id))
+          patchMask(copy.id, { [mode]: saved.url, [`${mode}Volatile`]: !saved.persisted })
+      }
+    })()
+    return copy.id
+  }
+
+  /** 删除选区图层（底层不能删）；蒙版留着，撤销回来还能用 */
+  function removeLayer(id: string) {
+    const at = layers.value.findIndex((l) => l.id === id)
+    const l = layers.value[at]
+    if (!l || isBaseLayer(l)) return
+    structural(() => {
+      const list = layers.value.filter((x) => x.id !== id)
+      layers.value = list
+      if (selectedLayerId.value === id) selectedLayerId.value = (list[at] ?? list[at - 1] ?? list[0]!).id
+    })
+  }
+
+  /** 上移（delta = 1，往上叠 = 后合成）/ 下移（−1）；底层固定在最下 */
+  function moveLayer(id: string, delta: number) {
+    const list = [...layers.value]
+    const at = list.findIndex((l) => l.id === id)
+    const to = at + delta
+    if (at <= 0 || to <= 0 || to >= list.length) return
+    structural(() => {
+      const [item] = list.splice(at, 1)
+      list.splice(to, 0, item!)
+      layers.value = list
+    })
+  }
+
+  function setLayerVisible(id: string, visible: boolean) {
+    structural(() => updateLayer(id, { visible }))
+  }
+
+  function renameLayer(id: string, name: string) {
+    const n = name.trim().slice(0, 24)
+    const l = layers.value.find((x) => x.id === id)
+    if (!l || isBaseLayer(l)) return
+    structural(() => updateLayer(id, n ? { name: n, autoName: false } : { name: renameForRegion({ ...l, autoName: true }, l.region), autoName: true }))
+  }
+
+  function setLayerRecolor(id: string, r: ColorFixRecolor | null) {
+    updateLayer(id, { recolor: r ? { ...r } : null })
+  }
+
+  /** 选中图层若是底层，就先新建一个指定方式的选区图层（旧入口「涂抹 / 点选」落在底层上时） */
+  function ensureSelectionLayer(mode: 'point' | 'paint'): ColorFixLayer | null {
+    const l = selectedLayer.value
+    if (!isBaseLayer(l)) return l
+    const id = addLayer(mode)
+    return layers.value.find((x) => x.id === id) ?? null
+  }
+
+  // ---------------- 涂抹 / 点选的结果 ----------------
+
+  async function applyMask(mode: 'paint' | 'point', blob: Blob) {
+    const l = ensureSelectionLayer(mode)
+    if (!l) return
+    const k = key.value
+    const image = src.value
+    const scope = layerMaskScope(k, image, l.id, mode)
     if (!scope) return
-    const { url, persisted } = key.value
-      ? await savePaintedMask(scope, blob)
-      : { url: URL.createObjectURL(blob), persisted: false }
-    if (scope !== paintScope.value) return
-    paintedMask.value = url
-    paintedVolatile.value = !persisted
-    region.value = { ...region.value, mode: 'paint' }
-    painterOpen.value = false
+    const { url, persisted } = k ? await savePaintedMask(scope, blob) : { url: URL.createObjectURL(blob), persisted: false }
+    if (image !== src.value || k !== key.value || !layers.value.some((x) => x.id === l.id)) return
+    patchMask(l.id, mode === 'paint' ? { paint: url, paintVolatile: !persisted } : { point: url, pointVolatile: !persisted })
+    const cur = layers.value.find((x) => x.id === l.id)!
+    if (cur.region.mode !== mode) {
+      const next = { ...cur.region, mode }
+      updateLayer(l.id, { region: next, name: renameForRegion(cur, next) })
+    }
+    if (mode === 'paint') painterOpen.value = false
+    else pointOpen.value = false
+  }
+
+  /** 手动涂抹完成：存蒙版（IndexedDB / 内存）并把选中图层切到「手动涂抹」 */
+  function applyPaintedMask(blob: Blob) {
+    return applyMask('paint', blob)
+  }
+
+  /** 点选完成：存蒙版并把选中图层切到「点选」 */
+  function applyPointMask(blob: Blob) {
+    return applyMask('point', blob)
   }
 
   async function clearPaintedMask() {
-    const scope = paintScope.value
-    paintedMask.value = ''
+    const l = selectedLayer.value
+    const scope = layerMaskScope(key.value, src.value, l.id, 'paint')
+    patchMask(l.id, { paint: '' })
     if (scope) await deletePaintedMask(scope)
   }
 
+  /** 打开涂抹（选中的是底层时先新建一个涂抹图层） */
   function openPainter() {
-    if (src.value) painterOpen.value = true
+    if (!src.value) return
+    if (isBaseLayer(selectedLayer.value)) addLayer('paint')
+    else painterOpen.value = true
   }
 
-  // 点选蒙版：与涂抹同一个 maskStore（IndexedDB / 内存），作用域 `<key>::point::<原图>`——
-  // 仍以 `<key>::` 开头，clearStoredColorFix / deletePaintedMasksOf 一并清掉
-  const pointMask = ref('')
-  const pointVolatile = ref(false)
-  const pointScope = computed(() => (src.value ? `${key.value}::point::${src.value}` : ''))
-  let pointTicket = 0
-  watch(
-    pointScope,
-    async (scope) => {
-      const my = ++pointTicket
-      pointMask.value = ''
-      pointVolatile.value = false
-      if (!scope) return
-      const url = await loadPaintedMask(scope)
-      if (my === pointTicket) pointMask.value = url
-    },
-    { immediate: true },
-  )
-
-  /** 点选完成：存蒙版并切到「点选」 */
-  async function applyPointMask(blob: Blob) {
-    const scope = pointScope.value
-    if (!scope) return
-    const { url, persisted } = key.value
-      ? await savePaintedMask(scope, blob)
-      : { url: URL.createObjectURL(blob), persisted: false }
-    if (scope !== pointScope.value) return
-    pointMask.value = url
-    pointVolatile.value = !persisted
-    region.value = { ...region.value, mode: 'point' }
-    pointOpen.value = false
-  }
-
-  /** 打开点选（浏览器不支持时不开） */
+  /** 打开点选（浏览器不支持时不开；选中的是底层时先新建一个点选图层） */
   function openPointSelect() {
-    if (src.value && !pointSegmentBlocked.value) pointOpen.value = true
+    if (!src.value || pointSegmentBlocked.value) return
+    if (isBaseLayer(selectedLayer.value)) addLayer('point')
+    else pointOpen.value = true
   }
   function setPointOpen(v: boolean) {
     pointOpen.value = v
   }
-
-  // 别处替换 / 删除 / 淘汰了同一作用域的蒙版（旧 objectURL 会被回收）：重新读一次，不清空现有值、不动 volatile 标记
-  const stopMaskSync = onPaintedMaskChange((scope) => {
-    if (scope === paintScope.value) {
-      const my = ++paintTicket
-      void loadPaintedMask(scope).then((url) => {
-        if (my === paintTicket) paintedMask.value = url
-      })
-    }
-    if (scope === pointScope.value) {
-      const my = ++pointTicket
-      void loadPaintedMask(scope).then((url) => {
-        if (my === pointTicket) pointMask.value = url
-      })
-    }
-  })
-  onBeforeUnmount(stopMaskSync)
 
   // 原图换了（切记录 / 切候选）：点选 / 涂抹弹窗是对着旧图画的，直接关掉，免得把旧图的选区存到新图名下
   watch(src, (next, prev) => {
@@ -390,33 +738,41 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     pointOpen.value = false
   })
 
-  // ---------------- 参数持久化 ----------------
+  // ---------------- 持久化 ----------------
 
   let remoteTimer: ReturnType<typeof setTimeout> | null = null
   function persist() {
     const k = key.value
     if (!k || !touched.value) return
-    saveColorFix(k, params.value)
-    saveRegion(k, region.value)
+    const leg = legacyOf(layers.value)
+    saveColorFix(k, leg.params)
+    saveRegion(k, leg.region)
+    saveLayers(k, layers.value, selectedLayerId.value, legacySignature(leg.params, leg.region))
     if (opts.saver?.save) {
       if (remoteTimer) clearTimeout(remoteTimer)
-      const p = { ...params.value }
-      const r = { ...region.value }
+      const snap = cloneLayers(layers.value)
       remoteTimer = setTimeout(() => {
         remoteTimer = null
-        void Promise.resolve(opts.saver?.save?.(k, p, r)).catch(() => {})
+        void Promise.resolve(opts.saver?.save?.(k, leg.params, leg.region, snap)).catch(() => {})
       }, 500)
     }
   }
 
   let loading = false
+  function loadFrom(list: ColorFixLayer[], selected?: string) {
+    layers.value = list
+    selectedLayerId.value = selected && list.some((l) => l.id === selected) ? selected : firstSelected(list)
+    resetHistory()
+  }
   watch(
     key,
     async (k) => {
       loading = true
       const stored = k ? loadColorFix(k) : null
-      params.value = stored ? { ...stored } : { ...defaults }
-      region.value = (k ? loadRegion(k) : null) ?? regionDefault()
+      const storedRegion = k ? loadRegion(k) : null
+      const stack = k && stored ? loadLayers(k, legacySignature(stored, storedRegion)) : null
+      if (stack) loadFrom(stack.layers, stack.selected)
+      else loadFrom(layersFromLegacy(stored ? { ...stored } : defaults, storedRegion ?? regionDefault()))
       touched.value = !!stored
       panelOpen.value = false
       painterOpen.value = false
@@ -427,7 +783,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
         const remote = colorFixSanitize(await Promise.resolve(opts.saver.load(k)).catch(() => null))
         if (remote && key.value === k && !touched.value) {
           loading = true
-          params.value = remote
+          loadFrom(layersFromLegacy(remote, regionDefault()))
           touched.value = true
           loading = false
           saveColorFix(k, remote)
@@ -437,16 +793,22 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     { immediate: true },
   )
 
-  // 参数台里调参 / 改选区：标记校色过并落存储
+  // 参数台里调参 / 改选区 / 改图层：标记校色过、记撤销、落存储
   watch(
-    [params, region],
+    layers,
     () => {
-      if (loading || !panelOpen.value) return
+      if (loading) return
+      noteEdit()
+      if (!panelOpen.value) return
       touched.value = true
       persist()
     },
     { deep: true },
   )
+  // 只换了选中的图层：记一下（刷新后回到同一层），不算校色过
+  watch(selectedLayerId, () => {
+    if (!loading && touched.value && key.value) persist()
+  })
 
   function open() {
     if (src.value) panelOpen.value = true
@@ -470,41 +832,39 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   /** 收起参数台：调过才落存储（只开了面板没动参数不落默认值） */
   function close() {
     panelOpen.value = false
+    flushBurst()
     persist()
   }
 
+  /** 选中图层的参数恢复默认：底层回 defaults，选区图层回零 */
   function resetParams() {
-    params.value = { ...defaults }
+    params.value = { ...(isBaseLayer(selectedLayer.value) ? defaults : COLORFIX_ZERO) }
   }
 
   /**
-   * 移除这条的校色：删掉本机存的参数、选区与所有涂抹蒙版，状态回到原图（参数台 / 涂抹弹窗一并收起，不落存储）。
+   * 移除这条的校色：删掉本机存的参数、选区、图层与所有涂抹蒙版，状态回到原图（参数台 / 涂抹弹窗一并收起，不落存储）。
    * 远端 saver 存过的不动（没有删除口），下次切回本机没有时仍会按 saver.load 还原。
    */
   async function clear() {
     const k = key.value
+    const image = src.value
+    const scopes = layers.value
+      .filter((l) => !isBaseLayer(l))
+      .flatMap((l) => [layerMaskScope(k, image, l.id, 'paint'), layerMaskScope(k, image, l.id, 'point')])
+      .filter(Boolean)
     if (remoteTimer) clearTimeout(remoteTimer)
     remoteTimer = null
     loading = true
     panelOpen.value = false
     painterOpen.value = false
     fullscreen.value = false
-    params.value = { ...defaults }
-    region.value = regionDefault()
-    touched.value = false
-    paintedMask.value = ''
-    paintedVolatile.value = false
     pointOpen.value = false
-    pointMask.value = ''
-    pointVolatile.value = false
+    loadFrom(initialLayers())
+    touched.value = false
+    for (const id of [...masks.keys()]) patchMask(id, { paint: '', point: '', paintVolatile: false, pointVolatile: false })
     loading = false
-    const scope = paintScope.value
-    const pScope = pointScope.value
     if (k) await clearStoredColorFix(k)
-    else {
-      if (scope) await deletePaintedMask(scope)
-      if (pScope) await deletePaintedMask(pScope)
-    }
+    else for (const s of scopes) await deletePaintedMask(s)
   }
 
   /** 给模板 / 子组件用的写入口（避免直接改传入对象上的 ref） */
@@ -514,9 +874,34 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   function setRegion(r: ColorFixRegion) {
     region.value = r
   }
+  function setRecolor(r: ColorFixRecolor | null) {
+    recolor.value = r
+  }
   function setPainterOpen(v: boolean) {
     painterOpen.value = v
   }
+
+  // ---------------- 替换颜色：自动源色（选中图层选区内的主色，色块显示用） ----------------
+
+  const recolorAutoSource = ref<string | null>(null)
+  let domTicket = 0
+  watch(
+    () => {
+      const l = selectedLayer.value
+      const want = !!l.recolor && l.recolor.source === null
+      return [want, src.value, effectiveMaskOf(l), isBaseLayer(l), l.region.invert] as const
+    },
+    async ([want, image, mask, base, invert]) => {
+      const my = ++domTicket
+      if (!want || !image || (!base && !mask)) {
+        recolorAutoSource.value = null
+        return
+      }
+      const hex = await colorFixDominantColor(image, base ? null : mask, !base && invert)
+      if (my === domTicket) recolorAutoSource.value = hex
+    },
+    { immediate: true },
+  )
 
   // ---------------- 烘图 ----------------
 
@@ -525,13 +910,39 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   /** 是否可以给「校色对比」档（= active） */
   const compareAvailable = active
 
-  const maskOpts = computed(() => ({ invert: region.value.invert, feather: region.value.feather }))
+  /** 生效的图层（可见且会改图），自下而上 */
+  const plan = computed(() =>
+    layers.value.filter(layerEffective).map((l) => ({ layer: l, mask: effectiveMaskOf(l), pending: pendingOf(l) })),
+  )
+  /** 有生效的选区图层蒙版还没就绪：导出拒绝（预览先跳过这些层） */
+  const maskPending = computed(() => plan.value.some((p) => p.pending))
+  /** 预览 / 导出的渲染输入（跳过未就绪的层） */
+  const renderLayers = computed<ColorFixRenderLayer[]>(() =>
+    plan.value
+      .filter((p) => !p.pending)
+      .map(({ layer: l, mask }) => ({
+        params: { ...l.params },
+        mask: mask || null,
+        invert: mask ? l.region.invert : false,
+        feather: mask ? l.region.feather : 0,
+        recolor: recolorActive(l.recolor) ? { ...l.recolor } : null,
+      })),
+  )
+  /** 只有一层整图调整、没有替换颜色：CSS filter 就能即时预览 */
+  const filterOnly = computed(() => {
+    const list = renderLayers.value
+    return list.length === 1 && !list[0]!.mask && !list[0]!.recolor
+  })
+
   const currentKey = computed(() => {
-    if (!active.value || maskPending.value) return ''
-    const p = params.value
-    const r = region.value
-    const m = effectiveMask.value
-    return `${src.value}|${m}|${m ? `${r.invert ? 'i' : ''}${r.feather}` : ''}|${p.hue}|${p.sat}|${p.light}|${p.bright}|${p.contrast}`
+    if (!active.value || !renderLayers.value.length) return ''
+    return `${src.value}${renderLayers.value
+      .map((l) => {
+        const p = l.params
+        const rc = l.recolor ? `${l.recolor.source ?? 'a'}>${l.recolor.target}@${l.recolor.strength}` : ''
+        return `|${l.mask ?? ''}|${l.mask ? `${l.invert ? 'i' : ''}${l.feather}` : ''}|${p.hue}|${p.sat}|${p.light}|${p.bright}|${p.contrast}|${rc}`
+      })
+      .join('#')}`
   })
 
   const baked = ref('')
@@ -563,12 +974,10 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       baking.value = true
       const my = ticket
       const image = src.value
-      const p = { ...params.value }
-      const mask = effectiveMask.value || null
-      const mo = { ...maskOpts.value }
+      const list = renderLayers.value.map((l) => ({ ...l }))
       const run = (side: number, final: boolean) => async () => {
         try {
-          const out = await colorFixImage(image, p, mask, side, mo)
+          const out = await colorFixRenderLayers(image, list, side)
           if (my !== ticket) return
           baked.value = out
           bakedSrc.value = image
@@ -582,7 +991,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
           if (my === ticket && final) baking.value = false
         }
       }
-      if (mask) {
+      if (!filterOnly.value) {
         timers.push(setTimeout(run(QUICK_SIDE, false), 60))
         timers.push(setTimeout(run(PREVIEW_SIDE, true), 260))
       } else {
@@ -596,6 +1005,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     clearTimers()
     ticket += 1
     if (remoteTimer) clearTimeout(remoteTimer)
+    if (burstTimer) clearTimeout(burstTimer)
   })
 
   /** 当前参数的烘图已就绪 */
@@ -606,14 +1016,14 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     const image = src.value || opts.src.value || ''
     if (!currentKey.value) return image
     if (ready.value) return baked.value
-    if (effectiveMask.value && !failed.value && bakedSrc.value === image && baked.value) return baked.value
+    if (!filterOnly.value && !failed.value && bakedSrc.value === image && baked.value) return baked.value
     return image
   })
 
   /** 挂在 displaySrc 上的 CSS filter：只在整图校色、显示的还是原图时有 */
   const liveFilter = computed<string | undefined>(() => {
-    if (!currentKey.value || effectiveMask.value || displaySrc.value !== src.value) return undefined
-    return colorFixFilter(params.value)
+    if (!currentKey.value || !filterOnly.value || displaySrc.value !== src.value) return undefined
+    return colorFixFilter(renderLayers.value[0]!.params)
   })
   const previewStyle = computed(() => (liveFilter.value ? { filter: liveFilter.value } : undefined))
 
@@ -623,7 +1033,11 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   function bakeToDataUrl(maxSide = COLORFIX_EXPORT_MAX_SIDE): Promise<string> {
     if (!active.value || !src.value) return Promise.reject(new Error('未开启校色'))
     if (maskPending.value) return Promise.reject(new Error('选区尚未就绪'))
-    return colorFixImage(src.value, { ...params.value }, effectiveMask.value || null, maxSide, { ...maskOpts.value })
+    return colorFixRenderLayers(
+      src.value,
+      renderLayers.value.map((l) => ({ ...l })),
+      maxSide,
+    )
   }
 
   async function bakeToBlob(maxSide?: number): Promise<Blob> {
@@ -654,10 +1068,22 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     if (src.value) void downloadImage(src.value, withImageExt(name, src.value))
   }
 
+  /** 列表上每层的状态（识别中 / 选区未就绪 / 识别失败），图层列表打标用 */
+  function layerStatus(l: ColorFixLayer): 'ok' | 'busy' | 'pending' | 'error' {
+    if (isBaseLayer(l)) return 'ok'
+    const m = maskOf(l.id)
+    if (l.region.mode === 'auto' && m.busy) return 'busy'
+    if (l.region.mode === 'auto' && m.error) return 'error'
+    return effectiveMaskOf(l) ? 'ok' : 'pending'
+  }
+
   return {
+    /** 底层「恢复默认」用的那组参数 */
+    defaults,
     // 状态
     params,
     region,
+    recolor,
     touched,
     panelOpen,
     painterOpen,
@@ -665,7 +1091,26 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     fullscreen,
     active,
     compareAvailable,
-    // 选区
+    // 图层
+    layers,
+    selectedLayerId,
+    selectedLayer,
+    canAddLayer,
+    canUndoLayers,
+    canRedoLayers,
+    recolorAutoSource,
+    layerStatus,
+    selectLayer,
+    addLayer,
+    duplicateLayer,
+    removeLayer,
+    moveLayer,
+    setLayerVisible,
+    renameLayer,
+    setLayerRecolor,
+    undoLayers,
+    redoLayers,
+    // 选区（选中图层）
     regionModes,
     autoTargets,
     garmentParts,
@@ -703,6 +1148,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     clear,
     setParams,
     setRegion,
+    setRecolor,
     setPainterOpen,
     openPainter,
     openPointSelect,

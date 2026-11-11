@@ -109,7 +109,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 const status = computed(() => {
   if (!cf.active.value) return '未校色：点「校色调整」开始'
-  if (cf.maskPending.value) return cf.maskBusy.value ? '正在识别选区…' : '选区还没准备好，当前显示原图'
+  if (cf.maskPending.value) return cf.maskBusy.value ? '正在识别选区…' : '有选区还没准备好（该层暂不生效）'
   if (cf.failed.value && cf.maskLoadFailed.value) return `${COLORFIX_MASK_LOAD_FAILED}，导出将是原图`
   if (cf.failed.value) return '校色效果未能生成（图片不允许读取像素），导出将是原图'
   if (cf.baking.value) return '校色生成中…'

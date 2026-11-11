@@ -2,7 +2,7 @@
  * 按「已存的校色」直接操作，不挂状态机、不需要组件 setup：
  *
  * - {@link hasStoredColorFix}：这条存过校色参数（结果卡打「已校色」、决定下载 / 引用时要不要烘）；
- * - {@link bakeStoredColorFix}：按存的 参数 + 选区 烘出 PNG（结果卡上的 下载 / 引用编辑 / 在画布中打开）；
+ * - {@link bakeStoredColorFix}：按存的校色图层（旧数据 = 参数 + 选区）烘出 PNG（结果卡上的 下载 / 引用编辑 / 在画布中打开）；
  * - {@link clearStoredColorFix}：删掉这条的参数、选区与所有涂抹蒙版（「移除校色」）。
  *
  * <p>与 useResultColorFix 同一口径：选了「自动识别 / 手动涂抹」但蒙版拿不到 = 不校色（返回 null，调用方用原图）。
@@ -11,10 +11,21 @@ import {
   COLORFIX_EXPORT_MAX_SIDE,
   clearColorFix,
   colorFixDataUrlToBlob,
-  colorFixImage,
+  colorFixFilter,
+  colorFixRenderLayers,
   loadColorFix,
+  type ColorFixRenderLayer,
 } from '@/utils/colorfix.ts'
-import { deletePaintedMasksOf, deleteRegion, loadPaintedMask, loadRegion } from './mask-store.ts'
+import {
+  deleteLayers,
+  deletePaintedMasksOf,
+  deleteRegion,
+  legacySignature,
+  loadLayers,
+  loadPaintedMask,
+  loadRegion,
+} from './mask-store.ts'
+import { isBaseLayer, layerEffective, layerMaskScope, layersFromLegacy, recolorActive, type ColorFixLayer } from './layers.ts'
 import {
   colorFixPresetFor,
   colorFixRequestParts,
@@ -65,31 +76,48 @@ function withTimeout<T>(task: Promise<T>, ms: number): Promise<T> {
  * 不能是干净原件——烘出来的 PNG 会被下载 / 上传。
  */
 export async function bakeStoredColorFix(key: string, src: string, opts: BakeStoredOptions = {}): Promise<File | null> {
-  const params = key ? loadColorFix(key) : null
-  if (!params || !src) return null
-  const region = loadRegion(key) ?? COLORFIX_REGION_DEFAULT
-  let mask: string | null = null
-  if (region.mode === 'paint' || region.mode === 'point') {
-    mask = (await loadPaintedMask(region.mode === 'point' ? `${key}::point::${src}` : `${key}::${src}`)) || null
-    if (!mask) return null
-  } else if (region.mode === 'auto') {
-    const target = region.target
-    const parts = colorFixRequestParts(target, region.parts)
-    const preset =
-      target === (opts.maskTarget ?? 'garment') ? colorFixPresetFor(parts, opts.maskUrl ?? '', opts.maskParts) : ''
-    if (preset) mask = preset
-    else {
-      const seg = opts.segmenter === undefined ? defaultColorFixSegmenter : opts.segmenter
-      if (!seg || !colorFixSegmentSupported.value) return null
-      mask = await withTimeout(seg(src, target, parts), opts.segmentTimeoutMs ?? 15000).catch(() => null)
+  const layers = key && src ? loadStoredLayers(key) : null
+  if (!layers) return null
+  const render: ColorFixRenderLayer[] = []
+  for (const l of layers.filter(layerEffective)) {
+    let mask: string | null = null
+    if (!isBaseLayer(l)) {
+      mask = await resolveLayerMask(key, src, l, opts)
+      // 选区拿不到 = 不校色（与 useResultColorFix 导出口径一致：不悄悄少一层）
       if (!mask) return null
     }
+    render.push({
+      params: { ...l.params },
+      mask,
+      invert: !!mask && l.region.invert,
+      feather: mask ? l.region.feather : 0,
+      recolor: recolorActive(l.recolor) ? { ...l.recolor } : null,
+    })
   }
-  const dataUrl = await colorFixImage(src, { ...params }, mask, opts.maxSide ?? COLORFIX_EXPORT_MAX_SIDE, {
-    invert: region.invert,
-    feather: region.feather,
-  })
+  const dataUrl = await colorFixRenderLayers(src, render, opts.maxSide ?? COLORFIX_EXPORT_MAX_SIDE)
   return new File([colorFixDataUrlToBlob(dataUrl)], withPngExt(opts.name || 'colorfix.png'), { type: 'image/png' })
+}
+
+/** 这条存的校色图层（图层包优先，没有 / 过期按旧键迁移）；没校色返回 null */
+export function loadStoredLayers(key: string): ColorFixLayer[] | null {
+  const params = key ? loadColorFix(key) : null
+  if (!params) return null
+  const region = loadRegion(key)
+  return loadLayers(key, legacySignature(params, region))?.layers ?? layersFromLegacy(params, region ?? COLORFIX_REGION_DEFAULT)
+}
+
+async function resolveLayerMask(key: string, src: string, l: ColorFixLayer, opts: BakeStoredOptions): Promise<string | null> {
+  const mode = l.region.mode
+  if (mode === 'paint' || mode === 'point') return (await loadPaintedMask(layerMaskScope(key, src, l.id, mode))) || null
+  if (mode !== 'auto') return null
+  const target = l.region.target
+  const parts = colorFixRequestParts(target, l.region.parts)
+  const preset =
+    target === (opts.maskTarget ?? 'garment') ? colorFixPresetFor(parts, opts.maskUrl ?? '', opts.maskParts) : ''
+  if (preset) return preset
+  const seg = opts.segmenter === undefined ? defaultColorFixSegmenter : opts.segmenter
+  if (!seg || !colorFixSegmentSupported.value) return null
+  return withTimeout(seg(src, target, parts), opts.segmentTimeoutMs ?? 15000).catch(() => null)
 }
 
 /** 删掉这条的校色参数、选区与所有涂抹蒙版（本机）；正在显示它的 useResultColorFix 请改用 cf.clear() */
@@ -97,5 +125,19 @@ export async function clearStoredColorFix(key: string | null | undefined): Promi
   if (!key) return
   clearColorFix(key)
   deleteRegion(key)
+  deleteLayers(key)
   await deletePaintedMasksOf(key)
+}
+
+/**
+ * 这条存的校色能不能只靠 CSS filter 预览（只有整图底层在起作用、没有替换颜色）：能 → filter 串；不能（有选区 / 多层 /
+ * 替换颜色）→ ''；没校色 → null。列表缩略图「先挂 filter、要真图再烘」用。
+ */
+export function storedColorFixFilter(key: string): string | null {
+  const layers = key ? loadStoredLayers(key) : null
+  if (!layers) return null
+  const eff = layers.filter(layerEffective)
+  if (!eff.length) return colorFixFilter({ hue: 0, sat: 0, light: 0, bright: 0, contrast: 0 })
+  const only = eff[0]!
+  return eff.length === 1 && isBaseLayer(only) && !recolorActive(only.recolor) ? colorFixFilter(only.params) : ''
 }

@@ -10,10 +10,18 @@
  *   <li>钢笔（P）：单击加锚点（直线），按住拖动拉出曲线手柄（三次贝塞尔）；点起点 / 双击 / Enter 闭合，
  *       Backspace 删上一个锚点，Esc 放弃当前路径。</li>
  *   <li>自由（L）：按住拖动画轮廓，松开自动闭合并轻微平滑。</li>
+ *   <li>魔棒 / 颜色范围（W，2026-11-11）：单击一个颜色，按 OKLab 感知距离选相近颜色（容差滑杆）；「仅连续区域」从点击处泛洪，
+ *       关掉 = 全图同色；选中 / 排除与钢笔、自由同口径合成，软边。拖容差滑杆时实时预览最近一次魔棒，松手才记进撤销栈。</li>
+ *   <li>画笔（B）：在合成后的选区上直接涂（添加）/ 擦（擦除），大小 + 硬度；[ / ] 调大小。</li>
  *   <li>移动（H）/ 按住空格 / 鼠标中键：拖动画面；滚轮以指针为中心缩放，触屏双指捏合。移动工具下单击选区 = 选中，Delete 删除。</li>
  * </ul>
- * 最终选区 = (点选蒙版 ∪ 添加的形状) − 排除的形状（selection-geometry.ts 的 combineMasks）。所有操作（点 / 框 / 形状 / 删除 /
+ * 最终选区 = ((点选蒙版 ∪ 已有选区 ∪ 添加的形状 / 魔棒) − 排除的形状 / 魔棒) → 画笔逐笔涂 / 擦 → 扩展 / 收缩 → 平滑
+ * （selection-geometry.ts combineMasks + selection-ops.ts）。所有操作（点 / 框 / 形状 / 魔棒 / 笔画 / 扩展收缩平滑 / 删除 /
  * 改模式）进同一条撤销栈：⌘/Ctrl+Z 撤销、Shift+⌘/Ctrl+Z（或 Ctrl+Y）重做。
+ *
+ * <p>`base-mask`：打开时把这一层已有的选区垫在最下面（「重新选区 / 重新涂抹」= 在原选区上细化，「清空」才从头来）；
+ * `initial-tool`：手动涂抹入口传 brush（同一个弹窗，画笔预选）；`sam-disabled`：浏览器不支持点选时隐藏点选工具，其余照常。
+ * 点选模型只在第一次用到点选时才加载。
  *
  * <p>「完成」：只有点选时导出模型网格（长边 1024）的黑底白选区 PNG（与以前一致）；有钢笔 / 自由形状时按工作分辨率
  * （长边 = 原图长边夹到 1024–2048）把点选蒙版放大后与形状合成导出。交给 useResultColorFix.applyPointMask，反选 / 柔化照常在参数台调。
@@ -23,6 +31,15 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import IconButton from '@/components/IconButton/index.vue'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import { PAINTED_MASK_MAX_SIDE } from './mask-store.ts'
+import {
+  applyPostOps,
+  colorRangeMask,
+  rgbaToLab,
+  stampStroke,
+  POST_OPS_NONE,
+  type BrushStroke,
+  type SelectionPostOps,
+} from './selection-ops.ts'
 import { markPointSegmentBroken, POINT_UNSUPPORTED_HINT } from './point-support.ts'
 import {
   combineMasks,
@@ -50,17 +67,31 @@ import type {
 /** 同 pointSegment.ts 的 POINT_SEGMENT_INPUT_SIDE（不静态引那个模块：它随点选弹窗一起懒加载） */
 const POINT_SEGMENT_INPUT_SIDE = 1024
 
-const { src, large = false } = defineProps<{
+type Tool = 'point' | 'pen' | 'lasso' | 'wand' | 'brush' | 'move'
+
+const {
+  src,
+  large = false,
+  initialTool = 'point',
+  samDisabled = false,
+  baseMask = '',
+  title = '智能选区',
+} = defineProps<{
   src: string
   /** 大尺寸（全屏调色里打开） */
   large?: boolean
+  /** 打开时选中的工具（手动涂抹入口 = brush） */
+  initialTool?: Tool
+  /** 点选（本机 SAM）不可用：隐藏点选工具，其余工具照常 */
+  samDisabled?: boolean
+  /** 这一层已有的选区（黑白 / 透明蒙版地址）：垫在最下面细化；'' = 从空白开始 */
+  baseMask?: string
+  title?: string
 }>()
 const show = defineModel<boolean>('show', { required: true })
 const emit = defineEmits<{ apply: [mask: Blob] }>()
 
-type Tool = 'point' | 'pen' | 'lasso' | 'move'
-
-const TOOLS: { key: Tool; label: string; kbd: string; hint: string; icon: string }[] = [
+const ALL_TOOLS: { key: Tool; label: string; kbd: string; hint: string; icon: string }[] = [
   {
     key: 'point',
     label: '点选',
@@ -83,6 +114,20 @@ const TOOLS: { key: Tool; label: string; kbd: string; hint: string; icon: string
     icon: 'M7 22a5 5 0 0 1-2-4M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1M5 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   },
   {
+    key: 'wand',
+    label: '魔棒',
+    kbd: 'W',
+    hint: '魔棒：单击一个颜色，选中相近颜色',
+    icon: 'M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8 19 13M15 9h.01M17.8 6.2 19 5M3 21l9-9M12.2 6.2 11 5',
+  },
+  {
+    key: 'brush',
+    label: '画笔',
+    kbd: 'B',
+    hint: '画笔：在选区上直接涂抹添加 / 擦除',
+    icon: 'M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z',
+  },
+  {
     key: 'move',
     label: '移动',
     kbd: 'H',
@@ -90,7 +135,10 @@ const TOOLS: { key: Tool; label: string; kbd: string; hint: string; icon: string
     icon: 'M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20',
   },
 ]
+const TOOLS = computed(() => ALL_TOOLS.filter((t) => t.key !== 'point' || !samDisabled))
 const TOOL_TIPS: Record<Tool, string> = {
+  wand: '单击要选的颜色；调「容差」放宽 / 收紧，「仅连续区域」只选与点击处相连的部分；Alt / Shift + 单击排除',
+  brush: '按住拖动涂抹添加，切到「擦除」或按住 Alt 擦掉；[ / ] 调画笔大小',
   point: '单击加入选区；切到「排除 −」或按住 Alt / Shift 单击排除；拖动框选；点标记可删除',
   pen: '单击加锚点，按住拖动拉出曲线；点起点 / 双击 / Enter 闭合，Backspace 删上一点，Esc 放弃',
   lasso: '按住拖动画出轮廓，松开自动闭合',
@@ -99,16 +147,31 @@ const TOOL_TIPS: Record<Tool, string> = {
 
 // ================= 文档：点 / 框 / 形状，整条撤销栈 =================
 
+/** 魔棒一次：点击处（原图坐标）+ 当时的容差 / 连续 / 模式 */
+interface WandOp {
+  id: number
+  x: number
+  y: number
+  tol: number
+  contiguous: boolean
+  mode: ShapeMode
+}
 interface SelDoc {
   points: PointPrompt[]
   box: PointBox | null
   shapes: SelectionShape[]
+  wands: WandOp[]
+  strokes: BrushStroke[]
+  post: SelectionPostOps
+  /** 垫着已有选区（base-mask）；「清空」后为 false */
+  prior: boolean
 }
-const EMPTY: SelDoc = { points: [], box: null, shapes: [] }
+const EMPTY: SelDoc = { points: [], box: null, shapes: [], wands: [], strokes: [], post: POST_OPS_NONE, prior: false }
+const START: SelDoc = { ...EMPTY, prior: !!baseMask }
 const HISTORY_MAX = 100
-const history = shallowRef<SelDoc[]>([EMPTY])
+const history = shallowRef<SelDoc[]>([START])
 const hIndex = ref(0)
-const doc = computed(() => history.value[hIndex.value] ?? EMPTY)
+const doc = computed(() => history.value[hIndex.value] ?? START)
 let shapeSeq = 0
 
 function commit(next: SelDoc) {
@@ -117,7 +180,7 @@ function commit(next: SelDoc) {
   hIndex.value = history.value.length - 1
 }
 
-const tool = ref<Tool>('point')
+const tool = ref<Tool>(initialTool === 'point' && samDisabled ? 'brush' : initialTool)
 const mode = ref<ShapeMode>('add')
 const selectedId = ref<number | null>(null)
 /** 钢笔正在画的路径 */
@@ -128,12 +191,26 @@ const lassoPts = shallowRef<Pt[]>([])
 const lassoMode = ref<ShapeMode>('add')
 const hover = ref<Pt | null>(null)
 
-const isEmpty = computed(() => !doc.value.points.length && !doc.value.box && !doc.value.shapes.length)
+const isEmpty = computed(() => {
+  const d = doc.value
+  return (
+    !d.points.length &&
+    !d.box &&
+    !d.shapes.length &&
+    !d.wands.length &&
+    !d.strokes.length &&
+    !d.prior &&
+    !d.post.grow &&
+    !d.post.smooth
+  )
+})
 const canUndo = computed(() => penNodes.value.length > 0 || hIndex.value > 0)
 const canRedo = computed(() => !penNodes.value.length && hIndex.value < history.value.length - 1)
 const canClear = computed(() => !isEmpty.value || penNodes.value.length > 0)
 /** Esc 先由弹窗内部消化（放弃路径 / 取消选中），这时不让 n-modal 关窗 */
-const escBusy = computed(() => penNodes.value.length > 0 || lassoPts.value.length > 0 || selectedId.value !== null)
+const escBusy = computed(
+  () => penNodes.value.length > 0 || lassoPts.value.length > 0 || selectedId.value !== null || !!liveStroke.value,
+)
 
 function undo() {
   if (penNodes.value.length) {
@@ -141,9 +218,14 @@ function undo() {
     return
   }
   if (hIndex.value > 0) hIndex.value -= 1
+  wandDraft.value = null
+  postDraft.value = null
 }
 function redo() {
-  if (canRedo.value) hIndex.value += 1
+  if (!canRedo.value) return
+  hIndex.value += 1
+  wandDraft.value = null
+  postDraft.value = null
 }
 function clearAll() {
   penNodes.value = []
@@ -162,6 +244,7 @@ function setTool(t: Tool) {
   if (penNodes.value.length) closePen()
   tool.value = t
   hover.value = null
+  if (t === 'point') ensureModel()
 }
 
 function removePoint(i: number) {
@@ -275,7 +358,15 @@ function retry() {
   void start()
 }
 
+/** 点选模型已开始加载（第一次用到点选时才加载，手动涂抹入口不白下几十 MB） */
+const modelStarted = ref(false)
+function ensureModel() {
+  if (modelStarted.value || samDisabled) return
+  void start()
+}
+
 async function start() {
+  modelStarted.value = true
   error.value = ''
   retryable.value = false
   modelReady.value = false
@@ -306,7 +397,7 @@ function onResize() {
 let observer: ResizeObserver | null = null
 
 onMounted(() => {
-  void start()
+  if (tool.value === 'point') ensureModel()
   measure()
   // 捕获阶段：先于宿主页面（画布等）在 window 上的快捷键，处理过的键不再往外传
   window.addEventListener('keydown', onKey, true)
@@ -322,6 +413,8 @@ onBeforeUnmount(() => {
   observer?.disconnect()
   viewportEl.value?.removeEventListener('wheel', onWheel)
   clearTimeout(pressTimer)
+  if (recomposeRaf) cancelAnimationFrame(recomposeRaf)
+  if (draftTimer) clearTimeout(draftTimer)
   seg.value?.dispose()
   seg.value = null
 })
@@ -380,6 +473,8 @@ watch(
 // ================= 合成预览：(点选 ∪ 添加) − 排除，模型网格（长边 1024） =================
 
 const overlay = ref<HTMLCanvasElement | null>(null)
+/** 舞台上的原图（带 crossorigin，魔棒从它读像素） */
+const imgEl = ref<HTMLImageElement | null>(null)
 const composite = shallowRef<{ mask: Uint8Array; width: number; height: number } | null>(null)
 const hasSelection = computed(() => maskHasSelection(composite.value?.mask ?? null))
 
@@ -401,7 +496,261 @@ function resampleNearest(mask: Uint8Array, sw: number, sh: number, dw: number, d
   return out
 }
 
+// ---------------- 魔棒 / 已有选区要读原图 / 蒙版像素（预览网格，第一次用到时读） ----------------
+
+/** 原图在预览网格上的 OKLab（魔棒用）；null = 还没读 / 读不了 */
+let labGrid: { lab: Float32Array; w: number; h: number } | null = null
+const pixelError = ref('')
+function gridLab(): { lab: Float32Array; w: number; h: number } | null {
+  const { w: nw, h: nh } = natural.value
+  if (!nw || !nh) return null
+  const g = gridOf(POINT_SEGMENT_INPUT_SIDE)
+  if (labGrid && labGrid.w === g.w && labGrid.h === g.h) return labGrid
+  const el = imgEl.value
+  if (!el) return null
+  try {
+    const c = document.createElement('canvas')
+    c.width = g.w
+    c.height = g.h
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    if (!ctx) throw new Error('画布不可用')
+    ctx.drawImage(el, 0, 0, g.w, g.h)
+    const data = ctx.getImageData(0, 0, g.w, g.h).data
+    c.width = c.height = 0
+    labGrid = { lab: rgbaToLab(data, g.w, g.h), w: g.w, h: g.h }
+    return labGrid
+  } catch {
+    pixelError.value = '这张图片不允许读取像素，魔棒用不了（钢笔、自由、画笔不受影响）'
+    return null
+  }
+}
+
+/** 魔棒结果缓存（按 id + 容差 + 连续，预览网格） */
+const wandCache = new Map<string, Uint8Array>()
+function wandMask(op: WandOp): Uint8Array | null {
+  const k = `${op.id}|${op.tol}|${op.contiguous ? 1 : 0}`
+  const hit = wandCache.get(k)
+  if (hit) return hit
+  const lg = gridLab()
+  if (!lg) return null
+  const { w: nw, h: nh } = natural.value
+  const m = colorRangeMask(lg.lab, lg.w, lg.h, (op.x / nw) * lg.w, (op.y / nh) * lg.h, {
+    tolerance: op.tol,
+    contiguous: op.contiguous,
+  })
+  wandCache.set(k, m)
+  // 只留最近 24 份（拖容差会产生很多中间值）
+  while (wandCache.size > 24) wandCache.delete(wandCache.keys().next().value as string)
+  return m
+}
+
+/** 已有选区（base-mask）：图片元素（导出时按导出网格重画）+ 预览网格上的值 */
+const priorImg = shallowRef<HTMLImageElement | null>(null)
+let priorGridCache: { mask: Uint8Array; w: number; h: number } | null = null
+function readMaskImage(img: HTMLImageElement, w: number, h: number): Uint8Array {
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('画布不可用')
+  ctx.drawImage(img, 0, 0, w, h)
+  const data = ctx.getImageData(0, 0, w, h).data
+  c.width = c.height = 0
+  let opaque = true
+  for (let i = 3; i < data.length; i += 4)
+    if (data[i]! < 255) {
+      opaque = false
+      break
+    }
+  const out = new Uint8Array(w * h)
+  for (let i = 0; i < out.length; i++)
+    out[i] = opaque
+      ? Math.round(0.299 * data[i * 4]! + 0.587 * data[i * 4 + 1]! + 0.114 * data[i * 4 + 2]!)
+      : data[i * 4 + 3]!
+  return out
+}
+function priorAt(w: number, h: number): Uint8Array | null {
+  const img = priorImg.value
+  if (!img) return null
+  if (priorGridCache && priorGridCache.w === w && priorGridCache.h === h) return priorGridCache.mask
+  try {
+    const mask = readMaskImage(img, w, h)
+    priorGridCache = { mask, w, h }
+    return mask
+  } catch {
+    return null
+  }
+}
+/** 已有选区读不出来（blob 已回收等）：当作没有，不挡「完成」 */
+const priorFailed = ref(false)
+/** 垫着已有选区但还没读到：这时「完成」会把已有选区丢掉，先不让点 */
+const priorPending = computed(() => doc.value.prior && !!baseMask && !priorImg.value && !priorFailed.value)
+if (baseMask) {
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.onload = () => {
+    priorGridCache = null
+    priorImg.value = img
+  }
+  img.onerror = () => (priorFailed.value = true)
+  img.src = baseMask
+}
+
+// ---------------- 拖滑杆时的草稿（实时预览，松手才进撤销栈） ----------------
+
+/** 魔棒容差 / 连续的默认值（下一次单击用），拖动时也改最近一次魔棒 */
+const wandTol = ref(16)
+const wandContiguous = ref(true)
+/** 正在拖的最近一次魔棒参数（id 对上才生效） */
+const wandDraft = shallowRef<{ id: number; tol: number; contiguous: boolean } | null>(null)
+/** 正在拖的扩展 / 收缩 / 平滑 */
+const postDraft = shallowRef<SelectionPostOps | null>(null)
+/** 画笔：直径（按网格长边 1024 计的像素）与硬度 0–100 */
+const brushSize = ref(40)
+const brushHardness = ref(70)
+/** 正在画的一笔（松手进撤销栈） */
+const liveStroke = shallowRef<BrushStroke | null>(null)
+let strokeSeq = 0
+let wandSeq = 0
+
+/** 最近一次提交的是魔棒（且之后没有别的操作）：拖容差改它 */
+const lastWand = computed(() => {
+  const d = doc.value
+  const op = d.wands[d.wands.length - 1]
+  if (!op) return null
+  // 往回找到加入这次魔棒的那一步；中间只允许改过它自己的容差 / 连续（否则调一次容差后就再也调不动了）
+  const list = history.value
+  for (let i = hIndex.value; i > 0; i--) {
+    const cur = list[i]!
+    const prev = list[i - 1]!
+    if (!prev.wands.some((w) => w.id === op.id)) return op
+    const onlyRetuned =
+      sameExceptWands(prev, cur) &&
+      prev.wands.length === cur.wands.length &&
+      prev.wands[prev.wands.length - 1]?.id === op.id
+    if (!onlyRetuned) return null
+  }
+  return null
+})
+function sameExceptWands(a: SelDoc, b: SelDoc): boolean {
+  return (
+    a.points === b.points &&
+    a.box === b.box &&
+    a.shapes === b.shapes &&
+    a.strokes === b.strokes &&
+    a.post === b.post &&
+    a.prior === b.prior
+  )
+}
+const effectiveWands = computed(() => {
+  const draft = wandDraft.value
+  return doc.value.wands.map((w) => (draft && draft.id === w.id ? { ...w, tol: draft.tol, contiguous: draft.contiguous } : w))
+})
+const effectivePost = computed(() => postDraft.value ?? doc.value.post)
+const allStrokes = computed(() => (liveStroke.value ? [...doc.value.strokes, liveStroke.value] : doc.value.strokes))
+
+let draftTimer: ReturnType<typeof setTimeout> | null = null
+/** 滑杆拖动中：节流 90ms 重算预览 */
+function schedulePreview() {
+  if (draftTimer) return
+  draftTimer = setTimeout(() => {
+    draftTimer = null
+    recompose()
+  }, 90)
+}
+
+function onWandTol(v: number, final: boolean) {
+  wandTol.value = v
+  const op = lastWand.value
+  if (!op) return
+  if (!final) {
+    wandDraft.value = { id: op.id, tol: v, contiguous: wandContiguous.value }
+    schedulePreview()
+    return
+  }
+  wandDraft.value = null
+  if (op.tol !== v) {
+    const d = doc.value
+    commit({ ...d, wands: d.wands.map((w) => (w.id === op.id ? { ...w, tol: v } : w)) })
+  }
+}
+function onWandContiguous(v: boolean) {
+  wandContiguous.value = v
+  const op = lastWand.value
+  if (!op || op.contiguous === v) return
+  const d = doc.value
+  commit({ ...d, wands: d.wands.map((w) => (w.id === op.id ? { ...w, contiguous: v } : w)) })
+}
+function onPost(patch: Partial<SelectionPostOps>, final: boolean) {
+  const next = { ...effectivePost.value, ...patch }
+  if (!final) {
+    postDraft.value = next
+    schedulePreview()
+    return
+  }
+  postDraft.value = null
+  const d = doc.value
+  if (next.grow !== d.post.grow || next.smooth !== d.post.smooth) commit({ ...d, post: next })
+  else recompose()
+}
+
+function addWand(p: Pt, m: ShapeMode) {
+  if (!gridLab()) return
+  const d = doc.value
+  const op: WandOp = { id: ++wandSeq, x: p.x, y: p.y, tol: wandTol.value, contiguous: wandContiguous.value, mode: m }
+  commit({ ...d, wands: [...d.wands, op] })
+}
+
+/** 画笔半径（原图像素）：直径按网格长边 1024 计 */
+const brushRadius = computed(() => {
+  const { w, h } = natural.value
+  return (brushSize.value / 2) * (Math.max(w, h, 1) / POINT_SEGMENT_INPUT_SIDE)
+})
+
+// ---------------- 合成 ----------------
+
+/** 合成到 W×H 网格：((点选 ∪ 已有 ∪ 添加) − 排除) → 笔画 → 扩展 / 收缩 → 平滑；scale = 网格长边 / 1024 */
+function composeAt(
+  W: number,
+  H: number,
+  base: Uint8Array | null,
+  wandAt: (op: WandOp) => Uint8Array | null,
+  strokes: readonly BrushStroke[],
+  post: SelectionPostOps,
+): Uint8Array | null {
+  const { w: nw, h: nh } = natural.value
+  const size = W * H
+  const { add, sub } = rasterizeShapes(doc.value.shapes, W, H, W / nw, H / nh)
+  let addM = add
+  let subM = sub
+  for (const op of effectiveWands.value) {
+    const m = wandAt(op)
+    if (!m) continue
+    const target = op.mode === 'add' ? (addM ??= new Uint8Array(size)) : (subM ??= new Uint8Array(size))
+    for (let i = 0; i < size; i++) if (m[i]! > target[i]!) target[i] = m[i]!
+  }
+  const prior = doc.value.prior ? priorAt(W, H) : null
+  let b = base
+  if (prior) {
+    if (!b) b = prior
+    else {
+      const u = new Uint8Array(size)
+      for (let i = 0; i < size; i++) u[i] = Math.max(b[i]!, prior[i]!)
+      b = u
+    }
+  }
+  if (!b && !addM && !strokes.some((s) => s.mode === 'add')) return null
+  let out = combineMasks(size, b, addM, subM)
+  for (const st of strokes) stampStroke(out, W, H, st, W / nw, H / nh)
+  if (post.grow || post.smooth) out = applyPostOps(out, W, H, post, Math.max(W, H) / POINT_SEGMENT_INPUT_SIDE)
+  return out
+}
+
 function recompose() {
+  if (recomposeRaf) {
+    cancelAnimationFrame(recomposeRaf)
+    recomposeRaf = 0
+  }
   const { w: nw, h: nh } = natural.value
   if (!nw || !nh) {
     composite.value = null
@@ -411,11 +760,21 @@ function recompose() {
   const g = gridOf(POINT_SEGMENT_INPUT_SIDE)
   const r = result.value
   const base = r ? resampleNearest(r.mask, r.width, r.height, g.w, g.h) : null
-  const { add, sub } = rasterizeShapes(doc.value.shapes, g.w, g.h, g.w / nw, g.h / nh)
-  composite.value = base || add ? { mask: combineMasks(g.w * g.h, base, add, sub), width: g.w, height: g.h } : null
+  const mask = composeAt(g.w, g.h, base, wandMask, allStrokes.value, effectivePost.value)
+  composite.value = mask ? { mask, width: g.w, height: g.h } : null
   drawOverlay()
 }
-watch([result, () => doc.value.shapes, natural], recompose)
+let recomposeRaf = 0
+/** 画笔拖动中：每帧最多重算一次 */
+function recomposeSoon() {
+  if (recomposeRaf) return
+  recomposeRaf = requestAnimationFrame(() => {
+    recomposeRaf = 0
+    recompose()
+  })
+}
+watch([result, () => doc.value, natural, priorImg], recompose)
+watch(liveStroke, recomposeSoon)
 watch(overlay, drawOverlay)
 
 function drawOverlay() {
@@ -595,6 +954,8 @@ type Gesture =
   | { kind: 'point'; id: number; cx: number; cy: number; p: Pt; neg: boolean; touch: boolean; marker: number }
   | { kind: 'pen'; id: number; cx: number; cy: number; index: number; dragging: boolean }
   | { kind: 'lasso'; id: number; cx: number; cy: number }
+  | { kind: 'wand'; id: number; cx: number; cy: number; p: Pt; neg: boolean }
+  | { kind: 'brush'; id: number; cx: number; cy: number }
 
 const pointers = new Map<number, { x: number; y: number; touch: boolean }>()
 let gesture: Gesture | null = null
@@ -614,6 +975,7 @@ function capture(e: PointerEvent) {
 function abortGesture() {
   clearTimeout(pressTimer)
   if (gesture?.kind === 'lasso') lassoPts.value = []
+  if (gesture?.kind === 'brush') liveStroke.value = null
   // 钢笔按下时已经放了锚点：被第二根手指（捏合）打断的这一下不算，撤掉它
   if (gesture?.kind === 'pen' && penNodes.value.length === gesture.index + 1)
     penNodes.value = penNodes.value.slice(0, gesture.index)
@@ -700,6 +1062,24 @@ function onPointerDown(e: PointerEvent) {
     }
     return
   }
+  if (tool.value === 'wand') {
+    const q = toImage(e, true)
+    if (!q) return
+    gesture = { kind: 'wand', id: e.pointerId, cx: e.clientX, cy: e.clientY, p: q, neg: (mode.value === 'sub') !== invert }
+    return
+  }
+  if (tool.value === 'brush') {
+    const sub = (mode.value === 'sub') !== e.altKey
+    liveStroke.value = {
+      id: ++strokeSeq,
+      mode: sub ? 'sub' : 'add',
+      radius: brushRadius.value,
+      hardness: brushHardness.value / 100,
+      pts: [p],
+    }
+    gesture = { kind: 'brush', id: e.pointerId, cx: e.clientX, cy: e.clientY }
+    return
+  }
   if (tool.value === 'pen') {
     const nodes = penNodes.value
     const r = HIT_PX * imgPerScreen.value
@@ -735,7 +1115,7 @@ function onPointerMove(e: PointerEvent) {
     // 悬停：钢笔橡皮筋 / 标记高亮
     if (e.pointerType === 'mouse') {
       const p = toImage(e)
-      hover.value = tool.value === 'pen' ? p : null
+      hover.value = tool.value === 'pen' || tool.value === 'brush' ? p : null
       hoverMarker.value = tool.value === 'point' && p ? pointAt(p) : -1
     }
     return
@@ -755,6 +1135,17 @@ function onPointerMove(e: PointerEvent) {
   }
   if (e.pointerId !== g.id) return
   const far = Math.hypot(e.clientX - g.cx, e.clientY - g.cy) >= DRAG_PX
+  if (g.kind === 'wand') return
+  if (g.kind === 'brush') {
+    const p = toImage(e)
+    const st = liveStroke.value
+    if (!p || !st) return
+    if (e.pointerType === 'mouse') hover.value = p
+    const last = st.pts[st.pts.length - 1]
+    if (last && Math.hypot(last.x - p.x, last.y - p.y) < 1.5 * imgPerScreen.value) return
+    liveStroke.value = { ...st, pts: [...st.pts, p] }
+    return
+  }
   if (g.kind === 'pan') {
     if (far) g.moved = true
     pan.value = clampPan({ x: g.px + e.clientX - g.cx, y: g.py + e.clientY - g.cy }, zoom.value)
@@ -830,6 +1221,16 @@ function onPointerUp(e: PointerEvent) {
     return
   }
   if (g.kind === 'pen') return
+  if (g.kind === 'wand') {
+    if (Math.hypot(e.clientX - g.cx, e.clientY - g.cy) < DRAG_PX) addWand(g.p, g.neg ? 'sub' : 'add')
+    return
+  }
+  if (g.kind === 'brush') {
+    const st = liveStroke.value
+    liveStroke.value = null
+    if (st) commit({ ...doc.value, strokes: [...doc.value.strokes, st] })
+    return
+  }
   finishLasso()
 }
 
@@ -893,10 +1294,14 @@ function onKey(e: KeyboardEvent) {
     const el = e.target as HTMLElement | null
     if (el && (el.tagName === 'BUTTON' || el.getAttribute('role') === 'radio')) handled = false
     else spaceHeld.value = true
-  } else if (lower === 'v') setTool('point')
+  } else if (lower === 'v' && !samDisabled) setTool('point')
   else if (lower === 'p') setTool('pen')
   else if (lower === 'l') setTool('lasso')
   else if (lower === 'h') setTool('move')
+  else if (lower === 'w') setTool('wand')
+  else if (lower === 'b') setTool('brush')
+  else if (k === '[') brushSize.value = Math.max(2, Math.round(brushSize.value / 1.25))
+  else if (k === ']') brushSize.value = Math.min(200, Math.round(brushSize.value * 1.25))
   else if (lower === 'a' || k === '+' || k === '=') mode.value = 'add'
   else if (lower === 'e' || k === '-' || k === '_') mode.value = 'sub'
   else if (k === '0') zoomFit()
@@ -912,7 +1317,7 @@ function onKey(e: KeyboardEvent) {
   } else if (k === 'Escape') {
     // 有东西可放弃时自己消化；否则交给 n-modal（close-on-esc 只关最上层弹窗）
     if (penNodes.value.length) cancelPen()
-    else if (gesture?.kind === 'lasso') abortGesture()
+    else if (gesture?.kind === 'lasso' || gesture?.kind === 'brush') abortGesture()
     else if (selectedId.value !== null) selectedId.value = null
     else handled = false
   } else handled = false
@@ -963,6 +1368,7 @@ const stageCursor = computed(() => {
     return embedding.value ? 'progress' : 'crosshair'
   }
   if (tool.value === 'pen' && nearPenStart.value) return 'pointer'
+  if (tool.value === 'brush') return 'none'
   return 'crosshair'
 })
 const touchAction = computed(() => (tool.value === 'move' && zoom.value === 1 ? 'pan-y' : 'none'))
@@ -1021,21 +1427,31 @@ async function exportComposite(): Promise<Blob> {
   const { w: nw, h: nh } = natural.value
   const side = Math.min(PAINTED_MASK_MAX_SIDE, Math.max(POINT_SEGMENT_INPUT_SIDE, Math.max(nw, nh)))
   const g = gridOf(side)
+  const pg = gridOf(POINT_SEGMENT_INPUT_SIDE)
   const r = result.value
   const base = r ? upscaleMask(r.mask, r.width, r.height, g.w, g.h) : null
-  const { add, sub } = rasterizeShapes(doc.value.shapes, g.w, g.h, g.w / nw, g.h / nh)
-  return maskToPng(combineMasks(g.w * g.h, base, add, sub), g.w, g.h)
+  // 魔棒在预览网格上算（与看到的一致），导出时平滑放大
+  const wandAt = (op: WandOp) => {
+    const m = wandMask(op)
+    return m ? upscaleMask(m, pg.w, pg.h, g.w, g.h) : null
+  }
+  const mask = composeAt(g.w, g.h, base, wandAt, doc.value.strokes, doc.value.post) ?? new Uint8Array(g.w * g.h)
+  return maskToPng(mask, g.w, g.h)
 }
 
 async function apply() {
-  if (!hasSelection.value || exporting.value || samPending.value) return
+  if (!hasSelection.value || exporting.value || samPending.value || priorPending.value) return
   if (penNodes.value.length) closePen()
+  wandDraft.value = null
+  postDraft.value = null
   exporting.value = true
   try {
     const s = seg.value
     const r = result.value
     // 只有点选：照旧存模型网格（长边 ≤1024），烘图时按原图尺寸平滑放大，蒙版占的本机存储小一个数量级
-    if (!doc.value.shapes.length && s && r) emit('apply', await s.toMaskBlob(r, POINT_SEGMENT_INPUT_SIDE))
+    const d = doc.value
+    const onlySam = !d.shapes.length && !d.wands.length && !d.strokes.length && !d.prior && !d.post.grow && !d.post.smooth
+    if (onlySam && s && r) emit('apply', await s.toMaskBlob(r, POINT_SEGMENT_INPUT_SIDE))
     else emit('apply', await exportComposite())
   } catch (err) {
     fail(err)
@@ -1055,16 +1471,16 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
       :class="large ? 'w-[min(1280px,calc(100vw-32px))]' : 'w-[min(820px,calc(100vw-32px))]'"
       class="max-h-[calc(100vh-48px)] overflow-y-auto box-border p-18px rounded-18px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-10px"
       role="dialog"
-      aria-label="智能选区"
+      :aria-label="title"
     >
       <header class="flex flex-wrap items-center gap-8px">
-        <b class="flex-1 min-w-120px text-14px font-600 leading-20px text-ink">智能选区</b>
+        <b class="flex-1 min-w-120px text-14px font-600 leading-20px text-ink">{{ title }}</b>
         <button type="button" class="sx-btn" @click="show = false">取消</button>
         <button
           type="button"
           class="sx-btn-primary"
-          :disabled="!hasSelection || exporting || samPending"
-          :title="samPending ? '点选还在计算，稍等' : !hasSelection ? '还没有选区' : undefined"
+          :disabled="!hasSelection || exporting || samPending || priorPending"
+          :title="samPending ? '点选还在计算，稍等' : priorPending ? '正在读取已有选区' : !hasSelection ? '还没有选区' : undefined"
           @click="apply"
         >
           完成
@@ -1105,20 +1521,20 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
             :class="[segBtn, mode === 'add' && '!border-success-line !text-success font-600 bg-success-soft']"
             :aria-pressed="mode === 'add'"
             aria-keyshortcuts="A +"
-            title="选中：点 = 加入选区，钢笔 / 自由 = 添加区域（A 或 +）"
+            :title="tool === 'brush' ? '画笔涂抹 = 添加到选区（A 或 +）' : '选中：点 = 加入选区，钢笔 / 自由 / 魔棒 = 添加区域（A 或 +）'"
             @click="mode = 'add'"
           >
-            选中 <span aria-hidden="true" class="text-14px font-700">+</span>
+            {{ tool === 'brush' ? '添加' : '选中' }} <span aria-hidden="true" class="text-14px font-700">+</span>
           </button>
           <button
             type="button"
             :class="[segBtn, mode === 'sub' && '!border-danger-line !text-danger font-600 bg-danger-soft']"
             :aria-pressed="mode === 'sub'"
             aria-keyshortcuts="E -"
-            title="排除：点 = 从选区排除，钢笔 / 自由 = 挖掉区域（E 或 −；点选时也可 Alt / Shift + 单击）"
+            :title="tool === 'brush' ? '画笔涂抹 = 从选区擦除（E 或 −；也可按住 Alt）' : '排除：点 = 从选区排除，钢笔 / 自由 / 魔棒 = 挖掉区域（E 或 −；也可 Alt / Shift + 单击）'"
             @click="mode = 'sub'"
           >
-            排除 <span aria-hidden="true" class="text-14px font-700">−</span>
+            {{ tool === 'brush' ? '擦除' : '排除' }} <span aria-hidden="true" class="text-14px font-700">−</span>
           </button>
         </div>
         <div class="flex items-center gap-8px">
@@ -1128,6 +1544,81 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
           </button>
           <button type="button" class="sx-btn" :disabled="!canClear" @click="clearAll">清空</button>
         </div>
+      </div>
+
+      <div
+        v-if="tool === 'wand' || tool === 'brush' || hasSelection || doc.post.grow || doc.post.smooth"
+        class="ps-opts flex flex-wrap items-center gap-x-16px gap-y-8px px-12px py-8px rounded-12px bg-#f7f5f9"
+        role="group"
+        aria-label="工具与选区选项"
+      >
+        <template v-if="tool === 'wand'">
+          <label class="ps-opt">
+            <span class="ps-opt__label">容差</span>
+            <input
+              type="range"
+              min="1"
+              max="60"
+              step="1"
+              :value="wandDraft?.tol ?? lastWand?.tol ?? wandTol"
+              aria-label="魔棒容差：越大选中的颜色越多"
+              title="越大选中的颜色越多；拖动时实时预览最近一次魔棒"
+              @input="onWandTol(Number(($event.target as HTMLInputElement).value), false)"
+              @change="onWandTol(Number(($event.target as HTMLInputElement).value), true)"
+            />
+            <b class="ps-opt__num">{{ wandDraft?.tol ?? lastWand?.tol ?? wandTol }}</b>
+          </label>
+          <label class="ps-opt cursor-pointer">
+            <input
+              type="checkbox"
+              class="accent-#875f9a w-14px h-14px m-0"
+              :checked="lastWand?.contiguous ?? wandContiguous"
+              @change="onWandContiguous(($event.target as HTMLInputElement).checked)"
+            />
+            <span class="ps-opt__label !w-auto">仅连续区域</span>
+          </label>
+        </template>
+        <template v-else-if="tool === 'brush'">
+          <label class="ps-opt">
+            <span class="ps-opt__label">大小</span>
+            <input v-model.number="brushSize" type="range" min="2" max="200" step="1" aria-label="画笔大小" aria-keyshortcuts="[ ]" />
+            <b class="ps-opt__num">{{ brushSize }}</b>
+          </label>
+          <label class="ps-opt">
+            <span class="ps-opt__label">硬度</span>
+            <input v-model.number="brushHardness" type="range" min="0" max="100" step="5" aria-label="画笔硬度：越低边缘越软" />
+            <b class="ps-opt__num">{{ brushHardness }}</b>
+          </label>
+        </template>
+        <span v-if="tool === 'wand' || tool === 'brush'" class="ps-opts__sep" aria-hidden="true" />
+        <label class="ps-opt" title="整体扩展（正）或收缩（负）选区边缘，按长边 1024 像素计">
+          <span class="ps-opt__label">扩展</span>
+          <input
+            type="range"
+            min="-20"
+            max="20"
+            step="1"
+            :value="effectivePost.grow"
+            aria-label="扩展或收缩选区（像素，负数为收缩）"
+            @input="onPost({ grow: Number(($event.target as HTMLInputElement).value) }, false)"
+            @change="onPost({ grow: Number(($event.target as HTMLInputElement).value) }, true)"
+          />
+          <b class="ps-opt__num">{{ effectivePost.grow > 0 ? `+${effectivePost.grow}` : effectivePost.grow }}</b>
+        </label>
+        <label class="ps-opt" title="磨平锯齿与毛刺，边界位置基本不变">
+          <span class="ps-opt__label">平滑</span>
+          <input
+            type="range"
+            min="0"
+            max="10"
+            step="1"
+            :value="effectivePost.smooth"
+            aria-label="平滑选区边缘"
+            @input="onPost({ smooth: Number(($event.target as HTMLInputElement).value) }, false)"
+            @change="onPost({ smooth: Number(($event.target as HTMLInputElement).value) }, true)"
+          />
+          <b class="ps-opt__num">{{ effectivePost.smooth }}</b>
+        </label>
       </div>
 
       <div class="flex flex-wrap items-center gap-8px min-h-32px">
@@ -1153,7 +1644,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
       </div>
 
       <div
-        v-if="!modelReady && !error"
+        v-if="modelStarted && !modelReady && !error"
         class="h-4px rounded-2px bg-#efe9f3 overflow-hidden"
         role="progressbar"
         aria-label="点选加载进度"
@@ -1170,8 +1661,16 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
         class="m-0 flex items-center gap-8px px-12px py-8px rounded-12px bg-#fbeceb text-12px leading-18px text-#b4433e"
         role="alert"
       >
-        <span class="flex-1">{{ error }}<template v-if="!modelReady">（钢笔、自由选区不受影响）</template></span>
+        <span class="flex-1">{{ error }}<template v-if="!modelReady">（钢笔、自由、魔棒、画笔不受影响）</template></span>
         <button v-if="retryable" type="button" class="sx-btn" @click="retry">重试</button>
+      </p>
+
+      <p
+        v-if="pixelError && tool === 'wand'"
+        class="m-0 px-12px py-8px rounded-12px bg-#fbeceb text-12px leading-18px text-#b4433e"
+        role="alert"
+      >
+        {{ pixelError }}
       </p>
 
       <div
@@ -1201,6 +1700,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
         >
           <div ref="contentEl" class="absolute left-0 top-0" :style="contentStyle">
             <img
+              ref="imgEl"
               :src="src"
               :crossorigin="corsAttr(src)"
               alt="智能选区"
@@ -1274,6 +1774,37 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
                     vector-effect="non-scaling-stroke"
                   />
                 </template>
+              </template>
+              <template v-if="tool === 'brush' && hover">
+                <circle
+                  :cx="hover.x"
+                  :cy="hover.y"
+                  :r="brushRadius"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-width="3"
+                  vector-effect="non-scaling-stroke"
+                />
+                <circle
+                  :cx="hover.x"
+                  :cy="hover.y"
+                  :r="brushRadius"
+                  fill="none"
+                  :stroke="mode === 'add' ? '#34795a' : '#b4433e'"
+                  stroke-width="1.5"
+                  vector-effect="non-scaling-stroke"
+                />
+                <circle
+                  v-if="brushHardness < 100"
+                  :cx="hover.x"
+                  :cy="hover.y"
+                  :r="brushRadius * (brushHardness / 100)"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-width="1"
+                  stroke-dasharray="3 3"
+                  vector-effect="non-scaling-stroke"
+                />
               </template>
               <template v-if="lassoPts.length > 1">
                 <path :d="lassoD" fill="none" stroke="#fff" stroke-width="3.5" vector-effect="non-scaling-stroke" />
@@ -1359,8 +1890,9 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
       </div>
 
       <p class="m-0 text-11px leading-16px text-muted">
-        选区在本机识别，图片不会上传。滚轮缩放，按住空格拖动画面；快捷键 V 点选 · P 钢笔 · L 自由 · H 移动 · A / E 选中
-        / 排除。 完成后可在参数台里反选、调边缘柔化。
+        选区在本机识别，图片不会上传。滚轮缩放，按住空格拖动画面；快捷键
+        <template v-if="!samDisabled">V 点选 · </template>P 钢笔 · L 自由 · W 魔棒 · B 画笔（[ / ] 大小）· H 移动 · A / E
+        选中 / 排除。完成后可在参数台里反选、调边缘柔化。
       </p>
     </section>
   </n-modal>
@@ -1400,6 +1932,35 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 }
 .ps-bar {
   transition: width 0.2s ease;
+}
+/* 工具选项：标签 + 滑杆 + 数值，一组 ≥ 32 高 */
+.ps-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  color: #4b5563;
+  font-size: 12px;
+}
+.ps-opt input[type='range'] {
+  width: 120px;
+  accent-color: #875f9a;
+}
+.ps-opt__label {
+  width: 28px;
+  flex: none;
+}
+.ps-opt__num {
+  min-width: 24px;
+  color: #5f3f6f;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.ps-opts__sep {
+  width: 1px;
+  height: 20px;
+  background: #e5e0ea;
 }
 @media (prefers-reduced-motion: reduce) {
   .ps-bar {

@@ -10,7 +10,9 @@
  * 读写失败一律静默：丢的只是还原，不打断主流程。
  */
 import { forgetColorFixSource } from '@/utils/colorfix.ts'
+import type { ColorFixParams } from '@/utils/colorfix-math.ts'
 import { colorFixRegionSanitize, type ColorFixRegion } from './types.ts'
+import { COLORFIX_LAYERS_VERSION, layersSanitize, type ColorFixLayer, type ColorFixLayerStack } from './layers.ts'
 
 const REGION_PREFIX = 'colorfix-region:'
 /** 涂抹蒙版持久化上限：黑底白笔 PNG 压缩率很高，4096² 一般也就几百 KB，超过 6MB 多半是异常图，不入库 */
@@ -30,6 +32,56 @@ export function saveRegion(key: string, region: ColorFixRegion) {
     localStorage.setItem(REGION_PREFIX + key, JSON.stringify(region))
   } catch {
     /* 存储满 / 隐私模式 */
+  }
+}
+
+// ---------------- 图层包：localStorage `colorfix-layers:<key>`（2026-11-11） ----------------
+
+const LAYERS_PREFIX = 'colorfix-layers:'
+
+/**
+ * 旧键（`colorfix:` 参数 + `colorfix-region:` 选区）的指纹：图层包存的时候顺手记下当时旧键的样子；读的时候旧键变了
+ * （没升级的旧页面 / 旧版本改过这条）就不认图层包，按旧键迁移——旧页面的修改不会被一份过期的图层包盖掉。
+ */
+export function legacySignature(params: ColorFixParams | null, region: ColorFixRegion | null): string {
+  if (!params) return ''
+  // 两边都过一遍合法化：存的时候是内存里的选区，读的时候是 loadRegion 合法化过的，字段与顺序要一致
+  const r = colorFixRegionSanitize(region) ?? { mode: 'whole' }
+  return JSON.stringify([params.hue, params.sat, params.light, params.bright, params.contrast, r])
+}
+
+/** 读图层包；没有 / 坏了 / 旧键指纹对不上返回 null（调用方按旧键迁移） */
+export function loadLayers(key: string, legacySig: string): ColorFixLayerStack | null {
+  try {
+    const raw = localStorage.getItem(LAYERS_PREFIX + key)
+    if (!raw) return null
+    const o = JSON.parse(raw) as { legacy?: unknown }
+    if (typeof o?.legacy === 'string' && o.legacy !== legacySig) return null
+    return layersSanitize(o)
+  } catch {
+    return null
+  }
+}
+
+export function saveLayers(key: string, layers: readonly ColorFixLayer[], selected: string, legacySig: string) {
+  try {
+    const body: ColorFixLayerStack & { legacy: string } = {
+      v: COLORFIX_LAYERS_VERSION,
+      layers: [...layers],
+      selected,
+      legacy: legacySig,
+    }
+    localStorage.setItem(LAYERS_PREFIX + key, JSON.stringify(body))
+  } catch {
+    /* 存储满 / 隐私模式 */
+  }
+}
+
+export function deleteLayers(key: string) {
+  try {
+    localStorage.removeItem(LAYERS_PREFIX + key)
+  } catch {
+    /* 隐私模式 */
   }
 }
 
@@ -272,4 +324,14 @@ export async function deletePaintedMasksOf(key: string) {
       resolve()
     }
   })
+}
+
+/** 把一个作用域的蒙版复制到另一个作用域（复制图层用）；源没有 / 读不出返回 null */
+export async function copyPaintedMask(from: string, to: string): Promise<{ url: string; persisted: boolean } | null> {
+  const url = await loadPaintedMask(from)
+  if (!url) return null
+  const blob = await fetch(url)
+    .then((r) => r.blob())
+    .catch(() => null)
+  return blob ? savePaintedMask(to, blob) : null
 }

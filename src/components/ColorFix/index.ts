@@ -43,7 +43,15 @@
 export { useResultColorFix } from './useResultColorFix.ts'
 export type { ResultColorFix, ResultColorFixOptions, ColorFixRemoteSaver } from './useResultColorFix.ts'
 export { bakeForUpload, triggerDownload, withImageExt, withPngExt } from './files.ts'
-export { hasStoredColorFix, bakeStoredColorFix, clearStoredColorFix, type BakeStoredOptions } from './stored.ts'
+export {
+  hasStoredColorFix,
+  bakeStoredColorFix,
+  clearStoredColorFix,
+  loadStoredLayers,
+  storedColorFixFilter,
+  type BakeStoredOptions,
+} from './stored.ts'
+export * from './layers.ts'
 export {
   saveColorFixVersion,
   saveColorFixToTaskAsset,
@@ -51,6 +59,7 @@ export {
   colorFixSignature,
   colorFixSignatureOf,
   colorFixSignatureOfVersion,
+  colorFixLayersSignature,
   colorFixVersionParams,
   type SaveColorFixVersionOptions,
   type SaveColorFixVersionResult,

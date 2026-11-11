@@ -560,6 +560,8 @@ export function createAssetDetail(assetId: Ref<number | null>, props: DetailProp
       load: () => {
         const o = currentFixParams.value
         if (!o) return null
+        // 多图层 / 替换颜色的版本（colorFixLayers）同样还原不全，不自动套
+        if (o.colorFixLayers) return null
         const region = colorFixRegionSanitize(o.colorFixRegion)
         return region && region.mode !== 'whole' ? null : colorFixSanitize(o.colorFix)
       },

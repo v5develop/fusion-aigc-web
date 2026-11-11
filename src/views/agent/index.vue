@@ -95,11 +95,12 @@ import {
   bakeForUpload,
   bakeStoredColorFix,
   hasStoredColorFix,
+  storedColorFixFilter,
   triggerDownload,
   type ResultColorFix,
 } from '@/components/ColorFix'
 import { loadRegion } from '@/components/ColorFix/mask-store.ts'
-import { colorFixFailureText, colorFixFilter, loadColorFix } from '@/utils/colorfix.ts'
+import { colorFixFailureText } from '@/utils/colorfix.ts'
 import { downloadImage, downloadImagesAsZip } from '@/utils/download.ts'
 import { getPointsBalance } from '@/api/points.ts'
 import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billing-guide'
@@ -1768,10 +1769,9 @@ function openColorFix(tile: IResultTile, index: number) {
 function tileFix(tile: IResultTile): { filter?: string } | null {
   void fixVersion.value
   const key = fixKeyOf(tile)
-  const params = loadColorFix(key)
-  if (!params) return null
-  const region = loadRegion(key)
-  return !region || region.mode === 'whole' ? { filter: colorFixFilter(params) } : {}
+  const filter = storedColorFixFilter(key)
+  if (filter === null) return null
+  return filter ? { filter } : {}
 }
 
 /**

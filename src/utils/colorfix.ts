@@ -11,57 +11,27 @@
  * （抠图等透明底结果烘完仍透明）。尺寸只缩不放（长边 ≤ maxSide，原图更小按原尺寸）。
  */
 import { reactive } from 'vue'
+import {
+  applyColorFixPixels,
+  dominantLab,
+  oklabToSrgb8,
+  parseHex,
+  recolorPixels,
+  srgb8ToOklab,
+  compositeLayerPixels,
+  toHex,
+  type ColorFixParams,
+} from './colorfix-math.ts'
 
-export interface ColorFixParams {
-  hue: number
-  sat: number
-  light: number
-  bright: number
-  contrast: number
-}
-
-/** 「默认校色」参数（校色包图四的真实值） */
-export const COLORFIX_DEFAULT: ColorFixParams = { hue: 3, sat: -16, light: -6, bright: -17, contrast: 10 }
-
-export const COLORFIX_RANGES: Record<keyof ColorFixParams, { min: number; max: number }> = {
-  hue: { min: -30, max: 30 },
-  sat: { min: -60, max: 70 },
-  light: { min: -40, max: 40 },
-  bright: { min: -80, max: 80 },
-  contrast: { min: -50, max: 50 },
-}
-
-/** 两组参数是否完全相同（「恢复默认」禁用、是否调过参数都看它） */
-export function colorFixEquals(a: ColorFixParams, b: ColorFixParams): boolean {
-  return a.hue === b.hue && a.sat === b.sat && a.light === b.light && a.bright === b.bright && a.contrast === b.contrast
-}
-
-/** 任意来源（接口 / localStorage）的参数 → 合法五参数（缺字段 / 非数字返回 null，越界夹回范围） */
-export function colorFixSanitize(raw: unknown): ColorFixParams | null {
-  let v = raw
-  if (typeof v === 'string') {
-    try {
-      v = JSON.parse(v)
-    } catch {
-      return null
-    }
-  }
-  if (!v || typeof v !== 'object') return null
-  const o = v as Record<string, unknown>
-  const out = {} as ColorFixParams
-  for (const k of Object.keys(COLORFIX_RANGES) as (keyof ColorFixParams)[]) {
-    const n = o[k]
-    if (typeof n !== 'number' || !Number.isFinite(n)) return null
-    const { min, max } = COLORFIX_RANGES[k]
-    out[k] = Math.min(max, Math.max(min, Math.round(n)))
-  }
-  return out
-}
-
-/** 参数是否为全零（零 = 不校色，UI 上「恢复默认」禁用 / 预览不挂滤镜都看它） */
-export function colorFixIsZero(p: ColorFixParams): boolean {
-  return p.hue === 0 && p.sat === 0 && p.light === 0 && p.bright === 0 && p.contrast === 0
-}
+export {
+  COLORFIX_DEFAULT,
+  COLORFIX_ZERO,
+  COLORFIX_RANGES,
+  colorFixEquals,
+  colorFixSanitize,
+  colorFixIsZero,
+  type ColorFixParams,
+} from './colorfix-math.ts'
 
 /** 五参数 → CSS filter 串（预览直接挂；烘图时同样喂给 ctx.filter） */
 export function colorFixFilter(p: ColorFixParams): string {
@@ -82,70 +52,6 @@ export function colorFixFilter(p: ColorFixParams): string {
 export const COLORFIX_EXPORT_MAX_SIDE = 4096
 
 // ---------------- 烘图：ctx.filter 优先，不支持的浏览器（旧 Safari）逐像素软件实现 ----------------
-
-const clamp255 = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : v)
-
-/**
- * 与 {@link colorFixFilter} 同序同公式的逐像素实现（sRGB 空间，Filter Effects 规范的 hue-rotate / saturate 矩阵 +
- * brightness / contrast 线性映射，每一步夹回 0–255）。只改 RGB，alpha 原样保留（透明底抠图结果烘完仍是透明底）。
- * 浏览器里 CSS filter 的实现细节可能有极小差异，肉眼不可辨。
- */
-function applyColorFixPixels(data: Uint8ClampedArray, p: ColorFixParams) {
-  const rad = (p.hue * Math.PI) / 180
-  const c = Math.cos(rad)
-  const s = Math.sin(rad)
-  const h = [
-    0.213 + c * 0.787 - s * 0.213,
-    0.715 - c * 0.715 - s * 0.715,
-    0.072 - c * 0.072 + s * 0.928,
-    0.213 - c * 0.213 + s * 0.143,
-    0.715 + c * 0.285 + s * 0.14,
-    0.072 - c * 0.072 - s * 0.283,
-    0.213 - c * 0.213 - s * 0.787,
-    0.715 - c * 0.715 + s * 0.715,
-    0.072 + c * 0.928 + s * 0.072,
-  ]
-  const k = Math.max(0, 100 + p.sat) / 100
-  const t = [
-    0.213 + 0.787 * k,
-    0.715 - 0.715 * k,
-    0.072 - 0.072 * k,
-    0.213 - 0.213 * k,
-    0.715 + 0.285 * k,
-    0.072 - 0.072 * k,
-    0.213 - 0.213 * k,
-    0.715 - 0.715 * k,
-    0.072 + 0.928 * k,
-  ] as const
-  const [h0, h1, h2, h3, h4, h5, h6, h7, h8] = h as [
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-  ]
-  const [t0, t1, t2, t3, t4, t5, t6, t7, t8] = t
-  // brightness → contrast 两步都是逐通道映射，合成一张 256 项查找表
-  const bright = Math.max(0.05, (1 + p.light / 200) * (1 + p.bright / 100))
-  const contrast = Math.max(0, 100 + p.contrast) / 100
-  const lut = new Uint8ClampedArray(256)
-  for (let v = 0; v < 256; v++) lut[v] = clamp255((clamp255(v * bright) - 127.5) * contrast + 127.5)
-  for (let i = 0; i < data.length; i += 4) {
-    const r0 = data[i]!
-    const g0 = data[i + 1]!
-    const b0 = data[i + 2]!
-    const r1 = clamp255(h0 * r0 + h1 * g0 + h2 * b0)
-    const g1 = clamp255(h3 * r0 + h4 * g0 + h5 * b0)
-    const b1 = clamp255(h6 * r0 + h7 * g0 + h8 * b0)
-    data[i] = lut[Math.round(clamp255(t0 * r1 + t1 * g1 + t2 * b1))]!
-    data[i + 1] = lut[Math.round(clamp255(t3 * r1 + t4 * g1 + t5 * b1))]!
-    data[i + 2] = lut[Math.round(clamp255(t6 * r1 + t7 * g1 + t8 * b1))]!
-  }
-}
 
 /** 把原图按五参数画进画布（整幅）。ctx.filter 可用时走 GPU 滤镜，否则 getImageData 逐像素处理 */
 function drawColorFixed(
@@ -229,6 +135,7 @@ export function forgetColorFixSource(url: string): void {
   for (const cache of [resultCache, exportCache]) {
     for (const key of [...cache.keys()]) if (key.includes(`|${url}|`)) cache.delete(key)
   }
+  for (const key of [...dominantCache.keys()]) if (key.includes(`|${url}|`)) dominantCache.delete(key)
 }
 
 /** 加一个防缓存查询参数（同一地址先被不带 crossorigin 的 <img> 拉过、缓存里是没有 CORS 头的那份时用） */
@@ -541,6 +448,172 @@ export async function colorFixImage(
   cache.set(key, out)
   evictStrings(cache, isExport ? EXPORT_CACHE_MAX : RESULT_CACHE_MAX)
   return out
+}
+
+// ---------------- 多图层（2026-11-11，见 components/ColorFix/layers.ts） ----------------
+
+/** 一层的渲染输入：调整 = 替换颜色（可选）→ 五参数；mask 为 null = 整幅 */
+export interface ColorFixRenderLayer {
+  params: ColorFixParams
+  mask: string | null
+  invert?: boolean
+  feather?: number
+  /** 替换为目标颜色；source 为 null = 自动（选区内主色，按原图算） */
+  recolor?: { source: string | null; target: string; strength: number } | null
+}
+
+/** 把蒙版图整理成与输出同尺寸的 alpha 数组（口径同 prepareMask：黑白 / 透明蒙版都认，反选、柔化） */
+function readMaskAlpha(mask: HTMLImageElement, width: number, height: number, opts: ColorFixMaskOptions): Uint8Array {
+  const c = prepareMask(mask, width, height, opts)
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('画布不可用')
+  const data = ctx.getImageData(0, 0, width, height).data
+  c.width = c.height = 0
+  const out = new Uint8Array(width * height)
+  for (let i = 0; i < out.length; i++) out[i] = data[i * 4 + 3]!
+  return out
+}
+
+const dominantCache = new Map<string, Promise<string | null>>()
+const DOMINANT_SIDE = 256
+const DOMINANT_CACHE_MAX = 32
+
+/**
+ * 选区里的主色（'#rrggbb'），按原图缩到长边 256 算（预览与导出同一个值）；mask 为 null = 整图。
+ * 选区为空 / 图读不了像素返回 null。按 原图 + 蒙版 + 反选 缓存。
+ */
+export function colorFixDominantColor(src: string, mask: string | null, invert = false): Promise<string | null> {
+  const key = `${src}|${mask ?? 'none'}|${invert ? 1 : 0}`
+  const hit = dominantCache.get(key)
+  if (hit) return hit
+  const task = (async () => {
+    const img = await loadImage(src)
+    const scale = Math.min(1, DOMINANT_SIDE / Math.max(img.naturalWidth || 1, img.naturalHeight || 1))
+    const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale))
+    const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale))
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = h
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return null
+    ctx.drawImage(img, 0, 0, w, h)
+    const data = ctx.getImageData(0, 0, w, h).data
+    c.width = c.height = 0
+    const alpha = mask ? readMaskAlpha(await loadImage(mask), w, h, { invert }) : null
+    const lab = dominantLab(data, w, h, alpha)
+    if (!lab) return null
+    const [r, g, b] = oklabToSrgb8(lab[0], lab[1], lab[2])
+    return toHex(r, g, b)
+  })().catch(() => null)
+  dominantCache.set(key, task)
+  while (dominantCache.size > DOMINANT_CACHE_MAX) dominantCache.delete(dominantCache.keys().next().value as string)
+  return task
+}
+
+/**
+ * 多图层烘图：原图打底，按顺序每层「复制当前结果 → 替换颜色 → 五参数 → 按软蒙版混回当前结果」，最后出无损 PNG
+ * （透明通道原样保留）。逐像素在 CPU 上算（每层只算蒙版内像素），与单层 {@link colorFixImage} 同一套公式。
+ * 结果缓存口径同 colorFixImage（预览 LRU ≤8、导出只留 1 张）；任一层蒙版拿不到抛 {@link ColorFixMaskLoadError}。
+ */
+export async function colorFixLayersImage(
+  src: string,
+  layers: readonly ColorFixRenderLayer[],
+  maxSide = PREVIEW_MAX_SIDE,
+): Promise<string> {
+  const norm = layers.map((l) => ({
+    ...l,
+    invert: !!l.mask && !!l.invert,
+    feather: l.mask ? Math.max(0, Math.min(20, l.feather ?? 0)) : 0,
+  }))
+  const key =
+    `L|${src}|${maxSide}` +
+    norm
+      .map((l) => {
+        const p = l.params
+        const rc = l.recolor ? `${l.recolor.source ?? 'auto'}>${l.recolor.target}@${l.recolor.strength}` : ''
+        return `|${l.mask ?? 'none'}|${l.invert ? 'i' : ''}${l.feather}:${p.hue},${p.sat},${p.light},${p.bright},${p.contrast}:${rc}`
+      })
+      .join('')
+  const isExport = maxSide > PREVIEW_MAX_SIDE
+  const cache = isExport ? exportCache : resultCache
+  const hit = cache.get(key)
+  if (hit) {
+    touch(cache, key, hit)
+    return hit
+  }
+  const img = await loadImage(src).catch((err) => {
+    imageCache.delete(src)
+    throw err
+  })
+  const masks = await Promise.all(
+    norm.map((l) =>
+      l.mask
+        ? loadImage(l.mask).catch(() => {
+            imageCache.delete(l.mask!)
+            throw new ColorFixMaskLoadError()
+          })
+        : null,
+    ),
+  )
+  // 自动源色先算好（按原图，与参数台上显示的那个色块同一个值）
+  const sources = await Promise.all(
+    norm.map(async (l) => {
+      if (!l.recolor || l.recolor.strength <= 0) return null
+      const hex = l.recolor.source ?? (await colorFixDominantColor(src, l.mask, l.invert))
+      const rgb = parseHex(hex)
+      return rgb ? srgb8ToOklab(rgb[0], rgb[1], rgb[2]) : null
+    }),
+  )
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
+  const width = Math.max(1, Math.round(img.naturalWidth * scale))
+  const height = Math.max(1, Math.round(img.naturalHeight * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('画布不可用')
+  ctx.drawImage(img, 0, 0, width, height)
+  const frame = ctx.getImageData(0, 0, width, height)
+  const running = frame.data
+  const adjusted = new Uint8ClampedArray(running.length)
+  norm.forEach((l, i) => {
+    const maskImg = masks[i]
+    const alpha = maskImg ? readMaskAlpha(maskImg, width, height, { invert: l.invert, feather: l.feather }) : null
+    if (alpha && !alpha.some((v) => v > 0)) return
+    adjusted.set(running)
+    const target = l.recolor ? parseHex(l.recolor.target) : null
+    const source = sources[i]
+    if (l.recolor && target && source)
+      recolorPixels(
+        adjusted,
+        { source, target: srgb8ToOklab(target[0], target[1], target[2]), strength: l.recolor.strength / 100 },
+        alpha,
+      )
+    applyColorFixPixels(adjusted, l.params, alpha)
+    compositeLayerPixels(running, adjusted, alpha)
+  })
+  ctx.putImageData(frame, 0, 0)
+  const out = canvas.toDataURL('image/png')
+  canvas.width = canvas.height = 0
+  cache.set(key, out)
+  evictStrings(cache, isExport ? EXPORT_CACHE_MAX : RESULT_CACHE_MAX)
+  return out
+}
+
+/**
+ * 按图层烘图的统一入口：空 → 原图（零参数）；单层且无替换颜色 → {@link colorFixImage}（与旧版单选区逐像素一致）；
+ * 其余 → {@link colorFixLayersImage}。
+ */
+export function colorFixRenderLayers(
+  src: string,
+  layers: readonly ColorFixRenderLayer[],
+  maxSide = PREVIEW_MAX_SIDE,
+): Promise<string> {
+  if (!layers.length) return colorFixImage(src, { hue: 0, sat: 0, light: 0, bright: 0, contrast: 0 }, null, maxSide)
+  const only = layers[0]!
+  if (layers.length === 1 && !only.recolor)
+    return colorFixImage(src, { ...only.params }, only.mask, maxSide, { invert: only.invert, feather: only.feather })
+  return colorFixLayersImage(src, layers, maxSide)
 }
 
 /** dataURL PNG → Blob（上传 / 下载共用） */
