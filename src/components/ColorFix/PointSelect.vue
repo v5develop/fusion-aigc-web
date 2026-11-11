@@ -7,16 +7,30 @@
  * 打开即开始加载模型；第一次点击时识别整张图（「正在识别图片…」，同一张图只做一次），之后每次点击几十毫秒出选区。
  * 「完成」导出模型网格尺寸（长边 ≤1024，与原图同比例）的黑底白选区 PNG，交给 useResultColorFix.applyPointMask；反选 / 柔化在参数台调。
  * 关闭时终止 Worker，释放 WASM / GPU 内存。
+ *
+ * <p>加载进度按真实字节显示：识别引擎（WASM 运行时，约 28.7MB）与模型分开计（「下载识别引擎 12.3/28.7 MB」），
+ * 都在缓存里时直接进入「正在启动点选…」。`large`：全屏调色里打开时弹窗接近整屏，图更大、点得更准。
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import { markPointSegmentBroken, POINT_UNSUPPORTED_HINT } from './point-support.ts'
-import type { PointBox, PointMaskResult, PointPrompt, PointSegmenter, PointSegmentError } from './point-segment.ts'
+import type {
+  PointBox,
+  PointMaskResult,
+  PointPrompt,
+  PointSegmenter,
+  PointSegmentError,
+  PointSegmentProgress,
+} from './point-segment.ts'
 
 /** 同 pointSegment.ts 的 POINT_SEGMENT_INPUT_SIDE（不静态引那个模块：它随点选弹窗一起懒加载） */
 const POINT_SEGMENT_INPUT_SIDE = 1024
 
-const { src } = defineProps<{ src: string }>()
+const { src, large = false } = defineProps<{
+  src: string
+  /** 大尺寸（全屏调色里打开） */
+  large?: boolean
+}>()
 const show = defineModel<boolean>('show', { required: true })
 const emit = defineEmits<{ apply: [mask: Blob] }>()
 
@@ -24,7 +38,30 @@ type Action = { kind: 'point'; p: PointPrompt } | { kind: 'box'; b: PointBox }
 
 const seg = shallowRef<PointSegmenter | null>(null)
 const modelReady = ref(false)
-const progress = ref(0)
+/** 下载进度（字节）；null = 还没开始报 */
+const loadBytes = shallowRef<PointSegmentProgress | null>(null)
+/** 总进度 0–99（只算下载；建会话那一下不计） */
+const progress = computed(() => {
+  const p = loadBytes.value
+  if (!p) return 0
+  const total = p.engine.total + p.model.total
+  return total > 0 ? Math.min(99, Math.round(((p.engine.loaded + p.model.loaded) / total) * 100)) : 0
+})
+/** 十进制 MB（与文件管理器 / CDN 控制台口径一致：28,747,738 字节 = 28.7 MB） */
+const mb = (n: number) => (n / 1e6).toFixed(1)
+/** 加载阶段的一句话：先引擎后模型，都下完 = 启动中 */
+const loadText = computed(() => {
+  const p = loadBytes.value
+  if (!p) return '正在准备点选…'
+  const engineLeft = p.engine.total > 0 && p.engine.loaded < p.engine.total
+  const modelLeft = p.model.total > 0 && p.model.loaded < p.model.total
+  if (engineLeft) {
+    const extra = modelLeft ? ` · 模型 ${mb(p.model.loaded)}/${mb(p.model.total)} MB` : ''
+    return `下载识别引擎 ${mb(p.engine.loaded)}/${mb(p.engine.total)} MB${extra}`
+  }
+  if (modelLeft) return `下载点选模型 ${mb(p.model.loaded)}/${mb(p.model.total)} MB`
+  return '正在启动点选…'
+})
 const embedding = ref(false)
 const decoding = ref(false)
 const exporting = ref(false)
@@ -50,7 +87,7 @@ const box = computed(() => {
 })
 const status = computed(() => {
   if (error.value) return ''
-  if (!modelReady.value) return progress.value > 0 ? `正在加载点选模型… ${progress.value}%` : '正在加载点选模型…'
+  if (!modelReady.value) return loadText.value
   if (embedding.value) return '正在识别图片…'
   if (decoding.value) return '正在计算选区…'
   if (!actions.value.length) return '单击要调色的物体；Alt / Shift + 单击排除，拖动可框选'
@@ -92,13 +129,14 @@ async function start() {
   error.value = ''
   retryable.value = false
   modelReady.value = false
-  progress.value = 0
+  loadBytes.value = null
   seg.value?.dispose()
+  seg.value = null
   try {
     const { createPointSegmenter } = await import('./point-segment.ts')
     const s = createPointSegmenter({
-      onProgress: ({ loaded, total }) => {
-        if (total > 0) progress.value = Math.min(99, Math.round((loaded / total) * 100))
+      onProgress: (p) => {
+        if (seg.value === s || !seg.value) loadBytes.value = p
       },
     })
     seg.value = s
@@ -332,7 +370,8 @@ async function apply() {
 <template>
   <n-modal v-model:show="show" transform-origin="center" :mask-closable="false">
     <section
-      class="w-[min(760px,calc(100vw-32px))] max-h-[calc(100vh-48px)] overflow-y-auto box-border p-18px rounded-18px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-12px"
+      :class="large ? 'w-[min(1280px,calc(100vw-32px))]' : 'w-[min(760px,calc(100vw-32px))]'"
+      class="max-h-[calc(100vh-48px)] overflow-y-auto box-border p-18px rounded-18px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-12px"
       role="dialog"
       aria-label="点选调色选区"
     >
@@ -368,7 +407,15 @@ async function apply() {
         </span>
       </div>
 
-      <div v-if="!modelReady && !error" class="h-4px rounded-2px bg-#efe9f3 overflow-hidden" aria-hidden="true">
+      <div
+        v-if="!modelReady && !error"
+        class="h-4px rounded-2px bg-#efe9f3 overflow-hidden"
+        role="progressbar"
+        aria-label="点选加载进度"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-valuenow="progress"
+      >
         <div class="ps-bar h-full bg-#875f9a" :style="{ width: `${Math.max(4, progress)}%` }" />
       </div>
 
@@ -400,7 +447,8 @@ async function apply() {
             :crossorigin="corsAttr(src)"
             alt="点选调色选区"
             draggable="false"
-            class="block max-w-full max-h-[min(62vh,640px)] pointer-events-none"
+            class="block max-w-full pointer-events-none"
+            :class="large ? 'max-h-[calc(100vh-260px)]' : 'max-h-[min(62vh,640px)]'"
             @load="onImgLoad"
             @error="onImgError"
           />

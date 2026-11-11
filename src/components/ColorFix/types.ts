@@ -3,6 +3,9 @@
 /** 选区方式：整图 / 自动识别 / 手动涂抹 / 点选（本机 SAM 分割，见 pointSegment.ts） */
 export type ColorFixRegionMode = 'whole' | 'auto' | 'paint' | 'point'
 
+/** 全屏调色的查看方式：校色后 / 原图 / 对比（分割线） */
+export type ColorFixViewMode = 'result' | 'original' | 'compare'
+
 /** 自动识别的目标（POST /api/v1/studio/masks 的 target） */
 export type ColorFixAutoTarget = 'garment' | 'product' | 'person' | 'background'
 

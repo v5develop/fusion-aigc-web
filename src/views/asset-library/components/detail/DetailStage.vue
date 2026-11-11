@@ -2,7 +2,8 @@
 /**
  * 资产详情 · 媒体舞台（左侧大图区）。约定沿用主流图库 / 相册的看图习惯：
  * - 图片 contain 在中性灰台面上（透明图下面是浅棋盘格），两侧圆钮翻上一个 / 下一个（键盘 ← / → 由 DetailModal 监听）；
- * - 右上：「校色调整 / 继续调整」+「查看大图」（MediaLightbox pannable：滚轮缩放、拖动平移）；
+ * - 右上：「校色调整 / 继续调整」+「全屏调色」（F，ColorFixFullscreen：大图缩放 + 对比分割线 + 停靠参数台）
+ *   +「查看大图」（MediaLightbox pannable：滚轮缩放、拖动平移）；
  * - 左上：调过色才出现「校色后 | 原图 | 对比」+「保存为新版本」；
  * - 底部居中：版本胶囊（原图 / 各版本，点即设为当前），对比档让位给对比滑杆。
  * 第一次看到图片资产时，在「校色调整」下方给一句说明（本机记住，点「知道了」或打开参数台后不再出现）。
@@ -62,6 +63,10 @@ const showHint = computed(() => !hintSeen.value && d.canColorFix.value && !d.cf.
 function openColorFix() {
   dismissHint()
   cf.open()
+}
+function openFullscreen() {
+  dismissHint()
+  cf.openFullscreen()
 }
 
 // ---------------- 查看大图 ----------------
@@ -147,7 +152,7 @@ function openLightbox() {
       </IconButton>
 
       <!-- 左上：调过色才有的查看方式 + 保存为新版本 -->
-      <div v-if="fixToolbar" class="absolute top-12px left-12px z-7 flex flex-wrap items-center gap-8px max-w-[calc(100%-200px)]">
+      <div v-if="fixToolbar" class="absolute top-12px left-12px z-7 flex flex-wrap items-center gap-8px max-w-[calc(100%-330px)] max-[640px]:max-w-[calc(100%-24px)] max-[640px]:top-56px">
         <div role="radiogroup" aria-label="查看方式" class="flex items-center gap-2px p-3px rounded-full" :class="GLASS">
           <button
             v-for="m in VIEW_MODES"
@@ -190,6 +195,20 @@ function openLightbox() {
           title="调整亮度、对比度、色温等，修正偏色；不会改动原图"
           @click="openColorFix"
         />
+        <ColorFixPill
+          v-if="d.canColorFix.value"
+          class="!h-32px !px-12px !text-12px !rounded-16px"
+          :icon="false"
+          label="全屏调色"
+          aria-keyshortcuts="F"
+          title="全屏调色（F）：大图对比、缩放查看细节，参数台停靠右侧"
+          @click="openFullscreen"
+        >
+          <svg class="w-13px h-13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+          </svg>
+          全屏调色
+        </ColorFixPill>
         <IconButton
           v-if="lightboxItems.length && !comparing && d.isImage.value"
           :label="lightboxLabel"

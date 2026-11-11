@@ -41,11 +41,13 @@ import {
   colorFixGarmentParts,
   colorFixPresetFor,
   colorFixRequestParts,
+  colorFixSegmentFailure,
   colorFixSegmentSupported,
   defaultColorFixSegmenter,
   noteColorFixGarmentParts,
   type ColorFixPresetPart,
   type ColorFixSegmenter,
+  type ColorFixSegmentSuggestion,
 } from './segment.ts'
 import {
   deletePaintedMask,
@@ -97,6 +99,8 @@ export interface ResultColorFixOptions {
 
 const PREVIEW_SIDE = 1600
 const QUICK_SIDE = 720
+/** 自动识别等这么久还没出来：换成「首次识别较慢」的提示 */
+const MASK_SLOW_MS = 15_000
 
 export function useResultColorFix(opts: ResultColorFixOptions) {
   const defaults = opts.defaults ?? COLORFIX_DEFAULT
@@ -113,6 +117,11 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   const painterOpen = ref(false)
   /** 点选弹窗（本机 SAM 分割） */
   const pointOpen = ref(false)
+  /**
+   * 全屏调色（ColorFixFullscreen）开着：参数台改由全屏层右侧停靠的那份渲染，宿主页面上浮着的那份（含涂抹 / 点选弹窗）
+   * 让位，免得同一份状态出两套弹窗。状态与参数台共用，退出全屏编辑原样保留。
+   */
+  const fullscreen = ref(false)
 
   // ---------------- 选区与蒙版 ----------------
 
@@ -154,6 +163,14 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   const autoMask = ref('')
   const maskBusy = ref(false)
   const maskError = ref('')
+  /** 识别失败可以手动重试（超时 / 6001 服务不可用 / 太频繁等；4001 没识别到不给） */
+  const maskRetryable = ref(false)
+  /** 识别失败时建议的替代方式（4001 没识别到：换人物 / 点选 / 手动涂抹） */
+  const maskSuggest = ref<ColorFixSegmentSuggestion[]>([])
+  /** 识别已等了 {@link MASK_SLOW_MS} 以上（首次识别慢，面板换成「约需 1 分钟」的提示） */
+  const maskSlow = ref(false)
+  /** 手动重试计数：变了就重新识别（失败的不进缓存，会真正重发） */
+  const maskRetryTick = ref(0)
   const paintedMask = ref('')
   /** 涂抹蒙版只留在内存（太大 / IndexedDB 不可用），刷新后会丢 */
   const paintedVolatile = ref(false)
@@ -178,6 +195,15 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   })
 
   let segTicket = 0
+  let segAbort: AbortController | null = null
+  let slowTimer: ReturnType<typeof setTimeout> | null = null
+  function stopSegment() {
+    segAbort?.abort()
+    segAbort = null
+    if (slowTimer) clearTimeout(slowTimer)
+    slowTimer = null
+    maskSlow.value = false
+  }
   watch(
     () =>
       [
@@ -187,41 +213,79 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
         presetMask.value,
         activeParts.value.join(','),
         presetParts.value,
+        maskRetryTick.value,
       ] as const,
     async ([mode, target, image, preset]) => {
       const my = ++segTicket
+      // 换目标 / 换图 / 切走 / 关闭（src 置空）：放弃上一轮识别（网关超时的退避重发一并停掉）。
+      // 上一轮的 abort 推迟到这一轮登记之后：同一份识别（键没变，如部位数组换了引用）接着等，不从头重来
+      const prevAbort = segAbort
+      segAbort = null
+      stopSegment()
       maskError.value = ''
+      maskRetryable.value = false
+      maskSuggest.value = []
       if (mode !== 'auto' || !image) {
+        prevAbort?.abort()
         maskBusy.value = false
         return
       }
       const parts = activeParts.value
       const presetHit = target === maskTarget ? colorFixPresetFor(parts, preset, presetParts.value) : ''
       if (presetHit) {
+        prevAbort?.abort()
         autoMask.value = presetHit
         maskBusy.value = false
         return
       }
       autoMask.value = ''
       if (!segmenter || !colorFixSegmentSupported.value) {
+        prevAbort?.abort()
         maskError.value = '当前环境不支持自动识别，请改用手动涂抹'
         return
       }
       maskBusy.value = true
+      const ctrl = new AbortController()
+      segAbort = ctrl
+      slowTimer = setTimeout(() => {
+        if (my === segTicket) maskSlow.value = true
+      }, MASK_SLOW_MS)
       try {
-        const url = await segmenter(image, target, parts)
+        const call = segmenter(image, target, parts, { signal: ctrl.signal })
+        prevAbort?.abort()
+        const url = await call
         if (my === segTicket) autoMask.value = url
-      } catch {
-        if (my === segTicket)
-          maskError.value = colorFixSegmentSupported.value
-            ? '识别失败，可重试或改用手动涂抹'
-            : '当前环境不支持自动识别，请改用手动涂抹'
+      } catch (err) {
+        if (my === segTicket && !ctrl.signal.aborted) {
+          const f = colorFixSegmentFailure(err, target)
+          if (f) {
+            maskError.value = f.message
+            maskRetryable.value = f.retryable && colorFixSegmentSupported.value
+            maskSuggest.value = f.suggest ?? []
+          }
+        }
       } finally {
-        if (my === segTicket) maskBusy.value = false
+        prevAbort?.abort()
+        if (my === segTicket) {
+          maskBusy.value = false
+          if (slowTimer) clearTimeout(slowTimer)
+          slowTimer = null
+          maskSlow.value = false
+          if (segAbort === ctrl) segAbort = null
+        }
       }
     },
     { immediate: true },
   )
+  onBeforeUnmount(() => {
+    segTicket += 1
+    stopSegment()
+  })
+
+  /** 识别失败后手动重试 */
+  function retryMask() {
+    if (region.value.mode === 'auto' && !maskBusy.value) maskRetryTick.value += 1
+  }
 
   let paintTicket = 0
   watch(
@@ -357,6 +421,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       panelOpen.value = false
       painterOpen.value = false
       pointOpen.value = false
+      fullscreen.value = false
       loading = false
       if (!stored && k && opts.saver?.load) {
         const remote = colorFixSanitize(await Promise.resolve(opts.saver.load(k)).catch(() => null))
@@ -387,6 +452,21 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     if (src.value) panelOpen.value = true
   }
 
+  /** 进入全屏调色（一并打开参数台：全屏里调参要落存储） */
+  function openFullscreen() {
+    if (!src.value) return
+    panelOpen.value = true
+    fullscreen.value = true
+  }
+  /** 退出全屏调色：参数台保持打开（回到页面上浮着的那份），编辑不丢 */
+  function closeFullscreen() {
+    fullscreen.value = false
+  }
+  // 没图了（切到视频 / 关闭弹窗）：全屏一并退出
+  watch(src, (v) => {
+    if (!v) fullscreen.value = false
+  })
+
   /** 收起参数台：调过才落存储（只开了面板没动参数不落默认值） */
   function close() {
     panelOpen.value = false
@@ -408,6 +488,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     loading = true
     panelOpen.value = false
     painterOpen.value = false
+    fullscreen.value = false
     params.value = { ...defaults }
     region.value = regionDefault()
     touched.value = false
@@ -581,6 +662,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     panelOpen,
     painterOpen,
     pointOpen,
+    fullscreen,
     active,
     compareAvailable,
     // 选区
@@ -589,6 +671,9 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     garmentParts,
     maskBusy,
     maskError,
+    maskRetryable,
+    maskSuggest,
+    maskSlow,
     maskPending,
     effectiveMask,
     paintedMask,
@@ -611,6 +696,9 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     // 动作
     open,
     close,
+    openFullscreen,
+    closeFullscreen,
+    retryMask,
     resetParams,
     clear,
     setParams,

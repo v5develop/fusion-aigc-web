@@ -4,11 +4,22 @@
  * 「应用选区」导出与原图同尺寸的黑底白笔 PNG（白 = 要调整），交给 useResultColorFix.applyPaintedMask；
  * 软边由面板「边缘柔化」在烘图时处理。每次打开都是一张新画布（重新涂抹会替换上一份选区）。
  */
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import MaskPainter from '@/views/tools/MaskPainter.vue'
 import { capMaskBlob } from './mask-store.ts'
 
-const { src } = defineProps<{ src: string }>()
+const { src, large = false } = defineProps<{
+  src: string
+  /** 大尺寸（全屏调色里打开）：弹窗接近整屏，涂抹画面随窗口高度放大 */
+  large?: boolean
+}>()
+
+const viewportH = ref(typeof window === 'undefined' ? 720 : window.innerHeight)
+function onResize() {
+  viewportH.value = window.innerHeight
+}
+/** 大尺寸时画面最大高度：窗口高减去弹窗头部 / 说明 / 工具条 */
+const maxViewportH = computed(() => (large ? Math.max(360, viewportH.value - 250) : undefined))
 const show = defineModel<boolean>('show', { required: true })
 const emit = defineEmits<{ apply: [mask: Blob] }>()
 
@@ -36,8 +47,14 @@ function onKeyCapture(e: KeyboardEvent) {
   e.stopPropagation()
   if (isUndo && hasStroke.value) painter.value?.undo()
 }
-onMounted(() => window.addEventListener('keydown', onKeyCapture, true))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeyCapture, true))
+onMounted(() => {
+  window.addEventListener('keydown', onKeyCapture, true)
+  window.addEventListener('resize', onResize)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyCapture, true)
+  window.removeEventListener('resize', onResize)
+})
 
 async function apply() {
   if (!painter.value || exporting.value) return
@@ -55,7 +72,8 @@ async function apply() {
 <template>
   <n-modal v-model:show="show" transform-origin="center" :mask-closable="false">
     <section
-      class="w-[min(720px,calc(100vw-32px))] max-h-[calc(100vh-48px)] overflow-y-auto box-border p-18px rounded-13px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-12px"
+      :class="large ? 'w-[min(1280px,calc(100vw-32px))]' : 'w-[min(720px,calc(100vw-32px))]'"
+      class="max-h-[calc(100vh-48px)] overflow-y-auto box-border p-18px rounded-13px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-12px"
       role="dialog"
       aria-label="涂抹调色选区"
     >
@@ -70,7 +88,13 @@ async function apply() {
         在图上涂抹要调色的区域（涂红处会被调整，其余像素不动）；放大后可切「移动」拖动画面，涂错了用「撤销」或「清空」。
         应用后可在参数台里反选、调边缘柔化。
       </p>
-      <MaskPainter v-if="show && src" ref="painter" :src="src" @change="hasStroke = $event" />
+      <MaskPainter
+        v-if="show && src"
+        ref="painter"
+        :src="src"
+        :max-viewport-h="maxViewportH"
+        @change="hasStroke = $event"
+      />
     </section>
   </n-modal>
 </template>

@@ -15,8 +15,9 @@
  * - 「移除校色」= cf.clear()：清掉这条的参数 / 选区 / 涂抹蒙版，回到原图；
  * - src 必须是当前观看者有权下载的那张（免费档 = 带水印的交付图），烘出来的 PNG 会被下载 / 上传；
  * - 用 NModal（不是 MediaLightbox）：灯箱 z-index 4000 会盖住涂抹弹窗与消息提示。
+ * - 「全屏调色」（图上胶囊或 F）：同一份 cf 进全屏层，顶栏同样有「下载校色图」与调用方的 actions。
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import ColorFixView from './ColorFixView.vue'
 import { useResultColorFix, type ResultColorFix } from './useResultColorFix.ts'
@@ -85,6 +86,26 @@ watch(show, (open) => {
 function onUpdateShow(v: boolean) {
   if (!v) close()
 }
+
+/** F：全屏调色（弹窗开着、没有更上层的涂抹 / 点选 / 全屏，焦点不在输入控件上） */
+function onKeydown(e: KeyboardEvent) {
+  if (!show.value || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return
+  if (e.key !== 'f' && e.key !== 'F') return
+  if (cf.fullscreen.value || cf.painterOpen.value || cf.pointOpen.value || !cf.src.value) return
+  const t = e.target as HTMLElement | null
+  if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
+  e.preventDefault()
+  cf.openFullscreen()
+}
+watch(
+  show,
+  (open) => {
+    if (open) window.addEventListener('keydown', onKeydown)
+    else window.removeEventListener('keydown', onKeydown)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 const status = computed(() => {
   if (!cf.active.value) return '未校色：点「校色调整」开始'
@@ -177,9 +198,23 @@ async function removeFix() {
           :cf="cf"
           :labels="['校色前', '校色后']"
           compare-pills
+          :fullscreen-title="title"
           @download-before="cf.downloadOriginal(`${fileName}-校色前`)"
           @download-after="download"
-        />
+        >
+          <template #fullscreen-actions>
+            <button
+              type="button"
+              class="sx-btn !h-32px !px-12px !text-13px"
+              :disabled="downloading || !src"
+              :aria-busy="downloading"
+              @click="download"
+            >
+              {{ downloading ? '准备下载…' : '下载校色图' }}
+            </button>
+            <slot name="actions" :cf="cf" :bake-file="bakeFile" />
+          </template>
+        </ColorFixView>
       </div>
 
       <footer class="flex flex-wrap items-center gap-8px">

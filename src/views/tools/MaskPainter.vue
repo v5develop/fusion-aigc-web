@@ -21,7 +21,11 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-const props = defineProps<{ src: string }>()
+const props = defineProps<{
+  src: string
+  /** 适应档的最大显示高度（默认 520；全屏调色里的大弹窗传更大的值） */
+  maxViewportH?: number
+}>()
 const emit = defineEmits<{ change: [hasStroke: boolean] }>()
 
 interface Stroke {
@@ -67,7 +71,7 @@ const hasImage = computed(() => natural.value.w > 0 && natural.value.h > 0)
 const fit = computed(() => {
   const { w, h } = natural.value
   if (!w || !h || availW.value <= 0) return { w: 0, h: 0 }
-  const s = Math.min(availW.value / w, MAX_VIEWPORT_H / h)
+  const s = Math.min(availW.value / w, (props.maxViewportH || MAX_VIEWPORT_H) / h)
   return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) }
 })
 const stageStyle = computed(() => ({

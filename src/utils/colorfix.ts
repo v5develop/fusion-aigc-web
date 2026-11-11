@@ -411,6 +411,38 @@ function prepareMask(
   return canvas
 }
 
+/**
+ * 选区可视化（全屏调色的「显示选区」）：把蒙版（alpha 或黑白，口径同烘图）画成半透明着色层，按 invert 反选；
+ * 长边缩到 maxSide 以内（只是示意）。蒙版读不了像素时抛错，调用方不显示即可。
+ */
+export async function colorFixMaskOverlay(
+  maskUrl: string,
+  opts: { invert?: boolean; maxSide?: number; rgb?: [number, number, number]; alpha?: number } = {},
+): Promise<HTMLCanvasElement> {
+  const mask = await loadImage(maskUrl)
+  const scale = Math.min(1, (opts.maxSide ?? 1024) / Math.max(mask.naturalWidth || 1, mask.naturalHeight || 1))
+  const w = Math.max(1, Math.round((mask.naturalWidth || 1) * scale))
+  const h = Math.max(1, Math.round((mask.naturalHeight || 1) * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('画布不可用')
+  ctx.drawImage(mask, 0, 0, w, h)
+  const data = ctx.getImageData(0, 0, w, h)
+  maskToAlpha(data.data, !!opts.invert)
+  const [r, g, b] = opts.rgb ?? [135, 95, 154]
+  const k = opts.alpha ?? 0.5
+  for (let i = 0; i < data.data.length; i += 4) {
+    data.data[i] = r
+    data.data[i + 1] = g
+    data.data[i + 2] = b
+    data.data[i + 3] = Math.round(data.data[i + 3]! * k)
+  }
+  ctx.putImageData(data, 0, 0)
+  return canvas
+}
+
 /** 选区蒙版拿不到（跨域 / 404 / blob 已回收）：不退回整图校色，抛这个错，由调用方走失败 / 原图兜底 */
 export const COLORFIX_MASK_LOAD_FAILED = '选区蒙版加载失败，未应用校色'
 export class ColorFixMaskLoadError extends Error {

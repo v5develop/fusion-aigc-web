@@ -165,8 +165,15 @@ export function studioSegmentMask(
   imageUrl: string,
   target: types.StudioMaskTarget,
   parts?: types.StudioMaskGarmentPart[],
+  opts: { signal?: AbortSignal; timeout?: number } = {},
 ) {
   const body: types.StudioMaskReq = { imageUrl: imageUrl, target }
   if (target === 'garment' && parts?.length) body.parts = parts
-  return post<types.StudioMaskResp>(`${PREFIX}/masks`, body, undefined, SEGMENT_MASK_TIMEOUT)
+  return post<types.StudioMaskResp>(
+    `${PREFIX}/masks`,
+    body,
+    undefined,
+    opts.timeout ?? SEGMENT_MASK_TIMEOUT,
+    opts.signal,
+  )
 }

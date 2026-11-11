@@ -19,6 +19,9 @@
  *
  * <p>服装细分部位（2026-11-09）：「自动识别 · 服装」下再出一排多选：全部服装 / 上衣 / 外套 / 下装 / 裙装 / 鞋 / 包 / 帽，
  * 写进 region.parts（空 = 全部服装）。只在传了 `garment-parts`（服务端支持的部位，调用方探测）时出现。
+ *
+ * <p>停靠（`docked`，2026-11-11 全屏调色）：不浮、不拖，铺满父容器（高度由父级给，内容超出时本体滚动），没有 ×
+ * （退出由全屏层负责）；其余内容与交互完全相同。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ColorFixSlider from '@/views/studio/colorfix/ColorFixSlider.vue'
@@ -58,6 +61,14 @@ const props = withDefaults(
     pointBlocked?: string
     /** 「自动识别 · 服装」可细分的部位（服务端支持的）；空 = 不出部位选择 */
     garmentParts?: ColorFixGarmentPart[]
+    /** 识别中的提示（不传 = 「正在识别选区…」；首次识别慢时调用方换成更长的说明） */
+    maskBusyHint?: string
+    /** 选区提示旁给「重试」（识别失败可重试时） */
+    maskRetry?: boolean
+    /** 选区提示下的替代操作按钮（如「改用人物」「改用点选」），点了发 maskAction(key) */
+    maskActions?: { key: string; label: string }[]
+    /** 停靠在全屏调色右侧：不浮、不拖、无 × */
+    docked?: boolean
   }>(),
   {
     open: true,
@@ -71,6 +82,10 @@ const props = withDefaults(
     hasPoint: false,
     pointBlocked: '',
     garmentParts: () => [],
+    maskBusyHint: '',
+    maskRetry: false,
+    maskActions: () => [],
+    docked: false,
   },
 )
 
@@ -87,6 +102,10 @@ const emit = defineEmits<{
   paint: []
   /** 点了「点选区域 / 重新点选」（本机分割弹窗） */
   point: []
+  /** 点了选区提示旁的「重试」（自动识别失败后） */
+  retryMask: []
+  /** 点了选区提示下的替代操作（maskActions 的 key） */
+  maskAction: [key: string]
 }>()
 
 const R = COLORFIX_RANGES
@@ -119,6 +138,10 @@ function clamp(x: number, y: number) {
 function placeDefault() {
   const el = root.value
   if (!el) return
+  if (props.docked) {
+    placed.value = true
+    return
+  }
   const { w, h } = parentBox()
   pos.value = clamp(w - el.offsetWidth - 12, Math.max(12, Math.round((h - el.offsetHeight) / 2)))
   placed.value = true
@@ -129,7 +152,7 @@ function observeParent() {
   const parent = parentEl()
   if (!parent || typeof ResizeObserver === 'undefined') return
   observer = new ResizeObserver(() => {
-    if (props.open && placed.value) pos.value = clamp(pos.value.x, pos.value.y)
+    if (props.open && placed.value && !props.docked) pos.value = clamp(pos.value.x, pos.value.y)
   })
   observer.observe(parent)
 }
@@ -155,7 +178,7 @@ function onAfterLeave() {
 }
 
 function onPointerDown(event: PointerEvent) {
-  if (event.button !== 0) return
+  if (event.button !== 0 || props.docked) return
   // 头部里的按钮（×）不起拖，否则会吞掉它的 click
   if ((event.target as HTMLElement).closest('button')) return
   dragging.value = true
@@ -183,7 +206,7 @@ function onPointerUp() {
 }
 
 function onResize() {
-  if (!props.open || !placed.value) return
+  if (!props.open || !placed.value || props.docked) return
   pos.value = clamp(pos.value.x, pos.value.y)
 }
 
@@ -250,14 +273,16 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
       v-if="open"
       ref="root"
       class="cfp"
-      :class="{ 'is-dragging': dragging, 'is-placed': placed }"
-      :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
+      :class="{ 'is-dragging': dragging, 'is-placed': placed, 'is-docked': docked }"
+      :style="docked ? undefined : { left: `${pos.x}px`, top: `${pos.y}px` }"
       :aria-label="`${title}参数`"
     >
-      <header class="cfp__head" title="拖动调整面板" @pointerdown="onPointerDown">
-        <span class="cfp__grip" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
+      <header class="cfp__head" :title="docked ? undefined : '拖动调整面板'" @pointerdown="onPointerDown">
+        <span v-if="!docked" class="cfp__grip" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
         <b class="cfp__title">{{ title }}</b>
+        <slot name="head-extra" />
         <button
+          v-if="!docked"
           type="button"
           class="cfp__close sx-hit"
           aria-label="收起校色参数"
@@ -386,8 +411,27 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
           </div>
         </template>
         <p v-if="maskBusy || maskHint" class="cfp__note" role="status" aria-live="polite">
-          {{ maskBusy ? '正在识别选区…' : maskHint }}
+          <span class="cfp__note-text">{{ maskBusy ? maskBusyHint || '正在识别选区…' : maskHint }}</span>
+          <button
+            v-if="!maskBusy && maskRetry"
+            type="button"
+            class="cfp__btn sx-hit"
+            @click="emit('retryMask')"
+          >
+            重试
+          </button>
         </p>
+        <div v-if="!maskBusy && maskHint && maskActions.length" class="cfp__fixes" role="group" aria-label="改用其他选区方式">
+          <button
+            v-for="a in maskActions"
+            :key="a.key"
+            type="button"
+            class="cfp__btn sx-hit"
+            @click="emit('maskAction', a.key)"
+          >
+            {{ a.label }}
+          </button>
+        </div>
       </div>
 
       <div class="cfp__sliders">
@@ -691,10 +735,60 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   text-align: right;
 }
 .cfp__note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   color: #9aa1aa;
   font-size: 11px;
   line-height: 16px;
+}
+.cfp__fixes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: -2px;
+}
+.cfp__note-text {
+  min-width: 0;
+  flex: 1;
+}
+/* 停靠：铺满全屏层右栏，不浮、不拖 */
+.cfp.is-docked {
+  position: relative;
+  z-index: auto;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  user-select: auto;
+}
+.cfp.is-docked .cfp__head {
+  height: 48px;
+  flex-basis: 48px;
+  padding: 0 16px;
+  cursor: default;
+  touch-action: auto;
+}
+.cfp.is-docked .cfp__title {
+  font-size: 14px;
+}
+.cfp.is-docked .cfp__region,
+.cfp.is-docked .cfp__foot {
+  margin: 0 16px;
+}
+.cfp.is-docked .cfp__sliders {
+  padding: 12px 16px 4px;
+  gap: 8px;
+}
+.cfp.is-docked .cfp__foot {
+  margin-top: auto;
 }
 .cfp__seg-btn:focus-visible,
 .cfp__chip:focus-visible,

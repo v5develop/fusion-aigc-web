@@ -378,13 +378,21 @@ export function getQuiet<T = any>(url: string, params?: any): Promise<ApiRespons
   return service.request({ method: 'get', url, params, silent: true } as AxiosRequestConfig)
 }
 
-export function post<T = any>(url: string, data: any, headers?: any, timeout?: number): Promise<ApiResponse<T>> {
+export function post<T = any>(
+  url: string,
+  data: any,
+  headers?: any,
+  timeout?: number,
+  /** 可选：中途放弃（如校色自动识别切换目标 / 关闭）；被中止时以 axios CanceledError 拒绝 */
+  signal?: AbortSignal,
+): Promise<ApiResponse<T>> {
   return service({
     method: 'post',
     url,
     data,
     headers,
     ...(timeout ? { timeout } : {}),
+    ...(signal ? { signal } : {}),
   })
 }
 

@@ -3,7 +3,8 @@
  * 主线程协议见 pointSegment.ts；图片像素只在本机内存里流转，不发往任何服务。
  *
  * <ul>
- *   <li>init：拉模型（Cache Storage 缓存，按来源列表依次尝试）→ 建会话。编码器 WebGPU（需 shader-f16，用 fp16 权重）优先，
+ *   <li>init：拉识别引擎（onnxruntime 的 WASM 运行时，交给 ort.env.wasm.wasmBinary）与模型（都走 Cache Storage，
+ *       按候选地址依次尝试；主线程多半已预取进缓存）→ 建会话。编码器 WebGPU（需 shader-f16，用 fp16 权重）优先，
  *       起不来退 WASM（int8 量化权重）；解码器一律 WASM（每次点击都跑，小模型留在 CPU 免 GPU 回读）。</li>
  *   <li>embed：收主线程缩好的 RGBA（长边 ≤1024），按 SamProcessor 口径归一化 + 右下补零到 1024²，跑一次编码器，嵌入留在 Worker。</li>
  *   <li>decode：点（缩放后坐标，label 1 = 加 / 0 = 减）+ 可选框（没有正点也没有框 → 不出蒙版）→ 单点取 3 张候选里 IoU 最高、多点取第 0 张 → 在缩放图网格上双线性采 256² logits，
@@ -11,15 +12,31 @@
  * </ul>
  */
 import * as ort from 'onnxruntime-web/webgpu'
+import { fetchPointSegmentAsset, isWasmBinary } from './point-segment-fetch.ts'
 
 const SIZE = 1024
 const LOW = 256
 const MEAN = [0.485, 0.456, 0.406] as const
 const STD = [0.229, 0.224, 0.225] as const
-const CACHE_NAME = 'fusion-point-segment-v1'
+
+/** 同 point-segment.ts 的 PointSegmentAsset */
+interface Asset {
+  group: 'engine' | 'model'
+  candidates: string[]
+  sizeHint: number
+  wasm?: boolean
+}
 
 type InMsg =
-  | { id: number; type: 'init'; sources: string[]; files: { gpu: string; cpu: string; decoder: string } }
+  | {
+      id: number
+      type: 'init'
+      useGpu: boolean
+      wasm: Asset
+      encoder: Asset
+      decoder: Asset
+      cpuEncoder: Asset
+    }
   | { id: number; type: 'embed'; pixels: ArrayBuffer; width: number; height: number }
   | {
       id: number
@@ -38,8 +55,7 @@ let encoder: ort.InferenceSession | null = null
 let decoder: ort.InferenceSession | null = null
 let device: 'webgpu' | 'wasm' = 'wasm'
 let embeds: { emb: ort.Tensor; pos: ort.Tensor; width: number; height: number } | null = null
-let cpuEncoderFile = ''
-let sourcesCache: string[] = []
+let cpuEncoderAsset: Asset | null = null
 
 class SegError extends Error {
   constructor(
@@ -54,96 +70,23 @@ function post(msg: unknown, transfer?: Transferable[]) {
   scope.postMessage(msg, transfer)
 }
 
-// ---------------- 模型下载（Cache Storage + 进度） ----------------
+// ---------------- 下载（Cache Storage + 进度，见 point-segment-fetch.ts） ----------------
 
-async function openCache(): Promise<Cache | null> {
+async function grabAsset(asset: Asset, onBytes: (n: number, total: number) => void): Promise<Uint8Array> {
   try {
-    return typeof caches === 'undefined' ? null : await caches.open(CACHE_NAME)
-  } catch {
-    return null
+    const bytes = await fetchPointSegmentAsset(asset.candidates, onBytes, {
+      sizeHint: asset.sizeHint,
+      validate: asset.wasm ? isWasmBinary : undefined,
+    })
+    if (!bytes) throw new Error('empty')
+    return bytes
+  } catch (err) {
+    const what = asset.wasm ? '识别引擎' : '模型'
+    throw new SegError(`${what}下载失败：${err instanceof Error ? err.message : String(err)}`, 'network')
   }
-}
-
-/** 拉一个模型文件：先查 Cache Storage，再按来源依次下载；SPA 兜底回的 HTML 不算成功 */
-async function fetchModel(file: string, onBytes: (n: number, total: number) => void): Promise<Uint8Array> {
-  const cache = await openCache()
-  for (const base of sourcesCache) {
-    const url = base + file
-    try {
-      const hit = await cache?.match(url)
-      if (hit) {
-        const buf = new Uint8Array(await hit.arrayBuffer())
-        onBytes(buf.byteLength, buf.byteLength)
-        return buf
-      }
-    } catch {
-      /* 缓存读不了就下载 */
-    }
-  }
-  let lastErr: unknown = null
-  for (const base of sourcesCache) {
-    const url = base + file
-    try {
-      const resp = await fetch(url, { mode: 'cors', credentials: 'omit' })
-      const type = resp.headers.get('content-type') || ''
-      if (!resp.ok || type.includes('text/html')) throw new Error(`HTTP ${resp.status}`)
-      const total = Number(resp.headers.get('content-length')) || 0
-      let buf: Uint8Array
-      if (resp.body && total > 0) {
-        buf = new Uint8Array(total)
-        const reader = resp.body.getReader()
-        let off = 0
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          if (off + value.byteLength > buf.byteLength) {
-            // content-length 不准（压缩传输）：扩容
-            const grown = new Uint8Array(Math.max(buf.byteLength * 2, off + value.byteLength))
-            grown.set(buf.subarray(0, off))
-            buf = grown
-          }
-          buf.set(value, off)
-          off += value.byteLength
-          onBytes(off, total)
-        }
-        buf = buf.subarray(0, off)
-      } else {
-        buf = new Uint8Array(await resp.arrayBuffer())
-        onBytes(buf.byteLength, buf.byteLength)
-      }
-      if (buf.byteLength < 1024) throw new Error('模型文件不完整')
-      try {
-        await cache?.put(
-          url,
-          new Response(buf.slice().buffer, { headers: { 'content-type': 'application/octet-stream' } }),
-        )
-      } catch {
-        /* 配额满 / 隐私模式：下次重新下载 */
-      }
-      return buf
-    } catch (err) {
-      lastErr = err
-    }
-  }
-  throw new SegError(`模型下载失败：${lastErr instanceof Error ? lastErr.message : String(lastErr)}`, 'network')
 }
 
 // ---------------- 会话 ----------------
-
-interface GpuLike {
-  requestAdapter(): Promise<{ features: { has(f: string): boolean } } | null>
-}
-
-async function hasF16Gpu(): Promise<boolean> {
-  try {
-    const gpu = (navigator as unknown as { gpu?: GpuLike }).gpu
-    if (!gpu) return false
-    const adapter = await gpu.requestAdapter()
-    return !!adapter && adapter.features.has('shader-f16')
-  } catch {
-    return false
-  }
-}
 
 async function createWasm(bytes: Uint8Array): Promise<ort.InferenceSession> {
   try {
@@ -154,37 +97,39 @@ async function createWasm(bytes: Uint8Array): Promise<ort.InferenceSession> {
 }
 
 async function init(msg: Extract<InMsg, { type: 'init' }>) {
-  sourcesCache = msg.sources
-  cpuEncoderFile = msg.files.cpu
+  cpuEncoderAsset = msg.cpuEncoder
   ort.env.wasm.proxy = false
   ort.env.wasm.numThreads = (self as unknown as { crossOriginIsolated?: boolean }).crossOriginIsolated
     ? Math.min(4, navigator.hardwareConcurrency || 1)
     : 1
   ort.env.logLevel = 'error'
 
-  const useGpu = await hasF16Gpu()
-  const files = [useGpu ? msg.files.gpu : msg.files.cpu, msg.files.decoder]
-  const loaded = new Map<string, number>()
-  const totals = new Map<string, number>()
+  const assets = [msg.wasm, msg.encoder, msg.decoder]
+  const state = assets.map((a) => ({ loaded: 0, total: a.sizeHint }))
   const report = () => {
-    let l = 0
-    let t = 0
-    for (const f of files) {
-      l += loaded.get(f) ?? 0
-      t += totals.get(f) ?? 0
-    }
-    post({ type: 'progress', loaded: l, total: t })
-  }
-  const grab = (f: string) =>
-    fetchModel(f, (n, total) => {
-      loaded.set(f, n)
-      totals.set(f, total)
-      report()
+    const progress = { engine: { loaded: 0, total: 0 }, model: { loaded: 0, total: 0 } }
+    assets.forEach((a, i) => {
+      const s = state[i]!
+      progress[a.group].loaded += s.loaded
+      progress[a.group].total += Math.max(s.total, s.loaded)
     })
+    post({ type: 'progress', progress })
+  }
+  const onBytes = (i: number) => (n: number, total: number) => {
+    state[i]!.loaded = n
+    if (total > 0) state[i]!.total = total
+    report()
+  }
 
-  const [encBytes, decBytes] = (await Promise.all(files.map(grab))) as [Uint8Array, Uint8Array]
+  const [wasmBytes, encBytes, decBytes] = await Promise.all([
+    // 引擎下不下来（CDN / 资源地址都挂）：不设 wasmBinary，退回 onnxruntime 自己按打包地址拉一次
+    grabAsset(msg.wasm, onBytes(0)).catch(() => null),
+    grabAsset(msg.encoder, onBytes(1)),
+    grabAsset(msg.decoder, onBytes(2)),
+  ])
+  if (wasmBytes) ort.env.wasm.wasmBinary = wasmBytes
   decoder = await createWasm(decBytes)
-  if (useGpu) {
+  if (msg.useGpu) {
     try {
       encoder = await ort.InferenceSession.create(encBytes, {
         executionProviders: ['webgpu'],
@@ -197,7 +142,7 @@ async function init(msg: Extract<InMsg, { type: 'init' }>) {
   }
   if (!encoder) {
     device = 'wasm'
-    encoder = await createWasm(useGpu ? await grab(cpuEncoderFile) : encBytes)
+    encoder = await createWasm(msg.useGpu ? await grabAsset(msg.cpuEncoder, () => {}) : encBytes)
   }
   return { device }
 }
@@ -235,7 +180,8 @@ async function embed(msg: Extract<InMsg, { type: 'embed' }>) {
     if (device !== 'webgpu') throw err
     // WebGPU 跑挂（驱动 / 显存）：换 WASM 再来一次
     await encoder?.release().catch(() => {})
-    encoder = await createWasm(await fetchModel(cpuEncoderFile, () => {}))
+    if (!cpuEncoderAsset) throw err
+    encoder = await createWasm(await grabAsset(cpuEncoderAsset, () => {}))
     device = 'wasm'
     res = await runEncoder(pv)
   }

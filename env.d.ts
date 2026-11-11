@@ -16,6 +16,13 @@ interface ImportMetaEnv {
    */
   readonly VITE_POINT_SEGMENT_MODEL_BASE?: string
   /**
+   * 可选：校色「点选」识别引擎（onnxruntime-web 的 ort-wasm-simd-threaded.asyncify.wasm，约 28.7MB）的 CDN 目录地址，
+   * 如 https://cdn.example.com/ort/1.31.1/。实际请求 `<目录>/ort-wasm-simd-threaded.asyncify.wasm?v=<构建哈希>`，
+   * 失败再退回站点自带的打包资源；跨域时需 CORS 头。升级 onnxruntime-web 时同步换目录里的文件。
+   * 见 src/components/ColorFix/point-segment.ts wasmSources()。
+   */
+  readonly VITE_POINT_SEGMENT_WASM_BASE?: string
+  /**
    * 可选：除 *.aliyuncs.com 外允许拼 OSS 图片缩放参数的自定义域名（公有桶 CDN），逗号分隔，如 img.example.com。
    * 列表 / 历史卡缩略图（utils/oss.ts ossResize）只对这些主机生效；不配则自定义域名一律用原图。
    */

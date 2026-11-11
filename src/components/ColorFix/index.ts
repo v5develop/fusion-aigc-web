@@ -30,6 +30,8 @@
  * 舞台 / 弹窗（同一家族，画面都是 ColorFixView）：
  * - 结果列表多张图：`provideColorFixHost({ save })` + 每张图 `<ColorFixItem>` + 列表上方 `<ColorFixStage :host>`；
  * - 单张图弹窗：`<ColorFixDialog v-model:show :src :color-key>`（底栏插槽拿 bakeFile 做引用 / 上传）。
+ * - 全屏调色：`<ColorFixFullscreen :cf v-model:mode>`（大图缩放平移 + 对比分割线 + 右侧停靠参数台），
+ *   入口调 `cf.openFullscreen()`；ColorFixView（舞台 / 弹窗）已内置入口按钮。状态与页面共用一份 cf。
  *
  * 无界面操作：`hasStoredColorFix` / `bakeStoredColorFix(key, src, opts)`（按存的参数烘图）/ `clearStoredColorFix`，
  * 状态机里用 `cf.clear()`。存资产版本：`saveColorFixVersion(assetId, cf, opts)`（按 参数 + 选区 去重，涂抹选区不去重）、
@@ -69,9 +71,15 @@ export { default as ColorFixView } from './ColorFixView.vue'
 export { default as ColorFixStage } from './ColorFixStage.vue'
 export { default as ColorFixItem } from './ColorFixItem.vue'
 export { default as ColorFixDialog } from './ColorFixDialog.vue'
+export { default as ColorFixFullscreen } from './ColorFixFullscreen.vue'
+export { default as ColorFixZoomView } from './ColorFixZoomView.vue'
 export { default as ColorFixPanel } from '@/views/tools/ColorFixPanel.vue'
 export {
   colorFixSegmentSupported,
+  colorFixSegmentFailure,
+  type ColorFixSegmentFailure,
+  type ColorFixSegmentSuggestion,
+  isSegmentStillComputing,
   colorFixGarmentParts,
   colorFixPresetFor,
   colorFixRequestParts,

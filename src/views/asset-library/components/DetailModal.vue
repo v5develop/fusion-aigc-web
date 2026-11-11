@@ -18,7 +18,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { NModal } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
-import { ColorFixResultPanel } from '@/components/ColorFix'
+import { ColorFixFullscreen, ColorFixResultPanel } from '@/components/ColorFix'
 import { createAssetDetail, provideAssetDetail, type DetailTab } from './detail/context.ts'
 import DetailStage from './detail/DetailStage.vue'
 import DetailHeader from './detail/DetailHeader.vue'
@@ -113,10 +113,16 @@ function isEditableTarget(t: EventTarget | null): boolean {
 }
 function onKeydown(e: KeyboardEvent) {
   if (!show.value || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return
-  if (d.versionAssetShow.value || lightboxOpen.value) return
+  if (d.versionAssetShow.value || lightboxOpen.value || cf.fullscreen.value) return
+  if (isEditableTarget(e.target)) return
+  // F：全屏调色（全屏层里的 F / Esc 退出由 ColorFixFullscreen 处理）
+  if ((e.key === 'f' || e.key === 'F') && d.canColorFix.value && !cf.painterOpen.value && !cf.pointOpen.value) {
+    e.preventDefault()
+    cf.openFullscreen()
+    return
+  }
   // 校色参数台 / 涂抹弹窗开着：方向键留给它们
   if (cf.panelOpen.value || cf.painterOpen.value) return
-  if (isEditableTarget(e.target)) return
   if (e.key === 'ArrowLeft' && props.hasPrev) {
     e.preventDefault()
     emit('prev')
@@ -156,6 +162,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
       <!-- 校色参数台：绝对定位压在右栏上，不挡大图 -->
       <ColorFixResultPanel v-if="d.asset.value" :cf="cf" title="资产校色" />
+      <!-- 全屏调色：同一份 cf，查看方式与舞台共用 fixMode -->
+      <ColorFixFullscreen v-if="d.asset.value" v-model:mode="d.fixMode.value" :cf="cf" title="资产校色">
+        <template #actions>
+          <button
+            type="button"
+            class="sx-btn-primary !h-32px !px-14px !text-13px"
+            :disabled="d.savingColorFix.value || !cf.active.value"
+            :aria-busy="d.savingColorFix.value || undefined"
+            title="把当前校色效果另存为这个资产的新版本，原图不会被覆盖"
+            @click="d.saveFixVersion"
+          >
+            {{ d.savingColorFix.value ? '保存中…' : '保存为新版本' }}
+          </button>
+        </template>
+      </ColorFixFullscreen>
 
       <DetailStage
         v-model:lightbox="lightboxOpen"

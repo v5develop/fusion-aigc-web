@@ -32,3 +32,34 @@ export const pointSegmentBlocked = ref(detect() ? '' : POINT_UNSUPPORTED_HINT)
 export function markPointSegmentBroken(reason = POINT_UNSUPPORTED_HINT) {
   pointSegmentBlocked.value = reason
 }
+
+// ---------------- 空闲预取（参数台打开时调一次；不在页面加载时做） ----------------
+
+let prefetchScheduled = false
+
+/**
+ * 参数台打开时调用：浏览器空闲时把点选的识别引擎 + 模型预取进 Cache Storage（point-segment.ts prefetchPointSegment），
+ * 用户点「点选」时就不用再等下载。本会话只排一次；不支持点选、省流量模式（Save-Data）/ 2G 网络 / 小内存设备、Cache Storage 不可用时不做。
+ */
+export function schedulePointSegmentPrefetch() {
+  if (prefetchScheduled || pointSegmentBlocked.value || typeof window === 'undefined') return
+  const nav = navigator as unknown as {
+    connection?: { saveData?: boolean; effectiveType?: string }
+    deviceMemory?: number
+  }
+  // 省流量 / 2G 网络 / 小内存设备：不主动下 ~40MB，等用户真点「点选」再下
+  if (nav.connection?.saveData || /(^|-)2g$/.test(nav.connection?.effectiveType ?? '')) return
+  if (nav.deviceMemory !== undefined && nav.deviceMemory < 2) return
+  prefetchScheduled = true
+  const run = () => {
+    void import('./point-segment.ts')
+      .then((m) => m.prefetchPointSegment())
+      .catch(() => {
+        prefetchScheduled = false
+      })
+  }
+  const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+    .requestIdleCallback
+  // 先让参数台的首帧 / 烘图跑完再开始下载
+  setTimeout(() => (idle ? idle(run, { timeout: 5000 }) : run()), 1500)
+}
