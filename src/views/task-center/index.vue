@@ -7,7 +7,9 @@
  * 封面只用 coverUrl（已脱敏 / 预签名）。有排队或生成中的任务时每 8 秒静默刷新一次；
  * 全站实时推送在线时（utils/taskWatcher 的 taskStreamLive）不再定时刷新，改为按推送的 task 事件就地更新该行：
  * 进度类变化直接改行，状态桶变化回查该行详情并稍后静默刷新一次（角标计数、排序、封面），推送要求 resync 时整体重拉。
- * 深链 /tasks?taskId=…（完成提醒的「查看」）：列表加载后滚动到该行并高亮；不在当前筛选 / 页时先回到「全部」第一页再找。
+ * 详情抽屉（TaskDetailDrawer）：点行标题打开；URL 带 ?taskId=…，关闭时只改 URL 不刷新页面。
+ * 深链 /tasks?taskId=…（完成提醒的「查看」）：直接打开该任务的详情抽屉，同时在列表里滚动到该行并高亮；
+ * 不在当前筛选 / 页时先回到「全部」第一页再找（找不到也不影响抽屉）。
  * 进度条旁的预计剩余时间取后端 etaSeconds / progressSource，两次刷新之间本地倒计时（utils/task-eta）。
  *
  * <p>收藏：每行星标（乐观切换，失败回滚），「收藏」筛选只列已收藏的任务（总览角标同口径）。
@@ -25,6 +27,8 @@ import { stashRefill, type RefillMode } from '@/utils/refill-handoff'
 import { llTheme } from '@/views/local-life/theme.ts'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import IconButton from '@/components/IconButton/index.vue'
+import TaskDetailDrawer from './TaskDetailDrawer.vue'
+import { CHIP_CLS, DELETABLE, DOT_CLS, IN_FLIGHT } from './status'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
 import { cardThumb, thumbFallback } from '@/utils/oss'
@@ -63,23 +67,12 @@ const route = useRoute()
 
 const PAGE_SIZE = 20
 const POLL_MS = 8000
-/** 后端允许删除的状态桶（任务已结束）；在途任务不给删除入口 */
-const DELETABLE = new Set(['success', 'failed', 'cancelled'])
-const IN_FLIGHT = new Set(['queued', 'processing'])
 
 const FOCUS = 'focus-visible:(outline outline-2 outline-solid outline-violet outline-offset-2)'
 const COLLECT_CLS =
   'sx-squircle inline-flex items-center gap-6px h-32px px-12px rounded-14px border border-solid text-13px font-500 cursor-pointer whitespace-nowrap ' +
   FOCUS
 
-/** 状态徽标配色（只按后端给的 statusBucket 选样式，文案用 statusLabel） */
-const CHIP_CLS: Record<string, string> = {
-  queued: 'bg-warning-soft text-warning',
-  processing: 'bg-info-soft text-violet-ink',
-  success: 'bg-success-soft text-success',
-  failed: 'bg-danger-soft text-danger',
-  cancelled: 'text-muted bg-surface3',
-}
 
 // ---------------- 筛选 ----------------
 
@@ -292,23 +285,40 @@ function onLiveTask(ev: TaskStreamEvent) {
 
 const highlightId = ref('')
 let highlightTimer: ReturnType<typeof setTimeout> | null = null
-/** 待定位的任务号；找到（或确认找不到）后清空，并把 query 里的 taskId 去掉，刷新页面不再重复定位 */
+/** 待定位的任务号；找到（或确认找不到）后清空。query 里的 taskId 保留：它同时是详情抽屉的开关 */
 let pendingFocus = ''
 let focusWidened = false
+/** 本页自己写进 URL 的任务号（点行打开抽屉）：不触发定位 / 放宽筛选 */
+let selfNavId = ''
+
+const queryTaskId = () => {
+  const q = route.query.taskId
+  return typeof q === 'string' ? q.trim() : ''
+}
 
 function takeQueryTaskId() {
-  const q = route.query.taskId
-  const id = typeof q === 'string' ? q.trim() : ''
-  if (!id) return
+  const id = queryTaskId()
+  if (!id || id === selfNavId) return
   pendingFocus = id
   focusWidened = false
 }
 
-function clearFocusQuery() {
-  if (route.query.taskId === undefined) return
-  const query = { ...route.query }
-  delete query.taskId
-  void router.replace({ query })
+/** 详情抽屉打开的任务号 = URL 上的 taskId；写入用 replace，不刷新页面、不堆历史 */
+const detailId = computed<string>({
+  get: queryTaskId,
+  set: (id) => {
+    const query = { ...route.query }
+    if (id) query.taskId = id
+    else delete query.taskId
+    selfNavId = id
+    void router.replace({ query })
+  },
+})
+const detailItem = computed(() => items.value.find((i) => i.taskId === detailId.value) ?? null)
+const drawerRef = ref<InstanceType<typeof TaskDetailDrawer> | null>(null)
+
+function openDetail(item: ITaskCenterItem) {
+  detailId.value = item.taskId
 }
 
 async function tryFocus() {
@@ -316,7 +326,6 @@ async function tryFocus() {
   const id = pendingFocus
   if (items.value.some((i) => i.taskId === id)) {
     pendingFocus = ''
-    clearFocusQuery()
     highlightId.value = id
     if (highlightTimer) clearTimeout(highlightTimer)
     highlightTimer = setTimeout(() => (highlightId.value = ''), 4000)
@@ -338,9 +347,8 @@ async function tryFocus() {
     page.value = 1
     return
   }
+  // 列表里找不到（太早 / 被删）：详情抽屉照常按任务号加载，不再额外提示
   pendingFocus = ''
-  clearFocusQuery()
-  message.info('这条任务不在最近的列表里，可以按入口或时间筛选查找')
 }
 
 watch(loading, (v) => {
@@ -540,6 +548,7 @@ function confirmCancel(item: ITaskCenterItem) {
       } finally {
         cancelling.value = ''
         cancelBusy.delete(item.taskId)
+        drawerRef.value?.refresh()
       }
     },
   })
@@ -650,6 +659,12 @@ const emptyCopy = computed(() => {
 
 /** 行主区域可预览：有可用封面且未屏蔽；沿用原来的「新标签打开封面/大图」预览行为 */
 const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked && !brokenCovers.value.has(item.taskId)
+
+/** 抽屉里的回填在途态：只认本任务的，'same' / 'refill' / '' */
+const drawerRefillBusy = computed(() => {
+  const [id, mode] = refillBusy.value.split(':')
+  return id && id === detailId.value ? (mode ?? '') : ''
+})
 </script>
 
 <template>
@@ -848,18 +863,17 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
 
                 <span class="min-w-0 flex-1 flex flex-col gap-6px">
                   <span class="flex items-center gap-8px min-w-0">
-                    <b class="truncate text-14px font-600 leading-20px text-ink" :title="item.title">
-                      <a
-                        v-if="previewable(item)"
-                        :href="item.coverUrl ?? undefined"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="text-inherit no-underline rounded-4px hover:underline"
+                    <b class="min-w-0 truncate text-14px font-600 leading-20px text-ink" :title="item.title">
+                      <button
+                        type="button"
+                        class="max-w-full truncate p-0 border-0 bg-transparent text-inherit font-inherit text-left cursor-pointer rounded-4px hover:underline"
                         :class="FOCUS"
-                        :aria-label="`预览：${item.title}`"
-                        >{{ item.title }}</a
+                        :aria-label="`查看详情：${item.title}`"
+                        aria-haspopup="dialog"
+                        @click="openDetail(item)"
                       >
-                      <template v-else>{{ item.title }}</template>
+                        {{ item.title }}
+                      </button>
                     </b>
                     <!-- 状态胶囊（原型 .task-row status capsule）：999px + 5px 状态点，语义 soft 底深字 -->
                     <span
@@ -868,15 +882,7 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
                     >
                       <i
                         class="w-5px h-5px rounded-full mr-4px"
-                        :class="
-                          {
-                            queued: 'bg-warning',
-                            processing: 'bg-violet',
-                            success: 'bg-success',
-                            failed: 'bg-danger',
-                            cancelled: 'bg-placeholder',
-                          }[item.statusBucket] ?? 'bg-placeholder'
-                        "
+                        :class="DOT_CLS[item.statusBucket] ?? 'bg-placeholder'"
                         aria-hidden="true"
                       ></i>
                       {{ item.statusLabel }}
@@ -928,6 +934,15 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
               </div>
 
               <span class="flex-none flex items-center gap-8px">
+                <button
+                  type="button"
+                  class="sx-btn-ghost !min-h-32px !px-12px !text-13px"
+                  :aria-label="`详情：${item.title}`"
+                  aria-haspopup="dialog"
+                  @click="openDetail(item)"
+                >
+                  详情
+                </button>
                 <button
                   v-if="canView(item)"
                   type="button"
@@ -1017,5 +1032,18 @@ const previewable = (item: ITaskCenterItem) => !!item.coverUrl && !item.blocked 
         </template>
       </div>
     </div>
+
+    <TaskDetailDrawer
+      ref="drawerRef"
+      v-model:task-id="detailId"
+      :item="detailItem"
+      :can-view-of="canView"
+      :cancelling="!!detailId && cancelling === detailId"
+      :view-busy="!!detailId && viewBusy === detailId"
+      :refill-busy="drawerRefillBusy"
+      @cancel="confirmCancel"
+      @view="goView"
+      @refill="openWith"
+    />
   </n-config-provider>
 </template>

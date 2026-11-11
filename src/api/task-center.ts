@@ -153,7 +153,10 @@ export interface ITaskCenterAssetRef {
   watermark?: string | null
 }
 
-/** 单条任务详情（状态口径与列表一致，另带素材库产物引用） */
+/**
+ * 单条任务详情（状态口径与列表一致，另带素材库产物引用）。
+ * 不含入口名、失败原因、产物类型、点数：详情抽屉从列表行 / params 接口补齐，取不到就不显示。
+ */
 export interface ITaskCenterTask {
   taskId: string
   status: number
@@ -170,6 +173,8 @@ export interface ITaskCenterTask {
   coverThumbnailUrl?: string | null
   assetGroupId: string
   blocked: boolean
+  /** 能否取消：与列表项同一口径（排队 / 生成中、本人任务、尚未提交给模型供应商）；旧后端不下发 */
+  canCancel?: boolean | null
   assets: ITaskCenterAssetRef[]
 }
 
