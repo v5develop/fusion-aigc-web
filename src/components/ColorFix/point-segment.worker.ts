@@ -7,7 +7,7 @@
  *       按候选地址依次尝试；主线程多半已预取进缓存）→ 建会话。编码器 WebGPU（需 shader-f16，用 fp16 权重）优先，
  *       起不来退 WASM（int8 量化权重）；解码器一律 WASM（每次点击都跑，小模型留在 CPU 免 GPU 回读）。</li>
  *   <li>embed：收主线程缩好的 RGBA（长边 ≤1024），按 SamProcessor 口径归一化 + 右下补零到 1024²，跑一次编码器，嵌入留在 Worker。</li>
- *   <li>decode：点（缩放后坐标，label 1 = 加 / 0 = 减）+ 可选框（没有正点也没有框 → 不出蒙版）→ 单点取 3 张候选里 IoU 最高、多点取第 0 张 → 在缩放图网格上双线性采 256² logits，
+ *   <li>decode：点（缩放后坐标，label 1 = 加 / 0 = 减）+ 可选框（没有正点也没有框 → 不出蒙版）→ 3 张候选取「与提示点最一致、再看 IoU」的一张 → 在缩放图网格上双线性采 256² logits，
  *       sigmoid 成软蒙版（0–255），框外清零。</li>
  * </ul>
  */
@@ -222,9 +222,10 @@ async function decode(msg: Extract<InMsg, { type: 'decode' }>) {
   })
   const scores = out.iou_scores!.data as Float32Array
   const masks = out.pred_masks!.data as Float32Array
-  // 单点有歧义（部件 / 整体 / 更大范围），三张候选取 IoU 最高；多点时提示已经消歧，按 SAM 口径用第 0 张（单蒙版输出）
-  let best = 0
-  if (pts.length === 1) for (let i = 1; i < scores.length; i++) if (scores[i]! > scores[best]!) best = i
+  // 三张候选（导出时 multimask=true，第 0 张并不是 SAM 的「单蒙版」token）：先比「与提示一致的点数」
+  // （正点落在蒙版内、负点落在蒙版外），一样多再比 IoU。实测多点时第 0 张常把背景带进来或无视排除点，
+  // 单点时等价于原来的「IoU 最高」。
+  const best = pickMask(pts, masks, scores)
   const logits = masks.subarray(best * LOW * LOW, (best + 1) * LOW * LOW)
 
   // 256² logits 覆盖的是补零后的 1024²：缩放图像素 (x, y) 的采样点 = (x + 0.5) / 4 - 0.5（align_corners=false）
@@ -251,6 +252,29 @@ async function decode(msg: Extract<InMsg, { type: 'decode' }>) {
   }
   for (const t of Object.values(out)) t.dispose?.()
   return { mask: mask.buffer, width: w, height: h, score: scores[best] }
+}
+
+/** 候选蒙版里与提示最一致的一张：一致点数优先，IoU 次之 */
+function pickMask(pts: { x: number; y: number; label: 0 | 1 }[], masks: Float32Array, scores: Float32Array): number {
+  const n = Math.min(scores.length, Math.floor(masks.length / (LOW * LOW)))
+  const scale = LOW / SIZE
+  let best = 0
+  let bestHit = -1
+  for (let k = 0; k < n; k++) {
+    const base = k * LOW * LOW
+    let hit = 0
+    for (const p of pts) {
+      const ix = Math.min(LOW - 1, Math.max(0, Math.floor(p.x * scale)))
+      const iy = Math.min(LOW - 1, Math.max(0, Math.floor(p.y * scale)))
+      const inside = masks[base + iy * LOW + ix]! > 0
+      if (inside === (p.label === 1)) hit++
+    }
+    if (hit > bestHit || (hit === bestHit && scores[k]! > scores[best]!)) {
+      best = k
+      bestHit = hit
+    }
+  }
+  return best
 }
 
 scope.onmessage = async (ev) => {

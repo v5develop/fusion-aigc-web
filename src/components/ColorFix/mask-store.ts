@@ -40,7 +40,7 @@ const STORE = 'masks'
 /** 本机蒙版总量上限：超过按最近使用淘汰（IndexedDB 与内存各自计） */
 export const MASK_STORE_MAX_BYTES = 60 * 1024 * 1024
 export const MASK_STORE_MAX_ENTRIES = 200
-/** 涂抹蒙版导出的长边上限（点选蒙版存模型网格 ≤1024，见 PointSelect） */
+/** 涂抹蒙版导出的长边上限（智能选区：只有点选时存模型网格 ≤1024，有钢笔 / 自由形状时 1024–2048，见 PointSelect） */
 export const PAINTED_MASK_MAX_SIDE = 2048
 
 /** 库里的一条：新版存 { blob, at }（at = 最近使用时间，淘汰用）；旧版直接存 Blob（at 视为 0，最先淘汰） */

@@ -85,7 +85,7 @@ async function apply() {
         </button>
       </header>
       <p class="m-0 text-12px leading-18px text-muted">
-        在图上涂抹要调色的区域（涂红处会被调整，其余像素不动）；放大后可切「移动」拖动画面，涂错了用「撤销」或「清空」。
+        在图上涂抹要调色的区域（涂红处会被调整，其余像素不动）；涂多了切「擦除」擦掉，放大后可切「移动」拖动画面，也可「撤销」或「清空」。
         应用后可在参数台里反选、调边缘柔化。
       </p>
       <MaskPainter
@@ -93,6 +93,7 @@ async function apply() {
         ref="painter"
         :src="src"
         :max-viewport-h="maxViewportH"
+        erasable
         @change="hasStroke = $event"
       />
     </section>

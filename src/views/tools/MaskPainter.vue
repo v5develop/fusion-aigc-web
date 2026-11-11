@@ -25,12 +25,16 @@ const props = defineProps<{
   src: string
   /** 适应档的最大显示高度（默认 520；全屏调色里的大弹窗传更大的值） */
   maxViewportH?: number
+  /** 提供「擦除」工具（擦掉涂多的部分；局部调色用，智能消除页不开） */
+  erasable?: boolean
 }>()
 const emit = defineEmits<{ change: [hasStroke: boolean] }>()
 
 interface Stroke {
   size: number
   points: { x: number; y: number }[]
+  /** 擦除笔迹：destination-out 抹掉之前涂的 */
+  erase?: boolean
 }
 
 // 原型 MaskCanvas 同值：rgb(239, 68, 68)、半透明 .5
@@ -47,7 +51,7 @@ const brush = ref(40)
 const strokes = ref<Stroke[]>([])
 const zoom = ref(1)
 const coarse = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches
-const tool = ref<'brush' | 'move'>(coarse ? 'move' : 'brush')
+const tool = ref<'brush' | 'erase' | 'move'>(coarse ? 'move' : 'brush')
 /** 当前接管的指针；null = 没有。多指时只认第一根 */
 let activePointer: number | null = null
 const panning = ref(false)
@@ -79,7 +83,16 @@ const stageStyle = computed(() => ({
   height: `${Math.round(fit.value.h * zoom.value)}px`,
 }))
 const viewportStyle = computed(() => ({ width: `${fit.value.w}px`, height: `${fit.value.h}px` }))
-const tipSize = computed(() => Math.min(brush.value, 40))
+/**
+ * 笔尖预览：固定 32×32 的框（border-box，1px 描边 → 内容 30×30），圆点按真实显示直径画、封顶 26（四周留 2px 不贴边）。
+ * 笔刷步长 2、内容区 30 为偶数 → 圆点直径恒为偶数，(30 − d) / 2 是整数，任何 DPR 下都不会落半像素而偏一边。
+ * 以前封顶 40 大于内容区：网格轨道被撑到 40 从左上起排，圆点整体往右下偏。
+ */
+const TIP_BOX_INNER = 30
+const tipSize = computed(() => {
+  const d = Math.min(Math.round(brush.value), TIP_BOX_INNER - 4)
+  return Math.max(2, d - (d % 2))
+})
 
 function onImageLoad(e: Event) {
   const img = e.target as HTMLImageElement
@@ -173,7 +186,7 @@ function onPointerDown(e: PointerEvent) {
   activePointer = e.pointerId
   capture(e.currentTarget, e.pointerId)
   const p = toImage(e)
-  drawing = { size: brush.value * p.scale, points: [{ x: p.x, y: p.y }] }
+  drawing = { size: brush.value * p.scale, points: [{ x: p.x, y: p.y }], erase: tool.value === 'erase' || undefined }
   strokes.value = [...strokes.value, drawing]
   redraw()
 }
@@ -193,6 +206,7 @@ function onPointerMove(e: PointerEvent) {
   drawing.points.push({ x: p.x, y: p.y })
   const ctx = canvasRef.value?.getContext('2d')
   if (ctx && last) {
+    ctx.globalCompositeOperation = drawing.erase ? 'destination-out' : 'source-over'
     ctx.strokeStyle = MASK_COLOR
     ctx.lineWidth = drawing.size
     ctx.lineCap = 'round'
@@ -201,6 +215,7 @@ function onPointerMove(e: PointerEvent) {
     ctx.moveTo(last.x, last.y)
     ctx.lineTo(p.x, p.y)
     ctx.stroke()
+    ctx.globalCompositeOperation = 'source-over'
   }
 }
 
@@ -243,6 +258,7 @@ function paint(ctx: CanvasRenderingContext2D, color: string) {
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   for (const s of strokes.value) {
+    ctx.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over'
     ctx.lineWidth = s.size
     const [first, ...rest] = s.points
     if (!first) continue
@@ -256,6 +272,7 @@ function paint(ctx: CanvasRenderingContext2D, color: string) {
       ctx.stroke()
     }
   }
+  ctx.globalCompositeOperation = 'source-over'
 }
 
 function redraw() {
@@ -311,14 +328,19 @@ onBeforeUnmount(() => {
 /** 导出黑底白笔 PNG 蒙版（与原图同像素尺寸）；没有笔迹返回 null */
 async function exportMask(): Promise<File | null> {
   if (!hasStroke.value || !natural.value.w) return null
+  // 只有擦除笔迹 = 什么都没涂，别导出一张全黑蒙版
+  if (!strokes.value.some((s) => !s.erase)) return null
   const out = document.createElement('canvas')
   out.width = natural.value.w
   out.height = natural.value.h
   const ctx = out.getContext('2d')
   if (!ctx) return null
+  // 先在透明底上画白笔（擦除笔迹 destination-out 抹成透明），再垫到黑底下面
+  paint(ctx, '#fff')
+  ctx.globalCompositeOperation = 'destination-over'
   ctx.fillStyle = '#000'
   ctx.fillRect(0, 0, out.width, out.height)
-  paint(ctx, '#fff')
+  ctx.globalCompositeOperation = 'source-over'
   const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'))
   return blob ? new File([blob], `mask-${Date.now()}.png`, { type: 'image/png' }) : null
 }
@@ -341,13 +363,19 @@ defineExpose({ exportMask, clear, undo })
           class="h-32px min-w-0 flex-1 accent-violet"
         />
         <span
-          class="grid h-32px w-32px flex-none place-items-center rounded-6px border border-solid border-line bg-white"
+          class="mask-tip flex h-32px w-32px flex-none items-center justify-center overflow-hidden rounded-6px border border-solid border-line bg-white"
           aria-hidden="true"
           title="笔尖预览"
         >
-          <i
-            class="block rounded-full"
-            :style="{ width: `${tipSize}px`, height: `${tipSize}px`, background: MASK_COLOR, opacity: MASK_OPACITY }"
+          <span
+            class="block flex-none rounded-full"
+            :style="{
+              width: `${tipSize}px`,
+              height: `${tipSize}px`,
+              background: tool === 'erase' ? 'transparent' : MASK_COLOR,
+              opacity: tool === 'erase' ? 1 : MASK_OPACITY,
+              boxShadow: tool === 'erase' ? 'inset 0 0 0 1.5px #4b5563' : undefined,
+            }"
           />
         </span>
         <output class="w-28px flex-none text-right text-12px tabular-nums text-ink-3" for="mask-brush">{{
@@ -399,6 +427,31 @@ defineExpose({ exportMask, clear, undo })
             <path d="M7 17c-2 0-3 1.5-3 3.5V21h.5C6.5 21 8 20 8 18" />
           </svg>
           涂抹
+        </button>
+        <button
+          v-if="erasable"
+          type="button"
+          class="inline-flex min-h-32px min-w-44px cursor-pointer items-center gap-4px border-0 px-10px text-13px focus-visible:(outline-2 outline-solid outline-violet -outline-offset-2)"
+          :class="tool === 'erase' ? 'bg-violet-soft text-violet-ink font-600' : 'bg-white text-ink-2'"
+          :aria-pressed="tool === 'erase'"
+          title="擦掉涂多的部分"
+          @click="tool = 'erase'"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M7 21h10M5.5 13.5l7-7a2 2 0 0 1 2.8 0l3.2 3.2a2 2 0 0 1 0 2.8L13 18H8.5l-3-3a1 1 0 0 1 0-1.5z" />
+            <path d="M9.5 9.5l6 6" />
+          </svg>
+          擦除
         </button>
         <button
           type="button"
@@ -473,8 +526,8 @@ defineExpose({ exportMask, clear, undo })
 
     <p v-if="coarse" class="m-0 text-12px leading-18px text-muted">
       {{
-        tool === 'brush'
-          ? '涂抹中：手指在图上涂；要滑动页面先切「移动」'
+        tool !== 'move'
+          ? `${tool === 'erase' ? '擦除' : '涂抹'}中：手指在图上涂；要滑动页面先切「移动」`
           : '先点「涂抹」再在图上涂；「移动」状态下可直接滑动页面'
       }}
     </p>

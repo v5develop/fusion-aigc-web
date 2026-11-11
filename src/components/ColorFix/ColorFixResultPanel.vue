@@ -51,7 +51,7 @@ const maskHint = computed(() => {
   if (r.mode === 'auto' && cf.maskError.value) return cf.maskError.value
   if (r.mode === 'paint' && !cf.paintedMask.value) return '还没有涂抹选区，点「涂抹选区」开始'
   if (r.mode === 'paint' && cf.paintedVolatile.value) return '选区较大，只在本次浏览中保留'
-  if (r.mode === 'point' && !cf.pointMask.value) return cf.pointBlocked.value || '还没有点选选区，点「点选区域」开始'
+  if (r.mode === 'point' && !cf.pointMask.value) return cf.pointBlocked.value || '还没有选区，点「智能选区」开始'
   if (r.mode === 'point' && cf.pointVolatile.value) return '选区较大，只在本次浏览中保留'
   if (r.mode !== 'whole' && cf.failed.value)
     return cf.maskLoadFailed.value ? COLORFIX_MASK_LOAD_FAILED : '选区校色未能生成，已显示原图'

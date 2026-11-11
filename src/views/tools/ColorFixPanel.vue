@@ -55,7 +55,7 @@ const props = withDefaults(
     maskHint?: string
     /** 已有涂抹选区（按钮写「重新涂抹」） */
     hasPainted?: boolean
-    /** 已有点选选区（按钮写「重新点选」） */
+    /** 已有点选选区（按钮写「重新选区」） */
     hasPoint?: boolean
     /** 「点选」不可用的原因（如「当前浏览器不支持点选」）：按钮置灰、悬停看原因；'' = 可用 */
     pointBlocked?: string
@@ -100,7 +100,7 @@ const emit = defineEmits<{
   reset: []
   /** 点了「涂抹选区 / 重新涂抹」 */
   paint: []
-  /** 点了「点选区域 / 重新点选」（本机分割弹窗） */
+  /** 点了「智能选区 / 重新选区」（本机分割 + 钢笔 / 自由的选区弹窗） */
   point: []
   /** 点了选区提示旁的「重试」（自动识别失败后） */
   retryMask: []
@@ -376,10 +376,10 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
             type="button"
             class="cfp__btn sx-hit"
             :disabled="!!pointBlocked"
-            :title="pointBlocked || undefined"
+            :title="pointBlocked || '点选 / 钢笔 / 自由勾选区域'"
             @click="emit('point')"
           >
-            {{ hasPoint ? '重新点选' : '点选区域' }}
+            {{ hasPoint ? '重新选区' : '智能选区' }}
           </button>
         </div>
         <template v-if="region.mode !== 'whole'">
