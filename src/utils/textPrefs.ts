@@ -19,6 +19,7 @@
  */
 import { ref } from 'vue'
 import { currentAccountId, onAccountChange } from '@/utils/auth-session.ts'
+import { clearProvisional, onProvisionalReset, readProvisional, writeProvisional } from '@/utils/provisional-prefs.ts'
 
 export type TextScale = 'sm' | 'md' | 'lg' | 'xl'
 /** default 站点字体栈 / system 系统界面字体 / readable 更易读 / rounded 圆体 / local 用户选的本机字体（family 字段） */
@@ -135,6 +136,13 @@ let currentKey = ''
  * 改动的人就是当前 token 的主人，也就是马上解出来的那个账号，所以不会串号。
  */
 let pendingUnsaved = false
+/** 首次 sync 时已处理过上次留下的临时偏好（刷新前在身份未知期间改的） */
+let provisionalChecked = false
+
+// 登出 / 换人清缓存：上一个人在身份未知期间改的偏好作废，不落到下一个账号名下
+onProvisionalReset(() => {
+  pendingUnsaved = false
+})
 
 /** 把偏好写到 <html>：--xq-fs 字号乘数、--xq-font-family 字体栈、data-xq-font 供 base.css 加字距 */
 function apply(p: TextPrefs) {
@@ -170,6 +178,27 @@ function persist(key: string, p: TextPrefs) {
  */
 export function syncTextPrefsWithAccount() {
   const key = storageKey()
+  if (!provisionalChecked) {
+    provisionalChecked = true
+    // 上次在身份未知期间改过、没来得及落到账号名下就刷新了：按当前 token 取回（绑 token 指纹，不会给别人）
+    const raw = readProvisional('text')
+    if (raw) {
+      try {
+        textPrefs.value = normalize(JSON.parse(raw))
+        apply(textPrefs.value)
+        if (key) {
+          currentKey = key
+          persist(key, textPrefs.value)
+          clearProvisional('text')
+        } else {
+          pendingUnsaved = true
+        }
+        return
+      } catch {
+        clearProvisional('text')
+      }
+    }
+  }
   if (key === currentKey) return
   const prevKey = currentKey
   currentKey = key
@@ -177,6 +206,7 @@ export function syncTextPrefsWithAccount() {
   if (!key) {
     // 从「已知账号」变成「未知」：别把上一个人的偏好留给下一个人，回默认
     pendingUnsaved = false
+    clearProvisional('text')
     textPrefs.value = { ...DEFAULT_TEXT_PREFS }
     apply(textPrefs.value)
     return
@@ -185,9 +215,11 @@ export function syncTextPrefsWithAccount() {
     // 身份刚解出来，而用户在此之前已经改过：保留眼前生效的这份并落盘，不闪回
     pendingUnsaved = false
     persist(key, textPrefs.value)
+    clearProvisional('text')
     return
   }
   pendingUnsaved = false
+  clearProvisional('text')
   textPrefs.value = readStored(key)
   apply(textPrefs.value)
 }
@@ -199,6 +231,7 @@ export function setTextPrefs(patch: Partial<TextPrefs>) {
   apply(next)
   if (!currentKey) {
     pendingUnsaved = true
+    writeProvisional('text', JSON.stringify(next))
     return
   }
   persist(currentKey, next)
@@ -222,6 +255,7 @@ if (typeof window !== 'undefined') {
       const key = storageKey()
       currentKey = key
       pendingUnsaved = false
+      clearProvisional('text')
       textPrefs.value = readStored(key)
       apply(textPrefs.value)
     } else if (e.key === 'fusion_identity' || e.key === 'fusion_accessToken') {

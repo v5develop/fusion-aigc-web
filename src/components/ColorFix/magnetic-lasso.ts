@@ -447,6 +447,45 @@ export function smoothGridPath(path: readonly Pt[], eps = 0.6): Pt[] {
   return simplifyPath(s, eps)
 }
 
+/**
+ * 闭合段：最后一个锚点 → 起点再吸附一段（含「不走回头路」禁行与堵死时的退回）。
+ * 纯函数：Worker（edge-cost.worker.ts）与主线程兜底共用这一份，结果逐点一致。
+ * drawn = 已画好的全部点（网格坐标）；窗口 = 它们的外接框外扩 margin，闭合段可能要绕到另一侧。
+ */
+export function closingPath(
+  map: EdgeCostMap,
+  threshold: number,
+  last: Pt,
+  first: Pt,
+  drawn: readonly Pt[],
+  margin: number,
+): Pt[] {
+  const w = new LiveWire(map, threshold)
+  const box = boxAround(last, first, margin)
+  for (const q of drawn) {
+    box.x0 = Math.min(box.x0, q.x - margin)
+    box.y0 = Math.min(box.y0, q.y - margin)
+    box.x1 = Math.max(box.x1, q.x + margin)
+    box.y1 = Math.max(box.y1, q.y + margin)
+  }
+  w.start(last.x, last.y, box)
+  // 已画的段设成禁行（两端各留一点口子）：闭合段走「另一半」，不贴着来路折回去
+  w.blockPath(drawn, 2, [first, last], 6)
+  let closing = w.pathTo(first.x, first.y)
+  // 被堵死（窗口里绕不过去）：退回不禁行再算一次
+  const end = closing[closing.length - 1]
+  if (
+    !end ||
+    Math.round(end.x) !== Math.round(first.x) ||
+    Math.round(end.y) !== Math.round(first.y) ||
+    closing.length < 2
+  ) {
+    w.start(last.x, last.y, box)
+    closing = w.pathTo(first.x, first.y)
+  }
+  return closing
+}
+
 /** 搜索窗口：两点外接框外扩 margin */
 export function boxAround(a: Pt, b: Pt, margin: number): GridBox {
   return {

@@ -16,6 +16,7 @@ import { nextTick, ref } from 'vue'
 import type { ThemeName } from '@/theme/tokens.ts'
 import { decideTheme, THEME_DEVICE_KEY, THEME_PREFS_KEY_PREFIX } from '@/theme/theme-decide.ts'
 import { currentAccountId, onAccountChange } from '@/utils/auth-session.ts'
+import { clearProvisional, onProvisionalReset, readProvisional, writeProvisional } from '@/utils/provisional-prefs.ts'
 
 export type { ThemeName }
 export type ThemeMode = 'light' | 'dark' | 'system' | 'schedule'
@@ -103,6 +104,11 @@ let currentKey = ''
 let synced = false
 /** 身份未知期间改过偏好：身份一到落到该账号名下（同 textPrefs 的 pendingUnsaved） */
 let pendingUnsaved = false
+let provisionalChecked = false
+// 登出 / 换人清缓存：上一个人在身份未知期间改的偏好作废，不落到下一个账号名下
+onProvisionalReset(() => {
+  pendingUnsaved = false
+})
 let scheduleTimer: ReturnType<typeof setTimeout> | undefined
 
 function storageKey(): string {
@@ -221,13 +227,36 @@ export function syncThemePrefsWithAccount() {
   synced = true
   currentKey = key
 
+  if (!provisionalChecked) {
+    provisionalChecked = true
+    // 上次在身份未知期间改过、刷新前没落到账号名下：按当前 token 取回（绑 token 指纹）
+    const raw = readProvisional('theme')
+    if (raw) {
+      try {
+        themePrefs.value = normalize(JSON.parse(raw))
+        refresh(!first)
+        if (key) {
+          persist(key, themePrefs.value)
+          clearProvisional('theme')
+        } else {
+          pendingUnsaved = true
+        }
+        return
+      } catch {
+        clearProvisional('theme')
+      }
+    }
+  }
+
   if (key && !prevKey && pendingUnsaved) {
     // 身份刚解出来，而用户在此之前已经改过：保留眼前这份并落到该账号名下
     pendingUnsaved = false
     persist(key, themePrefs.value)
+    clearProvisional('theme')
     return
   }
   pendingUnsaved = false
+  clearProvisional('theme')
   themePrefs.value = readStored(key)
   refresh(!first)
 }
@@ -237,7 +266,10 @@ export function setThemePrefs(patch: Partial<ThemePrefs>) {
   const next = normalize({ ...themePrefs.value, ...patch })
   themePrefs.value = next
   refresh(true)
-  if (!currentKey) pendingUnsaved = true
+  if (!currentKey) {
+    pendingUnsaved = true
+    writeProvisional('theme', JSON.stringify(next))
+  }
   persist(currentKey, next)
 }
 
@@ -261,6 +293,7 @@ if (typeof window !== 'undefined') {
     if (e.key === null || (currentKey && e.key === currentKey) || (!currentKey && e.key === THEME_DEVICE_KEY)) {
       currentKey = storageKey()
       pendingUnsaved = false
+      if (currentKey) clearProvisional('theme')
       themePrefs.value = readStored(currentKey)
       refresh(true)
     } else if (e.key === 'fusion_identity' || e.key === 'fusion_accessToken') {

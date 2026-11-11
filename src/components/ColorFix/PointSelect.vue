@@ -66,7 +66,7 @@ import {
   type WandOp,
 } from './selection-session.ts'
 import { markPointSegmentBroken, POINT_UNSUPPORTED_HINT } from './point-support.ts'
-import { disposeEdgeCost, loadEdgeCost } from './edge-cost.ts'
+import { computeClosingPath, disposeEdgeCost, loadEdgeCost } from './edge-cost.ts'
 import {
   boxAround,
   coolStable,
@@ -476,6 +476,7 @@ const samPending = computed(
 
 const status = computed(() => {
   if (exporting.value) return '正在导出选区…'
+  if (magClosing.value) return '正在闭合选区…'
   if (restoring.value) return '正在恢复上次的选区…'
   if (restoredNote.value) return '已恢复上次的选区，可以继续编辑（「清空」从头开始）'
   if (selectedPen.value && !penNodes.value.length && (tool.value === 'pen' || tool.value === 'move'))
@@ -586,6 +587,7 @@ onMounted(() => {
   window.addEventListener('blur', onBlur)
 })
 onBeforeUnmount(() => {
+  magUnmounted = true
   window.removeEventListener('keydown', onKey, true)
   window.removeEventListener('keyup', onKeyUp, true)
   window.removeEventListener('resize', onResize)
@@ -2010,49 +2012,60 @@ function magCancel() {
   magRaf = 0
 }
 
-/** 闭合：最后一个锚点 → 起点再吸附一段，整条路径平滑精简后作为一个形状（添加 / 排除）进撤销栈 */
+/** 闭合段在 Worker 里算的期间：已画好的路径继续显示（降级成虚着的占位），状态栏提示「正在闭合」 */
+const magClosingJob = shallowRef<{ first: Pt; segs: Pt[][]; mode: ShapeMode } | null>(null)
+const magClosing = computed(() => !!magClosingJob.value)
+let magUnmounted = false
+
+/** 已画的段 + 闭合段 → 平滑精简 → 作为一个形状（添加 / 排除）进撤销栈 */
+function finishMagShape(segs: Pt[][], closing: Pt[], m: ShapeMode) {
+  const all: Pt[] = []
+  for (const seg of [...segs, closing])
+    for (const p of seg) {
+      const q = all[all.length - 1]
+      if (!q || q.x !== p.x || q.y !== p.y) all.push(p)
+    }
+  if (all.length > 1 && all[0]!.x === all[all.length - 1]!.x && all[0]!.y === all[all.length - 1]!.y) all.pop()
+  if (all.length < 3) return
+  const poly = smoothGridPath(all, 0.6).map(fromGrid)
+  const k = imgPerScreen.value
+  if (poly.length >= 3 && Math.abs(polygonArea(poly)) >= 64 * k * k) addShape('lasso', m, poly)
+}
+
+/**
+ * 闭合：最后一个锚点 → 起点再吸附一段，整条路径平滑精简后作为一个形状进撤销栈。
+ * 吸附闭合段的最短路 100–300ms，放 Worker 里算（edge-cost.ts computeClosingPath，与主线程 closingPath 逐点一致，
+ * Worker 不可用时自动退回主线程）；算的期间已画路径照常显示、状态栏提示，调用方（换工具 / 关吸附 / Enter）不必等。
+ */
 function magClose() {
   const seeds = magSeeds.value
   if (!seeds.length) return
   const first = seeds[0]!
   const last = seeds[seeds.length - 1]!
   const map = edgeMap.value
-  let closing: Pt[] = [last, first]
-  if (map && !magAlt.value && Math.hypot(first.x - last.x, first.y - last.y) > 1.5) {
-    const w = new LiveWire(map, magContrast.value / 100)
-    // 窗口 = 整条已画路径的外接框再外扩：闭合段可能要绕到另一侧
-    const drawn = magSegs.value.flat()
-    const box = boxAround(last, first, MAG_CLOSE_MARGIN)
-    for (const q of drawn) {
-      box.x0 = Math.min(box.x0, q.x - MAG_CLOSE_MARGIN)
-      box.y0 = Math.min(box.y0, q.y - MAG_CLOSE_MARGIN)
-      box.x1 = Math.max(box.x1, q.x + MAG_CLOSE_MARGIN)
-      box.y1 = Math.max(box.y1, q.y + MAG_CLOSE_MARGIN)
-    }
-    w.start(last.x, last.y, box)
-    // 已画的段设成禁行（两端各留一点口子）：闭合段走「另一半」，不贴着来路折回去
-    w.blockPath(drawn, 2, [first, last], 6)
-    closing = w.pathTo(first.x, first.y)
-    // 被堵死（窗口里绕不过去）：退回不禁行再算一次
-    const end = closing[closing.length - 1]
-    if (!end || Math.round(end.x) !== Math.round(first.x) || Math.round(end.y) !== Math.round(first.y) || closing.length < 2) {
-      w.start(last.x, last.y, box)
-      closing = w.pathTo(first.x, first.y)
-    }
-  }
-  const all: Pt[] = []
-  for (const seg of [...magSegs.value, closing])
-    for (const p of seg) {
-      const q = all[all.length - 1]
-      if (!q || q.x !== p.x || q.y !== p.y) all.push(p)
-    }
+  const segs = magSegs.value
   const m = magMode.value
+  const threshold = magContrast.value / 100
+  const snap = !!map && !magAlt.value && Math.hypot(first.x - last.x, first.y - last.y) > 1.5
   magCancel()
-  if (all.length > 1 && all[0]!.x === all[all.length - 1]!.x && all[0]!.y === all[all.length - 1]!.y) all.pop()
-  if (all.length < 3) return
-  const poly = smoothGridPath(all, 0.6).map(fromGrid)
-  const k = imgPerScreen.value
-  if (poly.length >= 3 && Math.abs(polygonArea(poly)) >= 64 * k * k) addShape('lasso', m, poly)
+  if (!snap || !map) {
+    finishMagShape(segs, [last, first], m)
+    return
+  }
+  const job = { first, segs, mode: m }
+  magClosingJob.value = job
+  computeClosingPath({ map, threshold, last, first, drawn: segs.flat(), margin: MAG_CLOSE_MARGIN })
+    .then((closing) => {
+      // 弹窗已关 / 换了图（边缘图不是这张了）：丢弃
+      if (magUnmounted || edgeMap.value !== map) return
+      finishMagShape(segs, closing, m)
+    })
+    .catch(() => {
+      /* 弹窗关闭时 Worker 被终止：结果作废 */
+    })
+    .finally(() => {
+      if (magClosingJob.value === job) magClosingJob.value = null
+    })
 }
 
 /** 指针离起点够近（屏幕 HIT_PX 内），且已经走出去一段：再点 = 闭合 */
@@ -2091,6 +2104,14 @@ const magHaloD = computed(() => {
   return b ? a + b.replace(/^M/, 'L') : a
 })
 const magSeedPts = computed(() => magSeeds.value.map(fromGrid))
+/** 闭合计算中的占位：已画好的路径 */
+const magClosingD = computed(() => {
+  const j = magClosingJob.value
+  if (!j) return ''
+  const pts: Pt[] = [fromGrid(j.first)]
+  for (const seg of j.segs) for (let i = 1; i < seg.length; i++) pts.push(fromGrid(seg[i]!))
+  return pts.length > 1 ? polyD(pts, false) : ''
+})
 /** 宽度圈（原图单位）：吸附范围示意 */
 const magWidthR = computed(() => {
   const { w: nw } = natural.value
@@ -3023,6 +3044,19 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
                     vector-effect="non-scaling-stroke"
                   />
                 </template>
+              </template>
+              <template v-if="magClosingD && !magActive">
+                <path :d="magClosingD" fill="none" stroke="#fff" stroke-width="3.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+                <path
+                  :d="magClosingD"
+                  fill="none"
+                  :stroke="magClosingJob?.mode === 'sub' ? '#1f2329' : '#e5484d'"
+                  stroke-width="1.75"
+                  stroke-linejoin="round"
+                  stroke-opacity="0.6"
+                  stroke-dasharray="6 4"
+                  vector-effect="non-scaling-stroke"
+                />
               </template>
               <template v-if="magActive">
                 <path :d="magHaloD" fill="none" stroke="#fff" stroke-width="3.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />

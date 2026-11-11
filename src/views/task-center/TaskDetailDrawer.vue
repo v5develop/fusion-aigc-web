@@ -102,9 +102,21 @@ async function fetchDetail(silent: boolean) {
     loadState.value = ''
   } catch (e) {
     if (my !== seq || id !== taskId.value) return
-    if (silent && detail.value) return
     const err = toApiError(e)
-    loadState.value = err?.httpStatus === 404 || err?.message?.includes('不存在') ? 'notFound' : 'error'
+    const gone = err?.httpStatus === 404 || err?.code === 4001 || !!err?.message?.includes('不存在')
+    if (gone) {
+      // 任务被删了（含轮询 / 推送回查期间）：清掉旧详情、停掉轮询与待发的回查，转「任务不存在」态
+      detail.value = null
+      params.value = null
+      if (refetchTimer) clearTimeout(refetchTimer)
+      refetchTimer = null
+      if (pollTimer) clearInterval(pollTimer)
+      pollTimer = null
+      loadState.value = 'notFound'
+      return
+    }
+    if (silent && detail.value) return
+    loadState.value = 'error'
   } finally {
     if (my === seq) loading.value = false
   }

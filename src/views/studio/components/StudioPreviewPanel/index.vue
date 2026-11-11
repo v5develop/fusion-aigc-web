@@ -472,6 +472,24 @@ const showCfCompare = cfOn
 
 // 自动识别：只在校色开着时取蒙版（不为每张看过的图都发识别请求）
 let segTicket = 0
+/**
+ * 入库刚完成、服务端补的服装蒙版（mask_url）还没带回来：最多等这么久（轮询每 2 秒一轮、补查 5 轮 ≈ 10 秒），
+ * 到点还没有才自己识别——否则入库一完成就多打一次识别（多一次厂商调用）。
+ */
+const MASK_SETTLE_MS = 10_000
+/** 见过「入库中」的任务（只有这些才会等服务端补蒙版）；taskId → 等待截止时刻（入库完成那一刻起算） */
+const maskAwaiting = new Map<string, number>()
+/** 等待已结束（到点 / 蒙版已到）的任务：不再重新进入等待，避免时钟偏差下反复起等 */
+const maskSettled = new Set<string>()
+/** 没亲眼见过「入库中」（页面晚开 / 轮询错过）但任务刚结束这么久内：同样等一轮服务端补蒙版 */
+const MASK_RECENT_MS = 15_000
+/** 到点唤醒识别 watch 的计数（等待期满没等到蒙版：重跑一次走识别） */
+const maskWaitTick = ref(0)
+const maskWaitTimers = new Set<ReturnType<typeof setTimeout>>()
+onBeforeUnmount(() => {
+  maskWaitTimers.forEach(clearTimeout)
+  maskWaitTimers.clear()
+})
 watch(
   () =>
     [
@@ -483,6 +501,7 @@ watch(
       activeParts.value.join(','),
       presetParts.value,
       libraryState.value,
+      maskWaitTick.value,
     ] as const,
   async ([on, mode, target, image, preset]) => {
     const my = ++segTicket
@@ -496,15 +515,45 @@ watch(
     const parts = activeParts.value
     const presetHit = target === 'garment' ? colorFixPresetFor(parts, preset, presetParts.value) : ''
     if (presetHit) {
+      const hitId = selectedSuccess.value?.taskId ?? ''
+      maskAwaiting.delete(hitId)
+      if (hitId) maskSettled.add(hitId)
       autoMask.value = presetHit
       maskBusy.value = false
       return
     }
     // 成品还在入库（§4.6）：服务端入库完成后会补服装蒙版（mask_url），轮询带回来再用；
     // 现在拿私有桶签名地址去识别，可能被拒（1003）而误退回整图
+    const waitId = selectedSuccess.value?.taskId ?? ''
     if (target === 'garment' && garmentKind.value && libraryState.value === 'pending') {
+      if (waitId) maskAwaiting.set(waitId, 0)
       maskBusy.value = true
       return
+    }
+    // 没见过入库中、但任务刚结束且还没有蒙版：服务端多半还在补，同样等一轮，省掉这次多余的厂商识别调用
+    if (target === 'garment' && garmentKind.value && waitId && !maskAwaiting.has(waitId) && !maskSettled.has(waitId)) {
+      const fin = selectedSuccess.value?.finishedAt ?? 0
+      if (fin > 0 && !presetMask.value && Date.now() - fin < MASK_RECENT_MS) maskAwaiting.set(waitId, 0)
+    }
+    // 入库刚完成但 mask_url 还没到：有界地等轮询带回来（presetMask 一到本 watch 会重跑并直接用），到点才识别
+    if (target === 'garment' && garmentKind.value && waitId && maskAwaiting.has(waitId)) {
+      const now = Date.now()
+      let until = maskAwaiting.get(waitId) ?? 0
+      if (!until) {
+        until = now + MASK_SETTLE_MS
+        maskAwaiting.set(waitId, until)
+        const timer = setTimeout(() => {
+          maskWaitTimers.delete(timer)
+          maskWaitTick.value++
+        }, MASK_SETTLE_MS + 50)
+        maskWaitTimers.add(timer)
+      }
+      if (now < until) {
+        maskBusy.value = true
+        return
+      }
+      maskAwaiting.delete(waitId)
+      maskSettled.add(waitId)
     }
     if (!colorFixSegmentSupported.value) {
       maskBusy.value = false

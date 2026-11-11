@@ -123,6 +123,7 @@ function onKeydown(e: KeyboardEvent) {
   }
   // 校色参数台 / 涂抹弹窗开着：方向键留给它们
   if (cf.panelOpen.value || cf.painterOpen.value) return
+  if (cf.flattening.value) return // 拼合中不翻页：存新版本的几秒内别换资产
   if (e.key === 'ArrowLeft' && props.hasPrev) {
     e.preventDefault()
     emit('prev')
@@ -181,8 +182,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <DetailStage
         v-model:lightbox="lightboxOpen"
         class="asset-dlg-stage"
-        :has-prev="hasPrev"
-        :has-next="hasNext"
+        :has-prev="hasPrev && !cf.flattening.value"
+        :has-next="hasNext && !cf.flattening.value"
         @prev="emit('prev')"
         @next="emit('next')"
       />

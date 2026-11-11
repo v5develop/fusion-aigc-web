@@ -1,3 +1,5 @@
+import { clearProvisional, rebindProvisional, tokenFingerprint } from '@/utils/provisional-prefs.ts'
+
 /**
  * 账号会话的单一真相：token 落盘、账号指纹、账号级缓存清理。
  *
@@ -50,8 +52,12 @@ const LOGOUT_RELOAD_KEY = 'fusion_logout_reload_at'
  * 「写 token 时顺带记指纹」这种要求就得改三处、迟早漏一处。
  */
 export function saveTokens(data: { accessToken: string; refreshToken: string }) {
+  const fpBefore = tokenFingerprint()
   localStorage.setItem('fusion_accessToken', data.accessToken)
   localStorage.setItem('fusion_refreshToken', data.refreshToken)
+  // 续期（fusion refresh / 联盟换票）换了 token：身份未知期间改的临时偏好跟着改挂新指纹。
+  // 同步完成、中间无 await，期间的偏好写入不会落在旧指纹上；换人的路径已先清掉临时偏好，这里无物可挪
+  rebindProvisional(fpBefore)
 }
 
 /**
@@ -240,6 +246,7 @@ if (typeof window !== 'undefined') {
  * 黑名单还要求以后每个加缓存的人都记得回来登记，这种约定守不住。
  */
 function resetAccountScope() {
+  clearProvisional() // 身份未知期间的临时偏好绑旧 token，换人即作废（也通知偏好模块丢内存里的待落盘标记）
   for (const key of Object.keys(localStorage)) {
     if (DEVICE_SCOPED_KEYS.has(key)) continue
     if (ACCOUNT_KEYED_PREFIXES.some((p) => key.startsWith(p))) continue

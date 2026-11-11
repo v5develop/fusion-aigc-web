@@ -5,6 +5,7 @@ import { createDiscreteApi } from 'naive-ui'
 import { discreteConfigProviderProps } from '@/theme/naive'
 import { refreshToken, getAuthToken } from '@/api/union'
 import { adoptSession, isAccountVerified, markAccountVerified, saveTokens } from '@/utils/auth-session'
+import { clearProvisional } from '@/utils/provisional-prefs'
 import { clearRecentAssets } from '@/utils/asset-recent'
 import { resolveUnionToken } from '@/utils/union-bridge'
 import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billing-guide'
@@ -102,7 +103,7 @@ function doRefresh(): Promise<string> {
         if (body?.code !== 0 || !body.data?.accessToken) {
           throw new Error(`fusion refresh failed: code=${body?.code}`)
         }
-        saveTokens(body.data)
+        saveTokens(body.data) // 内含临时偏好改挂新 token 指纹
         return body.data.accessToken as string
       } catch {
         return refreshViaUnion()
@@ -327,6 +328,7 @@ function logoutToLogin() {
   // 「要不要清缓存」这个决策唯一收敛在 authSession 的指纹比对上——下次冷启动拿新 token
   // 的身份跟留下来的 fusion_identity 一比，同人就留、换人才清，比「登出即清」精确得多。
   // 指纹留着正是为了那次比对：清了它就等于把唯一的判据丢了，换号也比不出来
+  clearProvisional() // 身份未知期间留下的临时偏好绑旧 token，登出即清
   clearRecentAssets() // key 按账号 id 算（登出不清 id），放在哪都算得对
   localStorage.removeItem('fusion_accessToken')
   localStorage.removeItem('fusion_refreshToken')

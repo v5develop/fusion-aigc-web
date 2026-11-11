@@ -878,6 +878,10 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   let loading = false
   /** 拼合成功后、宿主切到新图之前置位：下一次换键时图层清空为零参数，参数台 / 全屏保持打开 */
   let flattenNext = false
+  /** 拼合开始时的图 key：只有「从这张图换到它的新版本」才清图层，翻到别的资产时不认 */
+  let flattenFromKey = ''
+  /** 拼合途中翻到了别的资产（本次拼合不再改当前状态） */
+  let flattenAbandoned = false
   let flattenTimer: ReturnType<typeof setTimeout> | null = null
   function loadFrom(list: ColorFixLayer[], selected?: string) {
     layers.value = list
@@ -886,18 +890,23 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   }
   watch(
     key,
-    async (k) => {
+    async (k, oldK) => {
       loading = true
       if (flattenNext) {
+        const fromFlattened = oldK === flattenFromKey
         flattenNext = false
         if (flattenTimer) clearTimeout(flattenTimer)
         flattenTimer = null
-        loadFrom([makeBaseLayer(COLORFIX_ZERO)])
-        touched.value = false
-        painterOpen.value = false
-        pointOpen.value = false
-        loading = false
-        return
+        if (fromFlattened) {
+          loadFrom([makeBaseLayer(COLORFIX_ZERO)])
+          touched.value = false
+          painterOpen.value = false
+          pointOpen.value = false
+          loading = false
+          return
+        }
+        // 拼合途中被翻到别的资产：不动它的图层，落到下面按它自己的存储状态常规加载
+        flattenAbandoned = true
       }
       const stored = k ? loadColorFix(k) : null
       const storedRegion = k ? loadRegion(k) : null
@@ -1013,6 +1022,8 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     flattening.value = true
     const snap = cloneLayers(layers.value)
     const image = src.value
+    flattenFromKey = key.value
+    flattenAbandoned = false
     flattenNext = true
     try {
       const ok = await opts.flattener({
@@ -1025,6 +1036,8 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
         flattenNext = false
         return false
       }
+      // 途中已翻到别的资产：新版本已存好，但不再改当前资产的状态与提示
+      if (flattenAbandoned) return true
       noteLayers('已拼合为新版本：图层已清空，可在新版本上继续调色', 5000)
       // 宿主一般在返回前就切了图；没切（或换键还在路上）时 8s 后作废，免得之后某次换键误清图层
       if (flattenNext) {
@@ -1037,7 +1050,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       return true
     } catch {
       flattenNext = false
-      noteLayers('拼合失败，图层保持不变，请重试')
+      if (!flattenAbandoned) noteLayers('拼合失败，图层保持不变，请重试')
       return false
     } finally {
       flattening.value = false
