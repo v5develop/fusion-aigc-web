@@ -1,5 +1,5 @@
 /**
- * 自动识别选区：POST /api/v1/studio/masks { image_url, target, parts? } → { mask_url, target, cached, parts?, available_parts? }。
+ * 自动识别选区：POST /api/v1/studio/masks { image_url?, task_id? | canvas_request_id? + candidate_index?, target, parts? } → { mask_url, target, cached, parts?, available_parts? }。
  *
  * <p>接口探到 404（老网关没有）后本会话 {@link colorFixSegmentSupported} = false，面板隐藏「自动识别」。
  * 结果按 图 + 目标 + 部位 缓存在内存（同一张图来回切目标 / 部位不重复请求；服务端自己也有缓存）。
@@ -19,12 +19,29 @@ import { SEGMENT_MASK_TIMEOUT, studioSegmentMask } from '@/api/studio.ts'
 import { toApiError } from '@/api/index.ts'
 import { colorFixPartsSanitize, type ColorFixAutoTarget, type ColorFixGarmentPart } from './types.ts'
 
+/**
+ * 图的来源标识（可选）：私有签名地址（免费档 / 入库中 / 入库失败）识别必须带，服务端按归属取原件。
+ * taskId = 商拍子任务号；canvasRequestId + candidateIndex = 画布 run 的 request_id + 候选下标（从 0 起，省略 = 当前选中）。
+ * 素材库 / 其它图不带，只按地址。
+ */
+export interface ColorFixMaskSource {
+  taskId?: string
+  canvasRequestId?: string
+  candidateIndex?: number
+}
+
+function sourceTag(s: ColorFixMaskSource | null | undefined): string {
+  if (s?.taskId) return `t:${s.taskId}`
+  if (s?.canvasRequestId) return `c:${s.canvasRequestId}:${s.candidateIndex ?? ''}`
+  return ''
+}
+
 /** 识别函数：返回蒙版地址（白 / 不透明 = 要调整），失败抛错；parts 只对 garment 有效，空 = 全部服装 */
 export type ColorFixSegmenter = (
   imageUrl: string,
   target: ColorFixAutoTarget,
   parts?: readonly ColorFixGarmentPart[],
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal; source?: ColorFixMaskSource | null },
 ) => Promise<string>
 
 /** 自动识别接口是否可用；探到 404 后本会话为 false */
@@ -109,13 +126,14 @@ async function requestWithRetry(
   target: ColorFixAutoTarget,
   parts: ColorFixGarmentPart[],
   signal: AbortSignal,
+  source?: ColorFixMaskSource | null,
 ): Promise<SegmentResp> {
   const startedAt = Date.now()
   for (let attempt = 0; ; attempt++) {
     const remaining = SEGMENT_TOTAL_MS - (Date.now() - startedAt)
     const timeout = Math.min(SEGMENT_MASK_TIMEOUT, Math.max(SEGMENT_MIN_ATTEMPT_MS, remaining))
     try {
-      const resp = await studioSegmentMask(imageUrl, target, parts.length ? parts : undefined, { signal, timeout })
+      const resp = await studioSegmentMask(imageUrl, target, parts.length ? parts : undefined, { signal, timeout, source })
       return pickBody(resp)
     } catch (err) {
       if (signal.aborted) throw abortError()
@@ -155,8 +173,54 @@ export interface ColorFixSegmentFailure {
   suggest?: ColorFixSegmentSuggestion[]
 }
 
+/** 带来源识别：画布 run 还没出结果（4002） */
+export const COLORFIX_SRC_NOT_READY = '画布结果还在生成，稍后再试'
+/** 带来源识别：run / 任务不是你的或已删除（4001） */
+export const COLORFIX_SRC_NOT_FOUND = '找不到这张图，请刷新后重试'
+
+/** 后端 reason：来源（任务 / 画布执行）不存在、不属于本人或已删除（task_id 路径码为 1003，画布路径为 4001） */
+export const REASON_MASK_SOURCE_NOT_FOUND = 'MASK_SOURCE_NOT_FOUND'
+/** 后端 reason：来源画布执行还没成功出图（4002） */
+export const REASON_MASK_SOURCE_NOT_READY = 'MASK_SOURCE_NOT_READY'
+
+/**
+ * 来源专属错误：「画布结果还在生成」（MASK_SOURCE_NOT_READY）、「找不到这张图」（MASK_SOURCE_NOT_FOUND）。
+ * 与「没识别到对应区域」（4001 RESOURCE_NOT_FOUND）、「识别太频繁」（4002 RESOURCE_CONFLICT）按 reason 区分。
+ * 不是来源错误返回 null。
+ *
+ * <p>老后端不带 reason（reason 为空）：回退按 msg 文案猜——仅在带了来源标识时，4002 且不含「频繁」= 来源未就绪，
+ * 4001 且不含「识别到」= 来源不存在。后端带了 reason（哪怕是别的）就完全信 reason，不再猜文案。
+ */
+function sourceFailure(
+  e: { code: number; message?: string; reason?: string },
+  source: ColorFixMaskSource | null | undefined,
+) {
+  if (e.reason === REASON_MASK_SOURCE_NOT_READY)
+    return { message: COLORFIX_SRC_NOT_READY, retryable: true } as ColorFixSegmentFailure
+  if (e.reason === REASON_MASK_SOURCE_NOT_FOUND)
+    return { message: COLORFIX_SRC_NOT_FOUND, retryable: false } as ColorFixSegmentFailure
+  if (e.reason || !sourceTag(source)) return null
+  const msg = e.message || ''
+  if (e.code === 4002 && source?.canvasRequestId && !msg.includes('频繁'))
+    return { message: COLORFIX_SRC_NOT_READY, retryable: true } as ColorFixSegmentFailure
+  if (e.code === 4001 && !msg.includes('识别到'))
+    return { message: COLORFIX_SRC_NOT_FOUND, retryable: false } as ColorFixSegmentFailure
+  return null
+}
+
+/** 不经 colorFixSegmentFailure 的调用方（如商拍面板）取错误文案：来源专属提示优先，否则用接口返回的 msg */
+export function colorFixSegmentErrorText(err: unknown, source?: ColorFixMaskSource | null): string {
+  const e = toApiError(err)
+  if (e && e.code !== -1) return sourceFailure(e, source)?.message || e.message || ''
+  return e?.message || ''
+}
+
 /** 识别失败 → 给用户的一句话 + 是否给「重试」+ 替代方式；取消返回 null（不提示） */
-export function colorFixSegmentFailure(err: unknown, target?: ColorFixAutoTarget): ColorFixSegmentFailure | null {
+export function colorFixSegmentFailure(
+  err: unknown,
+  target?: ColorFixAutoTarget,
+  source?: ColorFixMaskSource | null,
+): ColorFixSegmentFailure | null {
   if (err instanceof ColorFixSegmentError) {
     if (err.kind === 'aborted') return null
     return { message: '识别超时，可重试或改用手动涂抹', retryable: true }
@@ -164,6 +228,8 @@ export function colorFixSegmentFailure(err: unknown, target?: ColorFixAutoTarget
   if (!colorFixSegmentSupported.value) return { message: '当前环境不支持自动识别，请改用手动涂抹', retryable: false }
   const e = toApiError(err)
   if (e && e.code !== -1) {
+    const bySource = sourceFailure(e, source)
+    if (bySource) return bySource
     if (e.code === 4001) {
       if (target) return { ...NO_REGION[target], retryable: false }
       return { message: '没有识别到对应区域，可换个目标或改用手动涂抹 / 点选', retryable: false, suggest: ['point', 'paint'] }
@@ -199,17 +265,23 @@ function pickBody(resp: unknown): SegmentResp {
   return (body?.data && typeof body.data === 'object' ? body.data : body) ?? {}
 }
 
-function startTask(key: string, imageUrl: string, target: ColorFixAutoTarget, sendParts: ColorFixGarmentPart[]) {
+function startTask(
+  key: string,
+  imageUrl: string,
+  target: ColorFixAutoTarget,
+  sendParts: ColorFixGarmentPart[],
+  source?: ColorFixMaskSource | null,
+) {
   const ctrl = new AbortController()
   const task: SharedTask = { promise: Promise.resolve(''), ctrl, waiters: 0, pinned: false, settled: false }
-  task.promise = requestWithRetry(imageUrl, target, sendParts, ctrl.signal)
+  task.promise = requestWithRetry(imageUrl, target, sendParts, ctrl.signal, source)
     .then((body) => {
       if (target === 'garment') noteColorFixGarmentParts(body.availableParts)
       if (!body.maskUrl) throw new Error('识别结果缺少蒙版地址')
       // 逐件蒙版顺手进缓存：之后单选其中一件不再请求
       for (const p of body.parts ?? []) {
         if (p?.maskUrl && sendParts.length > 1 && colorFixPartsSanitize([p.part]).length) {
-          const k = `${target}|${p.part}|${imageUrl}`
+          const k = `${target}|${p.part}|${imageUrl}${sourceTag(source) ? `|${sourceTag(source)}` : ''}`
           if (!cache.has(k)) cache.set(k, settledTask(p.maskUrl))
         }
       }
@@ -234,8 +306,10 @@ function startTask(key: string, imageUrl: string, target: ColorFixAutoTarget, se
 /** 默认识别函数（走网关 /api/v1/studio/masks；网关超时自动重发，见文件头） */
 export const defaultColorFixSegmenter: ColorFixSegmenter = (imageUrl, target, parts, opts) => {
   const sendParts = colorFixRequestParts(target, parts)
-  const key = `${target}|${sendParts.join(',')}|${imageUrl}`
-  const task = cache.get(key) ?? startTask(key, imageUrl, target, sendParts)
+  const source = opts?.source
+  const tag = sourceTag(source)
+  const key = `${target}|${sendParts.join(',')}|${imageUrl}${tag ? `|${tag}` : ''}`
+  const task = cache.get(key) ?? startTask(key, imageUrl, target, sendParts, source)
   const signal = opts?.signal
   if (task.settled) return task.promise
   if (!signal) {

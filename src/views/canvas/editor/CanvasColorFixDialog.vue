@@ -43,6 +43,19 @@ const show = computed({
 })
 const title = computed(() => node.value?.data.title || '图片')
 const colorKey = computed(() => (node.value && source.value ? colorFixKey(node.value.id, source.value.url) : ''))
+/**
+ * 自动识别的来源标识：模型 / 工具节点的候选图 = 本 run 的 request_id + 候选下标（私有签名地址靠它识别）。
+ * 只对已成功的 run 带；节点上的 requestId 是最近一次 run，不成功时不带，以免指向别的结果。
+ */
+const maskSource = computed(() => {
+  const n = node.value
+  const url = source.value?.url
+  if (!n || !url || n.type === 'image') return null
+  const data = n.data
+  if (!data.requestId || data.status !== 'done') return null
+  const index = data.candidates?.indexOf(url) ?? -1
+  return index >= 0 ? { canvasRequestId: data.requestId, candidateIndex: index } : null
+})
 const sourceIndex = computed(() => sources.value.findIndex((s) => s.url === source.value?.url))
 
 // 节点被删 / 图没了：关掉
@@ -97,6 +110,7 @@ const CHIP = `relative inline-flex items-center gap-6px h-32px pl-4px pr-10px ro
     v-model:show="show"
     :src="source?.url || ''"
     :color-key="colorKey"
+    :mask-source="maskSource"
     :title="sources.length > 1 ? `图片校色 · ${title} · 第 ${sourceIndex + 1} 张` : `图片校色 · ${title}`"
     :file-name="`${title}-校色`"
   >

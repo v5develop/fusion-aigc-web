@@ -73,6 +73,7 @@ import {
   defaultColorFixSegmenter,
   noteColorFixGarmentParts,
   type ColorFixPresetPart,
+  type ColorFixMaskSource,
   type ColorFixSegmenter,
   type ColorFixSegmentSuggestion,
 } from './segment.ts'
@@ -150,6 +151,8 @@ export interface ResultColorFixOptions {
   src: Ref<string | undefined | null>
   /** 现成的蒙版（如商拍任务的 mask_url）：作为 {@link maskTarget} 这个目标的「自动识别」结果，免一次识别请求 */
   maskUrl?: Ref<string | undefined | null>
+  /** 当前图的来源标识（商拍任务号 / 画布 run + 候选下标）：自动识别时带上，私有签名地址靠它识别；素材库等不传 */
+  maskSource?: Ref<ColorFixMaskSource | undefined | null>
   /** maskUrl 代表哪个识别目标，默认 garment */
   maskTarget?: ColorFixAutoTarget
   /**
@@ -389,13 +392,14 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       if (my === ctl.ticket) patchMask(l.id, { slow: true })
     }, MASK_SLOW_MS)
     try {
-      const call = segmenter(image, target, parts, { signal: abort.signal })
+      const maskSource = opts.maskSource?.value ?? null
+      const call = segmenter(image, target, parts, { signal: abort.signal, source: maskSource })
       prevAbort?.abort()
       const url = await call
       if (my === ctl.ticket) patchMask(l.id, { auto: url })
     } catch (err) {
       if (my === ctl.ticket && !abort.signal.aborted) {
-        const f = colorFixSegmentFailure(err, target)
+        const f = colorFixSegmentFailure(err, target, opts.maskSource?.value)
         if (f)
           patchMask(l.id, {
             error: f.message,

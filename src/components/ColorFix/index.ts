@@ -136,6 +136,10 @@ export {
   noteColorFixGarmentParts,
   type ColorFixPresetPart,
   type ColorFixSegmenter,
+  type ColorFixMaskSource,
+  colorFixSegmentErrorText,
+  COLORFIX_SRC_NOT_READY,
+  COLORFIX_SRC_NOT_FOUND,
 } from './segment.ts'
 export * from './types.ts'
 export {

@@ -424,10 +424,24 @@ export interface StudioMaskPart {
   maskUrl: string
 }
 
+/** 区域蒙版的图来源（见 StudioMaskReq） */
+export interface StudioMaskSource {
+  taskId?: string
+  canvasRequestId?: string
+  candidateIndex?: number
+}
+
 /** POST /api/v1/studio/masks 的请求体 */
 export interface StudioMaskReq {
   /** 本服务存储签发 / 素材库域名的 http(s) 地址（如任务 result_url）；第三方地址 1003 */
-  imageUrl: string
+  imageUrl?: string
+  /**
+   * 图的来源（三选一，都不传 = 只按 imageUrl）：私有签名地址（免费档 / 入库中 / 入库失败）必须带，服务端按归属取原件识别。
+   * taskId = 商拍子任务号；canvasRequestId + candidateIndex = 画布 run 的 request_id + 候选下标（从 0 起，省略 = 当前选中候选）
+   */
+  taskId?: string
+  canvasRequestId?: string
+  candidateIndex?: number
   target: StudioMaskTarget
   /** 仅 garment：只要这些部位（多选）；不传 / 空 = 全部服装。老网关不认（会忽略） */
   parts?: StudioMaskGarmentPart[]

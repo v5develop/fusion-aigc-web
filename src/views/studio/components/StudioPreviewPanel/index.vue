@@ -41,6 +41,9 @@ import {
   colorFixRequestParts,
   colorFixSegmentSupported,
   defaultColorFixSegmenter,
+  colorFixSegmentErrorText,
+  COLORFIX_SRC_NOT_FOUND,
+  COLORFIX_SRC_NOT_READY,
   noteColorFixGarmentParts,
   bakeForUpload,
   COLORFIX_GARMENT_PARTS,
@@ -563,13 +566,17 @@ watch(
     }
     maskBusy.value = true
     try {
-      const url = await defaultColorFixSegmenter(image, target, parts)
+      // 带上任务号：结果是私有签名地址（免费档 / 入库中 / 入库失败）时服务端靠它按归属取原件识别
+      const source = waitId ? { taskId: waitId } : null
+      const url = await defaultColorFixSegmenter(image, target, parts, { source })
       if (my === segTicket) autoMask.value = url
     } catch (err) {
       if (my !== segTicket) return
       // 全部服装没识别到：退回整图；选了具体部位没识别到：就地提示（不拿整图冒充那几件）
-      if (target === 'garment' && !parts.length) garmentMissing.value = true
-      else maskError.value = toApiError(err)?.message || '识别失败，可重试或改用手动涂抹'
+      const srcText = colorFixSegmentErrorText(err, waitId ? { taskId: waitId } : null)
+      const srcError = srcText === COLORFIX_SRC_NOT_FOUND || srcText === COLORFIX_SRC_NOT_READY
+      if (target === 'garment' && !parts.length && !srcError) garmentMissing.value = true
+      else maskError.value = srcText || '识别失败，可重试或改用手动涂抹'
     } finally {
       if (my === segTicket) maskBusy.value = false
     }

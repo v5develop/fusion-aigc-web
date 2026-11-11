@@ -175,15 +175,21 @@ export const SEGMENT_MASK_TIMEOUT = 130000
  * 服装可带 parts（上衣 / 外套 / 下装 / 裙装 / 鞋 / 包 / 帽，多选）只取这些部位；响应 available_parts 缺省 = 老网关不支持细分。
  * 服务端按（去查询串的地址, 区域, 部位）缓存，重复请求立即返回 cached=true。
  * 错误（已在 SILENT_ERROR_URLS，不弹全局 toast，调用方就地提示）：4001「没识别到对应区域」、
- * 4002「识别太频繁，请稍后再试」、1003 地址不是本服务的、6001 识别服务暂不可用、7003 未开放；老网关 HTTP 404。
+ * 4002「识别太频繁，请稍后再试」（信封 reason：没识别到 = RESOURCE_NOT_FOUND，太频繁 = RESOURCE_CONFLICT；来源错误 = MASK_SOURCE_NOT_FOUND / MASK_SOURCE_NOT_READY，见 ColorFix/segment.ts）、1003 地址不是本服务的、6001 识别服务暂不可用、7003 未开放；老网关 HTTP 404。
  */
 export function studioSegmentMask(
   imageUrl: string,
   target: types.StudioMaskTarget,
   parts?: types.StudioMaskGarmentPart[],
-  opts: { signal?: AbortSignal; timeout?: number } = {},
+  opts: { signal?: AbortSignal; timeout?: number; source?: types.StudioMaskSource | null } = {},
 ) {
-  const body: types.StudioMaskReq = { imageUrl: imageUrl, target }
+  const body: types.StudioMaskReq = { imageUrl: imageUrl || undefined, target }
+  const src = opts.source
+  if (src?.taskId) body.taskId = src.taskId
+  else if (src?.canvasRequestId) {
+    body.canvasRequestId = src.canvasRequestId
+    if (src.candidateIndex !== undefined) body.candidateIndex = src.candidateIndex
+  }
   if (target === 'garment' && parts?.length) body.parts = parts
   return post<types.StudioMaskResp>(
     `${PREFIX}/masks`,
