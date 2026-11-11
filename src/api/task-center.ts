@@ -151,11 +151,24 @@ export interface ITaskCenterAssetRef {
   coverThumbnailUrl?: string | null
   /** 带水印副本地址（免费用户在工具页看到的是它；无副本时不下发） */
   watermark?: string | null
+  /** 产物媒体类型（旧后端不下发，按扩展名猜） */
+  mediaType?: 'image' | 'video' | 'audio' | string | null
+}
+
+/** 详情里的子任务摘要（仅 FAN_OUT / 部分成功的父任务，最多 50 条） */
+export interface ITaskCenterChild {
+  taskId: string
+  statusBucket: TaskStatusBucket | string
+  statusLabel: string
+  /** 仅失败子任务下发 */
+  failReason?: string | null
+  coverThumbnailUrl?: string | null
 }
 
 /**
  * 单条任务详情（状态口径与列表一致，另带素材库产物引用）。
- * 不含入口名、失败原因、产物类型、点数：详情抽屉从列表行 / params 接口补齐，取不到就不显示。
+ * 入口名、标题、失败原因、产物类型 / 文案、尺寸、耗时、收藏与回填能力、子任务由详情直接下发（均为只增字段，
+ * 旧后端缺失时抽屉退回列表行 / params 接口补齐）；点数未下发，不显示。
  */
 export interface ITaskCenterTask {
   taskId: string
@@ -176,6 +189,23 @@ export interface ITaskCenterTask {
   /** 能否取消：与列表项同一口径（排队 / 生成中、本人任务、尚未提交给模型供应商）；旧后端不下发 */
   canCancel?: boolean | null
   assets: ITaskCenterAssetRef[]
+  entryCode?: string | null
+  typeName?: string | null
+  title?: string | null
+  /** 仅失败时下发 */
+  failReason?: string | null
+  /** video / image / text */
+  resultType?: string | null
+  resultText?: string | null
+  width?: number | null
+  height?: number | null
+  /** yyyy-MM-dd HH:mm:ss，仅终态 */
+  finishedAt?: string | null
+  /** 耗时秒数，仅终态 */
+  durationSeconds?: number | null
+  collected?: boolean | null
+  canRefill?: boolean | null
+  children?: ITaskCenterChild[] | null
 }
 
 /** 单条任务详情：结果图「校色后存为资产版本」靠它定位素材库资产 */

@@ -2,9 +2,10 @@
 /**
  * 任务中心详情抽屉（右侧滑出；窄屏 ≤640px 全屏）。
  *
- * <p>数据：GET /tasks/{taskId}（状态、进度、ETA、封面、素材库产物、canCancel）+ GET /tasks/{taskId}/params
- * （入口名、原始提交体，供「提交内容」摘要）。详情接口不带入口名、失败原因、产物类型，优先取列表里同一行（`item`）补齐；
- * 行不在当前页时这些字段就不显示，不做前端推导。点数消耗接口未下发，不显示。
+ * <p>数据：GET /tasks/{taskId}（状态、进度、ETA、封面、素材库产物、入口名、失败原因、产物类型 / 文案、尺寸、耗时、
+ * 收藏 / 回填、子任务摘要）+ GET /tasks/{taskId}/params（原始提交体，供「提交内容」摘要）。
+ * 详情字段优先；旧后端缺失时退回列表里同一行（`item`）/ params 补齐，仍取不到就不显示，不做前端推导。点数消耗未下发，不显示。
+ * 子任务只展示状态 / 缩略图 / 失败原因（详情接口按父任务查，未确认支持子任务号，不做点击跳转）。
  *
  * <p>实时：订阅全站 taskWatcher 的 task 事件，命中本任务先就地改进度 / 状态，再防抖回查详情（产物、封面、canCancel）；
  * 推送要求 resync 时回查；推送不在线且任务在途时每 8 秒静默回查一次（页面隐藏不查）。
@@ -201,12 +202,12 @@ const view = computed<ITaskCenterItem | null>(() => {
   const row = rowItem.value
   if (!d) return null
   const p = params.value
-  const entryName = row?.typeName || p?.entryName || ''
+  const entryName = d.typeName || row?.typeName || p?.entryName || ''
   return {
     taskId: d.taskId,
-    entryCode: row?.entryCode || p?.entryCode || '',
+    entryCode: d.entryCode || row?.entryCode || p?.entryCode || '',
     typeName: entryName,
-    title: row?.title || [entryName || '创作任务', d.taskId.slice(-10)].join(' '),
+    title: d.title || row?.title || [entryName || '创作任务', d.taskId.slice(-10)].join(' '),
     status: d.status,
     statusBucket: d.statusBucket,
     statusLabel: d.statusLabel,
@@ -214,20 +215,45 @@ const view = computed<ITaskCenterItem | null>(() => {
     progress: d.progress ?? null,
     etaSeconds: d.etaSeconds ?? null,
     progressSource: d.progressSource ?? null,
-    resultType: row?.resultType ?? null,
+    resultType: d.resultType ?? row?.resultType ?? null,
     coverUrl: d.coverUrl || null,
     coverThumbnailUrl: d.coverThumbnailUrl || null,
-    resultText: row?.resultText ?? null,
-    width: row?.width ?? null,
-    height: row?.height ?? null,
-    failReason: d.statusBucket === 'failed' ? (row?.failReason ?? null) : null,
+    resultText: d.resultText ?? row?.resultText ?? null,
+    width: d.width ?? row?.width ?? null,
+    height: d.height ?? row?.height ?? null,
+    failReason: d.statusBucket === 'failed' ? (d.failReason ?? row?.failReason ?? null) : null,
     canCancel: d.canCancel ?? row?.canCancel ?? null,
     assetGroupId: d.assetGroupId,
     blocked: d.blocked,
-    collected: row?.collected ?? null,
-    canRefill: row?.canRefill ?? (p ? p.refillable : null),
+    collected: d.collected ?? row?.collected ?? null,
+    canRefill: d.canRefill ?? row?.canRefill ?? (p ? p.refillable : null),
   }
 })
+
+/** 头部元信息：尺寸 / 耗时 / 完成时间（缺失即不显示） */
+function formatDuration(sec: number): string {
+  const s = Math.max(0, Math.round(sec))
+  if (s < 60) return `${s} 秒`
+  const m = Math.floor(s / 60)
+  const rest = s % 60
+  if (m < 60) return rest ? `${m} 分 ${rest} 秒` : `${m} 分钟`
+  const h = Math.floor(m / 60)
+  return m % 60 ? `${h} 小时 ${m % 60} 分` : `${h} 小时`
+}
+const sizeText = computed(() => {
+  const v = view.value
+  return v?.width && v?.height ? `${v.width} × ${v.height}` : ''
+})
+const durationText = computed(() => {
+  const sec = detail.value?.durationSeconds
+  return sec != null && sec >= 0 ? `耗时 ${formatDuration(sec)}` : ''
+})
+const finishedAt = computed(() => detail.value?.finishedAt || '')
+
+// ---------------- 子任务 ----------------
+
+const children = computed(() => detail.value?.children ?? [])
+const brokenChildren = ref(new Set<string>())
 
 const etaList = computed(() => (detail.value ? [detail.value] : []))
 const { etaOf } = useTaskEta(etaList, (d) => IN_FLIGHT.has(d.statusBucket))
@@ -262,7 +288,9 @@ const results = computed<ResultMedia[]>(() => {
   const list = (d.assets ?? [])
     .filter((a) => !!a.image)
     .map<ResultMedia>((a) => {
-      const video = isVideoUrl(a.image) || typeVideo
+      const video = a.mediaType
+        ? a.mediaType === 'video'
+        : isVideoUrl(a.image) || typeVideo
       const cover = a.cover || (video ? '' : a.watermark || a.image)
       return {
         key: String(a.id ?? a.image),
@@ -356,6 +384,7 @@ watch(
     loadState.value = ''
     brokenThumbs.value = new Set()
     brokenRefs.value = new Set()
+    brokenChildren.value = new Set()
     lightboxOpen.value = false
     seq++
     if (!id) return
@@ -422,6 +451,9 @@ function goLibrary() {
             </div>
             <div class="flex flex-wrap items-center gap-x-12px gap-y-4px text-12px leading-18px text-muted">
               <span v-if="view?.createTime" class="tabular-nums">提交于 {{ view.createTime }}</span>
+              <span v-if="finishedAt" class="tabular-nums">完成于 {{ finishedAt }}</span>
+              <span v-if="durationText" class="tabular-nums">{{ durationText }}</span>
+              <span v-if="sizeText" class="tabular-nums">{{ sizeText }}</span>
               <span class="inline-flex items-center gap-4px min-w-0">
                 <span class="tabular-nums select-all break-all">{{ taskId }}</span>
                 <IconButton size="sm" variant="quiet" label="复制任务编号" @click="copy(taskId, '任务编号已复制')">
@@ -701,6 +733,51 @@ function goLibrary() {
           >
             暂无可预览的结果，可以到素材库查看。
           </p>
+
+          <!-- 子任务 -->
+          <section v-if="children.length" aria-labelledby="tcd-children" class="flex flex-col gap-10px">
+            <h3 id="tcd-children" class="m-0 text-13px font-600 text-ink-2">
+              子任务<span class="ml-4px text-muted font-400">{{ children.length }}</span>
+            </h3>
+            <ul class="m-0 p-0 list-none flex flex-col gap-8px">
+              <li
+                v-for="(c, i) in children"
+                :key="c.taskId"
+                class="flex items-start gap-10px p-8px rounded-12px border border-solid border-line bg-surface2"
+              >
+                <span
+                  class="grid place-items-center flex-none w-44px h-44px overflow-hidden rounded-8px bg-surface3 text-11px text-muted"
+                >
+                  <img
+                    v-if="c.coverThumbnailUrl && !brokenChildren.has(c.taskId)"
+                    :src="c.coverThumbnailUrl"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    class="block w-full h-full object-cover"
+                    @error="brokenChildren.add(c.taskId)"
+                  />
+                  <span v-else aria-hidden="true">{{ i + 1 }}</span>
+                </span>
+                <div class="min-w-0 flex-1 flex flex-col gap-4px">
+                  <span
+                    class="inline-flex w-fit items-center h-20px px-8px rounded-full text-12px leading-18px whitespace-nowrap"
+                    :class="CHIP_CLS[c.statusBucket] ?? CHIP_CLS.cancelled"
+                  >
+                    <i
+                      class="w-5px h-5px rounded-full mr-4px"
+                      :class="DOT_CLS[c.statusBucket] ?? 'bg-placeholder'"
+                      aria-hidden="true"
+                    ></i>
+                    {{ c.statusLabel }}
+                  </span>
+                  <p v-if="c.failReason" class="m-0 text-12px leading-18px text-danger break-words">
+                    {{ c.failReason }}
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </section>
 
           <!-- 提交内容 -->
           <section v-if="input" aria-labelledby="tcd-input" class="flex flex-col gap-10px">
