@@ -29,6 +29,8 @@ const props = defineProps<{
   title?: string
   /** 不包卡：嵌在别的分组卡里（探店 / 短剧的「出镜人物」） */
   bare?: boolean
+  /** 页面上有多个上传区时把「上传照片」设为主粘贴目标（Ctrl/⌘+V 没指向哪一处时进它） */
+  pastePrimary?: boolean
 }>()
 
 const source = defineModel<ILPortraitSource>('source', { default: 'UPLOAD' })
@@ -178,7 +180,14 @@ onMounted(() => {
 
     <!-- 上传照片 -->
     <div v-if="source === 'UPLOAD'">
-      <ImageUpload fromAsset v-model:imgList="uploadList" btnName="上传人物照片" :topRightTips="false" :limitNumber="1">
+      <ImageUpload
+        fromAsset
+        v-model:imgList="uploadList"
+        btnName="上传人物照片"
+        :topRightTips="false"
+        :limitNumber="1"
+        :pastePrimary="pastePrimary"
+      >
         <span class="inline-block mt-8px text-11px leading-16px text-muted"
           >支持 jpg/png/webp，人脸清晰的正面照效果更佳</span
         >

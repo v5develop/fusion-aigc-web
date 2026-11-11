@@ -66,6 +66,7 @@ import type {
   IUserSkill,
 } from '@/api/agent.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
+import { DROP_PASTE_HINT, useFileDropPaste } from '@/composables/useFileDropPaste'
 import { useStudioUploader } from '@/views/studio/components/StudioImageUpload/useStudioUploader.ts'
 import { PromptWriteButton } from '@/components/PromptWrite'
 import { canvasCreate, canvasUploadMedia } from '@/api/canvas-home.ts'
@@ -344,7 +345,7 @@ type ImageTab = (typeof IMAGE_TABS)[number]['key']
 const imageDialogShow = ref(false)
 const imageTab = ref<ImageTab>('local')
 const assetPickerShow = ref(false)
-const dragging = ref(false)
+const imageDialogEl = ref<HTMLElement | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const imagePillEl = ref<HTMLButtonElement | null>(null)
 
@@ -398,25 +399,13 @@ function onFileChange(e: Event) {
   void uploadLocal(files)
 }
 
-function onDrop(e: DragEvent) {
-  dragging.value = false
-  void uploadLocal(Array.from(e.dataTransfer?.files ?? []))
-}
-
-function onPaste(e: ClipboardEvent) {
-  if (!imageDialogShow.value || assetPickerShow.value) return
-  const files = Array.from(e.clipboardData?.items ?? [])
-    .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
-    .map((it) => it.getAsFile())
-    .filter((f): f is File => !!f)
-  if (!files.length) return
-  e.preventDefault()
-  void uploadLocal(files)
-}
-
-watch(imageDialogShow, (open) => {
-  if (open) document.addEventListener('paste', onPaste)
-  else document.removeEventListener('paste', onPaste)
+// 上传素材弹窗：整个弹窗都是放置 / 粘贴目标（任一页签下都能直接拖入或 Ctrl+V），资产选择器叠在上面时归它
+const { dragging } = useFileDropPaste(imageDialogEl, {
+  accept: 'image',
+  multiple: true,
+  full: () => imageRoom.value <= 0,
+  rejectMessage: () => IMAGE_FORMATS,
+  onFiles: (files) => void uploadLocal(files),
 })
 
 function openAssetPicker() {
@@ -1039,54 +1028,21 @@ function onDraftInput(v: string) {
 
 // ---------------- 输入框直接粘贴 / 拖入图片（复用本地上传的同一条直传与上限） ----------------
 
-const composerDragging = ref(false)
 const ATTACH_BUSY = '回复生成中，稍后再添加图片'
+const composerEl = ref<HTMLElement | null>(null)
 
-function imageFilesOf(list: DataTransferItemList | undefined | null): File[] {
-  return Array.from(list ?? [])
-    .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
-    .map((it) => it.getAsFile())
-    .filter((f): f is File => !!f)
-}
-
-/** 文本框粘贴：剪贴板里有图片就当上传，纯文字照常粘贴 */
-function onDraftPaste(e: ClipboardEvent) {
-  const files = imageFilesOf(e.clipboardData?.items)
-  if (!files.length) return
-  e.preventDefault()
-  if (streaming.value) {
-    message.info(ATTACH_BUSY)
-    return
-  }
-  void uploadLocal(files)
-}
-
-function hasFiles(e: DragEvent): boolean {
-  return Array.from(e.dataTransfer?.types ?? []).includes('Files')
-}
-
-function onComposerDragOver(e: DragEvent) {
-  if (!hasFiles(e)) return
-  e.preventDefault()
-  composerDragging.value = true
-}
-
-function onComposerDragLeave(e: DragEvent) {
-  const to = e.relatedTarget as Node | null
-  if (to && (e.currentTarget as HTMLElement).contains(to)) return
-  composerDragging.value = false
-}
-
-function onComposerDrop(e: DragEvent) {
-  if (!hasFiles(e)) return
-  e.preventDefault()
-  composerDragging.value = false
-  if (streaming.value) {
-    message.info(ATTACH_BUSY)
-    return
-  }
-  void uploadLocal(Array.from(e.dataTransfer?.files ?? []))
-}
+// 整个输入框是放置目标；也是本页的主粘贴目标（没悬停在别的上传区上、焦点不在别的输入框时粘贴的图片都进这里）。
+// 文本框里粘贴：剪贴板带文字按文字粘贴，只有图片时当附件上传（路由规则见 useFileDropPaste）
+const { dragging: composerDragging } = useFileDropPaste(composerEl, {
+  accept: 'image',
+  multiple: true,
+  pastePrimary: true,
+  full: () => imageRoom.value <= 0,
+  disabled: streaming,
+  disabledMessage: ATTACH_BUSY,
+  rejectMessage: () => IMAGE_FORMATS,
+  onFiles: (files) => void uploadLocal(files),
+})
 
 /** 空态场景按钮：把示例需求填进输入框（原型 .scenes） */
 function fillDraft(v: string) {
@@ -2556,7 +2512,6 @@ onUnmounted(() => {
   msgSeq++
   controller?.abort()
   stopResultPoll()
-  document.removeEventListener('paste', onPaste)
   narrowMql?.removeEventListener('change', onNarrowChange)
   composerRo?.disconnect()
 })
@@ -4001,9 +3956,7 @@ onUnmounted(() => {
                     isHome ? 'is-home' : 'is-chat',
                     composerDragging ? 'is-drop' : '',
                   ]"
-                  @dragover="onComposerDragOver"
-                  @dragleave="onComposerDragLeave"
-                  @drop="onComposerDrop"
+                  ref="composerEl"
                 >
                   <div v-if="selectedTemplate" class="mb-8px self-start">
                     <span
@@ -4080,7 +4033,6 @@ onUnmounted(() => {
                     :style="{ maxHeight: `${DRAFT_MAX_H}px` }"
                     @input="onDraftInput(($event.target as HTMLTextAreaElement).value)"
                     @keydown="onKeydown"
-                    @paste="onDraftPaste"
                   />
                   <div class="mt-8px flex flex-wrap items-center gap-6px">
                     <button
@@ -4604,7 +4556,7 @@ onUnmounted(() => {
       >
         <div :class="MODAL_HEAD">
           <strong id="agent-image-dialog-title" class="text-15px font-600 leading-20px text-ink">上传素材</strong>
-          <span class="rounded-3px bg-surface3 px-5px py-1px text-11px text-#a3a9b2">Ctrl + V 粘贴图片</span>
+          <span class="rounded-3px bg-surface3 px-5px py-1px text-11px text-#a3a9b2">{{ DROP_PASTE_HINT }}</span>
           <button type="button" aria-label="关闭" :class="MODAL_X" @click="imageDialogShow = false">
             <svg
               class="h-16px w-16px"
@@ -4613,6 +4565,7 @@ onUnmounted(() => {
               stroke="currentColor"
               stroke-width="2"
               aria-hidden="true"
+        ref="imageDialogEl"
             >
               <path :d="ICON.x" />
             </svg>
@@ -4642,9 +4595,6 @@ onUnmounted(() => {
               'sx-squircle box-border flex h-full min-h-340px flex-col items-center justify-center gap-8px rounded-14px border border-dashed text-12px text-#a3a9b2',
               dragging ? 'border-violet bg-violet-soft' : 'border-soft-line bg-#fcfcfd',
             ]"
-            @dragover.prevent="dragging = true"
-            @dragleave.prevent="dragging = false"
-            @drop.prevent="onDrop"
           >
             <span
               class="grid h-44px w-44px place-items-center rounded-12px bg-surface3 text-#b3b9c2"

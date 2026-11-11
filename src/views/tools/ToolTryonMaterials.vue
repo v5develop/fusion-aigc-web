@@ -14,6 +14,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import { useMessage } from 'naive-ui'
+import { useFileDropPaste } from '@/composables/useFileDropPaste'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import ToolGarmentDialog from './ToolGarmentDialog.vue'
@@ -190,11 +191,16 @@ function clearGarment() {
   message.info(count ? `已清空 ${count} 张服装图` : '已清空服装图')
 }
 
-function dropOnGarment(event: DragEvent) {
-  if (props.disabled) return
-  const files = [...(event.dataTransfer?.files ?? [])]
-  if (files.length) g.dropOnEntry(files)
-}
+const garmentEntry = ref<HTMLElement | null>(null)
+// 服装图叠片：拖入 / 粘贴进第一件没满的单品（没选单品时由 dropOnEntry 提示先选）
+const { dragging: garmentDragging } = useFileDropPaste(garmentEntry, {
+  accept: 'image',
+  multiple: true,
+  full: () => g.allPhotos.length >= g.maxGarments,
+  disabled: () => !!props.disabled || g.uploading,
+  rejectMessage: () => '已跳过非图片文件',
+  onFiles: (files) => g.dropOnEntry(files),
+})
 
 const peekGroups = computed(() =>
   g.isTogether
@@ -235,11 +241,16 @@ function onModelFiles(event: Event) {
   if (files.length) void addModels(files)
 }
 
-function dropOnModels(event: DragEvent) {
-  if (props.disabled || modelUploader.uploading.value) return
-  const files = [...(event.dataTransfer?.files ?? [])]
-  if (files.length) void addModels(files)
-}
+const modelEntry = ref<HTMLElement | null>(null)
+// 模特图叠片：拖入 / 粘贴与点选同一个 addModels（余量、格式、体积校验都在里面）
+const { dragging: modelDragging } = useFileDropPaste(modelEntry, {
+  accept: 'image',
+  multiple: true,
+  full: modelsFull,
+  disabled: () => !!props.disabled || modelUploader.uploading.value,
+  rejectMessage: () => '已跳过非图片文件',
+  onFiles: (files) => void addModels(files),
+})
 
 /** 模特图云钮：开资产库选图（模特库选择已撤掉，产品决定 2026-10-29），选中的图走 addModelUrls 入列 */
 function openModelAssets() {
@@ -348,13 +359,13 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
               focusRing,
               garmentShown.length ? 'border-0 bg-transparent' : emptyCls,
               garmentExpanded ? 'z-5' : '',
+              garmentDragging ? 'sx-drop-ring' : '',
             ]"
+            ref="garmentEntry"
             :style="{ width: `${PLATE_W + (garmentPlates - 1) * garmentStep}px` }"
             :disabled="disabled"
             :aria-label="`服装图，${garmentShown.length} 张，点击编辑`"
             @click="openDialog"
-            @dragover.prevent
-            @drop.prevent="dropOnGarment"
           >
             <span v-if="garmentShown.length" class="absolute left-0 top-0 flex" aria-hidden="true">
               <span
@@ -472,14 +483,14 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
               models.length ? 'border-0 bg-transparent' : emptyCls,
               modelsFull ? 'cursor-default' : 'cursor-pointer',
               modelsExpanded ? 'z-5' : '',
+              modelDragging ? 'sx-drop-ring' : '',
             ]"
+            ref="modelEntry"
             :style="{ width: `${PLATE_W + (modelPlates - 1) * modelsStep}px` }"
             :disabled="disabled"
             :aria-label="modelsFull ? `模特图已满 ${MAX_MODELS} 位` : `模特图，${models.length} 位，点击上传`"
             :aria-disabled="modelsFull || undefined"
             @click="openModelPicker"
-            @dragover.prevent
-            @drop.prevent="dropOnModels"
           >
             <span v-if="models.length" class="absolute left-0 top-0 flex" aria-hidden="true">
               <span

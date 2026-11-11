@@ -28,7 +28,7 @@ import AssetPickerModal from '../AssetPickerModal/index.vue'
 import StudioMedBtn from './StudioMedBtn.vue'
 import AssetCornerButton from '@/components/Creation/AssetCornerButton.vue'
 import { useStudioUploader } from './useStudioUploader.ts'
-import { useFileDropPaste } from '@/composables/useFileDropPaste'
+import { DROP_PASTE_HINT, useFileDropPaste } from '@/composables/useFileDropPaste'
 
 const {
   max = 9,
@@ -45,6 +45,7 @@ const {
   panelMin = 1,
   panelFill = false,
   onDropFiles,
+  pastePrimary = false,
 } = defineProps<{
   /** 上限张数（1–9 由调用方按契约传入） */
   max?: number
@@ -73,6 +74,8 @@ const {
   panelFill?: boolean
   /** picker 模式下拖入 / 粘贴的文件交给页面（页面按自己的校验上传）；不传则照旧发 pick 打开页面的弹窗 */
   onDropFiles?: (files: File[]) => void
+  /** 页面上有多个上传区、又没悬停在任何一个上时，粘贴（Ctrl/⌘+V）交给它；一页最多标一个 */
+  pastePrimary?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -392,6 +395,11 @@ const { dragging } = useFileDropPaste(entryEl, {
   accept: 'image',
   multiple: () => multiple,
   disabled: () => disabled || uploading.value,
+  disabledMessage: () => (uploading.value ? '图片还在上传，请稍候' : undefined),
+  // picker 模式由页面按自己的规则入组，满额提示也归页面
+  full: () => !picker && full.value,
+  fullMessage: () => `满了，最多 ${max} 张；要换先删一张`,
+  pastePrimary: () => pastePrimary,
   // 与 useStudioUploader 过滤非图片时同一句
   rejectMessage: () => '已跳过非图片文件',
   onFiles: onIncoming,
@@ -468,6 +476,7 @@ const seamCls = [
         :disabled="disabled"
         :aria-disabled="(full && !picker) || undefined"
         :aria-label="entryLabel"
+        :title="DROP_PASTE_HINT"
         @click="onEntryClick"
       >
         <span v-if="count" class="absolute left-0 top-0 flex" aria-hidden="true">

@@ -168,7 +168,14 @@ function useModelList() {
     <template #default>
       <div>
         <SectionTitle>商品图</SectionTitle>
-        <ImageUpload fromAsset v-model:imgList="formData.imageUrls" btnName="服装图片" :limitNumber="7" multiple>
+        <ImageUpload
+          pastePrimary
+          fromAsset
+          v-model:imgList="formData.imageUrls"
+          btnName="服装图片"
+          :limitNumber="7"
+          multiple
+        >
           <span class="mt-12px text-11px leading-17px text-muted">建议使用服饰白底图、服饰平铺图，识别效果更佳</span>
         </ImageUpload>
 

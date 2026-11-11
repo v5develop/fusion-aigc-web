@@ -188,6 +188,7 @@ async function removeItem(item: ILCreation) {
   >
     <template #default>
       <PersonSource
+        paste-primary
         v-model:source="portraitSource"
         v-model:image-url="personImage"
         v-model:public-id="personPublicId"

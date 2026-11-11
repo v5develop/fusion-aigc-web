@@ -11,6 +11,8 @@
  * 写回服装图槽位的那一张由 ToolTryonMaterials 负责。
  */
 import { ref } from 'vue'
+import { useMessage } from 'naive-ui'
+import { DROP_PASTE_HINT, useFileDropPaste } from '@/composables/useFileDropPaste'
 import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedBtn.vue'
 import { ANGLES, MAX_PHOTOS, OUTFIT, OUTFIT_CONFLICT_TEXT, outfitLabel, type TryonGarment } from './useTryonGarment'
 
@@ -44,12 +46,40 @@ function onFiles(event: Event) {
   else void g.addFiles(target.key, files, target.angle)
 }
 
-function dropOn(key: string | 'look', event: DragEvent) {
-  const files = [...(event.dataTransfer?.files ?? [])]
-  if (!files.length) return
-  if (key === 'look') void g.setLook(files)
-  else void g.addFiles(key, files)
+// 整个弹窗正文是放置 / 粘贴目标：拖入按落在哪一件分，粘贴按鼠标指着的那一件分；一套合影模式都进合影；
+// 没指向哪一件时放进第一件（与商拍工作室 GarmentAngleDialog 同一口径）
+const message = useMessage()
+const bodyEl = ref<HTMLElement | null>(null)
+const pointedKey = ref<string | null>(null)
+
+function keyOf(target: EventTarget | null): string | null {
+  return target instanceof Element
+    ? (target.closest('[data-garment-key]')?.getAttribute('data-garment-key') ?? null)
+    : null
 }
+function onPointerOver(event: PointerEvent) {
+  pointedKey.value = keyOf(event.target)
+}
+
+const { dragging } = useFileDropPaste(bodyEl, {
+  accept: 'image',
+  multiple: true,
+  disabled: () => g.uploading,
+  disabledMessage: '上一批服装图还在上传，请稍候',
+  rejectMessage: () => '已跳过非图片文件',
+  onFiles: (files, event) => {
+    if (!g.selected.length) {
+      message.info('先在上面选 1–3 件单品，再上传对应的服装图')
+      return
+    }
+    if (g.isTogether) {
+      void g.setLook(files)
+      return
+    }
+    const key = (event instanceof DragEvent ? keyOf(event.target) : pointedKey.value) ?? g.selected[0]!
+    void g.addFiles(key, files)
+  },
+})
 
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 /** 单品片 / 分段片选中：柔紫线 + 白→#f8f3fc + 紫字 600 */
@@ -69,7 +99,13 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
       @change="onFiles"
     />
 
-    <div class="flex flex-col gap-12px max-h-[min(520px,calc(100vh-220px))] overflow-y-auto">
+    <div
+      ref="bodyEl"
+      class="flex flex-col gap-12px max-h-[min(520px,calc(100vh-220px))] overflow-y-auto rounded-6px"
+      :class="dragging && 'sx-drop-ring'"
+      @pointerover="onPointerOver"
+      @pointerleave="pointedKey = null"
+    >
       <div class="grid grid-cols-4 gap-6px">
         <button
           v-for="item in OUTFIT"
@@ -84,7 +120,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
         </button>
       </div>
       <p class="m-0 text-11px leading-15px text-placeholder">
-        只替换选中的单品，最多 3 件。{{ OUTFIT_CONFLICT_TEXT }}；可直接把图片拖进每一件。
+        只替换选中的单品，最多 3 件。{{ OUTFIT_CONFLICT_TEXT }}；{{ DROP_PASTE_HINT }}，拖进或指着哪一件就放进哪一件。
       </p>
 
       <div
@@ -122,8 +158,6 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
             :class="focusRing"
             :aria-label="g.look ? '换一张整套合影' : '上传一张整套合影'"
             @click="pick({ kind: 'look' })"
-            @dragover.prevent
-            @drop.prevent="dropOn('look', $event)"
           >
             <template v-if="g.look">
               <img :src="g.look" alt="" class="absolute inset-0 w-full h-full object-cover" />
@@ -161,8 +195,7 @@ const onCls = 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100
           class="flex items-center gap-10px"
           role="group"
           :aria-label="`${outfitLabel(key)}服装图`"
-          @dragover.prevent
-          @drop.prevent="dropOn(key, $event)"
+          :data-garment-key="key"
         >
           <span class="flex-[0_0_40px] w-40px text-11px text-ink-2">{{ outfitLabel(key) }}</span>
           <div class="grid grid-cols-[repeat(3,78px)] gap-8px">

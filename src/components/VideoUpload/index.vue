@@ -13,7 +13,7 @@ import { ACCEPT_VIDEO } from '@/utils/utils'
 import { useDialog, useMessage } from 'naive-ui'
 import { computed, defineAsyncComponent, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
-import { useFileDropPaste } from '@/composables/useFileDropPaste'
+import { DROP_PASTE_HINT, useFileDropPaste } from '@/composables/useFileDropPaste'
 import { mapWithConcurrency, useUploadBusyReporter } from '@/components/upload-busy'
 import {
   UPLOAD_ENTRY_ASSET_LABEL,
@@ -54,6 +54,8 @@ interface IProps {
   confirmDelete?: boolean | string
   /** 上传按钮旁出「从资产库添加」文字入口（只开入口，不开视频行角标，删除钮等外观不变）；默认不开 */
   fromAsset?: boolean
+  /** 页面上有多个上传区、又没悬停在任何一个上时，粘贴（Ctrl/⌘+V）交给它；一页最多标一个 */
+  pastePrimary?: boolean
 }
 const {
   limitNumber,
@@ -69,6 +71,7 @@ const {
   emptyText,
   confirmDelete = false,
   fromAsset = false,
+  pastePrimary = false,
 } = defineProps<IProps>()
 
 const emit = defineEmits<{
@@ -476,7 +479,10 @@ const { dragging } = useFileDropPaste(dropRef, {
   accept: 'video',
   multiple: () => multiple,
   max: () => Math.max(1, limit.value - occupied.value),
+  full: () => occupied.value >= limit.value,
   disabled: busy,
+  disabledMessage: '视频还在上传，请稍候',
+  pastePrimary: () => pastePrimary,
   onFiles: (files) => {
     replaceIndex.value = null
     uploadFiles(files, null)
@@ -544,7 +550,7 @@ const MASK_BTN =
         >
           <!-- flex 包一层：按钮作 flex 项，不产生行盒，尺寸与原来直接放按钮时一致 -->
           <div class="relative flex items-center gap-8px mt-32px">
-            <button type="button" :class="UPLOAD_BTN" @click="beforeUpload">
+            <button type="button" :class="UPLOAD_BTN" :title="DROP_PASTE_HINT" @click="beforeUpload">
               <i class="icon-ic_ds_CloudUpload1 text-20px" aria-hidden="true"></i>
               <span>{{ triggerLabel }}</span>
             </button>

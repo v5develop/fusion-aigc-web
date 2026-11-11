@@ -25,7 +25,7 @@ import StudioMedBtn from '@/views/studio/components/StudioImageUpload/StudioMedB
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import MediaLightbox, { type LightboxItem } from '@/components/MediaLightbox/index.vue'
 import type { UploadLayout, UploadSpec } from './schemas'
-import { useFileDropPaste } from '@/composables/useFileDropPaste'
+import { DROP_PASTE_HINT, ZONE_FULL_TEXT, useFileDropPaste } from '@/composables/useFileDropPaste'
 
 const props = defineProps<{
   spec: UploadSpec
@@ -55,6 +55,8 @@ const props = defineProps<{
   titled?: boolean
   /** titled 卡在当前模型不支持这类素材时的说明（写在标题下，投放区保持卡形但禁用） */
   unsupportedHint?: string
+  /** 页面上有多个上传区、又没悬停在任何一个上时，粘贴（Ctrl/⌘+V）交给它；一页最多标一个 */
+  pastePrimary?: boolean
 }>()
 const emit = defineEmits<{ 'open-library': [anchor: HTMLElement] }>()
 const urls = defineModel<string[]>({ required: true })
@@ -80,12 +82,13 @@ const sizeText = computed(() => {
   return mb >= 1024 ? `${mb / 1024}G` : `${mb}M`
 })
 const hint = computed(() => {
-  if (props.spec.hint) return props.spec.hint
+  if (props.spec.hint) return `${props.spec.hint}；${DROP_PASTE_HINT}`
   // 原型口径：「支持 JPG / JPEG / PNG / WEBP / GIF，单张不超过 10MB」（校验报错仍用 sizeText）
   const parts = [`支持 ${extText.value}`, `单${isVideo.value ? '段' : '张'}不超过 ${sizeText.value}B`]
   if (props.spec.max > 1) parts.push(`最多 ${props.spec.max} ${isVideo.value ? '段' : '张'}`)
   if (props.spec.minDuration || props.spec.maxDuration)
     parts.push(`时长 ${props.spec.minDuration ?? 0}–${props.spec.maxDuration ?? '∞'} 秒`)
+  parts.push(DROP_PASTE_HINT)
   return parts.join('，')
 })
 
@@ -182,7 +185,12 @@ const rootEl = ref<HTMLElement | null>(null)
 const { dragging } = useFileDropPaste(rootEl, {
   accept: () => (isVideo.value ? 'video' : 'image'),
   multiple: () => props.spec.max > 1,
+  // 单张槽收到新文件 = 换一张，不算满
+  full: () => props.spec.max > 1 && room.value <= 0,
+  fullMessage: () => `${ZONE_FULL_TEXT}，最多上传 ${props.spec.max} ${isVideo.value ? '段' : '张'}`,
   disabled: () => !!props.disabled || uploading.value,
+  disabledMessage: () => (uploading.value ? '还在上传，请稍候' : undefined),
+  pastePrimary: () => !!props.pastePrimary,
   rejectMessage: (file) => `「${file.name}」格式不支持，仅支持 ${extText.value}`,
   onFiles: (files) => void addFiles(files),
 })

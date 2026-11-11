@@ -10,6 +10,7 @@ import { useMessage } from 'naive-ui'
 import { goUploadImage } from '@/api/go-upload.ts'
 import { ACCEPT_IMAGE } from '@/utils/utils.ts'
 import IconButton from '@/components/IconButton/index.vue'
+import { useFileDropPaste } from '@/composables/useFileDropPaste'
 
 const props = withDefaults(defineProps<{ max?: number; label: string; disabled?: boolean }>(), { max: 9 })
 const urls = defineModel<string[]>({ default: () => [] })
@@ -30,10 +31,16 @@ onBeforeUnmount(() => {
   if (uploading.value) setUploading(false)
 })
 
-async function onPick(e: Event) {
+function onPick(e: Event) {
   const el = e.target as HTMLInputElement
-  let files = Array.from(el.files ?? [])
+  const files = Array.from(el.files ?? [])
   el.value = ''
+  void addFiles(files)
+}
+
+/** 选文件 / 拖入 / 粘贴共用 */
+async function addFiles(incoming: File[]) {
+  let files = incoming
   if (!files.length) return
   const room = props.max - urls.value.length
   if (room <= 0) return message.warning(`最多上传 ${props.max} 张`)
@@ -58,13 +65,24 @@ async function onPick(e: Event) {
     if (!disposed) setUploading(false)
   }
 }
+// 整排图片位是放置 / 粘贴目标（表单里有多个图片位时按悬停 / 焦点分）
+const rootEl = ref<HTMLElement | null>(null)
+const { dragging } = useFileDropPaste(rootEl, {
+  accept: 'image',
+  multiple: () => props.max > 1,
+  full: () => urls.value.length >= props.max,
+  disabled: () => !!props.disabled || uploading.value,
+  rejectMessage: () => '已跳过非图片文件',
+  onFiles: (files) => void addFiles(files),
+})
+
 function removeAt(i: number) {
   urls.value = urls.value.filter((_, idx) => idx !== i)
 }
 </script>
 
 <template>
-  <div class="flex flex-wrap gap-8px">
+  <div ref="rootEl" class="flex flex-wrap gap-8px rounded-md" :class="dragging && 'sx-drop-ring'">
     <div
       v-for="(u, i) in urls"
       :key="u + i"
@@ -89,6 +107,7 @@ function removeAt(i: number) {
       type="button"
       :disabled="disabled || uploading"
       :aria-label="`上传${label}`"
+      :title="`点击、拖拽或粘贴（Ctrl/⌘+V）上传${label}`"
       class="h-64px w-64px flex cursor-pointer flex-col items-center justify-center gap-2px rounded-md border border-dashed border-line bg-white text-11px text-muted [font-family:inherit] hover:(border-violet-line text-violet-ink) disabled:cursor-not-allowed disabled:opacity-60 focus-visible:(outline outline-2 outline-offset-2 outline-violet)"
       @click="input?.click()"
     >

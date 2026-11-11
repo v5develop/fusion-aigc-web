@@ -16,7 +16,7 @@ import { canvasUploadMedia } from '@/api/canvas-home.ts'
 import type { ICanvasCatalogTool } from '@/api/canvas-home.ts'
 import type { CanvasEditorNode, CanvasToolKind, CanvasNodeData } from './types.ts'
 import { FOCUS_RING, NODE_NOTICE, NODE_RUN_BTN, POP_SURFACE } from './ui.ts'
-import { useFileDropPaste } from '@/composables/useFileDropPaste'
+import { DROP_PASTE_HINT, useFileDropPaste } from '@/composables/useFileDropPaste'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 
 const props = defineProps<{ node: CanvasEditorNode }>()
@@ -592,7 +592,9 @@ const footHint = computed(() => {
         >
           <video v-if="isVideoInput && inputVideoUrl" :src="inputVideoUrl" controls preload="metadata" />
           <n-image v-else-if="inputImageUrl" :src="inputImageUrl" object-fit="contain" />
-          <div v-else class="py-30px text-placeholder text-12px">还没有{{ isVideoInput ? '视频' : '图片' }}</div>
+          <div v-else class="py-30px text-placeholder text-12px">
+            还没有{{ isVideoInput ? '视频' : '图片' }}，{{ DROP_PASTE_HINT }}
+          </div>
         </div>
         <div class="flex items-center gap-8px">
           <n-button size="small" :loading="uploading" @click="pickFile(isVideoInput ? 'video' : 'image')">
@@ -716,7 +718,7 @@ const footHint = computed(() => {
             class="mb-8px min-h-100px [&_video]:max-h-180px"
           >
             <video v-if="modelNode.video" :src="modelNode.video" controls preload="metadata" />
-            <div v-else class="py-24px text-placeholder text-12px">还没有视频</div>
+            <div v-else class="py-24px text-placeholder text-12px">还没有视频，{{ DROP_PASTE_HINT }}</div>
           </div>
           <div class="flex items-center gap-8px">
             <n-button size="small" :loading="uploading" @click="pickFile('video')">

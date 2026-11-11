@@ -183,7 +183,7 @@ function useModelList() {
         </div>
 
         <SectionTitle>选择搭配图</SectionTitle>
-        <ImageUpload fromAsset v-model:imgList="formData.imageUrls" :limitNumber="7" btnName="上传搭配图">
+        <ImageUpload pastePrimary fromAsset v-model:imgList="formData.imageUrls" :limitNumber="7" btnName="上传搭配图">
           <span class="mt-12px text-11px leading-17px text-muted">建议使用服饰白底图、服饰平铺图，识别效果更佳</span>
         </ImageUpload>
 

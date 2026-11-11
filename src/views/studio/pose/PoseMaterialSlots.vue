@@ -168,6 +168,8 @@ const { dragging: sourceDragging } = useFileDropPaste(sourceEntry, {
   accept: 'image',
   multiple: false,
   disabled: () => disabled || sourceUp.uploading.value,
+  // 人物图 / 姿态图两块并排：没指向哪块时粘贴进人物图
+  pastePrimary: true,
   rejectMessage: () => '已跳过非图片文件',
   onFiles: (files) => void addSource(files),
 })

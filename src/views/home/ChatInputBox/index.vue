@@ -131,7 +131,14 @@ const handlePaste = (e: ClipboardEvent) => {
       <div class="main-content main-content--slot">
         <!-- 电商商品 tab 隐藏左侧图片选择控件（showImageUpload 为 false） -->
         <div v-show="showImageUpload" class="upload-cont">
-          <Upload ref="sideUploadRef" style="width: 72px" v-model:fileList="sideImages!" :limitNumber="5" multiple />
+          <Upload
+            ref="sideUploadRef"
+            style="width: 72px"
+            v-model:fileList="sideImages!"
+            :limitNumber="5"
+            multiple
+            pastePrimary
+          />
         </div>
         <PromptEditor v-model:slots="slots!" @paste-files="onSlotPasteFiles" />
       </div>
@@ -148,6 +155,7 @@ const handlePaste = (e: ClipboardEvent) => {
             v-model:fileList="formData.images"
             :limitNumber="imageLimit"
             multiple
+            pastePrimary
           />
           <Upload
             v-if="showVideoUpload"

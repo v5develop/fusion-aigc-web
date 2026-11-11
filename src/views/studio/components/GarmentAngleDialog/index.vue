@@ -308,7 +308,9 @@ function isPending(key: string, angle: string) {
 
       <p v-if="groups.length" class="m-0 text-11px leading-16px text-placeholder">
         每件最多 {{ maxPerGroup }} 张、服装图合计最多 {{ maxTotal }} 张（已传
-        {{ total }}）；背面、侧面一起传更准，缺的角度不影响出图。可直接把图片拖进每一件。
+        {{
+          total
+        }}）；背面、侧面一起传更准，缺的角度不影响出图。支持拖拽或粘贴（Ctrl/⌘+V），拖进或指着哪一件就放进哪一件。
       </p>
     </div>
 

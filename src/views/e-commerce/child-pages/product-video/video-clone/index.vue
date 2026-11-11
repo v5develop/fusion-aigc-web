@@ -75,6 +75,7 @@ const submit = () => {
       <div>
         <SectionTitle>商品图</SectionTitle>
         <ImageUpload
+          pastePrimary
           fromAsset
           v-model:imgList="formData.imageUrls"
           :limitNumber="3"

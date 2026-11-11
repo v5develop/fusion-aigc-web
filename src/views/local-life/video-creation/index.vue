@@ -369,6 +369,7 @@ function sceneTime(s: { start_sec?: number; end_sec?: number }) {
             <span class="text-11px leading-16px text-muted">{{ isExplore ? '选填 · 1 张' : '必填 · 1 张' }}</span>
           </template>
           <ImageUpload
+            pastePrimary
             fromAsset
             v-model:imgList="form.propUrl"
             btnName="上传图片"

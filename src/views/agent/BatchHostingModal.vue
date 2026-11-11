@@ -265,11 +265,13 @@ const taskKeyOf = (el: Element | null) =>
 /** 拖拽经过的任务卡（高亮用） */
 const dragTask = ref<number | null>(null)
 function taskOf(event: DragEvent | ClipboardEvent): TaskDraft | undefined {
-  // 拖入看落点；粘贴看悬停的卡，没有就看焦点所在的卡
+  // 拖入看落点；粘贴看悬停的卡，没有就看焦点所在的卡，再没有就放进第一张还有余量的卡
+  const focusedKey = taskKeyOf(document.activeElement)
   const key =
     event instanceof DragEvent
       ? taskKeyOf(event.target as Element | null)
-      : (pointedTask.value ?? taskKeyOf(document.activeElement))
+      : (pointedTask.value ??
+        (Number.isNaN(focusedKey) ? tasks.value.find((t) => t.images.length < MAX_IMAGES)?.key : focusedKey))
   const task = tasks.value.find((t) => t.key === key)
   return task && task.images.length < MAX_IMAGES ? task : undefined
 }

@@ -157,7 +157,7 @@ function useModelList() {
         <p class="-mt-4px mb-8px text-12px leading-18px text-muted">
           上传参考样片，AI 精准复刻镜头运镜、色调与画面整体风格
         </p>
-        <VideoUpload fromAsset v-model:videoList="formData.videoUrl" btnName="上传参考视频">
+        <VideoUpload pastePrimary fromAsset v-model:videoList="formData.videoUrl" btnName="上传参考视频">
           <span class="mt-12px text-12px leading-18px text-muted">视频过长时，将自动压缩至15秒，确保最佳效果。</span>
         </VideoUpload>
 

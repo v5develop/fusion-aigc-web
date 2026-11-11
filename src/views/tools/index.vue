@@ -780,6 +780,20 @@ const promptStripOwned = computed(() => mlPromptUploads.value.some((u) => u.stri
 /** 画框顶计数行的那个槽：第一个可用的原型图条；模型不支持参考图时没有，退回一体框自己的顶行（只剩书本钮） */
 const stripHeadSlot = computed(() => mlPromptUploads.value.find((u) => u.strip === 'prototype' && uploadEnabled(u)))
 /** 商拍换装素材板的两个槽位：服装图（clothImageUrl）/ 模特图（modelImageUrl）；缺一个就退回通用槽位 */
+/**
+ * 本页主粘贴槽：Ctrl/⌘+V 没悬停在哪一槽、焦点也不在提示词框里时进它（useFileDropPaste 路由规则 5）——
+ * 显示顺序里第一个可用的槽；商拍换装素材板两块并排，按悬停分，不设主槽
+ */
+const pastePrimarySlot = computed(() => {
+  if (cloneVideoSlot.value) return cloneVideoSlot.value.slot
+  if (schema.value?.uploadsView === 'tryon' && tryonSlots.value) return undefined
+  const order = [
+    ...mlPromptUploads.value,
+    ...(productStage.value ? [productStage.value.anchor] : []),
+    ...displayUploads.value,
+  ]
+  return order.find((u) => uploadEnabled(u))?.slot
+})
 const tryonSlots = computed(() => {
   const list = schema.value?.uploads ?? []
   const cloth = list.find((u) => u.javaKey === 'clothImageUrl')
@@ -2520,6 +2534,7 @@ const plateBtnCls =
             :models="uploads[tryonSlots.models.slot] ?? []"
             :cloth-spec="tryonSlots.cloth"
             :model-spec="tryonSlots.models"
+                paste-primary
             :disabled="submitting"
             @update:uploading="setUploading('tryon', $event)"
             @update:cloth="setUploads(tryonSlots.cloth.slot, $event)"
@@ -2568,6 +2583,7 @@ const plateBtnCls =
             <div v-else>
               <div class="ll-label">
                 <span>{{ u.label }}</span>
+              :paste-primary="u.slot === pastePrimarySlot"
               </div>
               <p class="m-0 ll-empty py-12px">{{ unsupportedUploadHint(u) }}</p>
             </div>
@@ -2590,6 +2606,7 @@ const plateBtnCls =
                   class="block w-28px h-28px box-border rounded-full border-2 border-solid border-violet-soft border-t-violet animate-spin [animation-duration:800ms] motion-reduce:animate-none"
                   aria-hidden="true"
                 />
+              :paste-primary="u.slot === pastePrimarySlot"
                 正在抠图，请稍候…
               </div>
               <template v-else-if="syncResultUrl">
@@ -2801,6 +2818,7 @@ const plateBtnCls =
             v-if="hasRegionField && changedRegions.length"
             class="sx-squircle m-0 flex items-center gap-6px min-h-32px box-border px-10px rounded-12px border border-solid border-violet-line bg-info-soft text-12px leading-18px text-violet-ink"
             role="status"
+                      :paste-primary="u.slot === pastePrimarySlot"
           >
             本次将替换 {{ changedRegions.length }} 处文字
           </p>

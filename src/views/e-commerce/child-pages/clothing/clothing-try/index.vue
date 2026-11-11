@@ -260,6 +260,7 @@ function useBg() {
       <div>
         <SectionTitle>商品图</SectionTitle>
         <ImageUpload
+          pastePrimary
           fromAsset
           v-model:imgList="formData.imageUrls"
           btnName="上传产品图"

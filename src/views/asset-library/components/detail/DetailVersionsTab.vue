@@ -71,7 +71,7 @@ const SET_BTN = 'sx-btn !h-32px !px-10px !text-12px shrink-0'
         <svg class="w-22px h-22px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 16V5m0 0-4 4m4-4 4 4M5 19h14" />
         </svg>
-        <span class="text-13px text-ink-2">{{ d.versionUploading.value ? '上传中…' : '点击上传，或拖入 / 粘贴图片' }}</span>
+        <span class="text-13px text-ink-2">{{ d.versionUploading.value ? '上传中…' : '点击上传，或拖拽 / 粘贴（Ctrl/⌘+V）图片' }}</span>
         <span class="text-11px text-placeholder">单张 ≤10M</span>
         <button
           type="button"

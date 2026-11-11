@@ -750,6 +750,7 @@ const headBtn =
               :spec="u"
               :layout="u.kind === 'video' ? 'single' : 'material'"
               :disabled="submitting"
+              :paste-primary="index === 0"
               asset-picker
               @update:model-value="setUploads(u.slot, $event)"
             />

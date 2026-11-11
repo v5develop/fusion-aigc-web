@@ -4,7 +4,7 @@ import { ACCEPT_IMAGE } from '@/utils/utils'
 import { useDialog, useMessage } from 'naive-ui'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
-import { useFileDropPaste } from '@/composables/useFileDropPaste'
+import { DROP_PASTE_HINT, ZONE_FULL_TEXT, useFileDropPaste } from '@/composables/useFileDropPaste'
 import { mapWithConcurrency, useUploadBusyReporter } from '@/components/upload-busy'
 import {
   UPLOAD_ENTRY_ASSET_LABEL,
@@ -60,6 +60,8 @@ interface IProps {
   confirmDelete?: boolean | string
   /** 上传按钮旁出「从资产库添加」文字入口（只开入口，不开缩略图角标，删除钮等外观不变）；默认不开 */
   fromAsset?: boolean
+  /** 页面上有多个上传区、又没悬停在任何一个上时，粘贴（Ctrl/⌘+V）交给它；一页最多标一个 */
+  pastePrimary?: boolean
 }
 const {
   type = 'default',
@@ -81,6 +83,7 @@ const {
   emptyText,
   confirmDelete = false,
   fromAsset = false,
+  pastePrimary = false,
 } = defineProps<IProps>()
 
 const emit = defineEmits<{
@@ -398,6 +401,9 @@ const { dragging } = useFileDropPaste(dropRef, {
   multiple: () => multiple,
   max: () => (limitNumber ? limitNumber - occupied.value : undefined),
   disabled: loading,
+  disabledMessage: '图片还在上传，请稍候',
+  fullMessage: () => (failedCount.value ? `${ZONE_FULL_TEXT}，请先重试或移除上传失败的图片` : undefined),
+  pastePrimary: () => pastePrimary,
   onFiles: (files) => {
     if (canAppend()) uploadFiles(files)
   },
@@ -479,7 +485,7 @@ const RETRY_BTN =
           >
             <!-- flex 包一层：按钮作 flex 项，不产生行盒，尺寸与原来直接放按钮时一致 -->
             <div class="relative flex items-center gap-8px" :class="singleSlot ? 'mt-0' : 'mt-32px'">
-              <button type="button" :class="UPLOAD_BTN" @click="beforeUpload">
+              <button type="button" :class="UPLOAD_BTN" :title="DROP_PASTE_HINT" @click="beforeUpload">
                 <i class="icon-ic_ds_CloudUpload1 text-20px" aria-hidden="true"></i>
                 <span>{{ triggerLabel }}</span>
               </button>

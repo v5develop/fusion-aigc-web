@@ -149,7 +149,7 @@ const { dragging } = useFileDropPaste(dropRef, {
             class="flex flex-col w-full h-full items-center justify-center gap-8px p-0 border border-dashed border-[#d8dce6] rounded-6px bg-[#fafbfc] text-11px cursor-pointer transition-colors duration-120 hover:border-[#c9b4d6] hover:bg-[#faf7fc] hover:text-violet nodrag"
             :class="[FOCUS_RING, dragging && 'sx-drop', uploading ? 'text-violet-ink' : 'text-placeholder']"
             :disabled="uploading"
-            title="上传图片"
+            title="上传图片，支持拖拽或粘贴（Ctrl/⌘+V）"
             @click.stop="pick"
           >
             <EditorIcon name="image" :size="22" />

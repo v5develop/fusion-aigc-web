@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import { upload } from '@/api/oss-upload.ts'
 import { ACCEPT_IMAGE, ACCEPT_VIDEO } from '@/utils/utils'
-import { onPickerKeydown, useFileDropPaste } from '@/composables/useFileDropPaste'
+import { DROP_PASTE_HINT, onPickerKeydown, useFileDropPaste } from '@/composables/useFileDropPaste'
 import IconButton from '@/components/IconButton/index.vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 
@@ -14,6 +14,8 @@ interface IProps {
   limitSize?: number // 视频体积限制（MB）
   multiple?: boolean
   label?: string
+  /** 页面上有多个上传区、又没悬停在任何一个上时，粘贴（Ctrl/⌘+V）交给它；一页最多标一个 */
+  pastePrimary?: boolean
 }
 const {
   type = 'image',
@@ -22,6 +24,7 @@ const {
   limitSize = 20,
   multiple = false,
   label,
+  pastePrimary = false,
 } = defineProps<IProps>()
 const fileList = defineModel<any[]>('fileList', { required: true })
 
@@ -233,6 +236,8 @@ const { dragging } = useFileDropPaste(rootRef, {
   multiple: () => multiple,
   max: () => (limitNumber ? limitNumber - fileList.value.length : undefined),
   disabled: loading,
+  disabledMessage: () => (type === 'video' ? '视频还在上传，请稍候' : '图片还在上传，请稍候'),
+  pastePrimary: () => pastePrimary,
   onFiles: addFiles,
 })
 
@@ -273,6 +278,7 @@ defineExpose({ addFiles })
           role="button"
           tabindex="0"
           :aria-label="label || (type === 'video' ? '上传视频' : '上传图片')"
+          :title="DROP_PASTE_HINT"
           @click="beforeUpload"
           @keydown="onPickerKeydown($event, beforeUpload)"
           v-loading="loading"

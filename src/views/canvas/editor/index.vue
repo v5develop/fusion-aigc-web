@@ -54,6 +54,7 @@ import { isGroupPlate, normalizeHandle, spawnPosition, validateConnection } from
 import { viewportKeepingCenter, type ICanvasClipboard } from './clipboard.ts'
 import { editorDialog, editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
 import { MAX_IMAGE_UPLOAD_MB, uploadSizeError } from './nodes/useNodeUpload.ts'
+import { clipboardFiles, useFileDropPaste } from '@/composables/useFileDropPaste'
 import type { CanvasEditorNode, CanvasToolKind } from './types.ts'
 import {
   FOCUS_RING,
@@ -506,18 +507,25 @@ function onKeydown(event: KeyboardEvent) {
     if (event.key.toLowerCase() !== 'v' && window.getSelection()?.toString()) return
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
-    event.preventDefault()
-    copySelection()
+    // 不拦默认：让浏览器派发 copy 事件，onWindowCopy 借它把系统剪贴板换成节点标记（见 markNodeCopy）
+    markNodeCopy(copySelection())
     return
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
-    event.preventDefault()
-    pasteClipboard()
+    // 不在 keydown 拦默认：浏览器要照常派发 paste 事件，剪贴板里有图片文件时交给上传区（节点上传块 / 舞台）。
+    // 粘贴节点改在 onWindowPaste 里做；个别浏览器在非可编辑区不派发 paste，120ms 兜底照样粘贴节点
+    if (event.repeat) return
+    window.clearTimeout(nodePasteTimer)
+    nodePasteTimer = window.setTimeout(() => {
+      nodePasteTimer = 0
+      pasteClipboard()
+    }, 120)
     return
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') {
-    event.preventDefault()
+    const before = clipboard.value
     cutSelection()
+    markNodeCopy(clipboard.value !== before)
     return
   }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
@@ -618,8 +626,48 @@ function onBeforeUnload(event: BeforeUnloadEvent) {
   void store.flushSave()
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown))
+/** Ctrl/⌘+V 之后等 paste 事件的计时器（见 onKeydown） */
+let nodePasteTimer = 0
+
+/**
+ * 复制 / 剪切节点后，把系统剪贴板换成一条画布内部标记（不带文字，粘到别处是空的）：
+ * 否则系统剪贴板里还留着之前截的图，Ctrl+V 会被上传区当图片接走，节点粘贴不出来——以最后一次复制为准。
+ * 个别浏览器无选区时不派发 copy 事件，此时系统剪贴板不变（退回旧行为）
+ */
+const NODE_CLIPBOARD_MIME = 'application/x-fusion-canvas-nodes'
+let nodeCopyPending = false
+function markNodeCopy(copied: boolean) {
+  if (!copied) return
+  nodeCopyPending = true
+  window.setTimeout(() => (nodeCopyPending = false))
+}
+function onWindowCopy(event: ClipboardEvent) {
+  if (!nodeCopyPending || !event.clipboardData) return
+  nodeCopyPending = false
+  event.clipboardData.setData(NODE_CLIPBOARD_MIME, '1')
+  event.preventDefault()
+}
+
+/** window 冒泡阶段：上传区（document 级粘贴路由）已接走文件时不再粘贴节点；剪贴板只有文字 / 为空时粘贴节点 */
+function onWindowPaste(event: ClipboardEvent) {
+  if (!nodePasteTimer) return
+  window.clearTimeout(nodePasteTimer)
+  nodePasteTimer = 0
+  if (event.defaultPrevented || clipboardFiles(event.clipboardData).length) return
+  pasteClipboard()
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  window.addEventListener('paste', onWindowPaste)
+  window.addEventListener('copy', onWindowCopy)
+  window.addEventListener('cut', onWindowCopy)
+})
 onBeforeUnmount(() => {
+  window.clearTimeout(nodePasteTimer)
+  window.removeEventListener('paste', onWindowPaste)
+  window.removeEventListener('copy', onWindowCopy)
+  window.removeEventListener('cut', onWindowCopy)
   consoleObserver?.disconnect()
   cancelAnimationFrame(consoleFrame)
   window.removeEventListener('keydown', onKeydown)
@@ -2400,7 +2448,11 @@ async function onStageDrop(event: DragEvent) {
     return
   }
 
-  const files = Array.from(event.dataTransfer?.files ?? [])
+  await placeImageFiles(Array.from(event.dataTransfer?.files ?? []), at)
+}
+
+/** 拖入 / 粘贴共用：逐张校验、上传，在 at(i) 建图片节点 */
+async function placeImageFiles(files: File[], at: (i: number) => { x: number; y: number }) {
   const images = files.filter((file) => IMAGE_ACCEPT.includes(file.type))
   const tooBig = images.filter((file) => uploadSizeError(file))
   const usable = images.filter((file) => !uploadSizeError(file))
@@ -2429,6 +2481,33 @@ async function onStageDrop(event: DragEvent) {
   if (failed) editorMessage.error(`${failed} 张图片上传失败${done ? `，已放入 ${done} 张` : ''}`)
   else editorMessage.success(`已放入 ${done} 张图片`)
 }
+
+/** 鼠标最后停在舞台上的位置（粘贴落点）；没有时用舞台中心 */
+let stagePointer: { x: number; y: number } | null = null
+function onStagePointerMove(event: PointerEvent) {
+  stagePointer = { x: event.clientX, y: event.clientY }
+}
+function onStagePointerLeave() {
+  stagePointer = null
+}
+
+// 舞台也是粘贴目标（拖入仍走上面的 onStageDrop）：悬停在节点上传块上时交给节点，其余时候在鼠标处 / 视口中心建图片节点
+useFileDropPaste(stageRef, {
+  accept: 'image',
+  multiple: true,
+  drop: false,
+  pastePrimary: true,
+  disabled: () => !store.ready.value || loading.value,
+  disabledMessage: '画布还在加载，请稍候再粘贴',
+  rejectMessage: () => '只支持 JPG / PNG / WebP 图片',
+  onFiles: (files) => {
+    const rect = stageRef.value?.getBoundingClientRect()
+    const point =
+      stagePointer ?? (rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: 0, y: 0 })
+    const base = screenToFlowCoordinate(point)
+    void placeImageFiles(files, (i) => ({ x: base.x + i * 24, y: base.y + i * 24 }))
+  },
+})
 </script>
 
 <template>
@@ -2565,6 +2644,8 @@ async function onStageDrop(event: DragEvent) {
           @dragover="onStageDragOver"
           @dragleave="onStageDragLeave"
           @drop="onStageDrop"
+          @pointermove.passive="onStagePointerMove"
+          @pointerleave="onStagePointerLeave"
         >
           <VueFlow
             :id="FLOW_ID"

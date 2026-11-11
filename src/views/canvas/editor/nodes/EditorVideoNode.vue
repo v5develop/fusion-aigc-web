@@ -104,7 +104,7 @@ const { dragging } = useFileDropPaste(dropRef, {
             class="flex flex-col w-full h-full items-center justify-center gap-6px p-0 border border-dashed border-[#d9d9d9] rounded-6px bg-white text-12px cursor-pointer transition-colors duration-120 hover:border-violet-line hover:text-violet nodrag"
             :class="[FOCUS_RING, dragging && 'sx-drop', uploading ? 'text-violet font-600' : 'text-[#7f7f7f]']"
             :disabled="uploading"
-            title="上传视频"
+            title="上传视频，支持拖拽或粘贴（Ctrl/⌘+V）"
             @click.stop="pick"
           >
             <EditorIcon name="video" :size="24" />
