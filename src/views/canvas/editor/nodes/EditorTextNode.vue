@@ -14,6 +14,7 @@ import { normalizeHandle } from '../graph.ts'
 import { portClass } from '../ports.ts'
 import { FOCUS_RING, NODE_CARD, NODE_CARD_SELECTED, NODE_HEAD, NODE_TITLE, type IQuickAddRequest } from '../ui.ts'
 import NodeMenu from '../NodeMenu.vue'
+import NodeDeleteBtn from '../NodeDeleteBtn.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
 
@@ -71,6 +72,7 @@ const sourceRefs = computed(() => {
     :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
     :style="{ width: `${width}px`, minHeight: `${height}px`, height: data.heightFixed ? `${height}px` : undefined }"
   >
+    <NodeDeleteBtn :title="data.title || '文字'" :hidden="!!data.locked" @remove="emit('remove')" />
     <header :class="NODE_HEAD">
       <span class="flex-1" :class="NODE_TITLE">{{ data.title || '文字' }}</span>
       <NodeMenu :title="data.title || '文字'" @remove="emit('remove')" />

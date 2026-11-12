@@ -63,9 +63,9 @@ const GENERATORS: IAddItem[] = [
 ]
 
 const TOOL_DESC: Record<CanvasToolKind, { desc: string; icon: string }> = {
-  tryon: { desc: '服装 × 模特，按模特数量出图', icon: 'shirt' },
-  crop: { desc: '矩形 / 圆形裁切', icon: 'crop' },
-  upscale: { desc: '按 2x / 4x 放大清晰度', icon: 'model' },
+  tryon: { desc: '1 件服装 × n 个模特，按模特数量出图', icon: 'shirt' },
+  crop: { desc: '框选区域裁切（矩形 / 圆形）', icon: 'crop' },
+  upscale: { desc: '参考图重新生成为 2K / 4K', icon: 'model' },
   outpaint: { desc: '保留原图并向外延伸', icon: 'expand' },
   i2p: { desc: '连接图片生成结构化提示词', icon: 'text' },
   mask: { desc: '框选局部并写修改要求', icon: 'brush' },

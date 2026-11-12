@@ -36,11 +36,11 @@ export const POP_SURFACE = `border border-solid border-line rounded-8px bg-overl
 
 /** 节点卡片（canvas-v31 §5：border 1px line / r8 / 白底 / --canvas-node-shadow）；悬停描边转浅藤紫 */
 export const NODE_CARD =
-  'group relative bg-surface border border-solid border-line rounded-8px text-ink-2 text-12px shadow-node transition-[border-color,box-shadow] duration-120 hover:border-violet-line'
+  'group relative bg-surface border border-solid border-line rounded-10px text-ink-2 text-12px shadow-node transition-[border-color,box-shadow] duration-120 hover:border-violet-line'
 
-/** 选中态：藤紫描边 + 3px 浅藤紫环 + 带紫调的落影（与选框 / 浮层同一色族，不用原型的蓝） */
+/** 选中态（方案 A）：藤紫描边 + 2px 环（透明度 0.38）+ 短影，不再抬 36px */
 export const NODE_CARD_SELECTED =
-  '!border-violet !shadow-[0_0_0_3px_rgb(var(--xq-violet-rgb)/0.15),0_2px_4px_rgba(58,38,72,0.07),0_16px_36px_rgba(58,38,72,0.15)]'
+  '!border-violet !shadow-[0_0_0_2px_rgb(var(--xq-violet-rgb)/0.38),0_2px_6px_rgba(16,24,40,0.08)]'
 
 /**
  * 节点右下角缩放把手（原型 .wf-node-resize v3.1：18px 命中区、9px 直角线、nwse 光标；悬停 / 选中才出现）。
@@ -55,15 +55,18 @@ export const NODE_RESIZE_EDGE_X =
 export const NODE_RESIZE_EDGE_Y =
   'absolute -bottom-4px left-0 right-14px z-2 h-8px cursor-ns-resize touch-none nodrag nopan after:content-empty after:absolute after:bottom-3px after:left-8px after:right-0 after:h-2px after:rounded-full after:bg-violet after:opacity-0 after:transition-opacity after:duration-120 hover:after:opacity-60'
 
-/** 节点头：36px / gap 6 / 左右 10 / 底部细分隔（canvas-v31 只给文字 / 图片 / 模型节点） */
-export const NODE_HEAD = 'flex h-36px items-center gap-6px px-10px border-b border-b-solid border-line-soft'
+/** 节点头高度（方案 A：44）；卡内内容区高度 = 外框高 − NODE_HEAD_H − 内边距，各节点共用此常量 */
+export const NODE_HEAD_H = 44
 
-/** 视频 / 工具节点头：v3.1 皮肤没覆盖，沿用原型组件自身样式（36px / gap 8 / 左右 12 / 无分隔线） */
-export const NODE_HEAD_PLAIN = 'flex h-36px items-center gap-8px px-12px'
+/** 节点头（方案 A）：44px / gap 6 / 左右 12 / 底部细分隔 */
+export const NODE_HEAD = 'flex h-44px items-center gap-6px px-12px border-b border-b-solid border-line-soft'
 
-/** 节点标题：13px 600 ink */
+/** 视频 / 工具节点头：方案 A 同样 44px / 左右 12（gap 8 / 无分隔线） */
+export const NODE_HEAD_PLAIN = 'flex h-44px items-center gap-8px px-12px'
+
+/** 节点标题：14px 600 ink */
 export const NODE_TITLE =
-  'min-w-0 overflow-hidden text-ink text-13px font-600 leading-18px text-ellipsis whitespace-nowrap'
+  'min-w-0 overflow-hidden text-ink text-14px font-600 leading-20px text-ellipsis whitespace-nowrap'
 
 /** 头部 28px 图标钮（设置 / 更多）；::after 外扩 3px 命中区（原型 .wf-node-more::after） */
 export const NODE_ICON_BTN = `relative grid shrink-0 w-28px h-28px p-0 place-items-center border-none rounded-4px bg-transparent text-muted text-16px leading-none cursor-pointer hover:bg-surface2 hover:text-ink after:content-empty after:absolute after:-inset-3px nodrag ${FOCUS_RING}`
@@ -121,3 +124,9 @@ export interface INodeMenuHost {
   open: (nodeId: string, anchor: DOMRect, trigger?: HTMLElement) => void
 }
 export const NODE_MENU_HOST: InjectionKey<INodeMenuHost> = Symbol('canvas-node-menu-host')
+
+/**
+ * 节点卡右上角悬停「×」删除钮（原型 .wf-node-delete）：卡外上沿 22px 圆钮，悬停 / 选中才出现；
+ * ::after 往下外扩 8px 把钮和卡之间的空隙接上，鼠标从卡移到钮不会丢失悬停。
+ */
+export const NODE_DELETE_BTN = `absolute -top-26px right-0 z-4 grid w-22px h-22px p-0 place-items-center border border-solid border-line rounded-full bg-surface text-muted text-13px leading-none cursor-pointer opacity-0 shadow-[0_4px_12px_rgba(30,41,59,0.1)] transition-opacity duration-120 motion-reduce:transition-none after:content-empty after:absolute after:-inset-x-3px after:-top-3px after:-bottom-8px group-hover:opacity-100 [.is-selected_&]:opacity-100 hover:!border-danger-line hover:!bg-danger-soft hover:!text-danger focus-visible:opacity-100 nodrag nopan ${FOCUS_RING}`

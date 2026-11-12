@@ -10,7 +10,7 @@ import EditorIcon from '../EditorIcon.vue'
 import { useCanvasEditor } from '../useCanvasEditor.ts'
 import type { CanvasNodeData } from '../types.ts'
 import { portClass } from '../ports.ts'
-import { FOCUS_RING, NODE_CARD, NODE_CARD_SELECTED, NODE_HEAD_PLAIN, NODE_TITLE, type IQuickAddRequest } from '../ui.ts'
+import { FOCUS_RING, NODE_CARD, NODE_CARD_SELECTED, NODE_HEAD_H, NODE_HEAD_PLAIN, NODE_TITLE, type IQuickAddRequest } from '../ui.ts'
 import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
@@ -31,9 +31,9 @@ const emit = defineEmits<{ remove: []; quickAdd: [request: IQuickAddRequest] }>(
 const store = useCanvasEditor()
 const fileRef = ref<HTMLInputElement | null>(null)
 
-/** 原型 useNodeResize 默认 338×350；媒体区 = 节点高 − 头 36 − 内边距 20 */
+/** 原型 useNodeResize 默认 338×350；媒体区 = 节点高 − 头 44 − 内边距 20 */
 const width = computed(() => props.data.width ?? 338)
-const mediaHeight = computed(() => Math.max(props.data.heightFixed ? 60 : 120, (props.data.height ?? 350) - 36 - 20))
+const mediaHeight = computed(() => Math.max(props.data.heightFixed ? 60 : 120, (props.data.height ?? 350) - NODE_HEAD_H - 20))
 
 /** 上传 / 资产库共用：快照里只存 http(s) 地址 */
 function setMedia(url: string) {

@@ -64,6 +64,7 @@ import { clipboardFiles, useFileDropPaste } from '@/composables/useFileDropPaste
 import type { CanvasEditorNode, CanvasToolKind } from './types.ts'
 import {
   FOCUS_RING,
+  NODE_HEAD_H,
   NODE_MENU_HOST,
   POP_FADE,
   SELECTION_BTN,
@@ -620,6 +621,7 @@ function deleteSelection() {
   if (selectedEdgeId.value) {
     store.removeEdgeById(selectedEdgeId.value)
     selectedEdgeId.value = ''
+    editorMessage.success('已断开连线')
     return
   }
   if (selectedNode.value) store.removeNode(selectedNode.value.id)
@@ -1263,6 +1265,8 @@ const addPanel = ref<{
 const ADD_PANEL_W = 300
 
 /** 把视口坐标换成舞台内的面板左上角，并夹在舞台里 */
+const leftBarEl = ref<HTMLElement | null>(null)
+
 function panelPoint(clientX: number, clientY: number): { x: number; y: number } {
   const rect = stageRef.value?.getBoundingClientRect()
   if (!rect) return { x: 60, y: 28 }
@@ -1276,8 +1280,11 @@ function panelPoint(clientX: number, clientY: number): { x: number; y: number } 
 /** 左工具条「+」：面板贴着工具条，新节点按自动排布 */
 function openAddPanel() {
   selectedEdgeId.value = ''
-  // 横向贴着左竖工具条右缘 + 12（工具条 left 12 + 宽 46 ≈ 58）
-  addPanel.value = addPanel.value && !addPanel.value.spawnAt ? null : { x: 72, y: 28 }
+  // 面板左缘 = 左竖工具条右缘 + 12（量工具条的真实矩形，量不到退回 98 = 12 + 74 + 12）
+  const barRect = leftBarEl.value?.getBoundingClientRect()
+  const stageRect = stageRef.value?.getBoundingClientRect()
+  const x = barRect && stageRect ? Math.round(barRect.right - stageRect.left + 12) : 98
+  addPanel.value = addPanel.value && !addPanel.value.spawnAt ? null : { x, y: 28 }
 }
 
 /** 双击空白画布：面板与新节点都落在双击处 */
@@ -1353,8 +1360,22 @@ const selectedFlowNodes = computed(() =>
     .filter((node): node is CanvasEditorNode => Boolean(node)),
 )
 
+/**
+ * 操作条作用的节点：多选 = Vue Flow 选区；恰好选中 1 个（含 store 里选中但 Vue Flow 尚未标 selected 的）= 该节点。
+ * 单选时只给普通节点与成组底板（模板模块底板只是视觉框，不出条）。
+ */
+const barNodes = computed<CanvasEditorNode[]>(() => {
+  if (selectedFlowNodes.value.length) {
+    if (selectedFlowNodes.value.length > 1) return selectedFlowNodes.value
+    return selectedFlowNodes.value.filter((node) => node.type !== 'module' || isGroupPlate(node))
+  }
+  const node = selectedNode.value
+  return node && (node.type !== 'module' || isGroupPlate(node)) ? [node] : []
+})
+const barIsSingle = computed(() => barNodes.value.length === 1)
+
 /** 多选条出现与否的信号（对齐弹层跟着收） */
-const selectedFlowNodesCount = computed(() => selectedFlowNodes.value.length)
+const selectedFlowNodesCount = computed(() => barNodes.value.length)
 // 写在 selectedFlowNodesCount 定义之后：watch 创建时会立即求值一次 getter，提前写会 TDZ 报错白屏
 watch(selectedFlowNodesCount, () => {
   showAlignPop.value = false
@@ -1391,12 +1412,26 @@ function executableInOrder(list: CanvasEditorNode[]): string[] {
 }
 
 function runSelectionNodes() {
-  void confirmAndRun(selectedFlowNodes.value.map((node) => node.id))
+  void confirmAndRun(barNodes.value.map((node) => node.id))
 }
 
+/** 单选条能不能「执行」：只有生成 / 工具节点有意义 */
+const barCanRun = computed(() => executableInOrder(barNodes.value).length > 0)
+
 function confirmDeleteNodes() {
-  const ids = selectedFlowNodes.value.map((node) => node.id)
+  const ids = barNodes.value.map((node) => node.id)
   if (!ids.length) return
+  if (ids.length === 1 && barNodes.value[0]?.type === 'module') {
+    confirmRemoveModule(ids[0] ?? '')
+    return
+  }
+  if (ids.length === 1) {
+    // 单个节点与 Delete 键同口径：直接删，Ctrl+Z 撤销
+    store.removeNode(ids[0] ?? '')
+    clearFlowSelection()
+    editorMessage.success('已删除节点')
+    return
+  }
   editorDialog.warning({
     title: `删除 ${ids.length} 个节点？`,
     content: '与这些节点相连的连线也会一起删除，可以用 Ctrl+Z 撤销。',
@@ -1551,7 +1586,7 @@ function distributeSelection(axis: 'h' | 'v') {
 
 /** 选区是否全部已锁（多选条按钮文案：全锁 → 解锁，否则 → 锁定） */
 const selectionAllLocked = computed(() => {
-  const ids = selectedFlowNodes.value.map((node) => node.id)
+  const ids = barNodes.value.map((node) => node.id)
   return ids.length > 0 && ids.every((id) => store.isLocked(id))
 })
 
@@ -1575,7 +1610,7 @@ function groupSelection() {
 
 /** 选区里恰好有一块成组底板时给「解组」 */
 const singleGroupId = computed(() => {
-  const plates = selectedFlowNodes.value.filter((node) => isGroupPlate(node))
+  const plates = barNodes.value.filter((node) => isGroupPlate(node))
   return plates.length === 1 ? (plates[0]?.id ?? '') : ''
 })
 
@@ -2287,7 +2322,7 @@ async function exportCanvasPng() {
 
     const cardSvg = await Promise.all(
       cards.map(async ({ node, x, y, w, h }, index) => {
-        const headerH = 36
+        const headerH = NODE_HEAD_H
         const bx = x + 8
         const by = y + headerH + 4
         const bw = Math.max(20, w - 16)
@@ -2594,7 +2629,8 @@ function openHelp() {
     ['复制 / 粘贴', [{ k: M }, { k: 'C' }, ' · ', { k: M }, { k: 'V' }]],
     ['剪切 / 再制', [{ k: M }, { k: 'X' }, ' · ', { k: M }, { k: 'D' }]],
     ['删除选中', [{ k: 'Delete' }, ' / ', { k: 'Backspace' }]],
-    ['多选 / 框选加选', [{ k: 'Shift' }, ' + 点击 / 拖框']],
+    ['多选 / 加选', [{ k: 'Shift' }, ' / ', { k: 'Ctrl' }, ' / ', { k: '⌘' }, ' + 点击']],
+    ['框选加选', [{ k: 'Shift' }, ' + 拖框']],
     ['临时平移', ['按住 ', { k: 'Space' }, ' 拖动']],
     ['保存', [{ k: M }, { k: 'S' }]],
     ['缩放', [{ k: M }, ' + 滚轮']],
@@ -2930,7 +2966,7 @@ useFileDropPaste(stageRef, {
             :pan-on-scroll="true"
             :pan-on-drag="toolMode === 'pan'"
             :selection-key-code="toolMode === 'select' ? true : 'Shift'"
-            multi-select-key-code="Shift"
+            :multi-select-key-code="['Shift', 'Control', 'Meta']"
             :snap-to-grid="snapEnabled"
             :snap-grid="[20, 20]"
             :zoom-on-double-click="false"
@@ -3086,18 +3122,19 @@ useFileDropPaste(stageRef, {
 
           <!-- 多选操作条（原型 .wf-selection-bar：顶部 10 居中、38h r14、padding 4×6；对齐弹层锚在整条正下方） -->
           <div
-            v-else-if="selectedFlowNodes.length > 1"
+            v-else-if="barNodes.length >= 1"
             class="absolute top-10px left-50% z-6 sx-squircle flex h-38px max-w-[calc(100%-24px)] items-center gap-2px px-6px py-4px border border-solid border-line rounded-14px bg-white/98 text-ink-2 text-13px whitespace-nowrap shadow-[0_12px_28px_rgba(58,38,72,0.14),0_2px_6px_rgba(31,35,41,0.06)] -translate-x-50%"
             :class="POP_FADE"
             role="toolbar"
-            aria-label="多选节点操作"
+            aria-label="节点操作"
             @click.stop
           >
             <span class="px-5px text-ink-2 text-13px whitespace-nowrap" aria-live="polite"
-              >已选中 {{ selectedFlowNodes.length }} 个节点</span
+              >{{ barIsSingle ? '已选中节点' : `已选中 ${barNodes.length} 个节点` }}</span
             >
             <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
             <button
+              v-if="!barIsSingle || barCanRun"
               type="button"
               :class="SELECTION_BTN"
               title="按上下游顺序执行选中的生成 / 工具节点（先确认预计消耗）"
@@ -3115,7 +3152,7 @@ useFileDropPaste(stageRef, {
             >
               <EditorIcon name="copy" :size="12" /> 复制
             </button>
-            <div ref="alignWrapEl" class="inline-flex">
+            <div v-if="!barIsSingle" ref="alignWrapEl" class="inline-flex">
               <button
                 type="button"
                 :class="SELECTION_BTN"
@@ -3127,7 +3164,7 @@ useFileDropPaste(stageRef, {
               </button>
             </div>
             <button
-              v-if="!singleGroupId"
+              v-if="!singleGroupId && !barIsSingle"
               type="button"
               :class="SELECTION_BTN"
               title="把选中节点框进一块虚线底板"
@@ -3136,7 +3173,7 @@ useFileDropPaste(stageRef, {
               <EditorIcon name="layers" :size="12" /> 成组
             </button>
             <button
-              v-else
+              v-else-if="singleGroupId"
               type="button"
               :class="SELECTION_BTN"
               title="只拆底板，成员原位保留"
@@ -3212,8 +3249,9 @@ useFileDropPaste(stageRef, {
 
           <!-- 左竖工具条（原型 .wf-toolbar-left：left 12 / 垂直居中）；图标钮统一 IconButton（2026-11-12 放大到 52×52，图标 24/23/25/23/23，间距 8、内边距 10、r12），提示出在右侧 -->
           <div
+            ref="leftBarEl"
             :class="TOOLBAR"
-            class="left-12px top-50% -translate-y-50% flex-col !gap-8px !p-10px !rounded-12px"
+            class="left-12px top-50% -translate-y-50% flex-col !gap-6px !p-10px !rounded-12px"
             role="toolbar"
             data-safe-block="left"
             aria-label="画布工具"
@@ -3232,9 +3270,9 @@ useFileDropPaste(stageRef, {
               <EditorIcon name="hand" :size="24" />
             </IconButton>
             <IconButton
-              label="选择模式（框选节点，Shift 加选）"
+              label="选择模式（框选节点，Shift / Ctrl / ⌘ 加选）"
               no-title
-              data-tip="选择模式（框选，Shift 加选）"
+              data-tip="选择模式（框选，Shift / Ctrl / ⌘ 加选）"
               variant="quiet"
               class="!w-52px !h-52px !rounded-12px [&>span]:!text-23px"
               :pressed="toolMode === 'select'"
@@ -3548,7 +3586,7 @@ useFileDropPaste(stageRef, {
 
           <!-- 首启引导（原型 .wf-onboard：底部 78 居中、max-w 560、#e2d6e9 描边 r14、白 96% 毛玻璃；知道了即退并记忆） -->
           <div
-            v-if="showOnboard && !loading"
+            v-if="showOnboard && !loading && !nodes.length"
             data-safe-block="bottom"
             class="sx-squircle absolute bottom-92px left-1/2 z-20 flex max-w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-center gap-10px rounded-14px border border-solid border-violet-line bg-white/96 py-10px pl-16px pr-12px backdrop-blur-[10px] shadow-[0_12px_28px_rgba(31,35,41,0.10)]"
             :class="POP_FADE"
@@ -3556,7 +3594,7 @@ useFileDropPaste(stageRef, {
           >
             <b class="shrink-0 whitespace-nowrap text-13px font-600 text-violet-ink">第一次用画布？</b>
             <p class="m-0 min-w-0 flex-1 text-12px leading-[1.5] text-muted">
-              双击空白添加节点 · 右键更多 · 拖节点右侧圆点连线 · 空格 / 底部工具条拖动画布
+              双击空白添加节点 · 右键更多 · 拖节点右侧圆点连线 · 空格 / 左侧手形工具拖动画布
             </p>
             <button
               type="button"

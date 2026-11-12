@@ -17,10 +17,12 @@ import {
   NODE_CARD,
   NODE_CARD_SELECTED,
   NODE_HEAD,
+  NODE_HEAD_H,
   NODE_TITLE,
   type IQuickAddRequest,
 } from '../ui.ts'
 import NodeMenu from '../NodeMenu.vue'
+import NodeDeleteBtn from '../NodeDeleteBtn.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
 import NodeLightbox from './NodeLightbox.vue'
@@ -52,12 +54,12 @@ const width = computed(() => props.data.width ?? 240)
 const naturalRatio = ref(0)
 const mediaHeight = computed(() => {
   const inner = width.value - 24
-  // 用户拖过高度：外框高度即准（媒体区 = 外框 − 头 36 − 内边距 24），图片 object-contain 居中
-  if (props.data.heightFixed && props.data.height) return Math.max(60, props.data.height - 36 - 24)
+  // 用户拖过高度：外框高度即准（媒体区 = 外框 − 头 44 − 内边距 24），图片 object-contain 居中
+  if (props.data.heightFixed && props.data.height) return Math.max(60, props.data.height - NODE_HEAD_H - 24)
   if (props.data.image && naturalRatio.value > 0) {
     return Math.round(Math.min(520, Math.max(100, inner / naturalRatio.value)))
   }
-  return Math.max(100, (props.data.height ?? 200) - 36 - 24)
+  return Math.max(100, (props.data.height ?? 200) - NODE_HEAD_H - 24)
 })
 
 function onImageLoad(event: Event) {
@@ -120,6 +122,7 @@ const { dragging } = useFileDropPaste(dropRef, {
     :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
     :style="{ width: `${width}px` }"
   >
+    <NodeDeleteBtn :title="data.title || '图片'" :hidden="!!data.locked || uploading" @remove="emit('remove')" />
     <header :class="NODE_HEAD">
       <span class="flex-1" :class="NODE_TITLE">{{ data.title || '图片' }}</span>
       <span

@@ -22,7 +22,7 @@ import {
   NODE_CARD,
   NODE_CARD_SELECTED,
   NODE_HEAD,
-  NODE_ICON_BTN,
+  NODE_HEAD_H,
   NODE_NOTICE,
   NODE_RUN_BTN,
   NODE_TITLE,
@@ -31,6 +31,7 @@ import {
   type IQuickAddRequest,
 } from '../ui.ts'
 import NodeMenu from '../NodeMenu.vue'
+import NodeDeleteBtn from '../NodeDeleteBtn.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
 import ModelParamFields from '../ModelParamFields.vue'
@@ -75,7 +76,7 @@ const imageRefCount = computed(
 )
 
 /**
- * 结果区高度（原型默认 318×364 / 视频 338×350，结果区 = 节点高 − 头 36 − 内边距 18 − 参数行；
+ * 结果区高度（原型默认 318×364 / 视频 338×350，结果区 = 节点高 − 头 44 − 内边距 18 − 参数行；
  * 出图后按原图比例，媒体高度上限 540）。只做本地显示计算，不写回快照。
  * 参数行（比例 / 分辨率 / 数量…）在卡片上，高度现量（图片一行、视频两行、带质量能力再多一行），默认高度要把它扣掉，
  * 否则默认空卡会比原型高出一截。用户拖过高度（heightFixed）时不再算：外框 min-height = data.height，
@@ -144,7 +145,7 @@ const mediaHeight = computed(() => {
   if ((props.data.image || props.data.video) && naturalRatio.value > 0) {
     return Math.round(Math.min(540, Math.max(120, inner / naturalRatio.value)))
   }
-  return Math.max(120, (props.data.height ?? (isVideo.value ? 350 : 364)) - 36 - 18 - paramsExtra.value)
+  return Math.max(120, (props.data.height ?? (isVideo.value ? 350 : 364)) - NODE_HEAD_H - 18 - paramsExtra.value)
 })
 
 function onMediaLoad(event: Event) {
@@ -266,6 +267,7 @@ function onColorFix(e: MouseEvent) {
     :class="[NODE_CARD, 'flex flex-col', { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
     :style="{ width: `${width}px`, minHeight: fixedHeight ? `${Math.max(data.height ?? 0, contentMin)}px` : undefined }"
   >
+    <NodeDeleteBtn :title="data.title || '生成节点'" :hidden="isRunning || !!data.locked" @remove="emit('remove')" />
     <header ref="headRef" :class="NODE_HEAD">
       <span class="shrink-0 w-8px h-8px rounded-full" :class="isVideo ? 'bg-danger' : 'bg-success'" />
       <div class="flex flex-1 min-w-0 flex-col leading-[1.15]">
@@ -286,15 +288,6 @@ function onColorFix(e: MouseEvent) {
           @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
         >
           <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
-        </button>
-        <button
-          type="button"
-          :class="NODE_ICON_BTN"
-          title="设置"
-          :aria-label="`${data.title} 参数设置`"
-          @click.stop="store.selectNode(id)"
-        >
-          <EditorIcon name="settings" :size="13" />
         </button>
         <NodeMenu
           :title="data.title || '生成节点'"
