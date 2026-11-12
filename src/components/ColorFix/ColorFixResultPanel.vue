@@ -20,6 +20,7 @@
  */
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import ColorFixPanel from '@/views/tools/ColorFixPanel.vue'
+import ColorFixTabbedPanel from './ColorFixTabbedPanel.vue'
 import ColorFixPeekButton from './ColorFixPeekButton.vue'
 import ColorFixLayerList from './ColorFixLayerList.vue'
 import ColorFixEyedropper from './ColorFixEyedropper.vue'
@@ -202,8 +203,10 @@ function done() {
 </script>
 
 <template>
-  <ColorFixPanel
+  <component
+    :is="docked ? ColorFixPanel : ColorFixTabbedPanel"
     v-if="localAdjust"
+    v-bind="docked ? {} : { cf }"
     v-model="params"
     v-model:region="region"
     v-model:recolor="recolor"
@@ -244,7 +247,7 @@ function done() {
     <template #adjust>
       <ColorFixAdjustments v-model="adjust" :docked="docked" :histogram="histogram" @pick-neutral="neutralShow = true" />
     </template>
-  </ColorFixPanel>
+  </component>
   <ColorFixPanel
     v-else
     v-model="params"
