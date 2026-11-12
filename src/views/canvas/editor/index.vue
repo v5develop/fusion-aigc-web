@@ -102,6 +102,24 @@ function resetZoom() {
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 2
 
+/** 左竖工具条占位：left 12 + 宽 72（按钮 52 + 内边距 10×2）+ 与节点留 16 的呼吸 */
+const LEFT_TOOLBAR_CLEAR = 100
+
+/**
+ * fitView 的内边距：四周按比例，左侧至少让出左竖工具条（按钮放大到 52 后条宽 72，窄舞台上比例内边距会小于它，
+ * 节点贴左缘就被工具条盖住）。像素值按当前舞台尺寸现算。
+ */
+function fitPad(ratio: number) {
+  const rect = stageRef.value?.getBoundingClientRect()
+  if (!rect || !rect.width || !rect.height) return ratio
+  return {
+    top: Math.round(rect.height * ratio),
+    bottom: Math.round(rect.height * ratio),
+    right: Math.round(rect.width * ratio + (dockedNode.value && dockOverlay.value ? dockWidth.value : 0)),
+    left: Math.round(Math.max(rect.width * ratio, LEFT_TOOLBAR_CLEAR)),
+  }
+}
+
 /** +/- 按钮：固定 10% 步长、对齐整 10 档，保持舞台中心对着的画布点不动 */
 function stepZoom(direction: 1 | -1) {
   const rect = stageRef.value?.getBoundingClientRect()
@@ -212,7 +230,7 @@ function nodesMeasured(): boolean {
 function fitOnce() {
   if (!pendingFit) return
   pendingFit = false
-  void fitView({ padding: 0.15, maxZoom: 1 })
+  void fitView({ padding: fitPad(0.15), maxZoom: 1 })
 }
 
 watch(loading, async (value) => {
@@ -330,6 +348,7 @@ const NOT_BLANK_SELECTOR = [
   '.vue-flow__controls',
   '[data-canvas-console]',
   '[data-canvas-popover]',
+  '[data-node-params]',
   '[role="toolbar"]',
   '[role="menu"]',
   '[role="dialog"]',
@@ -496,7 +515,7 @@ function onKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
   // 控制台 / 添加面板里的下拉、开关等控件聚焦时，按键归控件（避免 Backspace 误删节点）
-  if (target?.closest('[data-canvas-console], [data-canvas-popover]')) return
+  if (target?.closest('[data-canvas-console], [data-canvas-popover], [data-node-params]')) return
   if (event.key === 'Escape') {
     if (ctxMenu.value) {
       closeCtxMenu()
@@ -1051,7 +1070,7 @@ function onInsertTemplate(template: ICanvasTemplateDetail) {
   const ids = store.pasteClipboard(clip, 0)
   if (!ids.length) return
   editorMessage.success(`已插入模板「${template.title}」`)
-  void nextTick(() => fitView({ nodes: ids, padding: 0.2, duration: 220, minZoom: 0.2, maxZoom: 1 }))
+  void nextTick(() => fitView({ nodes: ids, padding: fitPad(0.2), duration: 220, minZoom: 0.2, maxZoom: 1 }))
 }
 
 // ---------------- 资产栏 / 素材库 ----------------
@@ -1448,7 +1467,7 @@ function ungroupSelection() {
 /** 缩放到选区（多选条「聚焦」/ 右键）：没有多选时用当前选中节点 */
 function zoomToSelection(ids = selectionIds()) {
   if (!ids.length) return
-  void fitView({ nodes: ids, padding: 0.2, duration: 220, minZoom: 0.2, maxZoom: 1.2 })
+  void fitView({ nodes: ids, padding: fitPad(0.2), duration: 220, minZoom: 0.2, maxZoom: 1.2 })
 }
 
 // ---------------- 模块拖动带成员（锁定成员也跟着走；node-drag 实时同步，落点即成员落点） ----------------
@@ -1669,7 +1688,7 @@ function ctxMenuPaste() {
 
 function ctxMenuFit() {
   closeCtxMenu()
-  void fitView({ padding: 0.18, duration: 200 })
+  void fitView({ padding: fitPad(0.18), duration: 200 })
 }
 
 function ctxMenuUndo() {
@@ -2292,6 +2311,18 @@ function confirmRemoveModule(id: string) {
   })
 }
 
+/** 生成卡（不含参考素材、多选时不算）→ 控制台停靠右侧；其余节点用浮动控制台 */
+const dockedNode = computed(() => {
+  const node = selectedNode.value
+  if (!node || node.type !== 'model' || node.data.inputOnly) return null
+  if (selectedFlowNodes.value.length > 1) return null
+  return node
+})
+const floatingConsoleNode = computed(() => {
+  const node = selectedNode.value
+  if (!node || node.type === 'module' || dockedNode.value || selectedFlowNodes.value.length > 1) return null
+  return node
+})
 // ---------------- 浮动控制台定位（原型 consoleFlowStyle：节点下方 12px、放不下翻到上方、左右夹在舞台内） ----------------
 
 const CONSOLE_W = 520
@@ -2299,7 +2330,7 @@ const CONSOLE_H = 360
 const consoleBox = ref<{ left: number; top: number; width: number; height: number } | null>(null)
 
 function placeConsole() {
-  const node = selectedNode.value
+  const node = floatingConsoleNode.value
   const stage = stageRef.value
   if (!node || !stage) {
     consoleBox.value = null
@@ -2334,7 +2365,7 @@ function schedulePlaceConsole() {
 
 watch(
   () => {
-    const node = selectedNode.value
+    const node = floatingConsoleNode.value
     const vp = viewport.value
     return [node?.id, node?.position.x, node?.position.y, node?.data.width, node?.data.height, vp.x, vp.y, vp.zoom]
   },
@@ -2342,10 +2373,100 @@ watch(
   { flush: 'post' },
 )
 
+// ---------------- 生成卡控制台右侧停靠（2026-11-12 原型） ----------------
+// 生成卡（图片 / 视频生成，不含参考素材）的控制台停靠在画布区右侧：宽 300（工作区容器 ≤ 1280 时 280），画布区随之变窄；
+// 其他节点（文字 / 图片 / 工具 / 视频素材）的表单放不进 300，仍用上面的浮动控制台。
+// 窄工作区（容器宽 < 1100）：停靠栏改成叠在画布右缘上的浮层（带投影），画布不再缩——否则舞台会被压到 ~500 以下，
+// 连底部工具条都放不下。叠放时「被遮挡」的判定把停靠栏宽度扣掉，选中卡片照样会被平移到可见区。
+const DOCK_NARROW_BELOW = 1100
+const workRef = ref<HTMLElement | null>(null)
+const containerWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
+const dockWidth = computed(() => (containerWidth.value <= 1280 ? 280 : 300))
+const dockOverlay = computed(() => containerWidth.value < DOCK_NARROW_BELOW)
+// 宽度取画布工作区容器（资产栏 + 舞台 + 在流内的停靠栏），不用窗口宽：左导航、资产栏收展都会改变可用宽度
+let workObserver: ResizeObserver | null = null
+onMounted(() => {
+  const el = workRef.value
+  if (!el) return
+  containerWidth.value = el.clientWidth || containerWidth.value
+  if (typeof ResizeObserver === 'undefined') return
+  workObserver = new ResizeObserver(() => {
+    containerWidth.value = el.clientWidth || containerWidth.value
+  })
+  workObserver.observe(el)
+})
+onBeforeUnmount(() => workObserver?.disconnect())
+
+/** 指针按下期间不平移视口：正在拖节点时移动视口会让节点跳 */
+let pointerPressed = false
+function trackPointer(event: PointerEvent) {
+  pointerPressed = event.type === 'pointerdown'
+}
+onMounted(() => {
+  window.addEventListener('pointerdown', trackPointer, true)
+  window.addEventListener('pointerup', trackPointer, true)
+  window.addEventListener('pointercancel', trackPointer, true)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', trackPointer, true)
+  window.removeEventListener('pointerup', trackPointer, true)
+  window.removeEventListener('pointercancel', trackPointer, true)
+})
+
+/** 平移视口让选中的生成卡完整落在「停靠栏之外、左工具条之右」的可见区；不改 zoom，已可见就不动 */
+function revealDockedNode(id: string) {
+  const stage = stageRef.value
+  if (!stage || dockedNode.value?.id !== id) return
+  const el = stage.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"]`)
+  if (!el) return
+  const s = stage.getBoundingClientRect()
+  const r = el.getBoundingClientRect()
+  const margin = 24
+  const visLeft = s.left + LEFT_TOOLBAR_CLEAR
+  const visRight = s.right - (dockOverlay.value ? dockWidth.value : 0) - margin
+  const visTop = s.top + margin
+  const visBottom = s.bottom - margin
+  let dx = 0
+  let dy = 0
+  if (r.right > visRight) dx = visRight - r.right
+  // 左缘优先：卡片比可见区宽时保证左侧不被工具条盖住
+  if (r.left + dx < visLeft) dx = visLeft - r.left
+  if (r.bottom > visBottom) dy = visBottom - r.bottom
+  if (r.top + dy < visTop) dy = visTop - r.top
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
+  const vp = viewport.value
+  void setViewport({ x: vp.x + dx, y: vp.y + dy, zoom: vp.zoom }, { duration: 200 })
+}
+
+function revealWhenIdle(id: string) {
+  if (!pointerPressed) {
+    revealDockedNode(id)
+    return
+  }
+  const once = () => {
+    window.removeEventListener('pointerup', once, true)
+    window.removeEventListener('pointercancel', once, true)
+    setTimeout(() => revealDockedNode(id), 0)
+  }
+  window.addEventListener('pointerup', once, true)
+  window.addEventListener('pointercancel', once, true)
+}
+
+// 选中一张生成卡（含从别的节点切过来、多选收回单选）：等停靠栏撑开舞台后再量，量完才知道卡片有没有被盖
+watch(
+  () => dockedNode.value?.id ?? '',
+  async (id) => {
+    if (!id) return
+    await nextTick()
+    requestAnimationFrame(() => revealWhenIdle(id))
+  },
+  { flush: 'post' },
+)
+
 /** 节点自身高度会变（图片加载后按比例撑开、缩放）、舞台也会随窗口变：都要重新定位 */
 let consoleObserver: ResizeObserver | null = null
 watch(
-  () => selectedNode.value?.id,
+  () => floatingConsoleNode.value?.id,
   async (id) => {
     consoleObserver?.disconnect()
     if (!id || typeof ResizeObserver === 'undefined') return
@@ -2678,7 +2799,7 @@ useFileDropPaste(stageRef, {
         </div>
       </header>
 
-      <div class="flex flex-1 min-h-0">
+      <div ref="workRef" class="relative flex flex-1 min-h-0">
         <EditorAssetPanel @locate="locateNode" @add-from-library="showAssetPicker = true" />
 
         <!-- 舞台：原型 .wf-canvas 底色 #f5f5f5；框选框藤紫描边 + 8% 浅底；非法连线红色虚线 -->
@@ -2730,6 +2851,7 @@ useFileDropPaste(stageRef, {
 
             <!-- 小地图（原型 .wf-minimap：150×96、右下 16、r14、白 92%、蒙版藤紫 8%、节点圆角 3、可拖动 / 滚轮缩放） -->
             <MiniMap
+              v-if="!(dockedNode && dockOverlay)"
               position="bottom-right"
               :width="150"
               :height="96"
@@ -2983,10 +3105,10 @@ useFileDropPaste(stageRef, {
             </div>
           </div>
 
-          <!-- 左竖工具条（原型 .wf-toolbar-left：left 12 / 垂直居中）；图标钮统一 IconButton（32px 命中区），提示出在右侧 -->
+          <!-- 左竖工具条（原型 .wf-toolbar-left：left 12 / 垂直居中）；图标钮统一 IconButton（2026-11-12 放大到 52×52，图标 24/23/25/23/23，间距 8、内边距 10、r12），提示出在右侧 -->
           <div
             :class="TOOLBAR"
-            class="left-12px top-50% -translate-y-50% flex-col"
+            class="left-12px top-50% -translate-y-50% flex-col !gap-8px !p-10px !rounded-12px"
             role="toolbar"
             aria-label="画布工具"
             data-tip-side="right"
@@ -2997,43 +3119,47 @@ useFileDropPaste(stageRef, {
               data-tip="拖动模式（平移画布）"
               data-tip-key="Space"
               variant="quiet"
+              class="!w-52px !h-52px !rounded-12px [&>span]:!text-24px"
               :pressed="toolMode === 'pan'"
               @click="toolMode = 'pan'"
             >
-              <EditorIcon name="hand" :size="19" />
+              <EditorIcon name="hand" :size="24" />
             </IconButton>
             <IconButton
               label="选择模式（框选节点，Shift 加选）"
               no-title
               data-tip="选择模式（框选，Shift 加选）"
               variant="quiet"
+              class="!w-52px !h-52px !rounded-12px [&>span]:!text-23px"
               :pressed="toolMode === 'select'"
               @click="toolMode = 'select'"
             >
-              <EditorIcon name="pointer" :size="18" />
+              <EditorIcon name="pointer" :size="23" />
             </IconButton>
-            <span class="h-1px mx-6px my-2px bg-line" aria-hidden="true" />
+            <span class="h-1px mx-8px bg-line" aria-hidden="true" />
             <IconButton
               label="添加节点（也可双击空白画布）"
               no-title
               data-tip="添加节点（也可双击空白画布）"
               variant="quiet"
+              class="!w-52px !h-52px !rounded-12px [&>span]:!text-25px"
               :pressed="Boolean(addPanel && !addPanel.spawnAt)"
               aria-haspopup="dialog"
               :aria-expanded="Boolean(addPanel)"
               @click="openAddPanel"
             >
-              <EditorIcon name="plus" :size="20" />
+              <EditorIcon name="plus" :size="25" />
             </IconButton>
-            <span class="h-1px mx-6px my-2px bg-line" aria-hidden="true" />
+            <span class="h-1px mx-8px bg-line" aria-hidden="true" />
             <IconButton
               label="从资产导入"
               no-title
               data-tip="从资产导入（也可把图片拖到画布）"
               variant="quiet"
+              class="!w-52px !h-52px !rounded-12px [&>span]:!text-23px"
               @click="showAssetPicker = true"
             >
-              <EditorIcon name="albums" :size="18" />
+              <EditorIcon name="albums" :size="23" />
             </IconButton>
             <span ref="promptAnchorEl" class="inline-flex">
               <IconButton
@@ -3041,12 +3167,13 @@ useFileDropPaste(stageRef, {
                 no-title
                 data-tip="提示词库（插入选中节点）"
                 variant="quiet"
+              class="!w-52px !h-52px !rounded-12px [&>span]:!text-23px"
                 :pressed="promptFlyoutOpen"
                 aria-haspopup="dialog"
                 :aria-expanded="promptFlyoutOpen"
                 @click="promptFlyoutOpen = !promptFlyoutOpen"
               >
-                <EditorIcon name="book" :size="18" />
+                <EditorIcon name="book" :size="23" />
               </IconButton>
             </span>
           </div>
@@ -3109,7 +3236,7 @@ useFileDropPaste(stageRef, {
               no-title
               data-tip="适应画布"
               variant="quiet"
-              @click="fitView({ padding: 0.18, duration: 200 })"
+              @click="fitView({ padding: fitPad(0.18), duration: 200 })"
             >
               <EditorIcon name="fit" :size="16" />
             </IconButton>
@@ -3163,7 +3290,7 @@ useFileDropPaste(stageRef, {
 
           <!-- 浮动控制台（原型 CanvasConsolePanel：约 520×360，节点下方，放不下翻到上方） -->
           <div
-            v-if="selectedNode && selectedNode.type !== 'module' && consoleBox && selectedFlowNodes.length <= 1"
+            v-if="floatingConsoleNode && consoleBox"
             class="absolute z-15"
             :style="{
               left: `${consoleBox.left}px`,
@@ -3172,7 +3299,7 @@ useFileDropPaste(stageRef, {
               height: `${consoleBox.height}px`,
             }"
           >
-            <NodeParamsPanel :key="selectedNode.id" :node="selectedNode" @locate="locateNode" />
+            <NodeParamsPanel :key="floatingConsoleNode.id" :node="floatingConsoleNode" @locate="locateNode" />
           </div>
 
           <NodeAddPanel
@@ -3328,6 +3455,21 @@ useFileDropPaste(stageRef, {
 
           <CanvasTip :root="pageEl" />
         </div>
+
+        <!-- 生成卡控制台停靠栏：在流内时画布区变窄；容器 < 1100 叠在右缘上（带投影），不压缩画布 -->
+        <aside
+          v-if="dockedNode"
+          class="min-h-0 bg-overlay"
+          :class="
+            dockOverlay
+              ? 'absolute right-0 top-0 bottom-76px z-15 shadow-[-12px_0_28px_rgba(58,38,72,0.16)]'
+              : 'relative shrink-0'
+          "
+          :style="{ width: `${dockWidth}px` }"
+          aria-label="生成卡控制台"
+        >
+          <NodeParamsPanel :key="dockedNode.id" :node="dockedNode" docked @locate="locateNode" />
+        </aside>
       </div>
 
       <TitleModal

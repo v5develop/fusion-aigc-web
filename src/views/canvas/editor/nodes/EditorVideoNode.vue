@@ -181,6 +181,6 @@ const { dragging } = useFileDropPaste(dropRef, {
     <!-- 「+」与输出口同在 50%：「+」在卡片右外侧 40px，碰不到卡片内的播放控件 -->
     <NodeQuickAdd :kinds="['video-model']" @open="emit('quickAdd', $event)" />
     <Handle id="video" type="source" :position="Position.Right" :class="portClass('video')" />
-    <NodeResize :id="id" kind="video" :keep-ratio="false" :title="data.title || '视频'" />
+    <NodeResize :id="id" kind="video" :title="data.title || '视频'" />
   </div>
 </template>

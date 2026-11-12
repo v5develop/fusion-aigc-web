@@ -20,7 +20,11 @@ import { FOCUS_RING, NODE_NOTICE, NODE_RUN_BTN, POP_SURFACE } from './ui.ts'
 import { DROP_PASTE_HINT, useFileDropPaste } from '@/composables/useFileDropPaste'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 
-const props = defineProps<{ node: CanvasEditorNode }>()
+const props = defineProps<{
+  node: CanvasEditorNode
+  /** 停靠在画布右侧（生成卡）：撑满高度、直角、只留左描边；默认浮层外观 */
+  docked?: boolean
+}>()
 
 const emit = defineEmits<{ locate: [id: string] }>()
 
@@ -75,24 +79,6 @@ const currentModel = computed(() => {
     list?.find((item) => item.model === modelNode.value?.model)
   )
 })
-const capabilities = computed(() => modelNode.value?.capabilities ?? {})
-const ratioOptions = computed(() =>
-  (currentModel.value?.ratios ?? ['1:1', '3:4', '4:3', '9:16', '16:9']).map((value) => ({ label: value, value })),
-)
-const sizeOptions = computed(() =>
-  (currentModel.value?.sizes ?? (isVideoModel.value ? ['720p', '1080p'] : ['1K', '2K'])).map((value) => ({
-    label: value,
-    value,
-  })),
-)
-const qualityOptions = computed(() => {
-  const list = currentModel.value?.qualities?.length ? currentModel.value.qualities : ['low', 'medium', 'high']
-  return list.map((value) => ({ label: { low: '低', medium: '中', high: '高' }[value] ?? value, value }))
-})
-const durationOptions = computed(() =>
-  (currentModel.value?.durations ?? ['4s', '6s', '8s']).map((value) => ({ label: value, value })),
-)
-const countMax = computed(() => currentModel.value?.countMax ?? (isVideoModel.value ? 1 : 4))
 const priceHint = computed(() => {
   const size = modelNode.value?.size
   const duration = modelNode.value?.duration
@@ -110,12 +96,13 @@ const estimatePoints = computed(() => {
       (size ? price.size === size : true) && (isVideoModel.value && duration ? price.duration === duration : true),
   )
   if (!hit) return null
-  const count = isVideoModel.value ? 1 : Math.max(1, Math.round(Number(modelNode.value?.count) || 1))
+  // 旧快照的数量可能超过当前模型上限：只在估算时夹紧，不改写快照
+  const countCap = Math.max(1, currentModel.value?.countMax ?? 4)
+  const count = isVideoModel.value
+    ? 1
+    : Math.min(countCap, Math.max(1, Math.round(Number(modelNode.value?.count) || 1)))
   return hit.points * count
 })
-/** 参数格列数：视频 4 列（原型 .wf-console__controls.is-video），图片 3 列 */
-const controlCols = computed(() => (isVideoModel.value ? 'grid-cols-4' : 'grid-cols-3'))
-
 function onModelChange(modelId: string) {
   const list = isVideoModel.value ? catalog.value?.video_models : catalog.value?.imageModels
   const model = list?.find((item) => item.modelId === modelId)
@@ -537,7 +524,7 @@ const footHint = computed(() => {
 
 <template>
   <section
-    :class="POP_SURFACE"
+    :class="docked ? 'border-0 border-l border-solid border-line bg-overlay' : POP_SURFACE"
     class="flex flex-col w-full h-full p-12px text-ink-2"
     role="dialog"
     :aria-label="`节点控制台：${node.data.title || typeLabel}`"
@@ -779,35 +766,7 @@ const footHint = computed(() => {
           />
         </div>
 
-        <!-- 参数格（原型 .wf-console__controls：图片 3 列 / 视频 4 列） -->
-        <div class="grid gap-6px mt-8px" :class="controlCols">
-          <div>
-            <span :class="LABEL">比例</span>
-            <n-select v-model:value="modelNode.ratio" size="small" :options="ratioOptions" />
-          </div>
-          <div>
-            <span :class="LABEL">分辨率</span>
-            <n-select v-model:value="modelNode.size" size="small" :options="sizeOptions" />
-          </div>
-          <div v-if="capabilities.quality">
-            <span :class="LABEL">质量</span>
-            <n-select v-model:value="modelNode.quality" size="small" :options="qualityOptions" />
-          </div>
-          <div v-if="capabilities.count">
-            <span :class="LABEL">张数（≤{{ countMax }}）</span>
-            <n-input-number v-model:value="modelNode.count" size="small" :min="1" :max="countMax" class="w-full" />
-          </div>
-          <div v-if="capabilities.duration">
-            <span :class="LABEL">时长</span>
-            <n-select v-model:value="modelNode.duration" size="small" :options="durationOptions" />
-          </div>
-          <div v-if="capabilities.sound">
-            <span :class="LABEL">声音</span>
-            <div class="flex h-28px items-center">
-              <n-switch v-model:value="modelNode.sound" size="small" aria-label="声音" />
-            </div>
-          </div>
-        </div>
+        <!-- 比例 / 分辨率 / 数量 / 时长 / 声音已上卡（ModelParamFields），控制台不再重复，卡上是唯一入口 -->
         <!-- 预计消耗（单独一行）：服务端以实际扣点为准 -->
         <div v-if="estimatePoints !== null" class="flex items-baseline gap-6px mt-8px text-muted text-11px">
           <span>预计消耗</span>

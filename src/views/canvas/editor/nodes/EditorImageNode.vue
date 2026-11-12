@@ -264,7 +264,7 @@ const { dragging } = useFileDropPaste(dropRef, {
     <NodeQuickAdd :kinds="['image-model', 'video-model', 'tool']" @open="emit('quickAdd', $event)" />
     <Handle v-if="isResult" id="image-in" type="target" :position="Position.Left" :class="portClass('image')" />
     <Handle id="image" type="source" :position="Position.Right" :class="portClass('image')" />
-    <NodeResize :id="id" kind="image" :keep-ratio="Boolean(data.image)" :title="data.title || '图片'" />
+    <NodeResize :id="id" kind="image" :title="data.title || '图片'" />
     <NodeLightbox v-model:show="lightboxShow" :items="lightboxItems" />
   </div>
 </template>

@@ -517,6 +517,7 @@ export function applyModelToNode(
     ratios: string[]
     sizes: string[]
     durations?: string[]
+    qualities?: string[]
     countMax: number
     capabilities: { quality: boolean; count: boolean; duration: boolean; sound: boolean }
   },
@@ -537,5 +538,13 @@ export function applyModelToNode(
     data.sound = model.capabilities.sound ? (data.sound ?? true) : undefined
   }
   if (!model.capabilities.count) data.count = 1
+  else if (data.count !== undefined) {
+    // 换模型：数量不能超过新模型上限（例如 Nano Banana 2.1 只能 1 张）
+    data.count = Math.min(Math.max(1, Math.round(Number(data.count) || 1)), Math.max(1, model.countMax || 1))
+  }
+  // 质量：当前值新模型不支持就回到它的第一档（模型没声明质量能力时不动）
+  if (model.capabilities.quality && model.qualities?.length && !model.qualities.includes(data.quality ?? '')) {
+    data.quality = model.qualities[0]
+  }
   data.subtitle = `${model.label || modelLabelOf(model.model)} · ${isVideo ? (data.duration ?? '4s') : (data.size ?? '1K')}`
 }

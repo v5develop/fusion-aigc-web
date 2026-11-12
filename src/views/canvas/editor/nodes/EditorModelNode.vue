@@ -6,7 +6,7 @@
  * （0 起编号 +1；graph.buildReferences 带 candidate_index，服务端按上游最近一次成功 run 的第 N 张取图）。
  * 结果图是按钮：点开灯箱看全部候选（灯箱里可下载）；候选缩略图悬停出 主 / 大 / ↓ / ×。
  */
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
 import { modelLabelOf } from '@/utils/model-label'
 import { Handle, Position } from '@vue-flow/core'
 import EditorIcon from '../EditorIcon.vue'
@@ -33,6 +33,7 @@ import {
 import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
+import ModelParamFields from '../ModelParamFields.vue'
 import NodeLightbox from './NodeLightbox.vue'
 import { ColorFixPill } from '@/components/ColorFix'
 import { openColorFix } from '../color-fix-action.ts'
@@ -74,17 +75,76 @@ const imageRefCount = computed(
 )
 
 /**
- * 结果区高度（原型默认 318×364 / 视频 338×350，结果区 = 节点高 − 头 36 − 内边距 18；
+ * 结果区高度（原型默认 318×364 / 视频 338×350，结果区 = 节点高 − 头 36 − 内边距 18 − 参数行；
  * 出图后按原图比例，媒体高度上限 540）。只做本地显示计算，不写回快照。
+ * 参数行（比例 / 分辨率 / 数量…）在卡片上，高度现量（图片一行、视频两行、带质量能力再多一行），默认高度要把它扣掉，
+ * 否则默认空卡会比原型高出一截。用户拖过高度（heightFixed）时不再算：外框 min-height = data.height，
+ * 媒体区 flex 撑满剩余空间（见模板），参数行 / 提示条 / 候选条再多也不会把媒体挤出框外。
  */
 const naturalRatio = ref(0)
+const paramsRef = ref<HTMLElement | null>(null)
+const paramsHeight = ref(0)
+let paramsObserver: ResizeObserver | null = null
+watch(paramsRef, (el) => {
+  paramsObserver?.disconnect()
+  paramsObserver = null
+  if (!el) return
+  paramsHeight.value = el.offsetHeight
+  if (typeof ResizeObserver === 'undefined') return
+  paramsObserver = new ResizeObserver(() => {
+    paramsHeight.value = el.offsetHeight
+  })
+  paramsObserver.observe(el)
+})
+onBeforeUnmount(() => paramsObserver?.disconnect())
+
+/**
+ * 内容最小高度（给 NodeResize 夹紧用）：头 + 内边距 + 媒体区最小 60 + 参数行 / 提示条 / 候选条等其余块（含外边距）+ 外框描边。
+ * 拖小时用 max(请求高度, 这个值)，卡片不会停在内容高度上而指针还在空拖（死区）。
+ */
+const MEDIA_MIN = 60
+const headRef = ref<HTMLElement | null>(null)
+const bodyRef = ref<HTMLElement | null>(null)
+const mediaRef = ref<HTMLElement | null>(null)
+const contentMin = ref(0)
+let contentObserver: ResizeObserver | null = null
+function measureContentMin() {
+  const head = headRef.value
+  const body = bodyRef.value
+  if (!head || !body) return
+  const cs = getComputedStyle(body)
+  let others = 0
+  for (const child of Array.from(body.children) as HTMLElement[]) {
+    if (child === mediaRef.value) continue
+    const st = getComputedStyle(child)
+    others += child.offsetHeight + (parseFloat(st.marginTop) || 0) + (parseFloat(st.marginBottom) || 0)
+  }
+  contentMin.value = Math.ceil(
+    head.offsetHeight + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + others + MEDIA_MIN + 2,
+  )
+}
+function observeContent() {
+  contentObserver?.disconnect()
+  measureContentMin()
+  if (typeof ResizeObserver === 'undefined' || !bodyRef.value) return
+  contentObserver = new ResizeObserver(measureContentMin)
+  for (const child of Array.from(bodyRef.value.children)) {
+    if (child !== mediaRef.value) contentObserver.observe(child)
+  }
+}
+onMounted(observeContent)
+onUpdated(observeContent)
+onBeforeUnmount(() => contentObserver?.disconnect())
+
+const fixedHeight = computed(() => Boolean(props.data.heightFixed && props.data.height))
+/** 参数行占高（含与媒体区的 8px 间距）；参考素材节点（inputOnly）没有参数行 */
+const paramsExtra = computed(() => (props.data.inputOnly ? 0 : paramsHeight.value + 8))
 const mediaHeight = computed(() => {
   const inner = width.value - 20
-  if (props.data.heightFixed && props.data.height) return Math.max(60, props.data.height - 36 - 18)
   if ((props.data.image || props.data.video) && naturalRatio.value > 0) {
     return Math.round(Math.min(540, Math.max(120, inner / naturalRatio.value)))
   }
-  return Math.max(120, (props.data.height ?? (isVideo.value ? 350 : 364)) - 36 - 18)
+  return Math.max(120, (props.data.height ?? (isVideo.value ? 350 : 364)) - 36 - 18 - paramsExtra.value)
 })
 
 function onMediaLoad(event: Event) {
@@ -198,10 +258,10 @@ function onColorFix(e: MouseEvent) {
 
 <template>
   <div
-    :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
-    :style="{ width: `${width}px` }"
+    :class="[NODE_CARD, 'flex flex-col', { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
+    :style="{ width: `${width}px`, minHeight: fixedHeight ? `${Math.max(data.height ?? 0, contentMin)}px` : undefined }"
   >
-    <header :class="NODE_HEAD">
+    <header ref="headRef" :class="NODE_HEAD">
       <span class="shrink-0 w-8px h-8px rounded-full" :class="isVideo ? 'bg-danger' : 'bg-success'" />
       <div class="flex flex-1 min-w-0 flex-col leading-[1.15]">
         <span :class="NODE_TITLE">{{ data.title || '生成节点' }}</span>
@@ -239,27 +299,28 @@ function onColorFix(e: MouseEvent) {
       </div>
     </header>
 
-    <div class="px-10px pt-8px pb-10px">
+    <div ref="bodyRef" class="flex flex-1 min-h-0 flex-col px-10px pt-8px pb-10px">
       <div v-if="data.inputOnly" class="mb-6px text-warning text-11px">参考素材 · 不执行</div>
 
       <div
+        ref="mediaRef"
         class="canvas-media relative grid w-full place-items-center overflow-hidden rounded-6px"
-        :class="CHECKER_BG"
-        :style="{ height: `${mediaHeight}px` }"
+        :class="[CHECKER_BG, fixedHeight ? 'flex-1 min-h-60px' : 'shrink-0']"
+        :style="fixedHeight ? undefined : { height: `${mediaHeight}px` }"
       >
         <video
           v-if="isVideo && data.video"
           :src="data.video"
           controls
           preload="metadata"
-          class="block w-full h-full rounded-6px bg-black object-contain nodrag nowheel"
+          class="absolute inset-0 block w-full h-full rounded-6px bg-black object-contain nodrag nowheel"
           @loadedmetadata="onMediaLoad"
           @error="onMediaError"
         />
         <button
           v-else-if="data.image"
           type="button"
-          class="relative block w-full h-full p-0 border-none bg-transparent cursor-zoom-in"
+          class="absolute inset-0 block w-full h-full p-0 border-none bg-transparent cursor-zoom-in"
           :class="FOCUS_RING"
           title="点击放大查看"
           :aria-label="`放大查看 ${data.title || '生成结果'}`"
@@ -297,6 +358,11 @@ function onColorFix(e: MouseEvent) {
           </span>
           <span>{{ isRunning ? '等待生成…' : '尚无结果' }}</span>
         </div>
+      </div>
+
+      <!-- 参数行（参数上卡：控制台不再重复这一块，卡上就是唯一入口） -->
+      <div v-if="!data.inputOnly" ref="paramsRef" class="shrink-0 mt-8px">
+        <ModelParamFields :node-id="id" :data="data" />
       </div>
 
       <div v-if="isRunning" :class="NODE_NOTICE" class="border border-solid border-line-soft bg-surface2 text-muted">
@@ -501,7 +567,7 @@ function onColorFix(e: MouseEvent) {
       :kinds="data.inputOnly ? ['video-model'] : ['image-model', 'video-model', 'tool']"
       @open="emit('quickAdd', $event)"
     />
-    <NodeResize :id="id" kind="model" :keep-ratio="Boolean(data.image || data.video)" :title="data.title || '生成节点'" />
+    <NodeResize :id="id" kind="model" :min-content-height="contentMin" :title="data.title || '生成节点'" />
     <NodeLightbox v-model:show="lightboxShow" v-model:index="lightboxIndex" :items="lightboxItems" />
   </div>
 </template>
