@@ -109,6 +109,10 @@ import type {
   PointSegmentError,
   PointSegmentProgress,
 } from './point-segment.ts'
+import { useColorFixTheme } from './darkScope.ts'
+
+/** 全屏调色里打开时为 'dark'：弹窗被 teleport 到 body，要自己带 data-theme 才有深色令牌 */
+const scopeTheme = useColorFixTheme()
 
 /** 同 pointSegment.ts 的 POINT_SEGMENT_INPUT_SIDE（不静态引那个模块：它随点选弹窗一起懒加载） */
 const POINT_SEGMENT_INPUT_SIDE = 1024
@@ -2540,6 +2544,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
   <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal v-model:show="show" transform-origin="center" :mask-closable="false" :close-on-esc="!escBusy">
     <div
+      :data-theme="scopeTheme ?? undefined"
       :class="large ? 'w-[min(1280px,calc(100vw-32px))]' : 'w-[min(820px,calc(100vw-32px))]'"
       class="max-h-[calc(100vh-48px)] overflow-y-auto box-border p-18px rounded-18px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-10px"
       role="dialog"
@@ -2827,7 +2832,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
 
       <div
         ref="wrapEl"
-        class="flex justify-center rounded-15px bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] bg-[length:16px_16px] p-8px"
+        class="flex justify-center rounded-15px bg-[repeating-conic-gradient(var(--xq-checker-b)_0%_25%,var(--xq-checker-a)_0%_50%)] bg-[length:16px_16px] p-8px"
       >
         <img
           v-if="!fit.w"
@@ -3130,7 +3135,7 @@ const segOn = 'sx-grad-tint !border-violet-line !text-violet-ink font-600 shadow
             />
             <div
               v-if="restoring"
-              class="absolute inset-0 grid place-items-center bg-white/55 text-13px text-ink-2 pointer-events-none"
+              class="absolute inset-0 grid place-items-center bg-surface/55 text-13px text-ink-2 pointer-events-none"
               role="status"
             >
               正在恢复上次的选区…

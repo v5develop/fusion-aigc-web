@@ -26,11 +26,14 @@ import type { ColorFixViewMode } from './types.ts'
 import ColorFixPeekButton from './ColorFixPeekButton.vue'
 import { MASK_VIEW_HINTS, MASK_VIEW_LABELS, type MaskViewMode } from './selection-ops.ts'
 import { NConfigProvider } from 'naive-ui'
+import { provideColorFixTheme } from './darkScope.ts'
 import { naiveBaseTheme, naiveThemeOverrides } from '@/theme/naive'
 
 /** 全屏调色台整块深色（含 naive 输入框 / 下拉的内联部分），与外观偏好无关 */
 const darkNaiveTheme = naiveBaseTheme('dark')
 const darkNaiveOverrides = naiveThemeOverrides('dark')
+/** 后代里 teleport 出去的弹窗 / 浮层据此给自己的根节点写 data-theme（见 darkScope.ts） */
+provideColorFixTheme('dark')
 
 const {
   cf,

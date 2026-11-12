@@ -25,6 +25,10 @@ import type { ColorFixReference } from './references.ts'
 import type { ColorFixMaskSource } from './segment.ts'
 import { withPngExt } from './files.ts'
 import { COLORFIX_MASK_LOAD_FAILED, colorFixFailureText } from '@/utils/colorfix.ts'
+import { useColorFixTheme } from './darkScope.ts'
+
+/** 全屏调色里打开时为 'dark'：弹窗被 teleport 到 body，要自己带 data-theme 才有深色令牌 */
+const scopeTheme = useColorFixTheme()
 
 const props = withDefaults(
   defineProps<{
@@ -168,6 +172,7 @@ async function removeFix() {
   <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal :show="show" transform-origin="center" @update:show="onUpdateShow">
     <div
+      :data-theme="scopeTheme ?? undefined"
       class="w-[min(980px,calc(100vw-32px))] max-h-[calc(100vh-32px)] overflow-y-auto box-border p-16px rounded-14px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-12px"
       role="dialog"
       aria-modal="true"
@@ -200,7 +205,7 @@ async function removeFix() {
       <slot name="sources" />
 
       <div
-        class="relative h-[min(62vh,640px)] min-h-280px overflow-hidden rounded-12px border border-solid border-line bg-[conic-gradient(#f3f4f6_25%,#fff_0_50%,#f3f4f6_0_75%,#fff_0)] bg-[length:16px_16px]"
+        class="relative h-[min(62vh,640px)] min-h-280px overflow-hidden rounded-12px border border-solid border-line bg-[repeating-conic-gradient(var(--xq-checker-b)_0%_25%,var(--xq-checker-a)_0%_50%)] bg-[length:16px_16px]"
       >
         <ColorFixView
           v-model:mode="mode"

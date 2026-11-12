@@ -7,6 +7,10 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import MaskPainter from '@/views/tools/MaskPainter.vue'
 import { capMaskBlob } from './mask-store.ts'
+import { useColorFixTheme } from './darkScope.ts'
+
+/** 全屏调色里打开时为 'dark'：弹窗被 teleport 到 body，要自己带 data-theme 才有深色令牌 */
+const scopeTheme = useColorFixTheme()
 
 const { src, large = false } = defineProps<{
   src: string
@@ -73,6 +77,7 @@ async function apply() {
   <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal v-model:show="show" transform-origin="center" :mask-closable="false">
     <div
+      :data-theme="scopeTheme ?? undefined"
       :class="large ? 'w-[min(1280px,calc(100vw-32px))]' : 'w-[min(720px,calc(100vw-32px))]'"
       class="max-h-[calc(100vh-48px)] overflow-y-auto box-border p-18px rounded-13px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-12px"
       role="dialog"

@@ -562,7 +562,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   box-shadow:
     0 18px 40px -16px rgba(30, 41, 59, 0.32),
     0 4px 12px rgba(31, 35, 41, 0.1),
-    inset 0 1px 0 #fff;
+    inset 0 1px 0 rgb(var(--xq-surface-rgb));
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   user-select: none;

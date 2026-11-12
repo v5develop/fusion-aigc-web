@@ -8,6 +8,10 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import { toHex } from '@/utils/colorfix-math.ts'
+import { useColorFixTheme } from './darkScope.ts'
+
+/** 全屏调色里打开时为 'dark'：弹窗被 teleport 到 body，要自己带 data-theme 才有深色令牌 */
+const scopeTheme = useColorFixTheme()
 
 const { src, title = '吸取源色', hint = '' } = defineProps<{
   src: string
@@ -133,6 +137,7 @@ const cursorStyle = computed(() =>
   <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal v-model:show="show" transform-origin="center">
     <div
+      :data-theme="scopeTheme ?? undefined"
       class="w-[min(760px,calc(100vw-32px))] max-h-[calc(100vh-48px)] overflow-y-auto box-border p-16px rounded-14px bg-white shadow-[0_18px_40px_-16px_rgba(30,41,59,0.32)] flex flex-col gap-10px"
       role="dialog"
       aria-modal="true"
@@ -142,7 +147,7 @@ const cursorStyle = computed(() =>
         <b class="flex-1 text-14px font-600 leading-20px text-ink">{{ title }}</b>
         <span class="inline-flex items-center gap-6px text-12px text-ink-2 tabular-nums" role="status" aria-live="polite">
           <span
-            class="inline-block w-18px h-18px rounded-5px border border-solid border-black/15"
+            class="inline-block w-18px h-18px rounded-5px border border-solid border-ink/15"
             :style="{ background: hoverHex || 'transparent' }"
             aria-hidden="true"
           />
@@ -157,7 +162,7 @@ const cursorStyle = computed(() =>
         {{ error }}
       </p>
       <div
-        class="flex justify-center rounded-12px bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] bg-[length:16px_16px] p-8px"
+        class="flex justify-center rounded-12px bg-[repeating-conic-gradient(var(--xq-checker-b)_0%_25%,var(--xq-checker-a)_0%_50%)] bg-[length:16px_16px] p-8px"
       >
         <div
           class="relative inline-block outline-none focus-visible:(outline outline-2 outline-solid outline-violet outline-offset-2)"

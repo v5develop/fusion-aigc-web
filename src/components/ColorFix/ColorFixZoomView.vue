@@ -552,7 +552,7 @@ const zoomBtn =
           aria-hidden="true"
         />
         <span
-          class="absolute left-1/2 top-1/2 grid w-36px h-36px -translate-x-1/2 -translate-y-1/2 box-border place-items-center rounded-full border border-solid border-line-strong bg-[linear-gradient(var(--xq-surface),#f4f5f6)] text-violet-ink shadow-[0_4px_10px_rgba(31,35,41,0.2)] outline-none focus-visible:(outline-2 outline-solid outline-white outline-offset-2)"
+          class="absolute left-1/2 top-1/2 grid w-36px h-36px -translate-x-1/2 -translate-y-1/2 box-border place-items-center rounded-full border border-solid border-line-strong bg-[linear-gradient(var(--xq-surface),var(--xq-surface2))] text-violet-ink shadow-[0_4px_10px_rgba(31,35,41,0.2)] outline-none focus-visible:(outline-2 outline-solid outline-white outline-offset-2)"
           role="slider"
           tabindex="0"
           :aria-label="`${labels[0]}与${labels[1]}分割线`"
