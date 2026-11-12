@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 电商功能页外壳（对齐原型工具页 ToolWorkspaceColumns ml 版，规范 §6 / §7.3）：
- * 三栏 `460 / 224 / 1fr`、gap 16、页面内边距 16。
+ * 三栏 `426 / 249 / 1fr`、gap 16、页面内边距 16。
  * - 左栏一张白板（2026-11-06 材质：r18 squircle、line 描边、面板投影），分三段：功能卡 64（外缘 12，#e9dff2 描边，白→#fbf7fe）/
  *   操作区（板内唯一滚动区，`pt12 px12 pb14`，不再套卡）/ 页脚（设置行 + 提交按钮，`0 12 12`，上沿细线）。
  * - 中栏历史（HistoryColumn）：本标签会话里的每一批生成一张历史卡，点一张在右栏看它的产物。
@@ -9,7 +9,7 @@
  *
  * <p>窄屏折叠（2026-11-07，同本地生活 Workbench 三栏模式）：
  * - ≥1440（`wide:`）：上面的三栏原样；右侧包裹层 `wide:contents` 不生成盒子，历史与结果仍是根网格的第 2、3 格。
- * - <1440：两栏 `460 / 1fr`（操作栏宽度与底部提交钮不变），右栏顶部分段「生成结果 / 历史记录 N」，只显示选中的一段；
+ * - <1440：两栏 `426 / 1fr`（操作栏宽度与底部提交钮不变），右栏顶部分段「生成结果 / 历史记录 N」，只显示选中的一段；
  *   两段都用 v-show 切换不卸载（轮询、滚动位置、选中批次都保留），≥1440 用 `wide:!flex` / `wide:!block` 压过 v-show 的内联 none。
  *   在历史里点一条、或出现新批次（刚提交成功）时自动切回「生成结果」。
  *
@@ -122,7 +122,7 @@ onDeactivated(() => {
 <template>
   <div
     ref="root"
-    class="grid grid-cols-[460px_minmax(0,1fr)] wide:grid-cols-[460px_224px_minmax(0,1fr)] gap-16px h-[calc(100vh-48px)] p-16px box-border bg-page"
+    class="grid grid-cols-[426px_minmax(0,1fr)] wide:grid-cols-[426px_249px_minmax(0,1fr)] gap-16px h-[calc(100vh-48px)] p-16px box-border bg-page"
   >
     <section
       class="sx-squircle flex flex-col min-h-0 bg-white rounded-18px border border-solid border-line shadow-panel overflow-hidden"

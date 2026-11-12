@@ -184,9 +184,9 @@ defineExpose({
         </button>
       </div>
 
-      <!-- 三栏（原型 ToolWorkspaceColumns ml 档实测：460 / 224 / 1fr，列间 16，四周 16；
+      <!-- 三栏（原型 ToolWorkspaceColumns ml 档实测：426 / 249 / 1fr，列间 16，四周 16；
            原型无整宽页头，功能名 / 切换 / 返回收进左列顶部的功能卡） -->
-      <div class="grid min-h-0 flex-1 grid-cols-[460px_224px_minmax(0,1fr)] gap-16px p-16px">
+      <div class="grid min-h-0 flex-1 grid-cols-[426px_249px_minmax(0,1fr)] gap-16px p-16px">
         <!-- 左：一块白板（原型 .studio-split__operate.sx-card：1px line / r10 / 白底 / shadow-panel），
              板内三段：功能卡（外缘 12，不滚）→ 操作区（内边距 12、段距 12，板内唯一滚动区）→ 设置行 + 主按钮（0 12 12） -->
         <section

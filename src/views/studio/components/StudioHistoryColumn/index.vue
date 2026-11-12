@@ -21,6 +21,7 @@ import { downloadImagesAsZip } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
 import { parseStudioPayload } from '../../payload.ts'
 import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal, isTransientResult } from '../../constants.ts'
+import DotWave from '@/components/DotWave.vue'
 import HistoryActionRow from '@/components/HistoryActionRow/index.vue'
 import { formatFullTime, formatShortTime } from '@/utils/time.ts'
 import { ossResize, thumbFallback } from '@/utils/oss'
@@ -285,7 +286,12 @@ function prevPage() {
         >
           <!-- 进行中：骨架 + 进度条（原型 .v3-hist__skeleton-* / .v3-hist__progress） -->
           <template v-if="!isBatchTerminal(d.batch.status)">
-            <span class="stu-shimmer block w-44px h-44px flex-[0_0_44px] rounded-14px" aria-hidden="true" />
+            <span
+              class="relative block w-44px h-44px flex-[0_0_44px] rounded-14px bg-gradient-to-b from-white to-violet-soft-tint shadow-[inset_0_0_0_1px_var(--xq-violet-line)]"
+              aria-hidden="true"
+            >
+              <DotWave class="absolute inset-0" />
+            </span>
             <div class="flex flex-1 min-w-0 min-h-52px flex-col justify-center gap-8px">
               <span class="stu-shimmer block w-82% h-10px rounded-4px" aria-hidden="true" />
               <span class="stu-shimmer block w-64% h-10px rounded-4px" aria-hidden="true" />

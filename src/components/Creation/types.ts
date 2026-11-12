@@ -48,6 +48,8 @@ export interface CreationSettingsRowItem {
   value: string
   /** 无障碍名称里的标签（如「生成模型」）；不传用 label */
   ariaLabel?: string
+  /** 弹层固定宽（px）：设置后弹层右缘与按钮右缘对齐、向左展开，不再随按钮 / 整行宽 */
+  popoverFixedWidth?: number
 }
 
 /** 设置摘要：按原型「比例 · 分辨率 · N 张」拼接，只拼配置里有、且有值的字段 */

@@ -19,7 +19,7 @@
  * <p>三栏模式（2026-11-07，原型 ToolWorkspaceColumns ml：左操作 / 中历史 / 右预览）——**按页选用**：
  * 页面填了 `#history` 插槽才进入三栏，结果区改放 `#preview`（没填 `#preview` 时退回 `#right`）；
  * 不填 `#history` 的页面走原来的双栏分支，DOM 与类名与之前完全一致。
- * - ≥1440（`wide:`）：操作 460 / 历史 224 / 预览 1fr，gap 16，三栏等高、各自滚动；历史与预览是 r18 白板。
+ * - ≥1440（`wide:`）：操作 426 / 历史 249 / 预览 1fr，gap 16，三栏等高、各自滚动；历史与预览是 r18 白板。
  * - <1440：保持双栏几何（操作 400 不变，提交钮仍钉在左栏底部），右栏顶部一组分段「生成结果 / 历史记录」切换；
  *   在历史里点一条（页面调 inject(LL_WORKBENCH_KEY)?.revealPreview()，HistoryCard 已内置）自动切回「生成结果」。
  *
@@ -114,7 +114,7 @@ provide(LL_WORKBENCH_KEY, {
     <div :class="['h-full min-h-0 flex gap-16px box-border p-16px bg-page text-ink', llFormSkin]">
       <section
         class="sx-squircle w-400px flex-none min-h-0 flex flex-col overflow-hidden bg-white rounded-18px border border-solid border-line shadow-panel"
-        :class="{ 'wide:w-460px': !!$slots.history }"
+        :class="{ 'wide:w-426px': !!$slots.history }"
         :aria-label="title"
       >
         <!-- 功能卡（同电商 Container 段一）：外缘 12、r8、#e9dff2 描边、白 → #fbf7fe 渐变，作为左栏的顶部高光面 -->
@@ -169,7 +169,7 @@ provide(LL_WORKBENCH_KEY, {
       <section v-if="!$slots.history" class="relative flex-1 min-w-0 min-h-0 overflow-auto">
         <slot name="right"></slot>
       </section>
-      <!-- 三栏：DOM 顺序 分段 → 历史 → 预览；≥1440 横排（历史 224 居中、预览吃剩余），<1440 竖排只显示选中的一段 -->
+      <!-- 三栏：DOM 顺序 分段 → 历史 → 预览；≥1440 横排（历史 249 居中、预览吃剩余），<1440 竖排只显示选中的一段 -->
       <div v-else class="flex-1 min-w-0 min-h-0 flex flex-col gap-12px wide:(flex-row gap-16px)">
         <div
           class="wide:hidden flex-none self-start sx-seg"
@@ -206,7 +206,7 @@ provide(LL_WORKBENCH_KEY, {
         </div>
         <section
           :id="`${paneId}-history`"
-          class="sx-squircle min-w-0 min-h-0 flex-col overflow-hidden bg-white rounded-18px border border-solid border-line shadow-panel wide:(flex flex-none w-224px)"
+          class="sx-squircle min-w-0 min-h-0 flex-col overflow-hidden bg-white rounded-18px border border-solid border-line shadow-panel wide:(flex flex-none w-249px)"
           :class="pane === 'history' ? 'flex flex-1' : 'hidden'"
           aria-label="历史记录"
         >

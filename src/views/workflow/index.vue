@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DotWave from '@/components/DotWave.vue'
 import { modelLabelOf } from '@/utils/model-label'
 /**
  * 工作流页 /workflow?flow=&category=&template=（query 形状与 v1.0 原型一致；契约 14 个 wf:* 按 schemas.ts 渲染）。
@@ -669,10 +670,10 @@ const headBtn =
     </div>
   </div>
 
-  <!-- 三栏 460 / 224 / 1fr、gap 16、内边距 16（原型 WorkflowView.vue:870-877,1771）；≥1440 三栏等高，<1440 单列整页滚 -->
+  <!-- 三栏 426 / 249 / 1fr、gap 16、内边距 16（原型 WorkflowView.vue:870-877,1771）；≥1440 三栏等高，<1440 单列整页滚 -->
   <div
     v-else
-    class="relative grid h-full min-h-0 box-border gap-16px p-16px bg-page grid-cols-1 content-start overflow-y-auto min-[1440px]:(grid-cols-[460px_224px_minmax(0,1fr)] content-stretch overflow-hidden)"
+    class="relative grid h-full min-h-0 box-border gap-16px p-16px bg-page grid-cols-1 content-start overflow-y-auto min-[1440px]:(grid-cols-[426px_249px_minmax(0,1fr)] content-stretch overflow-hidden)"
   >
     <!-- 断网提示条：浏览器离线或连续网络失败暂停轮询时出现（与创作页同一份） -->
     <PollingOfflineBanner :show="history.offline.value" @retry="history.retryPolling()" />
@@ -1117,16 +1118,13 @@ const headBtn =
         </header>
 
         <template v-if="mapped && current">
-          <!-- 生成中：34 圆转圈、2px 环、800ms 一圈 -->
+          <!-- 生成中：点阵波 -->
           <div
             v-if="!isWorkflowTerminal(current.status)"
             class="flex flex-col items-center justify-center gap-8px min-h-220px box-border p-18px rounded-8px bg-surface2"
             role="status"
           >
-            <span
-              class="w-34px h-34px box-border rounded-full border-2 border-solid border-violet-soft-2 border-t-violet animate-spin animate-duration-800"
-              aria-hidden="true"
-            />
+            <DotWave size="md" />
             <span class="text-11px text-muted">任务进行中，结果出来后会自动显示</span>
           </div>
           <template v-else>

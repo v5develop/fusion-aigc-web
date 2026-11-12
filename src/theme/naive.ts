@@ -2,7 +2,7 @@
  * Naive UI 全局主题覆盖 —— 对齐原型 v3（xiaoqi-tools-5183 src/theme/v3.ts）。
  *
  * <p>藤紫 #875F9A 主色 / 页面 #F5F6F7 / 线 #E5E7EB / 标题 #1F2329 / 正文 #4B5563 /
- * 控件圆角 4 / 卡片、弹层 8 / 基础字号 13 / 按钮 32、38 / 输入、选择 34 / 输入焦点 3px 藤紫外环。
+ * 控件圆角 4 / 卡片、弹层 8 / 基础字号 13 / 按钮 30、34、42（半径 8 / 8 / 10）/ 输入、选择 34 / 输入焦点 3px 藤紫外环。
  * 数值出处见 docs/design/ui-design-spec.md §1、§4.1、§7.1。
  *
  * <p>Naive 只接纯色：主按钮的藤紫渐变不在这里，需要渐变的地方用 uno 的 `sx-btn-primary`。
@@ -145,11 +145,16 @@ function buildOverrides(theme: ThemeName): GlobalThemeOverrides {
       scrollbarBorderRadius: '999px',
     },
     Button: {
-      borderRadiusSmall: '4px',
-      borderRadiusMedium: '4px',
-      borderRadiusLarge: '4px',
-      heightMedium: '32px',
-      heightLarge: '38px',
+      borderRadiusSmall: '8px',
+      borderRadiusMedium: '8px',
+      borderRadiusLarge: '10px',
+      heightSmall: '30px',
+      heightMedium: '34px',
+      heightLarge: '42px',
+      paddingSmall: '0 12px',
+      paddingMedium: '0 14px',
+      paddingLarge: '0 18px',
+      fontSizeSmall: '12px',
       fontSizeMedium: '13px',
       fontSizeLarge: '14px',
       fontWeight: '500',
@@ -192,6 +197,7 @@ function buildOverrides(theme: ThemeName): GlobalThemeOverrides {
       boxShadowFocusError: E['shadow-focus-danger'],
       placeholderColor: C.placeholder,
       textColor: C.ink,
+      heightSmall: '30px',
       heightMedium: '34px',
       fontSizeMedium: '13px',
       paddingMedium: '0 10px',
@@ -209,6 +215,7 @@ function buildOverrides(theme: ThemeName): GlobalThemeOverrides {
       boxShadowHover: insetInput,
       caretColor: C.violet,
       borderRadius: '4px',
+      heightSmall: '30px',
       heightMedium: '34px',
       fontSizeMedium: '13px',
       textColor: C.ink,

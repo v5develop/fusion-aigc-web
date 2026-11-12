@@ -121,8 +121,8 @@ const ICON_PATHS: Record<CreationSettingsIcon, string[]> = {
       raw
       class="creation-settings-pop"
       trigger="click"
-      :width="popWidth"
-      :placement="!stacked && index === items.length - 1 ? 'top-end' : 'top-start'"
+      :width="item.popoverFixedWidth ?? popWidth"
+      :placement="item.popoverFixedWidth || (!stacked && index === items.length - 1) ? 'top-end' : 'top-start'"
       :show="openKey === item.key"
       :show-arrow="false"
       @update:show="(show: boolean) => setOpen(item.key, show)"

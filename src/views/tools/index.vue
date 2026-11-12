@@ -3,8 +3,8 @@ import { modelLabelOf } from '@/utils/model-label'
 /**
  * 工具箱共用工具页 /tools/:toolId（各工具按 schemas.ts 渲染）。
  *
- * <p>版式对齐新版原型（工具详情页）：贴边目录栏 160（可收起）/ 操作 460（功能卡固定在顶、上传 + 参数自己滚，
- * 底部固定「模型卡 | 设置」+ 提交栏）/ 历史 224 / 结果卡 + 功能介绍卡。进页不选记录：结果列先放功能介绍，
+ * <p>版式对齐新版原型（工具详情页）：贴边目录栏 160（可收起）/ 操作 426（功能卡固定在顶、上传 + 参数自己滚，
+ * 底部固定「模型卡 | 设置」+ 提交栏）/ 历史 249 / 结果卡 + 功能介绍卡。进页不选记录：结果列先放功能介绍，
  * 用户点了某条或本次新建了记录才展示结果。操作栏内边距 13，正好放下 s1.1 的 B3.1 上传卡 434×742。
  * 阴影、渐变、过渡时长照抄原型计算样式。提交打 Java v1 现有路由（schema.javaRoute），请求体按 schema 的
  * javaKey 映射组装；结果与历史都取 GET /api/v1/tools/{toolTitle}/histories（异步工具只回任务号）。
@@ -61,6 +61,7 @@ import { inpaintImages, inpaintMissingReason, type InpaintBoxes } from './inpain
 import PollingOfflineBanner from './PollingOfflineBanner.vue'
 import ToolImageCompare from './ToolImageCompare.vue'
 import ToolMediaPreview, { type PreviewItem } from './ToolMediaPreview.vue'
+import DotWave from '@/components/DotWave.vue'
 import CreationSettingsRow from '@/components/Creation/CreationSettingsRow.vue'
 import ToolChoiceField, { type ToolChoiceOption } from './ToolChoiceField.vue'
 import ToolPipeLinks from './ToolPipeLinks.vue'
@@ -968,6 +969,7 @@ const settingItems = computed<CreationSettingsRowItem[]>(() => {
       icon: 'gear',
       label: schema.value?.media === 'video' ? '视频设置' : '图片设置',
       value: settingsSummary.value || '默认',
+      popoverFixedWidth: schema.value?.homeId === 'ai-video-generator' ? undefined : 340,
     })
   }
   return list
@@ -2314,11 +2316,11 @@ const plateBtnCls =
     </div>
 
     <!--
-      三栏（原型 ToolWorkspaceColumns ml）：≥1440 时 460 / 224 / 1fr、gap 16、内边距 16（左 15），三栏等高、各栏内部滚动；
+      三栏（原型 ToolWorkspaceColumns ml）：≥1440 时 426 / 249 / 1fr、gap 16、内边距 16（左 15），三栏等高、各栏内部滚动；
       <1440 单列堆叠、gap 12，整页滚动：行高按内容（auto-rows max-content），否则定高网格会把各卡压扁、表单在卡里只剩一截。
     -->
     <div
-      class="flex-1 min-w-0 min-h-0 grid grid-cols-1 max-[1439px]:auto-rows-max gap-12px p-16px overflow-y-auto border-l border-solid border-shell-line min-[1440px]:(grid-cols-[460px_224px_minmax(0,1fr)] gap-16px pl-15px overflow-hidden)"
+      class="flex-1 min-w-0 min-h-0 grid grid-cols-1 max-[1439px]:auto-rows-max gap-12px p-16px overflow-y-auto border-l border-solid border-shell-line min-[1440px]:(grid-cols-[426px_249px_minmax(0,1fr)] gap-16px pl-15px overflow-hidden)"
     >
       <!--
         操作区：功能卡固定在顶（≥1440 不随表单滚），中间上传 + 参数自己滚，底部固定设置行 + 提交栏
@@ -2639,10 +2641,7 @@ const plateBtnCls =
                 role="status"
                 aria-live="polite"
               >
-                <span
-                  class="block w-28px h-28px box-border rounded-full border-2 border-solid border-violet-soft border-t-violet animate-spin [animation-duration:800ms] motion-reduce:animate-none"
-                  aria-hidden="true"
-                />
+                <DotWave size="md" />
                 正在抠图，请稍候…
               </div>
               <template v-else-if="syncResultUrl">
@@ -3256,7 +3255,12 @@ const plateBtnCls =
                   进度条（轨 4px r999 #eceef0 内凹，紫渐变填充最小 6px，160ms linear）+ 百分比 11/600
                 -->
                 <template v-if="!isTerminal(item.status)">
-                  <span :class="[shimmerCls, 'flex-none w-44px h-44px self-center rounded-14px']" aria-hidden="true" />
+                  <span
+                    class="relative flex-none w-44px h-44px self-center rounded-14px bg-gradient-to-b from-white to-violet-soft-tint shadow-[inset_0_0_0_1px_var(--xq-violet-line)]"
+                    aria-hidden="true"
+                  >
+                    <DotWave class="absolute inset-0" />
+                  </span>
                   <span
                     class="min-w-0 flex-1 self-stretch flex flex-col justify-between gap-4px pointer-events-none"
                     aria-hidden="true"
@@ -3706,17 +3710,14 @@ const plateBtnCls =
             />
           </div>
 
-          <!-- 生成中：34 圆转圈（2px 环、800ms 一圈）+ 文案 11px -->
+          <!-- 生成中：点阵波（DotWave，功能态）+ 文案 -->
           <div
             v-else-if="current && !isTerminal(current.status)"
             :class="[resultEmptyCls, '!gap-8px']"
             role="status"
             aria-live="polite"
           >
-            <span
-              class="block w-34px h-34px mb-2px box-border rounded-full border-2 border-solid border-violet-soft border-t-violet animate-spin [animation-duration:800ms]"
-              aria-hidden="true"
-            />
+            <DotWave size="md" class="mb-4px" />
             <b class="text-13px font-600 leading-[1.4] text-ink-2">正在生成</b>
             <span class="max-w-240px">任务已提交，完成后结果会出现在这里</span>
             <span v-if="history.running.value > 1" class="text-violet-ink"
