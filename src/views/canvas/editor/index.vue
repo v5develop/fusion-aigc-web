@@ -55,6 +55,7 @@ import {
 import { downloadImage } from '@/utils/download.ts'
 import { takeCanvasImport } from '@/utils/canvas-import-handoff.ts'
 import { isGroupPlate, normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
+import { DEFAULT_CANVAS_ZOOM, readCanvasZoom, writeCanvasZoom } from './canvas-zoom-prefs.ts'
 import { stepZoomLevel, viewportKeepingCenter, type ICanvasClipboard } from './clipboard.ts'
 import { editorDialog, editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
 import { MAX_IMAGE_UPLOAD_MB, uploadSizeError } from './nodes/useNodeUpload.ts'
@@ -205,7 +206,7 @@ function importFromHandoff(id: string) {
     // 交接自己定位到新加的那一排，进页的整体居中让给它
     pendingFit = false
     const at = last.position
-    void nextTick(() => setCenter(at.x + 120, at.y + 100, { zoom: 0.86, duration: 220 }))
+    void nextTick(() => setCenter(at.x + 120, at.y + 100, { zoom: initialZoom(), duration: 220 }))
   }
 }
 
@@ -216,31 +217,67 @@ watch(
   },
 )
 
-// ---------------- 进页居中 ----------------
-// 每次加载完把全部节点居中显示一次（不论有没有连线）。必须等节点量完尺寸再算：
-// 节点先挂载、连线后补，加载结束那一刻节点宽高可能还是 0，这时 fitView 会按空包围盒算，工作区停在左上角。
-// 所以：加载结束时节点都已量好就立刻居中，否则等 Vue Flow 的 nodesInitialized 再居中；只做一次，之后不打扰用户的视角。
+// ---------------- 进页缩放 + 居中 ----------------
+// 每次加载完：缩放取「该用户在这张画布上次的缩放」，没有就 100%（不再整体缩小去适应）；位置把内容包围盒居中。
+// 必须等节点量完尺寸再算（节点先挂载、连线后补，加载结束那一刻宽高可能还是 0）：
+// 加载结束时节点都已量好就立刻定位，否则等 Vue Flow 的 nodesInitialized；只做一次，之后不打扰用户的视角。
+// 服务端快照里的 viewport 从不参与加载定位，缩放以个人偏好为准。
 let pendingFit = false
+/** 进页定位完成前不记缩放（定位本身引起的缩放变化不算用户操作） */
+let zoomReady = false
 
 function nodesMeasured(): boolean {
   const list = getNodes.value
   return list.length > 0 && list.every((n) => (n.dimensions?.width ?? 0) > 0 && (n.dimensions?.height ?? 0) > 0)
 }
 
+function initialZoom(): number {
+  return readCanvasZoom(canvasId.value, MIN_ZOOM, MAX_ZOOM) ?? DEFAULT_CANVAS_ZOOM
+}
+
 function fitOnce() {
   if (!pendingFit) return
   pendingFit = false
-  void fitView({ padding: fitPad(0.15), maxZoom: 1 })
+  const zoom = initialZoom()
+  // min / max 缩放都钉成同一个值：fitView 只负责把包围盒居中
+  void fitView({ padding: 0, minZoom: zoom, maxZoom: zoom }).then(() => {
+    zoomReady = true
+  })
 }
 
 watch(loading, async (value) => {
-  if (value || !nodes.value.length) return
+  if (value) {
+    zoomReady = false
+    return
+  }
+  if (!nodes.value.length) {
+    // 空画布：原点居中
+    pendingFit = false
+    const rect = stageRef.value?.getBoundingClientRect()
+    const zoom = initialZoom()
+    if (rect) void setViewport({ x: rect.width / 2, y: rect.height / 2, zoom })
+    zoomReady = true
+    return
+  }
   pendingFit = true
   await nextTick()
   requestAnimationFrame(() => {
     if (nodesMeasured()) fitOnce()
   })
 })
+
+// 用户缩放（滚轮 / 双指 / +- / 读数 / 适应画布）后防抖 300ms 记下；key 在变化当刻捕获，防止切画布串号
+let zoomSaveTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => viewport.value.zoom,
+  (zoom) => {
+    if (!zoomReady || !zoom) return
+    const id = canvasId.value
+    clearTimeout(zoomSaveTimer)
+    zoomSaveTimer = setTimeout(() => writeCanvasZoom(id, zoom, MIN_ZOOM, MAX_ZOOM), 300)
+  },
+)
+onBeforeUnmount(() => clearTimeout(zoomSaveTimer))
 
 onNodesInitialized(() => fitOnce())
 
@@ -1096,7 +1133,7 @@ function addLibraryImages(urls: string[]) {
   }
   if (last) {
     const at = last.position
-    void nextTick(() => setCenter(at.x + 120, at.y + 100, { zoom: 0.86, duration: 220 }))
+    void nextTick(() => setCenter(at.x + 120, at.y + 100, { zoom: initialZoom(), duration: 220 }))
   }
 }
 
@@ -3181,7 +3218,7 @@ useFileDropPaste(stageRef, {
           <!-- 底横工具条（原型 .wf-toolbar-bottom：bottom 16 / 水平居中；网格后、适应画布后各一道 1×18 #ececef 分隔） -->
           <div
             :class="TOOLBAR"
-            class="bottom-16px left-50% -translate-x-50% items-center"
+            class="bottom-16px left-50% -translate-x-50% items-center !gap-8px !p-8px"
             role="toolbar"
             aria-label="画布视图"
             @click.stop
@@ -3197,30 +3234,33 @@ useFileDropPaste(stageRef, {
                     : '执行全部模型节点'
               "
               variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
               :disabled="runDisabled"
               :loading="batchActive"
               @click="runSelected"
             >
-              <EditorIcon name="play" :size="16" />
+              <EditorIcon name="play" :size="20" />
             </IconButton>
             <IconButton
               label="对齐网格（20px，默认关）"
               no-title
               data-tip="对齐网格（20px）"
               variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
               :pressed="snapEnabled"
               @click="snapEnabled = !snapEnabled"
             >
-              <EditorIcon name="grid" :size="16" />
+              <EditorIcon name="grid" :size="20" />
             </IconButton>
-            <span class="w-1px h-18px mx-2px bg-line" aria-hidden="true" />
-            <IconButton label="缩小" no-title data-tip="缩小" variant="quiet" @click="stepZoom(-1)">
-              <EditorIcon name="minus" :size="16" />
+            <span class="w-1px h-24px mx-2px bg-line" aria-hidden="true" />
+            <IconButton label="缩小" no-title data-tip="缩小" variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px" @click="stepZoom(-1)">
+              <EditorIcon name="minus" :size="20" />
             </IconButton>
-            <!-- 缩放读数（原型 .wf-zoom-value）：min-w 44、11px tabular，点击回 100%（保持视口中心不动） -->
+            <!-- 缩放读数（原型 .wf-zoom-value）：min-w 56、13px tabular，点击回 100%（保持视口中心不动） -->
             <button
               type="button"
-              class="grid h-32px min-w-44px place-items-center border-none rounded-12px bg-transparent px-4px text-11px leading-none tabular-nums text-ink-2 cursor-pointer hover:bg-surface3 hover:text-ink"
+              class="grid h-40px min-w-56px place-items-center border-none rounded-12px bg-transparent px-6px text-13px leading-none tabular-nums text-ink-2 cursor-pointer hover:bg-surface3 hover:text-ink"
               :class="FOCUS_RING"
               data-tip="点击回到 100%"
               aria-label="缩放读数，点击恢复 100%"
@@ -3228,19 +3268,21 @@ useFileDropPaste(stageRef, {
             >
               {{ Math.round((viewport.zoom || 1) * 100) }}%
             </button>
-            <IconButton label="放大" no-title data-tip="放大" variant="quiet" @click="stepZoom(1)">
-              <EditorIcon name="plus" :size="16" />
+            <IconButton label="放大" no-title data-tip="放大" variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px" @click="stepZoom(1)">
+              <EditorIcon name="plus" :size="20" />
             </IconButton>
             <IconButton
               label="适应画布"
               no-title
               data-tip="适应画布"
               variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
               @click="fitView({ padding: fitPad(0.18), duration: 200 })"
             >
-              <EditorIcon name="fit" :size="16" />
+              <EditorIcon name="fit" :size="20" />
             </IconButton>
-            <span class="w-1px h-18px mx-2px bg-line" aria-hidden="true" />
+            <span class="w-1px h-24px mx-2px bg-line" aria-hidden="true" />
             <IconButton
               label="撤销"
               no-title
@@ -3248,10 +3290,11 @@ useFileDropPaste(stageRef, {
               data-tip-key="Mod+Z"
               aria-keyshortcuts="Control+Z Meta+Z"
               variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
               :disabled="!canUndo"
               @click="undoCanvas()"
             >
-              <EditorIcon name="undo" :size="16" />
+              <EditorIcon name="undo" :size="20" />
             </IconButton>
             <IconButton
               label="重做"
@@ -3260,20 +3303,22 @@ useFileDropPaste(stageRef, {
               data-tip-key="Mod+Y"
               aria-keyshortcuts="Control+Y Meta+Y Control+Shift+Z Meta+Shift+Z"
               variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
               :disabled="!canRedo"
               @click="redoCanvas()"
             >
-              <EditorIcon name="redo" :size="16" />
+              <EditorIcon name="redo" :size="20" />
             </IconButton>
             <IconButton
               label="批量下载所有图片/视频输出"
               no-title
               data-tip="下载所有图片 / 视频输出"
               variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
               :loading="downloading"
               @click="downloadAll"
             >
-              <EditorIcon name="download" :size="16" />
+              <EditorIcon name="download" :size="20" />
             </IconButton>
             <IconButton
               label="快捷键与画布操作"
@@ -3282,9 +3327,10 @@ useFileDropPaste(stageRef, {
               data-tip-key="?"
               aria-keyshortcuts="?"
               variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
               @click="openHelp"
             >
-              <EditorIcon name="help" :size="16" />
+              <EditorIcon name="help" :size="20" />
             </IconButton>
           </div>
 
@@ -3435,7 +3481,7 @@ useFileDropPaste(stageRef, {
           <!-- 首启引导（原型 .wf-onboard：底部 78 居中、max-w 560、#e2d6e9 描边 r14、白 96% 毛玻璃；知道了即退并记忆） -->
           <div
             v-if="showOnboard && !loading"
-            class="sx-squircle absolute bottom-78px left-1/2 z-20 flex max-w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-center gap-10px rounded-14px border border-solid border-violet-line bg-white/96 py-10px pl-16px pr-12px backdrop-blur-[10px] shadow-[0_12px_28px_rgba(31,35,41,0.10)]"
+            class="sx-squircle absolute bottom-92px left-1/2 z-20 flex max-w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-center gap-10px rounded-14px border border-solid border-violet-line bg-white/96 py-10px pl-16px pr-12px backdrop-blur-[10px] shadow-[0_12px_28px_rgba(31,35,41,0.10)]"
             :class="POP_FADE"
             role="status"
           >
