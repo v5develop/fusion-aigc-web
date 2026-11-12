@@ -17,15 +17,15 @@
  * 手动涂抹，非整图时多出「反选」与「边缘柔化 0–20」。不绑 region 时与旧版完全一致（商拍工作室现有调用不受影响）。
  * 选区状态与蒙版由调用方（components/ColorFix useResultColorFix）负责，本组件只发 paint（打开涂抹）。
  *
- * <p>服装细分部位（2026-11-09）：「自动识别 · 服装」下再出一排多选：全部服装 / 上衣 / 外套 / 下装 / 裙装 / 鞋 / 包 / 帽，
- * 写进 region.parts（空 = 全部服装）。只在传了 `garment-parts`（服务端支持的部位，调用方探测）时出现。
+ * <p>选区区块（方式 / 单品 / 更多 → 类别与服装部位 / 反选 / 柔化）已抽成 components/ColorFix/ColorFixRegionPicker，
+ * 与分页版参数台共用同一份实现；传 `cf` 才有「单品」（用户上传的参考图），部位只在传了 `garment-parts` 时出现。
  *
  * <p>停靠（`docked`，2026-11-11 全屏调色）：不浮、不拖，铺满父容器（高度由父级给，内容超出时本体滚动），没有 ×
  * （退出由全屏层负责）；其余内容与交互完全相同。
  *
  * <p>图层与替换颜色（2026-11-11，都可选、不传与旧版一致）：
  * <ul>
- *   <li>插槽 `layers`：头部下方放图层列表（components/ColorFix/ColorFixLayerList）；插槽 `adjust`：替换颜色与滑杆之间放
+ *   <li>插槽 `layers`：头部下方放图层列表（components/ColorFix/ColorFixLayerList）；插槽 `adjust`：五个滑杆之后放
  *       「更多调整」（白平衡 / HSL 分色，components/ColorFix/ColorFixAdjustments）；</li>
  *   <li>`recolor-enabled` + `v-model:recolor`：在选区与滑杆之间出「替换颜色」——开关、源色（自动 = 选区主色 / 吸管从图上取）
  *       → 目标色（色板 + 十六进制 + 取色器）、强度；先于五个滑杆生效。点吸管发 pickSource，由调用方开取色弹窗。</li>
@@ -39,19 +39,20 @@ import { normalizeHex } from '@/utils/colorfix-math.ts'
 import { vCfFine, vCfValueEdit } from '@/components/ColorFix/fine-adjust.ts'
 import { COLORFIX_RECOLOR_DEFAULT, type ColorFixRecolor } from '@/components/ColorFix/layers.ts'
 import { COLORFIX_DEFAULT, COLORFIX_RANGES, colorFixEquals, type ColorFixParams } from '@/utils/colorfix.ts'
-import {
-  COLORFIX_PART_LABELS,
-  COLORFIX_REGION_LABELS,
-  COLORFIX_TARGET_LABELS,
-  colorFixPartsSanitize,
-  type ColorFixAutoTarget,
-  type ColorFixGarmentPart,
-  type ColorFixRegion,
-  type ColorFixRegionMode,
+import ColorFixRegionPicker from '@/components/ColorFix/ColorFixRegionPicker.vue'
+import { referenceParts, useColorFixPieces } from '@/components/ColorFix/references.ts'
+import type { ResultColorFix } from '@/components/ColorFix/useResultColorFix.ts'
+import type {
+  ColorFixAutoTarget,
+  ColorFixGarmentPart,
+  ColorFixRegion,
+  ColorFixRegionMode,
 } from '@/components/ColorFix/types.ts'
 
 const props = withDefaults(
   defineProps<{
+    /** 取单品参考图与图层状态（选区选择器的「单品」用）；不传 = 没有单品 */
+    cf?: ResultColorFix
     /** 是否显示（保留过渡动画用；不传 = 显示，兼容外层 v-if 的老写法） */
     open?: boolean
     /** 「恢复默认」恢复到的那组值 */
@@ -94,6 +95,7 @@ const props = withDefaults(
     pixelNote?: string
   }>(),
   {
+    cf: undefined,
     open: true,
     defaults: () => ({ ...COLORFIX_DEFAULT }),
     title: '服装校色',
@@ -261,34 +263,13 @@ function reset() {
   emit('reset')
 }
 
-function setRegion(patch: Partial<ColorFixRegion>) {
-  if (region.value) region.value = { ...region.value, ...patch }
-}
-
-/** 当前选中的部位（只留服务端支持的）；空 = 全部服装 */
-const pickedParts = computed(() => {
-  const allowed = new Set(props.garmentParts)
-  return colorFixPartsSanitize(region.value?.parts).filter((p) => allowed.has(p))
-})
-const showParts = computed(
-  () => region.value?.mode === 'auto' && region.value.target === 'garment' && props.garmentParts.length > 0,
+/** 区块出现条件：有选区（选区图层）；或整图底层但有可点的单品 */
+const pieces = computed(() => (props.cf ? useColorFixPieces(props.cf) : null))
+const showRegion = computed(
+  () =>
+    !props.pixelLayer &&
+    (!!region.value || !!pieces.value?.references.value.some((r) => referenceParts(r).length > 0)),
 )
-
-/** 部位多选：点「全部服装」清空；点某件切换，全取消 = 回到全部服装 */
-function togglePart(part: ColorFixGarmentPart | null) {
-  if (!part) return setRegion({ parts: [] })
-  const cur = pickedParts.value
-  setRegion({ parts: colorFixPartsSanitize(cur.includes(part) ? cur.filter((p) => p !== part) : [...cur, part]) })
-}
-
-function pickMode(mode: ColorFixRegionMode) {
-  if (mode === 'point' && props.pointBlocked && region.value?.mode !== 'point') return
-  setRegion({ mode })
-  // 选「点选」还没有点过：直接打开点选
-  if (mode === 'point' && !props.hasPoint && !props.pointBlocked) emit('point')
-  // 选「手动涂抹」还没有涂过：直接打开涂抹
-  if (mode === 'paint' && !props.hasPainted) emit('paint')
-}
 
 // ---------------- 替换颜色 ----------------
 
@@ -380,137 +361,28 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
         <p v-if="pixelNote" class="cfp__pixel-warn">{{ pixelNote }}</p>
       </div>
 
-      <div v-if="region && !pixelLayer" class="cfp__region" role="group" aria-label="调色选区">
-        <div class="cfp__row">
-          <span class="cfp__label">选区</span>
-          <span class="cfp__seg" role="radiogroup" aria-label="选区方式">
-            <button
-              v-for="m in regionModes"
-              :key="m"
-              type="button"
-              role="radio"
-              class="cfp__seg-btn sx-hit"
-              :class="{ 'is-on': region.mode === m }"
-              :aria-checked="region.mode === m"
-              :aria-disabled="m === 'point' && !!pointBlocked ? 'true' : undefined"
-              :title="m === 'point' && pointBlocked ? pointBlocked : undefined"
-              @click="pickMode(m)"
-            >
-              {{ COLORFIX_REGION_LABELS[m] }}
-            </button>
-          </span>
-        </div>
-        <div v-if="region.mode === 'auto'" class="cfp__row">
-          <span class="cfp__label" />
-          <span class="cfp__chips" role="radiogroup" aria-label="识别目标">
-            <button
-              v-for="t in autoTargets"
-              :key="t"
-              type="button"
-              role="radio"
-              class="cfp__chip sx-hit"
-              :class="{ 'is-on': region.target === t }"
-              :aria-checked="region.target === t"
-              @click="setRegion({ target: t })"
-            >
-              {{ COLORFIX_TARGET_LABELS[t] }}
-            </button>
-          </span>
-        </div>
-        <div v-if="showParts" class="cfp__row cfp__row--top">
-          <span class="cfp__label" />
-          <span class="cfp__parts" role="group" aria-label="服装部位（可多选）">
-            <button
-              type="button"
-              class="cfp__part sx-hit"
-              :class="{ 'is-on': pickedParts.length === 0 }"
-              :aria-pressed="pickedParts.length === 0"
-              @click="togglePart(null)"
-            >
-              全部服装
-            </button>
-            <button
-              v-for="p in garmentParts"
-              :key="p"
-              type="button"
-              class="cfp__part sx-hit"
-              :class="{ 'is-on': pickedParts.includes(p) }"
-              :aria-pressed="pickedParts.includes(p)"
-              @click="togglePart(p)"
-            >
-              {{ COLORFIX_PART_LABELS[p] }}
-            </button>
-          </span>
-        </div>
-        <div v-if="region.mode === 'paint'" class="cfp__row">
-          <span class="cfp__label" />
-          <button type="button" class="cfp__btn sx-hit" @click="emit('paint')">
-            {{ hasPainted ? '重新涂抹' : '涂抹选区' }}
-          </button>
-        </div>
-        <div v-if="region.mode === 'point'" class="cfp__row">
-          <span class="cfp__label" />
-          <button
-            type="button"
-            class="cfp__btn sx-hit"
-            :disabled="!!pointBlocked"
-            :title="pointBlocked || '点选 / 钢笔 / 自由勾选区域'"
-            @click="emit('point')"
-          >
-            {{ hasPoint ? '重新选区' : '智能选区' }}
-          </button>
-        </div>
-        <template v-if="region.mode !== 'whole'">
-          <div class="cfp__row">
-            <span class="cfp__label">反选</span>
-            <button
-              type="button"
-              role="switch"
-              class="cfp__switch sx-hit"
-              :class="{ 'is-on': region.invert }"
-              :aria-checked="region.invert"
-              aria-label="反选：调整选区以外"
-              @click="setRegion({ invert: !region.invert })"
-            >
-              <i aria-hidden="true" />
-            </button>
-            <span class="cfp__label cfp__label--soft">柔化</span>
-            <input
-              class="cfp__range"
-              v-cf-fine
-              type="range"
-              min="0"
-              max="20"
-              step="1"
-              :value="region.feather"
-              aria-label="边缘柔化"
-              @input="setRegion({ feather: Number(($event.target as HTMLInputElement).value) })"
-            />
-            <b v-cf-value-edit class="cfp__num">{{ region.feather }}</b>
-          </div>
-        </template>
-        <p v-if="maskBusy || maskHint" class="cfp__note" role="status" aria-live="polite">
-          <span class="cfp__note-text">{{ maskBusy ? maskBusyHint || '正在识别选区…' : maskHint }}</span>
-          <button
-            v-if="!maskBusy && maskRetry"
-            type="button"
-            class="cfp__btn sx-hit"
-            @click="emit('retryMask')"
-          >
-            重试
-          </button>
-        </p>
-        <div v-if="!maskBusy && maskHint && maskActions.length" class="cfp__fixes" role="group" aria-label="改用其他选区方式">
-          <button
-            v-for="a in maskActions"
-            :key="a.key"
-            type="button"
-            class="cfp__btn sx-hit"
-            @click="emit('maskAction', a.key)"
-          >
-            {{ a.label }}
-          </button>
-        </div>
+      <div v-if="showRegion" class="cfp__region" role="group" aria-label="调色选区">
+        <ColorFixRegionPicker
+          v-model:region="region"
+          large
+          :cf="cf"
+          :region-modes="regionModes"
+          :auto-targets="autoTargets"
+          :garment-parts="garmentParts"
+          :mask-busy="maskBusy"
+          :mask-hint="maskHint"
+          :mask-busy-hint="maskBusyHint"
+          :mask-retry="maskRetry"
+          :mask-actions="maskActions"
+          :has-painted="hasPainted"
+          :has-point="hasPoint"
+          :point-blocked="pointBlocked"
+          base-hint="要只调局部，请在上方图层列表添加选区。"
+          @paint="emit('paint')"
+          @point="emit('point')"
+          @retry-mask="emit('retryMask')"
+          @mask-action="emit('maskAction', $event)"
+        />
       </div>
 
       <div v-if="recolorEnabled && !pixelLayer" class="cfp__recolor" role="group" aria-label="替换为目标颜色">
@@ -622,9 +494,6 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
         </template>
       </div>
 
-      <!-- 更多调整（白平衡 / HSL 分色，components/ColorFix/ColorFixAdjustments）：替换颜色之后、五个滑杆之前 -->
-      <slot v-if="!pixelLayer" name="adjust" />
-
       <p v-if="slidersTitle && !pixelLayer" class="cfp__subtitle">{{ slidersTitle }}</p>
       <div v-if="!pixelLayer" class="cfp__sliders">
         <ColorFixSlider
@@ -639,6 +508,9 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
           @update:model-value="setParam(s.key, $event)"
         />
       </div>
+
+      <!-- 更多调整（白平衡 / HSL 分色，components/ColorFix/ColorFixAdjustments）：五个滑杆之后 -->
+      <slot v-if="!pixelLayer" name="adjust" />
 
       <footer class="cfp__foot">
         <span class="cfp__hint">参数只作用于当前结果，可随时恢复默认 · 方向键微调 · Shift 加速 · 点数值可输入</span>
@@ -813,25 +685,14 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   flex: 0 0 auto;
   margin-left: 6px;
 }
-/* 选区分段 / 识别目标：视觉 28 高、12px 字（§10 交互控件下限），按钮间距 8；
-   命中区只外扩 2 → 32，相邻两颗之间各占一半间距，不会互相盖住（触屏也不再加大外扩） */
-.cfp__seg {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 2px;
-  border: 1px solid var(--xq-line);
-  border-radius: 9px;
-  background: var(--xq-page);
-}
-.cfp__seg-btn,
+
 .cfp__chip {
   height: 28px;
   box-sizing: border-box;
   padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
+  border: 1px solid var(--xq-line);
+  border-radius: 14px;
+  background: var(--xq-surface);
   color: var(--xq-muted);
   font: inherit;
   font-size: 12px;
@@ -839,76 +700,11 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   white-space: nowrap;
   cursor: pointer;
 }
-.cfp__seg-btn[aria-disabled='true'] {
-  color: var(--xq-control-hover);
-  cursor: not-allowed;
-}
-.cfp__seg-btn.is-on {
-  border-color: var(--xq-violet-line);
-  background: linear-gradient(180deg, var(--xq-surface), var(--xq-violet-tint));
-  color: var(--xq-violet-ink);
-  font-weight: 600;
-}
-.cfp__seg .cfp__seg-btn::after,
-.cfp__chips .cfp__chip::after {
-  inset: -2px;
-}
-.cfp__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.cfp__chip {
-  border-color: var(--xq-line);
-  border-radius: 14px;
-  background: var(--xq-surface);
-}
 .cfp__chip.is-on {
   border-color: var(--xq-violet);
   background: var(--xq-violet-soft);
   color: var(--xq-violet-ink);
   font-weight: 600;
-}
-.cfp__row--top {
-  align-items: flex-start;
-}
-/* 部位多选：视觉 24 高，sx-hit 外扩 4 → 命中 32；行 / 列间距 8（外扩不超过间距一半） */
-.cfp__parts {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.cfp__part {
-  height: 24px;
-  box-sizing: border-box;
-  padding: 0 10px;
-  border: 1px solid var(--xq-line);
-  border-radius: 12px;
-  background: var(--xq-surface);
-  color: var(--xq-muted);
-  font: inherit;
-  font-size: 12px;
-  line-height: 22px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    border-color 0.12s ease,
-    background 0.12s ease;
-}
-.cfp__part:hover:not(.is-on) {
-  border-color: var(--xq-control);
-}
-.cfp__part.is-on {
-  border-color: var(--xq-violet);
-  background: var(--xq-violet-soft);
-  color: var(--xq-violet-ink);
-  font-weight: 600;
-}
-.cfp__part:focus-visible {
-  outline: 2px solid var(--xq-violet);
-  outline-offset: 2px;
 }
 .cfp__switch {
   position: relative;
@@ -949,21 +745,6 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   color: var(--xq-violet-ink);
   font-size: 11px;
   text-align: right;
-}
-.cfp__note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--xq-placeholder);
-  font-size: 11px;
-  line-height: 16px;
-}
-.cfp__fixes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: -2px;
 }
 .cfp__note-text {
   min-width: 0;
@@ -1123,7 +904,6 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
 .cfp.is-docked .cfp__foot {
   margin-top: auto;
 }
-.cfp__seg-btn:focus-visible,
 .cfp__chip:focus-visible,
 .cfp__switch:focus-visible {
   outline: 2px solid var(--xq-violet);
@@ -1189,7 +969,6 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
   .cfp__close,
   .cfp__switch,
   .cfp__switch i,
-  .cfp__part,
   .cfp-enter-active,
   .cfp-leave-active {
     transition: none;

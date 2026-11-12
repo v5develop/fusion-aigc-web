@@ -9,7 +9,7 @@
  * 选中「整图」底层时不出选区区块。手动涂抹与智能选区是同一个弹窗（PointSelect）：涂抹入口打开时预选画笔，
  * 并把这一层已有的选区垫在下面细化。
  *
- * <p>更多调整（2026-11-11）：替换颜色与滑杆之间折叠的「更多调整」（ColorFixAdjustments：白平衡 + HSL 分色），中性灰吸管复用
+ * <p>更多调整（2026-11-11；2026-11-12 起一律在五个滑杆之后）：折叠的「更多调整」（ColorFixAdjustments：白平衡 + HSL 分色），中性灰吸管复用
  * 吸取弹窗。图层满 8 层时添加 / 从整图进涂抹或智能选区会在图层列表里给提示（cf.capNotice）。
  *
  * <p>智能选区「继续编辑」：打开时按 cf.loadSelectionSession 取回这一层上次的编辑状态（点 / 框 / 形状 / 魔棒 / 笔画 /
@@ -206,7 +206,7 @@ function done() {
   <component
     :is="docked ? ColorFixPanel : ColorFixTabbedPanel"
     v-if="localAdjust"
-    v-bind="docked ? {} : { cf }"
+    :cf="cf"
     v-model="params"
     v-model:region="region"
     v-model:recolor="recolor"

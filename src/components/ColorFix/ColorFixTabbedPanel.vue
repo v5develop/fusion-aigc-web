@@ -13,25 +13,16 @@
  * <p>自动识别 · 单品（宿主传了 references 且带部位，商拍换装）：只出用户上传过的那几件，每件一枚带缩略图的 chip，
  * 点一下 = 切到 / 新建这件的「自动识别 · 服装 · 部位」图层（useColorFixPieces.select）；服装 / 商品 / 人物 / 背景与部位细分收进「更多」。
  * 没有参考图时保持原来的类别列表。某件的图层识别失败，它的 chip 上常驻「识别失败」。
+ * 这一整块选区选择器已抽成 ColorFixRegionPicker，与全屏停靠参数台（views/tools/ColorFixPanel）共用同一份实现。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ColorFixSlider from '@/views/studio/colorfix/ColorFixSlider.vue'
 import IconButton from '@/components/IconButton/index.vue'
 import { normalizeHex } from '@/utils/colorfix-math.ts'
-import { COLORFIX_RECOLOR_DEFAULT, isBaseLayer, isSelectionLayer, type ColorFixRecolor } from './layers.ts'
+import { COLORFIX_RECOLOR_DEFAULT, type ColorFixRecolor } from './layers.ts'
 import { COLORFIX_DEFAULT, COLORFIX_RANGES, colorFixEquals, type ColorFixParams } from '@/utils/colorfix.ts'
-import {
-  COLORFIX_PART_LABELS,
-  COLORFIX_REGION_LABELS,
-  COLORFIX_TARGET_LABELS,
-  colorFixPartsEqual,
-  colorFixPartsSanitize,
-  type ColorFixAutoTarget,
-  type ColorFixGarmentPart,
-  type ColorFixRegion,
-  type ColorFixRegionMode,
-} from './types.ts'
-import { referenceParts, useColorFixPieces, type ColorFixReference } from './references.ts'
+import ColorFixRegionPicker from './ColorFixRegionPicker.vue'
+import type { ColorFixAutoTarget, ColorFixGarmentPart, ColorFixRegion, ColorFixRegionMode } from './types.ts'
 import type { ResultColorFix } from './useResultColorFix.ts'
 import { vCfFine, vCfValueEdit } from './fine-adjust.ts'
 import { currentAccountId, onAccountChange } from '@/utils/auth-session.ts'
@@ -113,7 +104,6 @@ const emit = defineEmits<{
 }>()
 
 const R = COLORFIX_RANGES
-const pieces = useColorFixPieces(props.cf)
 
 // ---------------- 页签（记住上次） ----------------
 
@@ -477,7 +467,6 @@ onBeforeUnmount(() => {
 // ---------------- 当前图层（头部副标题 + 状态） ----------------
 
 const sel = computed(() => props.cf.selectedLayer.value)
-const onBase = computed(() => isBaseLayer(sel.value))
 const selStatus = computed(() => {
   const st = props.cf.layerStatus(sel.value)
   if (st === 'busy') return { text: '识别中', tone: 'busy' }
@@ -536,77 +525,6 @@ function commitHex() {
 }
 const sourceShown = computed(() => recolor.value?.source ?? props.recolorAutoSource ?? '')
 
-// ---------------- 选区页 ----------------
-
-function setRegion(patch: Partial<ColorFixRegion>) {
-  if (region.value) region.value = { ...region.value, ...patch }
-}
-const pickedParts = computed(() => {
-  const allowed = new Set(props.garmentParts)
-  return colorFixPartsSanitize(region.value?.parts).filter((p) => allowed.has(p))
-})
-const showParts = computed(
-  () => region.value?.mode === 'auto' && region.value.target === 'garment' && props.garmentParts.length > 0,
-)
-function togglePart(part: ColorFixGarmentPart | null) {
-  if (!part) return setRegion({ parts: [] })
-  const cur = pickedParts.value
-  setRegion({ parts: colorFixPartsSanitize(cur.includes(part) ? cur.filter((p) => p !== part) : [...cur, part]) })
-}
-function pickMode(mode: ColorFixRegionMode) {
-  if (mode === 'point' && props.pointBlocked && region.value?.mode !== 'point') return
-  setRegion({ mode })
-  if (mode === 'point' && !props.hasPoint && !props.pointBlocked) emit('point')
-  if (mode === 'paint' && !props.hasPainted) emit('paint')
-}
-
-/** 能按部位识别的单品（用户上传过的那几件）：有它们就只出它们，通用类别收进「更多」 */
-const pieceRefs = computed<ColorFixReference[]>(() =>
-  pieces.references.value.filter((r) => referenceParts(r).length > 0),
-)
-const hasPieces = computed(() => pieceRefs.value.length > 0)
-function pieceLayer(r: ColorFixReference) {
-  const parts = referenceParts(r)
-  return props.cf.layers.value.find(
-    (l) =>
-      isSelectionLayer(l) &&
-      l.region.mode === 'auto' &&
-      l.region.target === 'garment' &&
-      colorFixPartsEqual(colorFixPartsSanitize(l.region.parts), parts),
-  )
-}
-function pieceOn(r: ColorFixReference): boolean {
-  const l = pieceLayer(r)
-  return !!l && l.id === props.cf.selectedLayerId.value
-}
-function pieceFailed(r: ColorFixReference): boolean {
-  const l = pieceLayer(r)
-  return !!l && props.cf.layerStatus(l) === 'error'
-}
-function pieceBusy(r: ColorFixReference): boolean {
-  const l = pieceLayer(r)
-  return !!l && props.cf.layerStatus(l) === 'busy'
-}
-function pickPiece(r: ColorFixReference) {
-  const l = pieceLayer(r)
-  // 识别失败的这件：再点一下 = 重试识别（选中它并走原有重试），否则只是切过去
-  if (l && props.cf.layerStatus(l) === 'error' && pieceOn(r) && props.cf.maskRetryable.value) {
-    props.cf.retryMask()
-    return
-  }
-  pieces.select(r.key)
-}
-const moreOpen = ref(false)
-/** 当前图层是通用类别（不是某件单品）：「更多」默认展开，免得选中态藏起来 */
-const genericActive = computed(
-  () => !!region.value && region.value.mode === 'auto' && !pieceRefs.value.some((r) => pieceOn(r)),
-)
-watch(
-  () => [hasPieces.value, genericActive.value, onBase.value] as const,
-  ([has, generic, base]) => {
-    if (has && generic && !base && region.value?.mode === 'auto') moreOpen.value = true
-  },
-)
 </script>
 
 <template>
@@ -699,184 +617,26 @@ watch(
         <div v-show="tab === 'region'" id="cft-pane-region" role="tabpanel" aria-labelledby="cft-tab-region" class="cft__pane">
           <div class="cft__sec" role="group" aria-label="调色选区">
             <p v-if="pixelLayer" class="cft__note">像素层没有选区；可在「图层」页给它上面添加新的选区图层。</p>
-            <template v-else-if="region">
-              <div class="cft__row">
-                <span class="cft__label">方式</span>
-                <span class="cft__seg" role="radiogroup" aria-label="选区方式">
-                  <button
-                    v-for="m in regionModes"
-                    :key="m"
-                    type="button"
-                    role="radio"
-                    class="cft__seg-btn sx-hit"
-                    :class="{ 'is-on': region.mode === m }"
-                    :aria-checked="region.mode === m"
-                    :aria-disabled="m === 'point' && !!pointBlocked ? 'true' : undefined"
-                    :title="m === 'point' && pointBlocked ? pointBlocked : undefined"
-                    @click="pickMode(m)"
-                  >
-                    {{ COLORFIX_REGION_LABELS[m] }}
-                  </button>
-                </span>
-              </div>
-
-              <template v-if="region.mode === 'auto'">
-                <!-- 有单品参考图：只出用户上传的那几件 -->
-                <div v-if="hasPieces" class="cft__row cft__row--top cft__row--piece">
-                  <span class="cft__label">单品</span>
-                  <span class="cft__chips" role="radiogroup" aria-label="识别哪一件">
-                    <button
-                      v-for="r in pieceRefs"
-                      :key="r.key"
-                      type="button"
-                      role="radio"
-                      class="cft__piece sx-hit"
-                      :class="{ 'is-on': pieceOn(r), 'is-failed': pieceFailed(r) }"
-                      :aria-checked="pieceOn(r)"
-                      :aria-label="pieceFailed(r) ? `${r.label}，识别失败` : r.label"
-                      :aria-busy="pieceBusy(r) || undefined"
-                      @click="pickPiece(r)"
-                    >
-                      <img class="cft__thumb" :src="r.url" alt="" draggable="false" loading="lazy" />
-                      {{ r.label }}
-                      <em v-if="pieceFailed(r)" class="cft__fail">识别失败</em>
-                      <em v-else-if="pieceBusy(r)" class="cft__busy">识别中</em>
-                    </button>
-                    <button
-                      type="button"
-                      class="cft__chip cft__chip--more sx-hit"
-                      :aria-expanded="moreOpen"
-                      aria-controls="cft-more"
-                      @click="moreOpen = !moreOpen"
-                    >
-                      更多
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" :class="{ 'is-open': moreOpen }">
-                        <path d="m6 9 6 6 6-6" />
-                      </svg>
-                    </button>
-                  </span>
-                </div>
-                <div v-if="!hasPieces || moreOpen" id="cft-more" class="cft__row cft__row--top">
-                  <span class="cft__label">{{ hasPieces ? '类别' : '目标' }}</span>
-                  <span class="cft__chips" role="radiogroup" aria-label="识别目标">
-                    <button
-                      v-for="t in autoTargets"
-                      :key="t"
-                      type="button"
-                      role="radio"
-                      class="cft__chip sx-hit"
-                      :class="{ 'is-on': region.target === t && (!hasPieces || genericActive) }"
-                      :aria-checked="region.target === t"
-                      @click="setRegion({ target: t })"
-                    >
-                      {{ COLORFIX_TARGET_LABELS[t] }}
-                    </button>
-                  </span>
-                </div>
-                <div v-if="showParts && (!hasPieces || moreOpen)" class="cft__row cft__row--top cft__row--part">
-                  <span class="cft__label" />
-                  <span class="cft__chips" role="group" aria-label="服装部位（可多选）">
-                    <button
-                      type="button"
-                      class="cft__part sx-hit"
-                      :class="{ 'is-on': pickedParts.length === 0 }"
-                      :aria-pressed="pickedParts.length === 0"
-                      @click="togglePart(null)"
-                    >
-                      全部服装
-                    </button>
-                    <button
-                      v-for="p in garmentParts"
-                      :key="p"
-                      type="button"
-                      class="cft__part sx-hit"
-                      :class="{ 'is-on': pickedParts.includes(p) }"
-                      :aria-pressed="pickedParts.includes(p)"
-                      @click="togglePart(p)"
-                    >
-                      {{ COLORFIX_PART_LABELS[p] }}
-                    </button>
-                  </span>
-                </div>
-              </template>
-
-              <div v-if="region.mode === 'paint'" class="cft__row">
-                <span class="cft__label" />
-                <button type="button" class="cft__btn sx-hit" @click="emit('paint')">
-                  {{ hasPainted ? '重新涂抹' : '涂抹选区' }}
-                </button>
-              </div>
-              <div v-if="region.mode === 'point'" class="cft__row">
-                <span class="cft__label" />
-                <button
-                  type="button"
-                  class="cft__btn sx-hit"
-                  :disabled="!!pointBlocked"
-                  :title="pointBlocked || '点选 / 钢笔 / 自由勾选区域'"
-                  @click="emit('point')"
-                >
-                  {{ hasPoint ? '重新选区' : '智能选区' }}
-                </button>
-              </div>
-              <div v-if="region.mode !== 'whole'" class="cft__row">
-                <span class="cft__label">反选</span>
-                <button
-                  type="button"
-                  role="switch"
-                  class="cft__switch sx-hit"
-                  :class="{ 'is-on': region.invert }"
-                  :aria-checked="region.invert"
-                  aria-label="反选：调整选区以外"
-                  @click="setRegion({ invert: !region.invert })"
-                >
-                  <i aria-hidden="true" />
-                </button>
-                <span class="cft__label cft__label--soft">柔化</span>
-                <input
-                  class="cft__range"
-                  v-cf-fine
-                  type="range"
-                  min="0"
-                  max="20"
-                  step="1"
-                  :value="region.feather"
-                  aria-label="边缘柔化"
-                  @input="setRegion({ feather: Number(($event.target as HTMLInputElement).value) })"
-                />
-                <b v-cf-value-edit class="cft__num">{{ region.feather }}</b>
-              </div>
-            </template>
-            <!-- 整图底层：没有选区设置；有单品参考图时仍可直接点一件新建它的选区 -->
-            <template v-else>
-              <p class="cft__note">当前是「整图」底层，作用于整幅图片。{{ hasPieces ? '点一件单品，新建它的选区图层：' : '要只调局部，请在「图层」页添加选区。' }}</p>
-              <div v-if="hasPieces" class="cft__row cft__row--top cft__row--piece">
-                <span class="cft__chips" role="group" aria-label="新建单品选区">
-                  <button
-                    v-for="r in pieceRefs"
-                    :key="r.key"
-                    type="button"
-                    class="cft__piece sx-hit"
-                    :class="{ 'is-failed': pieceFailed(r) }"
-                    :aria-label="pieceFailed(r) ? `${r.label}，识别失败` : r.label"
-                    @click="pickPiece(r)"
-                  >
-                    <img class="cft__thumb" :src="r.url" alt="" draggable="false" loading="lazy" />
-                    {{ r.label }}
-                    <em v-if="pieceFailed(r)" class="cft__fail">识别失败</em>
-                  </button>
-                </span>
-              </div>
-            </template>
-
-            <p v-if="!pixelLayer && (maskBusy || maskHint)" class="cft__note cft__note--row" role="status" aria-live="polite">
-              <span class="cft__note-text">{{ maskBusy ? maskBusyHint || '正在识别选区…' : maskHint }}</span>
-              <button v-if="!maskBusy && maskRetry" type="button" class="cft__btn sx-hit" @click="emit('retryMask')">重试</button>
-            </p>
-            <div v-if="!pixelLayer && !maskBusy && maskHint && maskActions.length" class="cft__fixes" role="group" aria-label="改用其他选区方式">
-              <button v-for="a in maskActions" :key="a.key" type="button" class="cft__btn sx-hit" @click="emit('maskAction', a.key)">
-                {{ a.label }}
-              </button>
-            </div>
+            <ColorFixRegionPicker
+              v-else
+              v-model:region="region"
+              :cf="cf"
+              :region-modes="regionModes"
+              :auto-targets="autoTargets"
+              :garment-parts="garmentParts"
+              :mask-busy="maskBusy"
+              :mask-hint="maskHint"
+              :mask-busy-hint="maskBusyHint"
+              :mask-retry="maskRetry"
+              :mask-actions="maskActions"
+              :has-painted="hasPainted"
+              :has-point="hasPoint"
+              :point-blocked="pointBlocked"
+              @paint="emit('paint')"
+              @point="emit('point')"
+              @retry-mask="emit('retryMask')"
+              @mask-action="emit('maskAction', $event)"
+            />
           </div>
         </div>
 
@@ -1153,10 +913,7 @@ watch(
 .cft__close:focus-visible,
 .cft__btn:focus-visible,
 .cft__tab:focus-visible,
-.cft__seg-btn:focus-visible,
 .cft__chip:focus-visible,
-.cft__piece:focus-visible,
-.cft__part:focus-visible,
 .cft__switch:focus-visible,
 .cft__swatch:focus-visible {
   outline: 2px solid var(--xq-violet);
@@ -1320,12 +1077,6 @@ watch(
 .cft__row--top {
   align-items: flex-start;
 }
-.cft__row--piece {
-  --cft-row-h: 30px;
-}
-.cft__row--part {
-  --cft-row-h: 24px;
-}
 .cft__label {
   display: flex;
   width: 30px;
@@ -1348,23 +1099,13 @@ watch(
   width: auto;
   flex: 0 0 auto;
 }
-.cft__seg {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 2px;
-  border: 1px solid var(--xq-line);
-  border-radius: 9px;
-  background: var(--xq-sunken);
-}
-.cft__seg-btn,
 .cft__chip {
   height: 28px;
   box-sizing: border-box;
   padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
+  border: 1px solid var(--xq-line);
+  border-radius: 14px;
+  background: var(--xq-surface);
   color: var(--xq-muted);
   font: inherit;
   font-size: 12px;
@@ -1372,113 +1113,16 @@ watch(
   white-space: nowrap;
   cursor: pointer;
 }
-.cft__seg-btn[aria-disabled='true'] {
-  color: var(--xq-control-hover);
-  cursor: not-allowed;
-}
-.cft__seg-btn.is-on {
-  border-color: var(--xq-violet-line);
-  background: var(--xq-violet-soft);
-  color: var(--xq-violet-ink);
-  font-weight: 600;
-}
-.cft__chips {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.cft__chip,
-.cft__piece,
-.cft__part {
-  border: 1px solid var(--xq-line);
-  background: var(--xq-surface);
-}
-.cft__chip {
-  border-radius: 14px;
-}
-.cft__chip.is-on,
-.cft__piece.is-on,
-.cft__part.is-on {
+.cft__chip.is-on {
   border-color: var(--xq-violet);
   background: var(--xq-violet-soft);
   color: var(--xq-violet-ink);
   font-weight: 600;
 }
-.cft__chip--more {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  border-style: dashed;
-}
-.cft__chip--more svg {
-  width: 12px;
-  height: 12px;
-  transition: transform 0.12s ease;
-}
-.cft__chip--more svg.is-open {
-  transform: rotate(180deg);
-}
 .cft__chip--sm {
   height: 24px;
   padding: 0 8px;
   line-height: 22px;
-}
-/* 单品 chip：24 圆角缩略图 + 件名；识别失败的在名字后常驻警示 */
-.cft__piece {
-  display: inline-flex;
-  height: 30px;
-  box-sizing: border-box;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px 0 3px;
-  border-radius: 15px;
-  color: var(--xq-muted);
-  font: inherit;
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: border-color 0.12s ease;
-}
-.cft__piece:hover:not(.is-on) {
-  border-color: var(--xq-control);
-}
-.cft__piece.is-failed:not(.is-on) {
-  border-color: var(--xq-warning-fg);
-}
-.cft__thumb {
-  width: 24px;
-  height: 24px;
-  flex: none;
-  border-radius: 6px;
-  background: var(--xq-surface3);
-  object-fit: cover;
-}
-.cft__fail,
-.cft__busy {
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 500;
-}
-.cft__fail {
-  color: var(--xq-warning-fg);
-}
-.cft__busy {
-  color: var(--xq-placeholder);
-}
-.cft__part {
-  height: 24px;
-  box-sizing: border-box;
-  padding: 0 10px;
-  border-radius: 12px;
-  color: var(--xq-muted);
-  font: inherit;
-  font-size: 12px;
-  line-height: 22px;
-  white-space: nowrap;
-  cursor: pointer;
 }
 .cft__switch {
   position: relative;
@@ -1541,11 +1185,6 @@ watch(
 .cft__soft {
   color: var(--xq-placeholder);
   font-size: 11px;
-}
-.cft__fixes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 .cft__swatches {
   display: flex;
@@ -1790,10 +1429,8 @@ watch(
   .cft,
   .cft__close,
   .cft__tab,
-  .cft__piece,
   .cft__switch,
   .cft__switch i,
-  .cft__chip--more svg,
   .cft-enter-active,
   .cft-leave-active {
     transition: none;
