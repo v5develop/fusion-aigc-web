@@ -381,7 +381,7 @@ function varBlock(theme: ThemeName): string {
 export function themeCss(): string {
   return (
     `:root,[data-theme='light']{${varBlock('light')}color-scheme:light;}` +
-    `[data-theme='dark']{${varBlock('dark')}color-scheme:dark;}`
+    `[data-theme='dark'],.xq-force-dark{${varBlock('dark')}color-scheme:dark;}`
   )
 }
 

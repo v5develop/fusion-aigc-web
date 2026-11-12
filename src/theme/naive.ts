@@ -13,7 +13,7 @@
 import { computed } from 'vue'
 import { darkTheme, type ConfigProviderProps, type GlobalTheme, type GlobalThemeOverrides } from 'naive-ui'
 import { textScaleTheme } from '@/utils/textPrefs.ts'
-import { activeTheme } from '@/utils/themePrefs.ts'
+import { overlayTheme } from '@/utils/themePrefs.ts'
 import { effects, palettes, type ThemeName } from './tokens.ts'
 
 const fontFamily =
@@ -438,6 +438,7 @@ export function naiveBaseTheme(theme: ThemeName): GlobalTheme | null {
  * n-config-provider 之下，不传就永远是 Naive 默认浅色（深色页里弹出白卡）。随「外观」响应式切换。
  */
 export const discreteConfigProviderProps = computed<ConfigProviderProps>(() => ({
-  theme: naiveBaseTheme(activeTheme.value),
-  themeOverrides: naiveThemeOverrides(activeTheme.value),
+  // 离散浮层同全站浮层：全屏深色层开着时一律深色（见 themePrefs.overlayTheme）
+  theme: naiveBaseTheme(overlayTheme.value),
+  themeOverrides: naiveThemeOverrides(overlayTheme.value),
 }))

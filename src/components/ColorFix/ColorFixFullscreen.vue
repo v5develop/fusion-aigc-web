@@ -27,6 +27,7 @@ import ColorFixPeekButton from './ColorFixPeekButton.vue'
 import { MASK_VIEW_HINTS, MASK_VIEW_LABELS, type MaskViewMode } from './selection-ops.ts'
 import { NConfigProvider } from 'naive-ui'
 import { provideColorFixTheme } from './darkScope.ts'
+import { holdOverlayDark } from '@/utils/themePrefs.ts'
 import { naiveBaseTheme, naiveThemeOverrides } from '@/theme/naive'
 
 /** 全屏调色台整块深色（含 naive 输入框 / 下拉的内联部分），与外观偏好无关 */
@@ -131,6 +132,19 @@ watch(
     if (!open && cf.fullscreen.value) exit()
   },
 )
+// 全屏开着时全站浮层（提示消息 / 通知 / 确认框）也用深色：它们挂在 body 上，会压在本层之上
+let releaseOverlayDark: (() => void) | null = null
+watch(
+  show,
+  (v) => {
+    if (v) releaseOverlayDark ??= holdOverlayDark()
+    else {
+      releaseOverlayDark?.()
+      releaseOverlayDark = null
+    }
+  },
+  { immediate: true },
+)
 watch(show, (v) => {
   if (!v) {
     maskFlash.value = false
@@ -139,6 +153,8 @@ watch(show, (v) => {
 })
 onBeforeUnmount(() => {
   if (flashTimer) clearTimeout(flashTimer)
+  releaseOverlayDark?.()
+  releaseOverlayDark = null
 })
 
 /** 不吃字符键的 input（勾选 / 单选 / 按钮类）：焦点在上面时快捷键照常 */

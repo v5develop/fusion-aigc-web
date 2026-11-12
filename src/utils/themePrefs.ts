@@ -12,7 +12,7 @@
  * <p><b>首帧</b>：index.html 里有一段内联脚本先写好 data-theme（JS 模块加载前就生效），本模块在 main.ts 挂载前再算一遍并接管。
  * 两边的判定是同一个函数（src/theme/theme-decide.ts 的 decideTheme，构建期把源码嵌进 HTML），不会各改各的。
  */
-import { nextTick, ref } from 'vue'
+import { nextTick, ref, computed } from 'vue'
 import type { ThemeName } from '@/theme/tokens.ts'
 import { decideTheme, THEME_DEVICE_KEY, THEME_PREFS_KEY_PREFIX } from '@/theme/theme-decide.ts'
 import { currentAccountId, onAccountChange } from '@/utils/auth-session.ts'
@@ -99,6 +99,25 @@ function initialTheme(): ThemeName {
 export const themePrefs = ref<ThemePrefs>({ ...DEFAULT_THEME_PREFS })
 /** 此刻生效的主题（App.vue 的 Naive 主题、画布小地图等 JS 取色处读这个） */
 export const activeTheme = ref<ThemeName>(initialTheme())
+
+/**
+ * 全屏深色层（全屏调色）开着的个数：> 0 时全站浮层（提示消息 / 通知 / 确认框）一律深色——它们挂在 body 上，
+ * 会压在全屏深色层之上；页面本身被全屏盖住，仍按站点外观不动。用 {@link holdOverlayDark} 申请、返回的函数归还。
+ */
+export const overlayDarkHolds = ref(0)
+export function holdOverlayDark(): () => void {
+  overlayDarkHolds.value += 1
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    overlayDarkHolds.value = Math.max(0, overlayDarkHolds.value - 1)
+  }
+}
+/** 全站浮层此刻用的主题：有全屏深色层时为 dark，否则同 {@link activeTheme} */
+export const overlayTheme = computed<ThemeName>(() => (overlayDarkHolds.value > 0 ? 'dark' : activeTheme.value))
+/** 给浮层容器的类名：强制深色令牌（tokens.ts 的 .xq-force-dark 与 [data-theme='dark'] 同一套值） */
+export const overlayContainerClass = computed(() => (overlayDarkHolds.value > 0 ? 'xq-force-dark' : undefined))
 
 let currentKey = ''
 let synced = false
