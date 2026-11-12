@@ -19,6 +19,8 @@ export interface IPromptLibItem {
   vertical: string
   /** 二级分类英文 key（我的提示词固定 mine / favorite） */
   group: string
+  /** 二级分类中文名（后端新增字段，旧后端没有：用 utils/prompt-library 的 promptGroupLabel 兜底） */
+  groupLabel?: string
   /** 适用模型：通用 / GPT / Banana / Seedream */
   models: string[]
   tags: string[]
@@ -29,9 +31,30 @@ export interface IPromptLibItem {
   updatedAt: number
 }
 
+/** 某一级分类下的二级分类（后端有序、带中文名与条数，不受筛选影响） */
+export interface IPromptLibGroup {
+  vertical: string
+  key: string
+  label: string
+  count: number
+}
+
+/** 当前用户可见的各域总数（不受筛选影响）：公共 = officialTotal，我的 = mineTotal */
+export interface IPromptLibCounts {
+  ecommerce: number
+  general: number
+  mine: number
+  officialTotal: number
+  mineTotal: number
+}
+
 export interface IPromptLibList {
   items: IPromptLibItem[]
+  /** 当前筛选条件下的总条数（分页用） */
   total: number
+  /** 后端新增字段，旧后端缺省 */
+  groups?: IPromptLibGroup[]
+  counts?: IPromptLibCounts
 }
 
 export interface IPromptLibListReq {
@@ -50,7 +73,8 @@ export interface IPromptLibUpsertReq {
   prompt: string
   models?: string[]
   tags?: string[]
-  group?: string
+  /** 我的提示词分类：mine / favorite；新建缺省 favorite，修改缺省保持不变 */
+  group?: 'mine' | 'favorite'
 }
 
 /** 提示词列表：官方（启用）+ 我的 */

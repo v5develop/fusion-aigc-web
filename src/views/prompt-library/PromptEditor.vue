@@ -27,7 +27,14 @@ const saving = ref(false)
 
 const MODEL_OPTIONS = ['通用', 'GPT', 'Banana', 'Seedream']
 
+/** 我的提示词的分类（后端只认这两个；对应原型的「我的 / 我的收藏」） */
+const GROUP_OPTIONS = [
+  { label: '我的', value: 'mine' },
+  { label: '我的收藏', value: 'favorite' },
+]
+
 const form = reactive({
+  group: 'favorite' as 'mine' | 'favorite',
   title: '',
   prompt: '',
   models: ['通用'] as string[],
@@ -37,11 +44,13 @@ const form = reactive({
 watch(show, (v) => {
   if (!v) return
   if (props.editing) {
+    form.group = props.editing.group === 'mine' ? 'mine' : 'favorite'
     form.title = props.editing.title
     form.prompt = props.editing.prompt
     form.models = props.editing.models?.length ? [...props.editing.models] : ['通用']
     form.tagsInput = (props.editing.tags ?? []).join('，')
   } else {
+    form.group = 'favorite'
     form.title = ''
     form.prompt = ''
     form.models = ['通用']
@@ -71,7 +80,7 @@ async function save() {
 
   saving.value = true
   try {
-    const payload = { title, prompt, models: form.models, tags }
+    const payload = { title, prompt, models: form.models, tags, group: form.group }
     if (props.editing) {
       await promptLibUpdate(props.editing.id, payload)
       message.success('已保存')
@@ -120,6 +129,11 @@ async function save() {
           :maxlength="3000"
           placeholder="必填，3000 字以内"
         />
+      </div>
+
+      <div class="mb-14px">
+        <div class="text-13px text-ink mb-6px">分类</div>
+        <n-select v-model:value="form.group" :options="GROUP_OPTIONS" :consistent-menu-width="false" />
       </div>
 
       <div class="mb-14px">

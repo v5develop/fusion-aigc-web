@@ -4,7 +4,9 @@ import { modelLabelOf, modelLabelsOf } from '@/utils/model-label'
  * 提示词库浮层（原型 PromptLibraryFlyout：宽 400 的锚定面板，不是整屏弹窗）。
  *
  * <p>数据走 Go 网关 /api/v1/prompt-library（官方电商 / 官方通用 / 我的 三个域），
- * 搜索 + 适用模型 chips + 分组 chips 过滤；点卡片把整条提示词交给页面插入输入框。
+ * 布局同原型：头（标题 + 「公共 N 条 · 我的 M 条」+ 上传 + 关闭）→ 搜索 → 适用模型 chips → 域页签 → 分组 chips → 列表。
+ * 分组（带中文名与条数）和各域总数都由接口随列表返回，首次打开即有；列表触底自动加载下一页（每页 50）。
+ * 点卡片把整条提示词交给页面插入输入框。
  * Esc / 点外部关闭；出现 / 消失带 120ms 位移过渡。加载失败给一条可重试的空态。
  *
  * <p>定位：调用方用 `anchor` 传触发按钮元素，面板吸附其下方、右缘对齐（超出视口左移）；
@@ -19,7 +21,14 @@ import { modelLabelOf, modelLabelsOf } from '@/utils/model-label'
  */
 import IconButton from '@/components/IconButton/index.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { promptLibList, promptLibRemove, type IPromptLibItem } from '@/api/prompt-library.ts'
+import {
+  promptLibList,
+  promptLibRemove,
+  type IPromptLibCounts,
+  type IPromptLibGroup,
+  type IPromptLibItem,
+} from '@/api/prompt-library.ts'
+import { promptGroupLabel, promptGroupRank, promptSummary } from '@/utils/prompt-library'
 import PromptEditor from '@/views/prompt-library/PromptEditor.vue'
 import { useMessage } from 'naive-ui'
 
@@ -37,8 +46,6 @@ const props = defineProps<{
   anchor?: HTMLElement | null
   /** 面板标题（画布里叫「提示词库」）；不传沿用「我的提示词」 */
   heading?: string
-  /** 计数脚显示「公共 N 条 · 我的 M 条」（各域总数取自已拉过的无筛选结果，没拉过的域不猜） */
-  showCounts?: boolean
   /** 选中提示词后保持面板打开（画布：连续往多个节点里插）；默认选完即关 */
   keepOpen?: boolean
   /** 右侧停靠面板形态（画布）：铺满父容器，不定位、不因点外部关闭 */
@@ -62,12 +69,40 @@ const MODELS = ['全部', '通用', 'GPT', 'Banana', 'Seedream'] as const
 const vertical = ref<string>('ecommerce')
 const model = ref<string>('全部')
 const group = ref<string>('')
+/** 搜索框里的原文；真正参与查询的是防抖后的 qApplied */
 const q = ref<string>('')
+const qApplied = ref<string>('')
+const SEARCH_DEBOUNCE_MS = 250
+const PAGE_SIZE = 50
+let qTimer: ReturnType<typeof setTimeout> | null = null
 
-/** 各域在不带模型 / 分组 / 搜索条件时的总条数（切到哪个域就记下哪个，面板常驻不丢） */
-const domainTotals = ref<Record<string, number>>({})
+function applyQuery() {
+  if (qTimer) clearTimeout(qTimer)
+  qTimer = null
+  qApplied.value = q.value.trim()
+}
+watch(q, () => {
+  if (qTimer) clearTimeout(qTimer)
+  qTimer = setTimeout(applyQuery, SEARCH_DEBOUNCE_MS)
+})
+function clearQuery() {
+  q.value = ''
+  applyQuery()
+  void nextTick(() => searchRef.value?.focus({ preventScroll: true }))
+}
+
+/** 各域总数（接口随列表返回，不受筛选影响）；旧后端没有时回退到「无筛选首页的 total」 */
+const counts = ref<IPromptLibCounts | null>(null)
+const fallbackTotals = ref<Record<string, number>>({})
+const tabCount = (key: string): number | null => {
+  const c = counts.value
+  if (c) return key === 'ecommerce' ? c.ecommerce : key === 'general' ? c.general : c.mine
+  return fallbackTotals.value[key] ?? null
+}
 const countsText = computed(() => {
-  const t = domainTotals.value
+  const c = counts.value
+  if (c) return `公共 ${c.officialTotal} 条 · 我的 ${c.mineTotal} 条`
+  const t = fallbackTotals.value
   const parts: string[] = []
   if (t.ecommerce != null && t.general != null) parts.push(`公共 ${t.ecommerce + t.general} 条`)
   if (t.mine != null) parts.push(`我的 ${t.mine} 条`)
@@ -76,18 +111,28 @@ const countsText = computed(() => {
 
 const items = ref<IPromptLibItem[]>([])
 const total = ref(0)
+const page = ref(1)
 const loading = ref(false)
+const loadingMore = ref(false)
 const loadError = ref(false)
+const loadMoreError = ref(false)
+const hasMore = computed(() => items.value.length < total.value)
 let seq = 0
 
 /**
- * 分组选项：接口没有单独的分组列表，按域缓存「没按分组筛时」拉到过的分组（只增不减，组件常驻、关掉再开仍在）。
- * 不从当前结果现算——选中一个分组后结果只剩这一组，其余分组按钮会跟着消失、没法切回或换组。
+ * 分组选项：接口随列表返回各域的分组（有序、带中文名，不受筛选影响），首次打开就有。
+ * 旧后端没有 groups 时，退回按域缓存「没按分组筛时」见过的分组（只增不减）。
  */
+const apiGroups = ref<IPromptLibGroup[]>([])
 const groupCache = ref<Record<string, string[]>>({})
-const groups = computed(() => {
-  const list = [...(groupCache.value[vertical.value] ?? [])]
-  if (group.value && !list.includes(group.value)) list.push(group.value)
+const groups = computed<{ key: string; label: string }[]>(() => {
+  const v = vertical.value
+  const list = apiGroups.value.length
+    ? apiGroups.value.filter((g) => g.vertical === v).map((g) => ({ key: g.key, label: promptGroupLabel(g.key, g.label) }))
+    : [...(groupCache.value[v] ?? [])]
+        .sort((a, b) => promptGroupRank(a) - promptGroupRank(b))
+        .map((key) => ({ key, label: promptGroupLabel(key) }))
+  if (group.value && !list.some((g) => g.key === group.value)) list.push({ key: group.value, label: promptGroupLabel(group.value) })
   return list
 })
 function rememberGroups(v: string, list: IPromptLibItem[]) {
@@ -96,57 +141,129 @@ function rememberGroups(v: string, list: IPromptLibItem[]) {
   if (fresh.length) groupCache.value = { ...groupCache.value, [v]: [...known, ...fresh] }
 }
 
-function currentParams() {
+function currentParams(p = 1) {
   return {
     vertical: vertical.value,
     model: model.value === '全部' ? undefined : model.value,
     group: group.value || undefined,
-    q: q.value.trim() || undefined,
-    page: 1,
-    pageSize: 50,
+    q: qApplied.value || undefined,
+    page: p,
+    pageSize: PAGE_SIZE,
   }
 }
-/** 最近一次发出的查询条件：筛选监听只在条件真的变了时才重拉（打开面板时已拉过同一组条件） */
+/** 最近一次发出的查询条件（不含页码）：筛选监听只在条件真的变了时才重拉 */
 let lastKey = ''
+const keyOf = (params: ReturnType<typeof currentParams>) => JSON.stringify({ ...params, page: 1 })
 
+/** 重置并拉第一页（筛选变化 / 打开 / 增删改后）；序号守卫丢弃过期响应 */
 async function load() {
   const ticket = ++seq
-  const params = currentParams()
-  lastKey = JSON.stringify(params)
+  const params = currentParams(1)
+  lastKey = keyOf(params)
   loading.value = true
+  loadingMore.value = false
   loadError.value = false
+  loadMoreError.value = false
+  items.value = []
+  total.value = 0
+  page.value = 1
   try {
     const res = await promptLibList(params)
     if (ticket !== seq) return
-    items.value = res.data?.items ?? []
+    items.value = dedupe(res.data?.items ?? [])
     total.value = res.data?.total ?? 0
-    if (!params.group) rememberGroups(params.vertical, items.value)
-    if (!params.group && !params.model && !params.q) {
-      domainTotals.value = { ...domainTotals.value, [params.vertical]: total.value }
-    }
+    absorbMeta(params, res.data)
   } catch {
     if (ticket !== seq) return
     // 业务失败原因由拦截器统一提示；这里只把列表置为可重试的空态
     loadError.value = true
-    items.value = []
-    total.value = 0
   } finally {
     if (ticket === seq) loading.value = false
   }
+  if (ticket === seq) void nextTick(checkSentinel)
 }
 
-// 换域 / 换模型：分组复位（复位本身会再触发一次，由 lastKey 去重）；分组 / 搜索变化直接按新条件重拉
-watch([vertical, model], () => {
+/** 触底加载下一页：追加到列表，条件在途中变了（序号变了）就丢弃 */
+async function loadMore() {
+  if (loading.value || loadingMore.value || loadError.value || !hasMore.value) return
+  const ticket = ++seq
+  const params = currentParams(page.value + 1)
+  loadingMore.value = true
+  loadMoreError.value = false
+  try {
+    const res = await promptLibList(params)
+    if (ticket !== seq) return
+    const more = res.data?.items ?? []
+    items.value = dedupe([...items.value, ...more])
+    total.value = res.data?.total ?? total.value
+    page.value = params.page
+    absorbMeta(params, res.data)
+    // 服务端没再给数据却仍有「更多」：当作到底，别在哨兵上空转
+    if (!more.length) total.value = items.value.length
+  } catch {
+    if (ticket !== seq) return
+    loadMoreError.value = true
+  } finally {
+    if (ticket === seq) loadingMore.value = false
+  }
+  if (ticket === seq) void nextTick(checkSentinel)
+}
+
+function dedupe(list: IPromptLibItem[]) {
+  const seen = new Set<number>()
+  return list.filter((it) => (seen.has(it.id) ? false : (seen.add(it.id), true)))
+}
+
+function absorbMeta(params: ReturnType<typeof currentParams>, data?: { items: IPromptLibItem[]; total: number; groups?: IPromptLibGroup[]; counts?: IPromptLibCounts }) {
+  if (!data) return
+  if (data.groups) apiGroups.value = data.groups
+  if (data.counts) counts.value = data.counts
+  if (!data.groups && !params.group) rememberGroups(params.vertical, data.items ?? [])
+  if (!data.counts && !params.group && !params.model && !params.q && params.page === 1) {
+    fallbackTotals.value = { ...fallbackTotals.value, [params.vertical]: data.total }
+  }
+}
+
+// ---------- 无限滚动：哨兵进入视口就加载下一页 ----------
+const listRef = ref<HTMLElement>()
+const sentinelRef = ref<HTMLElement>()
+let observer: IntersectionObserver | null = null
+
+function checkSentinel() {
+  const el = sentinelRef.value
+  const root = listRef.value
+  if (!el || !root || !hasMore.value || loading.value || loadingMore.value || loadMoreError.value) return
+  const a = el.getBoundingClientRect()
+  const b = root.getBoundingClientRect()
+  // 内容不满一屏时哨兵一直可见、不会再触发相交变化：这里主动补页
+  if (a.top < b.bottom + 80 && a.bottom > b.top) void loadMore()
+}
+watch(sentinelRef, (el) => {
+  observer?.disconnect()
+  observer = null
+  if (!el || typeof IntersectionObserver === 'undefined') return
+  observer = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting)) void loadMore()
+    },
+    { root: listRef.value ?? null, rootMargin: '0px 0px 80px 0px' },
+  )
+  observer.observe(el)
+})
+
+// 换域：分组复位；筛选 / 防抖后的搜索词变化：按新条件从第一页重拉（lastKey 去重）
+watch(vertical, () => {
   group.value = ''
 })
-watch([vertical, model, group, () => q.value.trim()], () => {
+watch([vertical, model, group, qApplied], () => {
   if (!show.value) return
-  if (JSON.stringify(currentParams()) === lastKey) return
+  if (keyOf(currentParams()) === lastKey) return
   void load()
 })
 function onOpened() {
   group.value = ''
   q.value = ''
+  applyQuery()
   void load()
   if (props.dock) {
     void nextTick(() => searchRef.value?.focus({ preventScroll: true }))
@@ -271,22 +388,13 @@ async function removeMine(item: IPromptLibItem) {
   }
 }
 
-const GROUP_LABELS: Record<string, string> = { mine: '我的', favorite: '收藏' }
-const groupLabel = (g: string) => GROUP_LABELS[g] ?? g
-const summary = (t: string) => {
-  const flat = t.replace(/\s+/g, ' ').trim()
-  return flat.length > 76 ? `${flat.slice(0, 76)}…` : flat
-}
-const tabCount = (key: string) => {
-  const t = domainTotals.value
-  return t[key] != null ? t[key] : null
-}
+const summary = promptSummary
 /** 选中态：浮层沿用原渐变，停靠栏改用令牌（深色主题下不出现死色） */
 const chipOn = (shadow = false) =>
   props.dock
     ? 'border-violet-line bg-violet-soft font-600 text-violet-ink'
     : `border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] font-600 text-violet-ink${shadow ? ' shadow-[0_1px_2px_rgba(31,35,41,0.05)]' : ''}`
-const isFiltered = computed(() => !!(group.value || q.value.trim() || model.value !== '全部'))
+const isFiltered = computed(() => !!(group.value || qApplied.value || model.value !== '全部'))
 
 onMounted(() => {
   if (show.value) onOpened()
@@ -295,6 +403,8 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown, true)
 })
 onBeforeUnmount(() => {
+  observer?.disconnect()
+  if (qTimer) clearTimeout(qTimer)
   document.removeEventListener('pointerdown', onDocPointerDown, true)
   window.removeEventListener('resize', place)
   window.removeEventListener('keydown', onKeydown, true)
@@ -317,9 +427,12 @@ onBeforeUnmount(() => {
     tabindex="-1"
     data-canvas-popover
   >
-    <!-- 头：标题 + 关闭 -->
-    <div class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_var(--xq-line)]">
-      <b class="min-w-0 flex-1 text-13px font-600 text-ink">{{ heading || '我的提示词' }}</b>
+    <!-- 头：标题 + 计数副标题 + 上传 + 关闭 -->
+    <div class="flex-none flex items-center gap-8px min-h-52px py-6px pl-14px pr-8px shadow-[inset_0_-0.8px_0_var(--xq-line)]">
+      <div class="min-w-0 flex-1 flex flex-col">
+        <b class="truncate text-13px leading-18px font-600 text-ink">{{ heading || '我的提示词' }}</b>
+        <span v-if="countsText" class="truncate text-11px leading-16px text-muted tabular-nums">{{ countsText }}</span>
+      </div>
       <button
         type="button"
         class="flex-none inline-flex items-center gap-4px h-32px px-10px rounded-8px border border-solid border-line bg-white text-12px text-ink-2 cursor-pointer hover:(border-control text-ink) sx-focus"
@@ -334,15 +447,71 @@ onBeforeUnmount(() => {
           stroke-linecap="round"
           aria-hidden="true"
         >
-          <path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 19h14" />
+          <path d="M12 5v14M5 12h14" />
         </svg>
         上传
       </button>
-      <IconButton label="关闭提示词库" variant="quiet" @click="closePanel">
+      <IconButton label="关闭提示词库" variant="quiet" class="flex-none" @click="closePanel">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
           <path d="m6 6 12 12M18 6 6 18" />
         </svg>
       </IconButton>
+    </div>
+
+    <!-- 搜索 + 适用模型 chips -->
+    <div class="flex-none flex flex-col gap-6px p-6px pb-0">
+      <div class="relative">
+        <svg
+          class="absolute left-10px top-9.5px h-13px w-13px text-placeholder pointer-events-none"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m20 20-4.2-4.2" />
+        </svg>
+        <input
+          ref="searchRef"
+          v-model="q"
+          type="text"
+          autocomplete="off"
+          placeholder="搜场景、卖点、风格…"
+          aria-label="搜索提示词"
+          class="w-full h-32px box-border rounded-16px border border-solid border-control bg-white pl-27px pr-34px text-12px text-ink outline-none shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] [transition:border-color_110ms,box-shadow_110ms] hover:border-control-hover focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.14)]) placeholder:text-placeholder"
+        />
+        <IconButton
+          v-if="q"
+          label="清空搜索"
+          size="sm"
+          variant="quiet"
+          class="!absolute right-4px top-4px"
+          @click="clearQuery"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="m7 7 10 10M17 7 7 17" />
+          </svg>
+        </IconButton>
+      </div>
+      <div class="flex flex-wrap gap-4px" role="group" aria-label="适用模型">
+        <button
+          v-for="m in MODELS"
+          :key="m"
+          type="button"
+          :aria-pressed="model === m"
+          class="h-28px box-border px-12px rounded-full border border-solid text-12px leading-26px cursor-pointer [transition:background_140ms,border-color_140ms,color_140ms] motion-reduce:transition-none"
+          :class="
+            model === m
+              ? chipOn()
+              : 'border-line bg-white text-muted hover:(border-control text-ink)'
+          "
+          @click="model = m"
+        >
+          {{ m === '全部' ? m : modelLabelOf(m) }}
+        </button>
+      </div>
     </div>
 
     <!-- 域页签（官方电商 / 官方通用 / 我的） -->
@@ -368,68 +537,32 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <!-- 搜索 + 模型 chips -->
-    <div class="flex-none flex flex-col gap-6px p-6px pb-0">
-      <div class="relative">
-        <svg
-          class="absolute left-10px top-9.5px h-13px w-13px text-placeholder pointer-events-none"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          aria-hidden="true"
-        >
-          <circle cx="11" cy="11" r="6.5" />
-          <path d="m20 20-4.2-4.2" />
-        </svg>
-        <input
-          ref="searchRef"
-          v-model="q"
-          type="search"
-          placeholder="搜场景、卖点、风格…"
-          aria-label="搜索提示词"
-          class="w-full h-32px box-border rounded-16px border border-solid border-control bg-white pl-27px pr-8px text-12px text-ink outline-none shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] [transition:border-color_110ms,box-shadow_110ms] hover:border-control-hover focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.14)]) placeholder:text-placeholder"
-        />
-      </div>
-      <div class="flex flex-wrap gap-4px" role="group" aria-label="适用模型">
-        <button
-          v-for="m in MODELS"
-          :key="m"
-          type="button"
-          :aria-pressed="model === m"
-          class="h-28px box-border px-12px rounded-full border border-solid text-12px leading-26px cursor-pointer [transition:background_140ms,border-color_140ms,color_140ms] motion-reduce:transition-none"
-          :class="
-            model === m
-              ? chipOn()
-              : 'border-line bg-white text-muted hover:(border-control text-ink)'
-          "
-          @click="model = m"
-        >
-          {{ m === '全部' ? m : modelLabelOf(m) }}
-        </button>
-      </div>
-      <div v-if="groups.length" class="flex flex-wrap gap-4px" role="group" aria-label="分组">
-        <button
-          v-for="g in groups"
-          :key="g"
-          type="button"
-          :aria-pressed="group === g"
-          class="h-28px box-border px-12px rounded-full border border-solid text-12px leading-26px cursor-pointer [transition:background_140ms,border-color_140ms,color_140ms] motion-reduce:transition-none"
-          :class="
-            group === g
-              ? chipOn()
-              : 'border-line bg-white text-muted hover:(border-control text-ink)'
-          "
-          @click="group = group === g ? '' : g"
-        >
-          {{ g }}
-        </button>
-      </div>
+    <!-- 分组 chips：固定「全部」打头（不筛分组），其余来自接口 -->
+    <div class="flex-none flex flex-wrap gap-4px p-6px pb-0" role="group" aria-label="分组">
+      <button
+        type="button"
+        :aria-pressed="group === ''"
+        class="h-28px box-border px-12px rounded-full border border-solid text-12px leading-26px cursor-pointer [transition:background_140ms,border-color_140ms,color_140ms] motion-reduce:transition-none"
+        :class="group === '' ? chipOn() : 'border-line bg-white text-muted hover:(border-control text-ink)'"
+        @click="group = ''"
+      >
+        全部
+      </button>
+      <button
+        v-for="g in groups"
+        :key="g.key"
+        type="button"
+        :aria-pressed="group === g.key"
+        class="h-28px box-border px-12px rounded-full border border-solid text-12px leading-26px cursor-pointer [transition:background_140ms,border-color_140ms,color_140ms] motion-reduce:transition-none"
+        :class="group === g.key ? chipOn() : 'border-line bg-white text-muted hover:(border-control text-ink)'"
+        @click="group = g.key"
+      >
+        {{ g.label }}
+      </button>
     </div>
 
     <!-- 列表 -->
-    <div class="flex-1 min-h-0 overflow-y-auto p-6px pt-6px [scrollbar-width:thin]">
+    <div ref="listRef" class="flex-1 min-h-0 overflow-y-auto p-6px pt-6px [scrollbar-width:thin]">
       <p v-if="loading" class="m-0 py-18px text-center text-11px text-muted" role="status">加载中…</p>
       <div v-else-if="loadError" class="flex flex-col items-center gap-6px py-18px">
         <span class="text-11px text-muted">提示词库暂时读不到</span>
@@ -490,12 +623,12 @@ onBeforeUnmount(() => {
                 >{{ m }}</span
               >
             </span>
-            <span class="text-11px leading-[1.45] text-muted break-all">{{ summary(item.prompt) }}</span>
+            <span class="text-11px leading-[1.45] text-muted break-all line-clamp-3">{{ summary(item.prompt) }}</span>
             <span v-if="item.group || item.tags?.length" class="flex flex-wrap items-center gap-4px">
               <span
                 v-if="item.group"
                 class="h-16px px-5px rounded-4px bg-violet-soft text-11px leading-16px text-violet-ink"
-                >{{ groupLabel(item.group) }}</span
+                >{{ promptGroupLabel(item.group, item.groupLabel) }}</span
               >
               <span
                 v-for="t in (item.tags ?? []).slice(0, 3)"
@@ -554,15 +687,23 @@ onBeforeUnmount(() => {
           </div>
         </li>
       </ul>
+      <template v-if="!loading && !loadError && items.length">
+        <p v-if="loadingMore" class="m-0 py-10px text-center text-11px text-muted" role="status">加载中…</p>
+        <div v-else-if="loadMoreError" class="flex items-center justify-center gap-8px py-8px text-11px text-muted">
+          加载更多失败
+          <button
+            type="button"
+            class="h-28px px-10px rounded-14px border border-solid border-line bg-white text-12px text-ink-2 cursor-pointer hover:border-control"
+            @click="loadMore()"
+          >
+            重试
+          </button>
+        </div>
+        <p v-else-if="!hasMore" class="m-0 py-10px text-center text-11px text-placeholder">已显示全部 {{ total }} 条</p>
+        <div v-if="hasMore" ref="sentinelRef" class="h-1px" aria-hidden="true" />
+      </template>
     </div>
 
-    <!-- 计数脚 -->
-    <div
-      class="flex-none flex items-center h-26px px-12px text-11px text-placeholder tabular-nums shadow-[inset_0_0.8px_0_var(--xq-line-soft)]"
-    >
-      <template v-if="showCounts && countsText">{{ countsText }} · 点击卡片填入</template>
-      <template v-else>共 {{ total }} 条 · 点击卡片填入提示词</template>
-    </div>
     <PromptEditor
       v-model:show="editorShow"
       :editing="editing"
