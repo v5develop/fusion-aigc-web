@@ -224,8 +224,18 @@ const offAccount = onAccountChange(() => {
     if (placed.value) onParentResize()
   })
 })
-/** 实际下发的 height / maxHeight：有用户高度时固定高度，内容在里面滚动 */
+/**
+ * 展开「更多调整」/ 单品「更多」时临时撑高到放得下内容（最高 舞台 − 24），收起回到展开前的高度与位置；
+ * 不写入记住的高度。null = 没有临时撑高。
+ */
+const growH = ref<number | null>(null)
+/** 撑高前的 y：撑高时为了不出舞台会上移，收起后回到这里；撑高期间用户拖过面板就作废（留在用户放的位置） */
+let growRestoreY: number | null = null
+/** 实际下发的 height / maxHeight：临时撑高优先；有用户高度时固定高度，内容在里面滚动 */
 const sizeStyle = computed(() => {
+  if (growH.value !== null && stageMaxH()) {
+    return { height: `${Math.min(growH.value, stageMaxH())}px`, maxHeight: `${stageMaxH()}px` }
+  }
   if (userH.value !== null && stageMaxH()) {
     const h = Math.min(userH.value, stageMaxH())
     return { height: `${h}px`, maxHeight: `${stageMaxH()}px` }
@@ -254,6 +264,8 @@ function placeDefault() {
 }
 /** 恢复默认位置和大小：清掉记住的高度，重新贴右缘垂直居中 */
 function restoreDefault() {
+  growH.value = null
+  growRestoreY = null
   userH.value = null
   writeUserH(null)
   placeDefault()
@@ -285,6 +297,43 @@ watch(
   },
   { immediate: true },
 )
+// 展开 / 收起：内容区里任何带 aria-expanded 的折叠钮（「更多调整」、单品「更多」）点完后按新状态撑高或缩回
+function onBodyToggle(e: MouseEvent) {
+  const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>('button[aria-expanded]')
+  if (!btn || !body.value?.contains(btn)) return
+  void nextTick(() =>
+    requestAnimationFrame(() => {
+      if (btn.getAttribute('aria-expanded') === 'true') growToFit(btn)
+      else releaseGrow()
+    }),
+  )
+}
+function growToFit(anchor: HTMLElement) {
+  const el = root.value
+  const b = body.value
+  if (!el || !b) return
+  const need = el.offsetHeight - b.clientHeight + b.scrollHeight
+  const cap = stageMaxH()
+  const target = Math.round(cap ? Math.min(need, cap) : need)
+  if (target > el.offsetHeight) {
+    if (growRestoreY === null) growRestoreY = pos.value.y
+    growH.value = target
+  }
+  void nextTick(() => {
+    pos.value = clamp(pos.value.x, pos.value.y)
+    anchor.scrollIntoView({ block: 'nearest' })
+  })
+}
+function releaseGrow() {
+  if (growH.value === null) return
+  growH.value = null
+  const y = growRestoreY
+  growRestoreY = null
+  void nextTick(() => (pos.value = clamp(pos.value.x, y ?? pos.value.y)))
+}
+// 换页签：临时撑高只属于展开它的那一页
+watch(tab, () => releaseGrow())
+
 // 内容高度变了（换页签 / 展开更多）：贴着底边的面板要再夹回舞台里
 watch([tab, () => props.pixelLayer], () => {
   void nextTick(() => {
@@ -307,7 +356,10 @@ function onPointerDown(e: PointerEvent) {
 function onPointerMove(e: PointerEvent) {
   if (!dragging.value) return
   pos.value = clamp(dragStart.px + (e.clientX - dragStart.x), dragStart.py + (e.clientY - dragStart.y))
-  if (pos.value.x !== dragStart.px || pos.value.y !== dragStart.py) moved.value = true
+  if (pos.value.x !== dragStart.px || pos.value.y !== dragStart.py) {
+    moved.value = true
+    growRestoreY = null
+  }
 }
 function onHeadDblClick(e: MouseEvent) {
   if ((e.target as HTMLElement).closest('button')) return
@@ -322,6 +374,9 @@ function applyH(h: number) {
   const { h: stageH } = parentBox()
   const room = stageH ? stageH - pos.value.y : undefined
   userH.value = clampUserH(h, room)
+  // 用户亲手调了高度：以它为准，临时撑高作废
+  growH.value = null
+  growRestoreY = null
   moved.value = true
   void nextTick(() => (pos.value = clamp(pos.value.x, pos.value.y)))
 }
@@ -587,7 +642,7 @@ watch(
         </div>
       </div>
 
-      <div ref="body" class="cft__body">
+      <div ref="body" class="cft__body" @click="onBodyToggle">
         <!-- 图层 -->
         <div v-show="tab === 'layers'" id="cft-pane-layers" role="tabpanel" aria-labelledby="cft-tab-layers" class="cft__pane">
           <slot name="layers" />
