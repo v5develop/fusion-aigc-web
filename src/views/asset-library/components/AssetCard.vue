@@ -210,7 +210,7 @@ function onCard() {
         <button
           v-if="asset.tags.length"
           type="button"
-          class="min-w-0 inline-flex items-center h-28px px-0 border-none bg-transparent text-12px text-muted whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer hover:text-violet-ink sx-focus"
+          class="min-w-0 inline-flex items-center h-28px px-0 border-none bg-transparent text-12px text-muted whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer hover:text-ink-2 sx-focus"
           :title="`按标签「${asset.tags[0]}」筛选`"
           @click.stop="emit('filter-tag', asset.tags[0]!)"
         >

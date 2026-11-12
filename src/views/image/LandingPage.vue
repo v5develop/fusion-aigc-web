@@ -5,7 +5,10 @@
  *
  * <p>尺寸、阴影、渐变、过渡、入场节奏逐值取自原型 views/ai/AiExploreView.vue（设计规范 §6「探索落地页」、§7.13，
  * 2026-11-06 对齐轮：卡片 r18 squircle、封面实拍图、紫底主卡 3D 倾斜）。
- * 原型按视口高度分四档（默认 / ≥960 / ≤880 / ≤760）收放卡高与间距，这里用 UnoCSS 的高度媒体查询变体逐档写。
+ * 2026-11-12 对齐 5186 总览终版（rail-row）：推荐区两列 × 行高 128，首卡跨两行、第 2/3 张叠在右列；
+ * 每组是一条面板带（内边距 18/20、r14、1px 描边），组名在卡片上方（18 号、不带数量）；
+ * 工具卡固定高 74，网格 auto-fill minmax(220px,1fr)、间距 10/12（各组卡宽一致）；<640 宽推荐区退成单列、首卡用小卡样式。
+ * 原型按视口高度分四档收放卡高与间距，5186 终版已取消，现在只剩页面内边距还按高度分档。
  * 原型 banner 右侧是实拍图：有封面的条目用真图（public/images/tool-covers，名称对齐原型 toolCovers.ts），
  * 没有的（本地生活导航首页）沿用同色调渐变占位。
  */
@@ -18,7 +21,7 @@ import type { LandingBanner, LandingPageData } from './landing'
 
 const props = defineProps<{ data: LandingPageData }>()
 
-// 高度档位的媒体查询变体（区间互斥，不用比先后）：≥960 = [@media(min-height:960px)]，761–880 = [@media(min-height:761px)_and_(max-height:880px)]，≤760 = [@media(max-height:760px)]。
+// 页面内边距的高度档位媒体查询变体（区间互斥，不用比先后）：≥960 = [@media(min-height:960px)]，761–880 = [@media(min-height:761px)_and_(max-height:880px)]，≤760 = [@media(max-height:760px)]。
 // 类名必须整串写成字面量，UnoCSS 只扫源码文本，拼接出来的类不会生成。
 
 /** 页面内边距 18/20/20 → ≥960 20/20/24 → ≤880 14/16/16 → ≤760 10/14/12 */
@@ -28,20 +31,12 @@ const pageClass = [
   '[@media(min-height:761px)_and_(max-height:880px)]:pt-14px [@media(min-height:761px)_and_(max-height:880px)]:px-16px [@media(min-height:761px)_and_(max-height:880px)]:pb-16px',
   '[@media(max-height:760px)]:pt-10px [@media(max-height:760px)]:px-14px [@media(max-height:760px)]:pb-12px',
 ]
-/** 分层间距 --ex-deck-gap：16 → 18 / 10 / 8 */
-const deckGap =
-  'gap-16px [@media(min-height:960px)]:gap-18px [@media(min-height:761px)_and_(max-height:880px)]:gap-10px [@media(max-height:760px)]:gap-8px'
-/** 卡片网格间距 --ex-grid-gap：12 → 12 / 8 / 6（hero 行与工具网格共用） */
-const gridGap = 'gap-12px [@media(min-height:761px)_and_(max-height:880px)]:gap-8px [@media(max-height:760px)]:gap-6px'
-/** 分组标题与网格间距 --ex-group-gap：12 → 10 / 8 / 6 */
-const groupGap =
-  'gap-12px [@media(min-height:960px)]:gap-10px [@media(min-height:761px)_and_(max-height:880px)]:gap-8px [@media(max-height:760px)]:gap-6px'
-/** hero 高 --ex-hero-h：142 → 156 / 124 / 112 */
-const heroH =
-  'h-142px [@media(min-height:960px)]:h-156px [@media(min-height:761px)_and_(max-height:880px)]:h-124px [@media(max-height:760px)]:h-112px'
-/** 工具卡高 --ex-card-h：74 → 78 / 64 / 58 */
-const cardH =
-  'h-74px [@media(min-height:960px)]:h-78px [@media(min-height:761px)_and_(max-height:880px)]:h-64px [@media(max-height:760px)]:h-58px'
+/** 分层间距：推荐区与各组带之间统一 12 */
+const deckGap = 'gap-12px'
+/** 推荐区卡片间距 12 */
+const gridGap = 'gap-12px'
+/** 推荐区行高 128（首卡跨两行 = 256 + 间距），工具卡高 74：5186 终版固定值，不再随视口高度分档 */
+const heroRow = 'auto-rows-128px'
 
 /** 原型 useStaggerEnter：标题 0/200ms → 推荐层 40/300ms → 各组延迟 160/360/500/620、时长 340/280/260/240ms，缓动 (.4,0,.2,1)、fill both */
 const headAnim = 'animate-[motion-enter-up_200ms_cubic-bezier(0.4,0,0.2,1)_0ms_both]'
@@ -103,8 +98,7 @@ const focusRing =
 /** 原型 .explore-hero：r18 squircle（2026-11-06 档位）、1px 描边、180ms ease 过渡；白卡 hover 换 violet-line 描边 + 双层阴影，紫卡 hover 只上抬 */
 function bannerClass(b: LandingBanner) {
   return [
-    'group relative block overflow-hidden box-border p-0 rounded-18px border border-solid no-underline text-left sx-squircle',
-    heroH,
+    'group relative block h-full w-full overflow-hidden box-border p-0 rounded-18px border border-solid no-underline text-left sx-squircle',
     'transition-[border-color,box-shadow,transform] duration-180 ease-[ease] motion-reduce:transition-none',
     heroTransform,
     focusRing,
@@ -116,6 +110,12 @@ function bannerClass(b: LandingBanner) {
       : 'cursor-not-allowed',
   ]
 }
+
+/** 推荐位版式：首卡（大）占左列两行，其余叠在右列；<640 退成单列（首卡也只占一行） */
+const heroSlot = (i: number) =>
+  i === 0
+    ? 'row-span-2 col-start-1 [@media(max-width:639px)]:row-span-1'
+    : 'col-start-2 [@media(max-width:639px)]:col-start-1'
 
 /** 工具卡封面：卡高 × 16/9 的左封面（原型 .explore-card__cover），文本让位到封面右侧 */
 const hasCover = (name: string) => !!toolCover(name)
@@ -131,10 +131,10 @@ const hasCover = (name: string) => !!toolCover(name)
       <!-- 三张入口 banner：前两张白卡、第三张藤紫卡（原型列宽 1fr 1fr 1.16fr；紫卡跟手 3D 倾斜） -->
       <ul
         aria-label="推荐功能"
-        class="m-0 p-0 list-none grid grid-cols-[1fr_1fr_1.16fr] motion-reduce:animate-none"
-        :class="[gridGap, heroAnim]"
+        class="m-0 p-0 list-none grid grid-cols-2 [@media(max-width:639px)]:grid-cols-1 motion-reduce:animate-none"
+        :class="[gridGap, heroRow, heroAnim]"
       >
-        <li v-for="b in data.banners" :key="b.id" class="min-w-0">
+        <li v-for="(b, bi) in data.banners" :key="b.id" class="min-w-0 min-h-0" :class="heroSlot(bi)">
           <component
             :is="b.route ? RouterLink : 'div'"
             v-bind="b.route ? { to: b.route } : { role: 'link', 'aria-disabled': 'true', tabindex: 0 }"
@@ -147,8 +147,8 @@ const hasCover = (name: string) => !!toolCover(name)
             <!-- 实拍图：右侧 46%，常态 scale 1.02、悬停 1.04（原型 transform 160ms ease-out）；紫卡上 0.24 + luminosity + 视差 -->
             <span
               aria-hidden="true"
-              class="absolute top-0 right-0 h-full w-[46%] overflow-hidden"
-              :class="!bannerPhoto(b) ? photoTint[b.id] : ''"
+              class="absolute top-0 right-0 h-full overflow-hidden"
+              :class="[bi === 0 ? 'w-[44%]' : 'w-[46%]', !bannerPhoto(b) ? photoTint[b.id] : '']"
             >
               <img
                 v-if="bannerPhoto(b)"
@@ -174,26 +174,45 @@ const hasCover = (name: string) => !!toolCover(name)
                   : 'bg-[linear-gradient(90deg,var(--xq-surface)_0%,var(--xq-surface)_46%,rgb(var(--xq-surface-rgb)/0.72)_66%,rgb(var(--xq-surface-rgb)/0)_100%)]'
               "
             />
-            <span class="relative z-2 h-full box-border flex flex-col items-start py-14px px-16px">
+            <span
+              class="relative z-2 h-full box-border flex flex-col items-start"
+              :class="bi === 0 ? 'py-12px px-14px sm:py-18px sm:px-20px' : 'py-12px px-14px'"
+            >
               <span
-                class="inline-flex items-center h-18px box-border px-6px rounded-full border border-solid text-10px font-600 leading-16px whitespace-nowrap"
+                class="inline-flex items-center h-20px box-border px-8px rounded-full border border-solid text-11px font-600 leading-16px whitespace-nowrap"
                 :class="
                   b.accent ? 'border-white/50 bg-white/18 text-white' : 'border-violet-line bg-white text-violet-ink'
                 "
                 >新手推荐</span
               >
-              <span class="mt-8px text-19px font-600 leading-26px" :class="b.accent ? 'text-white' : 'text-ink'">{{
+              <span
+                class="font-600"
+                :class="[
+                  bi === 0
+                    ? 'mt-6px text-18px leading-24px line-clamp-2 sm:mt-10px sm:text-24px sm:leading-32px sm:tracking-[-0.02em] sm:line-clamp-none'
+                    : 'mt-6px text-18px leading-24px line-clamp-2',
+                  b.accent ? 'text-white' : 'text-ink',
+                ]"
+                >{{
                 b.title
               }}</span>
               <span
-                class="max-w-190px mt-2px text-12px leading-18px"
-                :class="b.accent ? 'text-white/80' : 'text-muted'"
+                class="mt-2px"
+                :class="[
+                  bi === 0
+                    ? 'max-w-190px text-11px leading-17px sm:max-w-240px sm:text-13px sm:leading-20px'
+                    : 'max-w-190px text-11px leading-17px',
+                  b.accent ? 'text-white/80' : 'text-muted',
+                ]"
                 >{{ b.desc }}</span
               >
               <span
                 v-if="b.route"
-                class="mt-auto inline-flex items-center gap-3px h-22px text-12px font-600"
-                :class="b.accent ? 'text-white' : 'text-violet-ink'"
+                class="mt-auto inline-flex items-center gap-3px font-600"
+                :class="[
+                  bi === 0 ? 'h-20px text-11px sm:h-26px sm:text-13px' : 'h-20px text-11px',
+                  b.accent ? 'text-white' : 'text-violet-ink',
+                ]"
               >
                 {{ b.cta }}
                 <svg
@@ -220,16 +239,17 @@ const hasCover = (name: string) => !!toolCover(name)
         v-for="(sec, si) in data.sections"
         :key="sec.label"
         :aria-labelledby="`landing-sec-${si}`"
-        class="flex flex-col motion-reduce:animate-none"
-        :class="[groupGap, sectionAnim[si] ?? sectionAnim[sectionAnim.length - 1]]"
+        class="flex flex-col gap-12px box-border px-20px py-18px rounded-14px border border-solid border-line bg-surface shadow-[0_1px_2px_rgba(31,35,41,0.03)] motion-reduce:animate-none"
+        :class="sectionAnim[si] ?? sectionAnim[sectionAnim.length - 1]"
       >
-        <header class="flex items-baseline gap-8px px-2px">
-          <h2 :id="`landing-sec-${si}`" class="m-0 text-15px font-600 leading-22px text-ink">{{ sec.label }}</h2>
-          <span class="text-12px text-muted tabular-nums" :aria-label="`共 ${sec.tools.length} 个`">{{
-            sec.tools.length
-          }}</span>
+        <header class="flex items-baseline gap-8px">
+          <h2 :id="`landing-sec-${si}`" class="m-0 text-18px font-600 leading-26px tracking-[-0.01em] text-ink">
+            {{ sec.label }}
+          </h2>
         </header>
-        <ul class="m-0 p-0 list-none grid grid-cols-4" :class="gridGap">
+        <ul
+          class="m-0 p-0 list-none grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-x-12px gap-y-10px"
+        >
           <li v-for="tool in sec.tools" :key="tool.id" class="min-w-0">
             <component
               :is="tool.route ? RouterLink : 'div'"
@@ -237,7 +257,7 @@ const hasCover = (name: string) => !!toolCover(name)
               :aria-label="tool.route ? `${tool.name}：${tool.tagline}` : `${tool.name}（即将开放）`"
               class="group relative flex items-center gap-12px box-border rounded-18px bg-white border border-solid border-line no-underline shadow-[0_10px_16px_rgba(0,0,0,0.04)] sx-squircle transition-[border-color,background,box-shadow,color] duration-110 motion-reduce:transition-none overflow-hidden"
               :class="[
-                cardH,
+                'h-74px',
                 focusRing,
                 hasCover(tool.name) ? '!px-0' : 'px-14px',
                 tool.route

@@ -54,12 +54,20 @@ const group = (label: string, specs: Spec[]): CatalogGroup => ({ label, entries:
 /** 落地页除首组（处理组）外的分组，原样转成目录分组；与 head 里已有路由（或 id）重复的条目跳过 */
 function landingGroups(page: LandingPageData, head: CatalogGroup): CatalogGroup[] {
   const seen = new Set(head.entries.flatMap((e) => [e.id, e.route ?? '']).filter(Boolean))
-  return page.sections.slice(1).flatMap((sec) => {
+  // 注意：按 label 字符串排除（同名即同组），落地页或这里改了分组名会让排除失效、出现重复分组，改名时两处同步
+  // 处理组（head）由本文件自己列，落地页里的同名组跳过（落地页里它不一定排第一）
+  return page.sections.filter((sec) => sec.label !== head.label).flatMap((sec) => {
     const entries = sec.tools
       .filter((t) => !seen.has(t.id) && !(t.route && seen.has(t.route)))
       .map((t): CatalogEntry => ({ id: t.id, name: t.name, tagline: t.tagline, route: t.route, icon: t.icon }))
     return entries.length ? [{ label: sec.label, entries }] : []
   })
+}
+
+/** 图片目录：服装组置顶，其后依次是图片处理与落地页其余分组（顺序不变） */
+function orderFashionFirst(head: CatalogGroup, rest: CatalogGroup[]): CatalogGroup[] {
+  const fashion = rest.filter((g) => g.label === '服装')
+  return [...fashion, head, ...rest.filter((g) => g.label !== '服装')]
 }
 
 const imageHead = group('图片处理', [
@@ -76,7 +84,7 @@ const imageHead = group('图片处理', [
 
 const imageCatalog: Catalog = {
   title: 'AI 图片',
-  groups: [imageHead, ...landingGroups(pictureLanding, imageHead)],
+  groups: orderFashionFirst(imageHead, landingGroups(pictureLanding, imageHead)),
 }
 
 /**

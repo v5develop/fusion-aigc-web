@@ -48,6 +48,7 @@ import {
   type ToolSchema,
   type ToolUpload,
 } from './schemas'
+import { tools as toolRegistry } from '@/views/home/tools'
 import { catalogFor, catalogKindOf, catalogKinds } from './catalog'
 import { isTerminal, useToolHistory } from './useToolHistory'
 import { takeRefill } from '@/utils/refill-handoff'
@@ -106,7 +107,13 @@ const schema = computed<ToolSchema | undefined>(() => findToolSchema(toolId.valu
 /** 左侧目录（原型「AI 图片」分组栏）；当前工具高亮 */
 const catalog = computed(() => catalogFor(toolId.value))
 /** 当前工具在目录里的条目：头卡的图标与短说明取这里 */
-const currentEntry = computed(() => catalog.value.groups.flatMap((g) => g.entries).find((e) => e.id === toolId.value))
+// 隐藏工具（不在目录里，如场景生成）回退到注册表定义，头卡图标与说明不丢
+const currentEntry = computed<{ icon?: string; tagline?: string } | undefined>(() => {
+  const hit = catalog.value.groups.flatMap((g) => g.entries).find((e) => e.id === toolId.value)
+  if (hit) return hit
+  const t = toolRegistry.find((x) => x.id === toolId.value)
+  return t ? { icon: t.icon, tagline: t.description } : undefined
+})
 // 目录：≥1440 展开 160 / 收起 44（用户切换）；<1440 固定收起 44，展开时以浮层盖在内容上（外点 / Esc / 换路由收起）
 const wideViewport = ref(typeof window === 'undefined' || window.matchMedia('(min-width: 1440px)').matches)
 const userCollapsed = ref(false)

@@ -27,6 +27,8 @@ export interface ToolItem {
   route?: string
   /** 24×24 viewBox 内的 SVG 片段（静态常量，非用户输入） */
   icon: string
+  /** 不在工具箱 / 目录 / 总览里列出；路由仍可直达，图标仍可被别处按 id 取用。注意：任何遍历 tools 做列表 / 目录 / 总览的代码都必须过滤 !hidden */
+  hidden?: boolean
 }
 
 export const toolCategories: { key: ToolCategory; label: string }[] = [
@@ -262,6 +264,7 @@ export const tools: ToolItem[] = [
     inputShape: 'single-image',
     route: '/tools/ai-background-generator',
     icon: ICONS.scene,
+    hidden: true,
   },
   {
     id: 'ai-video-enhance',

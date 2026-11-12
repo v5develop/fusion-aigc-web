@@ -53,6 +53,7 @@ export interface LandingBanner {
 
 export interface LandingPageData {
   title: string
+  /** 推荐位 banner：恰好 3 张（版式按首卡跨两行 + 右列 2 张写死，多或少都会错位） */
   banners: LandingBanner[]
   sections: LandingSection[]
   /** 底部「试着复刻这些爆款」货架（创意广场模板），仅 AI 图片 / AI 视频 */
@@ -216,6 +217,22 @@ export const pictureLanding: LandingPageData = {
     },
   ],
   sections: [
+    // 2026-11-12：服装组置顶（对齐 5186 目录），其余顺序不变
+    {
+      label: '服装',
+      tools: [
+        ...section('', [['cloth-wrinkle-removal', '服装去皱', '抚平褶皱']]).tools,
+        // 原 AI 电商「穿戴图」（服装去皱与上面 /tools 版同一功能，不重复）
+        routeTool('/e-commerce/clothing-kit', 'AI穿戴套图', '多模特穿搭'),
+        routeTool('/e-commerce/clothing-try', 'AI试衣', '真人实景上身'),
+        routeTool('/e-commerce/try-shoe', 'AI试鞋', '鞋子上脚'),
+        routeTool('/e-commerce/change-background', '人像换背景', '保留人像换景'),
+        // 工作流服装模板里商拍 / 电商没有的
+        ...workflowTool('fashion-model-replace', '模特替换', '换个模特', 'ai-digital-model'),
+        ...workflowTool('fashion-model-face-swap', '模特换脸', '保留穿搭换脸', 'ai-posture-fission'),
+        ...workflowTool('fashion-model-due-tryon', '双人换衣', '两人同穿', 'ai-digital-model'),
+      ],
+    },
     section('图片处理', [
       ['ai-upscale', '高清放大', '放大补细节', { hot: true }],
       ['ai-eraser', '智能消除', '去除杂物', { hot: true }],
@@ -243,7 +260,6 @@ export const pictureLanding: LandingPageData = {
           ['ai-product-retouch', '商品精修', '提升质感', { hot: true }],
           ['product-replace', '产品替换', '换品保场景', { hot: true }],
           ['ai-first-screen-main-image', '首屏主图', '卖点主图'],
-          ['ai-background-generator', '场景生成', '更换场景'],
           // 工作流页已接通（视觉复刻流），直达对应模板
           [
             'single-image-clone',
@@ -263,21 +279,6 @@ export const pictureLanding: LandingPageData = {
         routeTool('/e-commerce/product-detail', 'AI详情页', '批量详情素材'),
         routeTool('/e-commerce/product-clone', '爆款图复刻', '对标爆款'),
         routeTool('/e-commerce/product-in-hand', '手持商品', '真人手持'),
-      ],
-    },
-    {
-      label: '服装',
-      tools: [
-        ...section('', [['cloth-wrinkle-removal', '服装去皱', '抚平褶皱']]).tools,
-        // 原 AI 电商「穿戴图」（服装去皱与上面 /tools 版同一功能，不重复）
-        routeTool('/e-commerce/clothing-kit', 'AI穿戴套图', '多模特穿搭'),
-        routeTool('/e-commerce/clothing-try', 'AI试衣', '真人实景上身'),
-        routeTool('/e-commerce/try-shoe', 'AI试鞋', '鞋子上脚'),
-        routeTool('/e-commerce/change-background', '人像换背景', '保留人像换景'),
-        // 工作流服装模板里商拍 / 电商没有的
-        ...workflowTool('fashion-model-replace', '模特替换', '换个模特', 'ai-digital-model'),
-        ...workflowTool('fashion-model-face-swap', '模特换脸', '保留穿搭换脸', 'ai-posture-fission'),
-        ...workflowTool('fashion-model-due-tryon', '双人换衣', '两人同穿', 'ai-digital-model'),
       ],
     },
     {

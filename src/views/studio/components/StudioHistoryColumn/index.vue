@@ -245,7 +245,7 @@ function prevPage() {
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <CreationHistoryHeader :count="ctl.items.value.length" :running="runningCount" />
+    <CreationHistoryHeader count-inline :count="ctl.items.value.length" :running="runningCount" />
 
     <!-- 搜索（原型 .v3-hist__tools：高 30、左 10 放 13 放大镜、字 11；只在有记录时出现） -->
     <div v-if="ctl.items.value.length" class="relative flex flex-none items-center px-12px pb-8px">

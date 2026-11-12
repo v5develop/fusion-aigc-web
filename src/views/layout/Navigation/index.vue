@@ -280,8 +280,11 @@ const ecVideoRoutes = shangpingshiping_data
   })
   .filter((r) => !!r && r !== '/')
 
+/** 已隐藏（不在目录 / 落地页）但深链仍可直达的图片类工具页：侧栏照样高亮 AI 图片 */
+const HIDDEN_TOOL_ROUTES = tools.filter((t) => t.hidden && t.route && t.category !== 'video').map((t) => t.route as string)
+
 const ownedRoutes: Record<'image' | 'video', string[]> = {
-  image: ['/image', ...panelRoutes('image'), ...landingRoutes(pictureLanding)].filter(
+  image: ['/image', ...panelRoutes('image'), ...landingRoutes(pictureLanding), ...HIDDEN_TOOL_ROUTES].filter(
     (r) => !r.startsWith('/workflow'),
   ),
   video: ['/video', ...panelRoutes('video'), ...landingRoutes(videoLanding), ...ecVideoRoutes].filter(

@@ -10,6 +10,7 @@ import { useId } from 'vue'
 const {
   title = '历史记录',
   count,
+  countInline = false,
   running = 0,
   titleId,
   onRefresh,
@@ -17,6 +18,8 @@ const {
   title?: string
   /** 条数；不传不显示 */
   count?: number
+  /** 条数紧跟标题放在左簇里（右端留空给浮层控制 / 其它悬浮元素）；默认放右簇 */
+  countInline?: boolean
   /** 进行中的条数；0 不显示 */
   running?: number
   /** 标题元素 id（给外层 aria-labelledby 用）；不传自动生成 */
@@ -31,9 +34,12 @@ const autoId = `creation-history-title-${useId()}`
 <template>
   <div class="flex-none flex items-center gap-6px min-h-32px pt-12px px-12px pb-8px">
     <h2 :id="titleId || autoId" class="m-0 text-14px font-600 leading-20px text-ink">{{ title }}</h2>
+    <span v-if="countInline && count !== undefined" class="text-11px leading-16px text-muted tabular-nums"
+      >{{ count }} 条</span
+    >
     <span class="ml-auto flex items-center gap-8px">
       <span v-if="running" class="text-11px leading-16px text-violet-ink">{{ running }} 个进行中</span>
-      <span v-if="count !== undefined" class="text-11px leading-16px text-muted tabular-nums">{{ count }} 条</span>
+      <span v-if="!countInline && count !== undefined" class="text-11px leading-16px text-muted tabular-nums">{{ count }} 条</span>
       <button
         v-if="onRefresh"
         type="button"

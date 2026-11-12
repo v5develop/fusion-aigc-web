@@ -826,12 +826,6 @@ const emptyCopy = computed(() => {
         <router-link v-else-if="domain === 'prompt'" to="/prompt-library" class="sx-btn ml-auto no-underline">
           管理提示词
         </router-link>
-        <!-- 右上角点阵装饰（对齐原型 5185 .relay-dots）：10px 点距、往左渐隐，不抢内容；音频域没有操作区，靠它自己推到最右 -->
-        <span
-          class="shrink-0 w-96px h-26px pointer-events-none max-sm:hidden [background-image:radial-gradient(circle,rgb(var(--xq-ink-rgb)/.22)_1px,transparent_1.1px)] [background-size:10px_10px] [background-position:right_center] [mask-image:linear-gradient(to_left,#000_45%,transparent)] [-webkit-mask-image:linear-gradient(to_left,#000_45%,transparent)]"
-          :class="{ 'ml-auto': domain === 'audio' }"
-          aria-hidden="true"
-        />
       </header>
 
       <!-- 第二层：来源 / 官方分类 + 标签带 + 搜索（44 高） -->

@@ -16,7 +16,10 @@ const tabs: { key: TabKey; label: string }[] = [{ key: 'all', label: '全部' },
 const active = ref<TabKey>('all')
 const tabRefs = ref<HTMLButtonElement[]>([])
 
-const list = computed(() => (active.value === 'all' ? tools : tools.filter((t) => t.category === active.value)))
+const visibleTools = tools.filter((t) => !t.hidden)
+const list = computed(() =>
+  active.value === 'all' ? visibleTools : visibleTools.filter((t) => t.category === active.value),
+)
 
 // WAI-ARIA tabs：左右键在分类间移动并选中，Home/End 跳到首尾
 function onTabKeydown(e: KeyboardEvent, index: number) {
