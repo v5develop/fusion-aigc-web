@@ -3,11 +3,11 @@
  * 校色悬浮参数台 · 分页版（2026-11-12，非全屏的页面上那份；全屏停靠仍用 views/tools/ColorFixPanel，布局不变）。
  *
  * <p>为什么拆页：旧版把图层 / 选区 / 替换颜色 / 更多调整 / 五个滑杆全叠在一列，浮在结果图上把模特盖住。
- * 现在固定部分只有：头部（标题 + 拖动 + 看原图 + ×）、「当前图层」一行（名称 + 状态 + 显隐）、三个页签、底栏（脚注 + 恢复默认 + 完成）；
+ * 现在固定部分只有两行：头部（拖动 + 标题与当前图层名 + 状态 + 显隐 + 看原图 + ×，40px）、页签行（三个页签 + 「完成」，32px）；「恢复默认」与脚注在「调整」页滚动区末尾；
  * 页签内容在中间滚动，同一时刻只显示一页——「调整」（替换颜色 / 更多调整 / 五滑杆，默认页）、「选区」、「图层」。
  * 最后一次用的页签按本机记住（localStorage，读写都包 try/catch）。
  *
- * <p>高度：最高 = 所在舞台高度的 50%（不低于 {@link MIN_MAX_H}），且任何时候不高于舞台 − 24；舞台尺寸变化时重算。
+ * <p>高度：最高 = 所在舞台高度的 1/3（不低于 {@link MIN_MAX_H}），且任何时候不高于舞台 − 24；舞台尺寸变化时重算。
  * 位置 / 拖动 / 夹取与旧版一致（相对最近的定位祖先，默认贴右缘 12、垂直居中）。
  *
  * <p>自动识别 · 单品（宿主传了 references 且带部位，商拍换装）：只出用户上传过的那几件，每件一枚带缩略图的 chip，
@@ -34,8 +34,8 @@ import {
 import { referenceParts, useColorFixPieces, type ColorFixReference } from './references.ts'
 import type { ResultColorFix } from './useResultColorFix.ts'
 
-/** 50% 高度的下限：舞台很矮时也要放得下头部 + 页签 + 底栏 + 一点内容 */
-const MIN_MAX_H = 260
+/** 1/3 高度的下限：舞台很矮时也要放得下头部 + 页签行 + 一点内容 */
+const MIN_MAX_H = 200
 const TAB_KEY = 'xq-colorfix-panel-tab'
 type TabKey = 'adjust' | 'region' | 'layers'
 const TABS: { key: TabKey; label: string }[] = [
@@ -163,11 +163,11 @@ function parentBox() {
   const p = parentEl()
   return { w: p?.clientWidth ?? 0, h: p?.clientHeight ?? 0 }
 }
-/** 最高：舞台一半（有下限），但不超过舞台 − 24 */
+/** 最高：舞台 1/3（有下限），但不超过舞台 − 24 */
 function calcMaxH() {
   const { h } = parentBox()
   if (!h) return 0
-  return Math.max(120, Math.min(Math.max(MIN_MAX_H, Math.round(h * 0.5)), h - 24))
+  return Math.max(120, Math.min(Math.max(MIN_MAX_H, Math.round(h / 3)), h - 24))
 }
 function clamp(x: number, y: number) {
   const el = root.value
@@ -252,7 +252,7 @@ onBeforeUnmount(() => {
   observer?.disconnect()
 })
 
-// ---------------- 当前图层行 ----------------
+// ---------------- 当前图层（头部副标题 + 状态） ----------------
 
 const sel = computed(() => props.cf.selectedLayer.value)
 const onBase = computed(() => isBaseLayer(sel.value))
@@ -263,7 +263,6 @@ const selStatus = computed(() => {
   if (st === 'pending') return { text: '未选区', tone: 'warn' }
   return null
 })
-const layerCount = computed(() => props.cf.layers.value.length)
 
 // ---------------- 调整页 ----------------
 
@@ -400,21 +399,11 @@ watch(
     >
       <header class="cft__head" title="拖动调整面板" @pointerdown="onPointerDown">
         <span class="cft__grip" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
-        <b class="cft__title">{{ title }}</b>
-        <slot name="head-extra" />
-        <button type="button" class="cft__close sx-hit" aria-label="收起校色参数" title="收起校色参数" @click="emit('done')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-            <path d="m7 7 10 10M17 7 7 17" />
-          </svg>
-        </button>
-      </header>
-
-      <div class="cft__cur" role="group" aria-label="当前图层">
-        <span class="cft__cur-label">当前</span>
-        <b class="cft__cur-name" :title="sel.name">{{ sel.name }}</b>
-        <span v-if="layerCount > 1" class="cft__cur-count" :aria-label="`共 ${layerCount} 层`">{{ layerCount }} 层</span>
-        <span v-if="selStatus" class="cft__status" :class="`is-${selStatus.tone}`">{{ selStatus.text }}</span>
-        <span class="cft__spacer" />
+        <span class="cft__titles">
+          <b class="cft__title">{{ title }}</b>
+          <span class="cft__cur-name" :title="sel.name">{{ sel.name }}</span>
+        </span>
+        <span v-if="selStatus" class="cft__status" :class="`is-${selStatus.tone}`" role="status">{{ selStatus.text }}</span>
         <IconButton
           :label="sel.visible ? `隐藏「${sel.name}」` : `显示「${sel.name}」`"
           size="sm"
@@ -430,25 +419,34 @@ watch(
             <path d="M10.7 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M3 3l18 18" />
           </svg>
         </IconButton>
-      </div>
-
-      <div class="cft__tabs" role="tablist" aria-label="校色分页" @keydown="onTabKey">
-        <button
-          v-for="t in TABS"
-          :id="`cft-tab-${t.key}`"
-          :key="t.key"
-          :ref="(el) => (tabEls[t.key] = el as HTMLElement | null)"
-          type="button"
-          role="tab"
-          class="cft__tab sx-hit"
-          :class="{ 'is-on': tab === t.key }"
-          :aria-selected="tab === t.key"
-          :aria-controls="`cft-pane-${t.key}`"
-          :tabindex="tab === t.key ? 0 : -1"
-          @click="setTab(t.key)"
-        >
-          {{ t.label }}
+        <slot name="head-extra" />
+        <button type="button" class="cft__close sx-hit" aria-label="收起校色参数" title="收起校色参数" @click="emit('done')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="m7 7 10 10M17 7 7 17" />
+          </svg>
         </button>
+      </header>
+
+      <div class="cft__tabbar">
+        <div class="cft__tabs" role="tablist" aria-label="校色分页" @keydown="onTabKey">
+          <button
+            v-for="t in TABS"
+            :id="`cft-tab-${t.key}`"
+            :key="t.key"
+            :ref="(el) => (tabEls[t.key] = el as HTMLElement | null)"
+            type="button"
+            role="tab"
+            class="cft__tab sx-hit"
+            :class="{ 'is-on': tab === t.key }"
+            :aria-selected="tab === t.key"
+            :aria-controls="`cft-pane-${t.key}`"
+            :tabindex="tab === t.key ? 0 : -1"
+            @click="setTab(t.key)"
+          >
+            {{ t.label }}
+          </button>
+        </div>
+        <button type="button" class="cft__btn is-primary sx-hit" @click="emit('done')">完成</button>
       </div>
 
       <div ref="body" class="cft__body">
@@ -766,14 +764,12 @@ watch(
               </template>
             </div>
           </template>
+          <div class="cft__foot">
+            <span class="cft__hint">参数只作用于当前结果，可随时恢复默认</span>
+            <button type="button" class="cft__text-btn sx-hit" :disabled="!valuesMoved" @click="reset">恢复默认</button>
+          </div>
         </div>
       </div>
-
-      <footer class="cft__foot">
-        <span class="cft__hint">参数只作用于当前结果，可随时恢复默认</span>
-        <button type="button" class="cft__btn sx-hit" :disabled="!valuesMoved" @click="reset">恢复默认</button>
-        <button type="button" class="cft__btn is-primary sx-hit" @click="emit('done')">完成</button>
-      </footer>
     </section>
   </Transition>
 </template>
@@ -850,9 +846,15 @@ watch(
   border-radius: 50%;
   background: var(--xq-violet-line);
 }
-.cft__title {
+.cft__titles {
+  display: flex;
   min-width: 0;
   flex: 1;
+  align-items: baseline;
+  gap: 6px;
+}
+.cft__title {
+  flex: none;
   color: var(--xq-ink);
   font-size: 13px;
   font-weight: 600;
@@ -895,72 +897,60 @@ watch(
   outline-offset: 2px;
 }
 
-/* 当前图层行 */
-.cft__cur {
-  display: flex;
-  flex: 0 0 auto;
-  min-height: 36px;
-  box-sizing: border-box;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px 4px 12px;
-  cursor: default;
-}
-.cft__cur-label {
-  color: var(--xq-muted);
-  font-size: 11px;
-}
+/* 当前图层名：头部里的灰色副标题，放不下就截断 */
 .cft__cur-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--xq-ink);
-  font-size: 12.5px;
-  font-weight: 600;
+  color: var(--xq-muted);
+  font-size: 11.5px;
+  line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cft__cur-count {
-  flex: none;
-  color: var(--xq-placeholder);
-  font-size: 11px;
-}
 .cft__status {
   flex: none;
-  padding: 0 6px;
-  border-radius: 8px;
+  padding: 0 5px;
+  border-radius: 7px;
   background: var(--xq-violet-soft);
   color: var(--xq-violet-ink);
-  font-size: 11px;
-  line-height: 18px;
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
 }
 .cft__status.is-warn {
   background: var(--xq-warning-soft, var(--xq-surface3));
   color: var(--xq-warning-fg);
 }
-.cft__spacer {
-  flex: 1;
-}
 
-/* 页签：分段，选中 = 藤紫软底 */
+/* 页签行：左 分段页签，右 主按钮「完成」，共 32px */
+.cft__tabbar {
+  display: flex;
+  height: 32px;
+  flex: 0 0 32px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+}
 .cft__tabs {
   display: flex;
-  flex: 0 0 auto;
-  gap: 4px;
-  margin: 0 12px 8px;
+  gap: 2px;
   padding: 2px;
   border: 1px solid var(--xq-line);
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--xq-sunken);
 }
 .cft__tab {
-  height: 26px;
-  flex: 1;
+  height: 22px;
+  padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
   color: var(--xq-muted);
   font: inherit;
   font-size: 12px;
+  line-height: 20px;
   cursor: pointer;
   transition:
     background 0.12s ease,
@@ -1296,8 +1286,34 @@ watch(
 .cft__sliders {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 9px 12px 4px;
+  gap: 0;
+  padding: 6px 12px 2px;
+}
+/* 紧凑滑杆：色点 + 名称 + 轨道 + 数值同一行（行高 28，range 本体仍有 32px 触控区）；窄到放不下时轨道自然收缩 */
+.cft__sliders :deep(.cfs) {
+  display: grid;
+  min-height: 28px;
+  grid-template-columns: 12px 42px minmax(60px, 1fr) auto;
+  align-items: center;
+  gap: 0 7px;
+}
+.cft__sliders :deep(.cfs__head) {
+  display: contents;
+}
+.cft__sliders :deep(.cfs__dot) {
+  order: 1;
+}
+.cft__sliders :deep(.cfs__label) {
+  order: 2;
+  white-space: nowrap;
+}
+.cft__sliders :deep(.cfs__track) {
+  order: 3;
+}
+.cft__sliders :deep(.cfs__value) {
+  order: 4;
+  margin-left: 0;
+  min-width: 34px;
 }
 .cft__pixel {
   display: flex;
@@ -1325,12 +1341,32 @@ watch(
 
 .cft__foot {
   display: flex;
-  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--xq-line);
-  cursor: default;
+  padding: 2px 12px 8px;
+}
+.cft__text-btn {
+  flex: none;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--xq-violet-ink);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.cft__text-btn:hover:not(:disabled) {
+  background: var(--xq-violet-soft);
+}
+.cft__text-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cft__text-btn:focus-visible {
+  outline: 2px solid var(--xq-violet);
+  outline-offset: 2px;
 }
 .cft__hint {
   min-width: 0;
