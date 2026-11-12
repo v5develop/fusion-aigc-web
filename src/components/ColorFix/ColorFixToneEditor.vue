@@ -306,28 +306,28 @@ const QUARTERS = [64, 128, 192]
     </div>
     <label class="cft__row">
       <span class="cft__label">输入黑场</span>
-      <input class="cft__range" type="range" min="0" max="253" step="1" :value="lv.inBlack" style="--track: linear-gradient(90deg, #000, #888)" aria-label="色阶输入黑场：比它暗的都变成黑" @input="setLevels({ inBlack: num($event) })" @dblclick="setLevels({ inBlack: 0 })" />
-      <b class="cft__num" :class="{ 'is-zero': lv.inBlack === 0 }">{{ lv.inBlack }}</b>
+      <input v-cf-fine class="cft__range" type="range" min="0" max="253" step="1" :value="lv.inBlack" style="--track: linear-gradient(90deg, #000, #888)" aria-label="色阶输入黑场：比它暗的都变成黑" @input="setLevels({ inBlack: num($event) })" @dblclick="setLevels({ inBlack: 0 })" />
+      <b v-cf-value-edit class="cft__num" :class="{ 'is-zero': lv.inBlack === 0 }">{{ lv.inBlack }}</b>
     </label>
     <label class="cft__row">
       <span class="cft__label">中间调</span>
-      <input class="cft__range" type="range" min="-100" max="100" step="1" :value="gammaPos" style="--track: linear-gradient(90deg, #333, #888, #ddd)" aria-label="色阶中间调：向右提亮中间调，向左压暗" :aria-valuetext="`中间调 ${lv.gamma.toFixed(2)}`" @input="setGammaPos(num($event))" @dblclick="setLevels({ gamma: 1 })" />
+      <input v-cf-fine class="cft__range" type="range" min="-100" max="100" step="1" :value="gammaPos" style="--track: linear-gradient(90deg, #333, #888, #ddd)" aria-label="色阶中间调：向右提亮中间调，向左压暗" :aria-valuetext="`中间调 ${lv.gamma.toFixed(2)}`" @input="setGammaPos(num($event))" @dblclick="setLevels({ gamma: 1 })" />
       <b class="cft__num" :class="{ 'is-zero': lv.gamma === 1 }">{{ lv.gamma.toFixed(2) }}</b>
     </label>
     <label class="cft__row">
       <span class="cft__label">输入白场</span>
-      <input class="cft__range" type="range" min="2" max="255" step="1" :value="lv.inWhite" style="--track: linear-gradient(90deg, #888, #fff)" aria-label="色阶输入白场：比它亮的都变成白" @input="setLevels({ inWhite: num($event) })" @dblclick="setLevels({ inWhite: 255 })" />
-      <b class="cft__num" :class="{ 'is-zero': lv.inWhite === 255 }">{{ lv.inWhite }}</b>
+      <input v-cf-fine class="cft__range" type="range" min="2" max="255" step="1" :value="lv.inWhite" style="--track: linear-gradient(90deg, #888, #fff)" aria-label="色阶输入白场：比它亮的都变成白" @input="setLevels({ inWhite: num($event) })" @dblclick="setLevels({ inWhite: 255 })" />
+      <b v-cf-value-edit class="cft__num" :class="{ 'is-zero': lv.inWhite === 255 }">{{ lv.inWhite }}</b>
     </label>
     <label class="cft__row">
       <span class="cft__label">输出黑场</span>
-      <input class="cft__range" type="range" min="0" max="255" step="1" :value="lv.outBlack" style="--track: linear-gradient(90deg, #000, #fff)" aria-label="色阶输出黑场：最暗处提到这个亮度（褪色感）" @input="setLevels({ outBlack: num($event) })" @dblclick="setLevels({ outBlack: 0 })" />
-      <b class="cft__num" :class="{ 'is-zero': lv.outBlack === 0 }">{{ lv.outBlack }}</b>
+      <input v-cf-fine class="cft__range" type="range" min="0" max="255" step="1" :value="lv.outBlack" style="--track: linear-gradient(90deg, #000, #fff)" aria-label="色阶输出黑场：最暗处提到这个亮度（褪色感）" @input="setLevels({ outBlack: num($event) })" @dblclick="setLevels({ outBlack: 0 })" />
+      <b v-cf-value-edit class="cft__num" :class="{ 'is-zero': lv.outBlack === 0 }">{{ lv.outBlack }}</b>
     </label>
     <label class="cft__row">
       <span class="cft__label">输出白场</span>
-      <input class="cft__range" type="range" min="0" max="255" step="1" :value="lv.outWhite" style="--track: linear-gradient(90deg, #000, #fff)" aria-label="色阶输出白场：最亮处压到这个亮度" @input="setLevels({ outWhite: num($event) })" @dblclick="setLevels({ outWhite: 255 })" />
-      <b class="cft__num" :class="{ 'is-zero': lv.outWhite === 255 }">{{ lv.outWhite }}</b>
+      <input v-cf-fine class="cft__range" type="range" min="0" max="255" step="1" :value="lv.outWhite" style="--track: linear-gradient(90deg, #000, #fff)" aria-label="色阶输出白场：最亮处压到这个亮度" @input="setLevels({ outWhite: num($event) })" @dblclick="setLevels({ outWhite: 255 })" />
+      <b v-cf-value-edit class="cft__num" :class="{ 'is-zero': lv.outWhite === 255 }">{{ lv.outWhite }}</b>
     </label>
 
     <!-- 曲线 -->

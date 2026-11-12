@@ -476,6 +476,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
             <span class="cfp__label cfp__label--soft">柔化</span>
             <input
               class="cfp__range"
+              v-cf-fine
               type="range"
               min="0"
               max="20"
@@ -484,7 +485,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
               aria-label="边缘柔化"
               @input="setRegion({ feather: Number(($event.target as HTMLInputElement).value) })"
             />
-            <b class="cfp__num" aria-hidden="true">{{ region.feather }}</b>
+            <b v-cf-value-edit class="cfp__num">{{ region.feather }}</b>
           </div>
         </template>
         <p v-if="maskBusy || maskHint" class="cfp__note" role="status" aria-live="polite">
@@ -606,6 +607,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
             <span class="cfp__label cfp__label--soft">强度</span>
             <input
               class="cfp__range"
+              v-cf-fine
               type="range"
               min="0"
               max="100"
@@ -614,7 +616,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
               aria-label="替换强度"
               @input="setRecolor({ strength: Number(($event.target as HTMLInputElement).value) })"
             />
-            <b class="cfp__num cfp__num--wide" aria-hidden="true">{{ recolor.strength }}</b>
+            <b v-cf-value-edit class="cfp__num cfp__num--wide">{{ recolor.strength }}</b>
           </div>
         </template>
       </div>
@@ -630,6 +632,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
           :model-value="params[s.key]"
           :label="s.label"
           :tone="s.key"
+          editable
           :min="R[s.key].min"
           :max="R[s.key].max"
           @update:model-value="setParam(s.key, $event)"
@@ -637,7 +640,7 @@ const SLIDERS: { key: keyof ColorFixParams; label: string }[] = [
       </div>
 
       <footer class="cfp__foot">
-        <span class="cfp__hint">参数只作用于当前结果，可随时恢复默认</span>
+        <span class="cfp__hint">参数只作用于当前结果，可随时恢复默认 · 方向键微调 · Shift 加速 · 点数值可输入</span>
         <button type="button" class="cfp__btn sx-hit" :disabled="!valuesMoved" @click="reset">恢复默认</button>
         <button type="button" class="cfp__btn sx-hit is-primary" @click="emit('done')">完成</button>
       </footer>

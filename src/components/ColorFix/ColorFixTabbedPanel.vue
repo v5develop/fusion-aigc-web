@@ -594,6 +594,7 @@ watch(
                 <span class="cft__label cft__label--soft">柔化</span>
                 <input
                   class="cft__range"
+                  v-cf-fine
                   type="range"
                   min="0"
                   max="20"
@@ -602,7 +603,7 @@ watch(
                   aria-label="边缘柔化"
                   @input="setRegion({ feather: Number(($event.target as HTMLInputElement).value) })"
                 />
-                <b class="cft__num" aria-hidden="true">{{ region.feather }}</b>
+                <b v-cf-value-edit class="cft__num">{{ region.feather }}</b>
               </div>
             </template>
             <!-- 整图底层：没有选区设置；有单品参考图时仍可直接点一件新建它的选区 -->
@@ -655,6 +656,7 @@ watch(
                 :model-value="params[s.key]"
                 :label="s.label"
                 :tone="s.key"
+                editable
                 :min="R[s.key].min"
                 :max="R[s.key].max"
                 @update:model-value="setParam(s.key, $event)"
@@ -751,6 +753,7 @@ watch(
                   <span class="cft__label cft__label--soft">强度</span>
                   <input
                     class="cft__range"
+                    v-cf-fine
                     type="range"
                     min="0"
                     max="100"
@@ -759,13 +762,13 @@ watch(
                     aria-label="替换强度"
                     @input="setRecolor({ strength: Number(($event.target as HTMLInputElement).value) })"
                   />
-                  <b class="cft__num cft__num--wide" aria-hidden="true">{{ recolor.strength }}</b>
+                  <b v-cf-value-edit class="cft__num cft__num--wide">{{ recolor.strength }}</b>
                 </div>
               </template>
             </div>
           </template>
           <div class="cft__foot">
-            <span class="cft__hint">参数只作用于当前结果，可随时恢复默认</span>
+            <span class="cft__hint">参数只作用于当前结果，可随时恢复默认 · 方向键微调 · Shift 加速 · 点数值可输入</span>
             <button type="button" class="cft__text-btn sx-hit" :disabled="!valuesMoved" @click="reset">恢复默认</button>
           </div>
         </div>
@@ -779,8 +782,8 @@ watch(
   position: absolute;
   z-index: 20;
   display: flex;
-  width: 364px;
-  max-width: calc(100% - 24px);
+  width: min(312px, calc(100% - 12px));
+  max-width: calc(100% - 12px);
   box-sizing: border-box;
   flex-direction: column;
   overflow: hidden;
@@ -978,6 +981,7 @@ watch(
 .cft__pane {
   display: flex;
   flex-direction: column;
+  container: cft / inline-size;
 }
 /* 图层 / 更多调整两个子组件自带 12px 侧边距与底部虚线；页签里最后一块不再要分隔线 */
 .cft__pane :deep(.cfl),
@@ -1289,31 +1293,101 @@ watch(
   gap: 0;
   padding: 6px 12px 2px;
 }
-/* 紧凑滑杆：色点 + 名称 + 轨道 + 数值同一行（行高 28，range 本体仍有 32px 触控区）；窄到放不下时轨道自然收缩 */
+/* 两列紧凑滑杆（对齐原型 ColorFixInline）：格 = 头行（色点 + 11px/14px 名称，数值药丸 10px/16px、最小宽 26）+ 16px 轨道；
+   range 本体 28 高、上下各外扩 6px，作隐形触控区，不撑版面。内容区窄于 280px（容器查询）退回单列；
+   奇数个时最后一个留在左列（同原型，不跨列）。 */
 .cft__sliders :deep(.cfs) {
-  display: grid;
-  min-height: 28px;
-  grid-template-columns: 12px 42px minmax(60px, 1fr) auto;
-  align-items: center;
-  gap: 0 7px;
+  gap: 0;
 }
 .cft__sliders :deep(.cfs__head) {
-  display: contents;
-}
-.cft__sliders :deep(.cfs__dot) {
-  order: 1;
+  min-height: 16px;
+  gap: 6px;
 }
 .cft__sliders :deep(.cfs__label) {
-  order: 2;
+  font-size: 11px;
+  line-height: 14px;
   white-space: nowrap;
 }
-.cft__sliders :deep(.cfs__track) {
-  order: 3;
-}
 .cft__sliders :deep(.cfs__value) {
-  order: 4;
-  margin-left: 0;
-  min-width: 34px;
+  min-width: 26px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 16px;
+}
+.cft__sliders :deep(.cfs__edit) {
+  width: 38px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 14px;
+}
+.cft__sliders :deep(.cfs__track) {
+  height: 16px;
+}
+.cft__sliders :deep(.cfs__track::before) {
+  top: 6px;
+}
+.cft__sliders :deep(.cfs__zero) {
+  top: 3px;
+}
+.cft__sliders :deep(.cfs__fill) {
+  top: 6px;
+}
+.cft__sliders :deep(.cfs input[type='range']) {
+  top: -6px;
+  height: 28px;
+}
+.cft__sliders :deep(.cfs input[type='range']::-webkit-slider-runnable-track) {
+  height: 28px;
+}
+.cft__sliders :deep(.cfs input[type='range']::-webkit-slider-thumb) {
+  margin-top: 7px;
+}
+.cft__sliders :deep(.cfs input[type='range']::-moz-range-track) {
+  height: 28px;
+}
+@container cft (min-width: 280px) {
+  .cft__sliders {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 12px;
+  }
+  /* 更多调整：行内 标签 | 轨道 | 数值 改成格内 标签 + 数值 / 轨道；分组标题、色带等整行块跨两列；奇数个最后一项占满整行（该区没有原型对照） */
+  .cft__pane :deep(.cfa__body) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 12px;
+  }
+  .cft__pane :deep(.cfa__body > *) {
+    grid-column: 1 / -1;
+  }
+  .cft__pane :deep(.cfa__body > label.cfa__row) {
+    display: grid;
+    min-height: 32px;
+    grid-column: auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-content: center;
+    align-items: center;
+    gap: 0 8px;
+  }
+  .cft__pane :deep(.cfa__body > label.cfa__row:last-of-type) {
+    grid-column: 1 / -1;
+  }
+  .cft__pane :deep(label.cfa__row .cfa__label) {
+    width: auto;
+    font-size: 11px;
+    line-height: 16px;
+    grid-area: 1 / 1;
+  }
+  .cft__pane :deep(label.cfa__row .cfa__num) {
+    font-size: 10px;
+    line-height: 16px;
+    grid-area: 1 / 2;
+  }
+  .cft__pane :deep(label.cfa__row .cfa__range) {
+    width: 100%;
+    height: 16px;
+    grid-area: 2 / 1 / 3 / 3;
+  }
 }
 .cft__pixel {
   display: flex;

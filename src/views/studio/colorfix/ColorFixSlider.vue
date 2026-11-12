@@ -6,7 +6,8 @@
  * 填充从零位起算（旧版按 50% 起算，正负两侧比例不一致）。原生 range 负责键盘与拖动，轨道 / 填充 / 手柄自己画。
  * 数值：行距 5、标签 11.5/500、12px 渐变色点（1px rgba(31,35,41,.1) + 内高光）、数值芯片 18 高 r7、轨道 18 高（可视 4px）。
  */
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+import { shiftStepOf } from '@/components/ColorFix/fine-adjust.ts'
 
 const props = withDefaults(
   defineProps<{
@@ -16,8 +17,12 @@ const props = withDefaults(
     step?: number
     /** 参数的小色点：hue / sat / light / bright / contrast */
     tone: 'hue' | 'sat' | 'light' | 'bright' | 'contrast'
+    /** 可选精调（默认关，只有分页面板打开）：Shift+方向键 ±shiftStepOf；点数值变成小输入框，回车 / 失焦提交、Esc 取消 */
+    editable?: boolean
+    /** 显式覆盖 Shift 步长（默认按区间跨度：< 100 → 5，≥ 100 → 10） */
+    shiftStep?: number
   }>(),
-  { step: 1 },
+  { step: 1, editable: false },
 )
 
 const value = defineModel<number>({ required: true })
@@ -39,6 +44,42 @@ const DOT: Record<string, string> = {
   contrast: 'linear-gradient(135deg, #1f2329, #ffffff)',
 }
 
+function clamp(n: number) {
+  return Math.min(props.max, Math.max(props.min, Math.round(n)))
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (!props.editable || !event.shiftKey) return
+  const dir = event.key === 'ArrowRight' || event.key === 'ArrowUp' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 0
+  if (!dir) return
+  event.preventDefault()
+  value.value = clamp(value.value + dir * (props.shiftStep ?? shiftStepOf(props.min, props.max)))
+}
+
+const editing = ref(false)
+const draft = ref('')
+const editEl = ref<HTMLInputElement | null>(null)
+
+async function startEdit() {
+  draft.value = String(value.value)
+  editing.value = true
+  await nextTick()
+  editEl.value?.focus()
+  editEl.value?.select()
+}
+
+function commitEdit() {
+  if (!editing.value) return
+  editing.value = false
+  const text = draft.value.trim()
+  const n = Number(text)
+  if (text !== '' && Number.isFinite(n)) value.value = clamp(n)
+}
+
+function cancelEdit() {
+  editing.value = false
+}
+
 function onInput(event: Event) {
   const n = Number((event.target as HTMLInputElement).value)
   value.value = Math.min(props.max, Math.max(props.min, Math.round(n)))
@@ -50,7 +91,29 @@ function onInput(event: Event) {
     <div class="cfs__head">
       <span class="cfs__dot" :style="{ background: DOT[tone] }" aria-hidden="true" />
       <span class="cfs__label">{{ label }}</span>
-      <b class="cfs__value" :class="{ 'is-zero': value === 0 }" aria-hidden="true">{{ signed }}</b>
+      <input
+        v-if="editable && editing"
+        ref="editEl"
+        v-model="draft"
+        class="cfs__edit"
+        type="text"
+        inputmode="numeric"
+        :aria-label="`${label}（${min} 到 ${max}）`"
+        @keydown.enter.prevent="commitEdit"
+        @keydown.esc.prevent.stop="cancelEdit"
+        @blur="commitEdit"
+      />
+      <button
+        v-else-if="editable"
+        type="button"
+        class="cfs__value cfs__value--btn"
+        :class="{ 'is-zero': value === 0 }"
+        :title="`点击输入数值（${min} 到 ${max}）`"
+        @click="startEdit"
+      >
+        {{ signed }}
+      </button>
+      <b v-else class="cfs__value" :class="{ 'is-zero': value === 0 }" aria-hidden="true">{{ signed }}</b>
     </div>
     <div class="cfs__track">
       <span class="cfs__zero" :style="{ left: `${zeroPct}%` }" aria-hidden="true" />
@@ -64,6 +127,7 @@ function onInput(event: Event) {
         :aria-label="label"
         :aria-valuetext="`${label} ${signed}`"
         @input="onInput"
+        @keydown="onKeydown"
       />
     </div>
   </div>
@@ -109,6 +173,38 @@ function onInput(event: Event) {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 18px;
+  text-align: center;
+}
+/* 精调模式下数值是按钮 / 输入框：压在 range 外扩的触控区之上，保证点得到 */
+.cfs__value--btn {
+  position: relative;
+  z-index: 1;
+  font-family: inherit;
+  cursor: text;
+}
+.cfs__value--btn:hover {
+  border-color: var(--xq-violet);
+}
+.cfs__value--btn:focus-visible,
+.cfs__edit:focus-visible {
+  outline: 2px solid var(--xq-violet);
+  outline-offset: 1px;
+}
+.cfs__edit {
+  position: relative;
+  z-index: 1;
+  width: 44px;
+  box-sizing: border-box;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid var(--xq-violet);
+  border-radius: 7px;
+  background: var(--xq-surface);
+  color: var(--xq-ink);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
   text-align: center;
 }
 .cfs__value.is-zero {

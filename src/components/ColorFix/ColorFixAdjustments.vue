@@ -13,6 +13,7 @@
  * 折叠状态按浏览器记住（localStorage，读写失败不影响使用）。
  */
 import { computed, ref } from 'vue'
+import { vCfFine, vCfValueEdit } from './fine-adjust'
 import IconButton from '@/components/IconButton/index.vue'
 import ColorFixToneEditor from './ColorFixToneEditor.vue'
 import {
@@ -178,6 +179,7 @@ function onBandKey(e: KeyboardEvent) {
         <span class="cfa__label">色温</span>
         <input
           class="cfa__range"
+          v-cf-fine
           type="range"
           min="-100"
           max="100"
@@ -189,12 +191,13 @@ function onBandKey(e: KeyboardEvent) {
           @input="setWb('temp', num($event))"
           @dblclick="setWb('temp', 0)"
         />
-        <b class="cfa__num" :class="{ 'is-zero': !cur.temp }">{{ signed(cur.temp) }}</b>
+        <b v-cf-value-edit class="cfa__num" :class="{ 'is-zero': !cur.temp }">{{ signed(cur.temp) }}</b>
       </label>
       <label class="cfa__row">
         <span class="cfa__label">色调</span>
         <input
           class="cfa__range"
+          v-cf-fine
           type="range"
           min="-100"
           max="100"
@@ -206,7 +209,7 @@ function onBandKey(e: KeyboardEvent) {
           @input="setWb('tint', num($event))"
           @dblclick="setWb('tint', 0)"
         />
-        <b class="cfa__num" :class="{ 'is-zero': !cur.tint }">{{ signed(cur.tint) }}</b>
+        <b v-cf-value-edit class="cfa__num" :class="{ 'is-zero': !cur.tint }">{{ signed(cur.tint) }}</b>
       </label>
 
       <div class="cfa__sec">
@@ -248,6 +251,7 @@ function onBandKey(e: KeyboardEvent) {
         <span class="cfa__label">色相</span>
         <input
           class="cfa__range"
+          v-cf-fine
           type="range"
           min="-100"
           max="100"
@@ -259,12 +263,13 @@ function onBandKey(e: KeyboardEvent) {
           @input="setBand('h', num($event))"
           @dblclick="setBand('h', 0)"
         />
-        <b class="cfa__num" :class="{ 'is-zero': !bandShift.h }">{{ signed(bandShift.h) }}</b>
+        <b v-cf-value-edit class="cfa__num" :class="{ 'is-zero': !bandShift.h }">{{ signed(bandShift.h) }}</b>
       </label>
       <label class="cfa__row">
         <span class="cfa__label">饱和度</span>
         <input
           class="cfa__range"
+          v-cf-fine
           type="range"
           min="-100"
           max="100"
@@ -276,12 +281,13 @@ function onBandKey(e: KeyboardEvent) {
           @input="setBand('s', num($event))"
           @dblclick="setBand('s', 0)"
         />
-        <b class="cfa__num" :class="{ 'is-zero': !bandShift.s }">{{ signed(bandShift.s) }}</b>
+        <b v-cf-value-edit class="cfa__num" :class="{ 'is-zero': !bandShift.s }">{{ signed(bandShift.s) }}</b>
       </label>
       <label class="cfa__row">
         <span class="cfa__label">明度</span>
         <input
           class="cfa__range"
+          v-cf-fine
           type="range"
           min="-100"
           max="100"
@@ -293,7 +299,7 @@ function onBandKey(e: KeyboardEvent) {
           @input="setBand('l', num($event))"
           @dblclick="setBand('l', 0)"
         />
-        <b class="cfa__num" :class="{ 'is-zero': !bandShift.l }">{{ signed(bandShift.l) }}</b>
+        <b v-cf-value-edit class="cfa__num" :class="{ 'is-zero': !bandShift.l }">{{ signed(bandShift.l) }}</b>
       </label>
       <div v-if="bandTouched(band)" class="cfa__row cfa__row--end">
         <button type="button" class="cfa__btn sx-hit" @click="resetBand">
