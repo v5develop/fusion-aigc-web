@@ -23,9 +23,10 @@ const DEVICE_SCOPED_KEYS = new Set(['union_deviceId', 'xq-theme-device'])
 /**
  * 按账号分开存的 key 前缀：key 里已带账号指纹，换号不会串，清掉反而让 A→B→A 丢掉 A 的设置。
  * 目前是「字体显示」与「外观」偏好（src/utils/textPrefs.ts 的 TEXT_PREFS_KEY_PREFIX、
- * src/utils/themePrefs.ts 的 THEME_PREFS_KEY_PREFIX，这里写字面量避免依赖）。
+ * src/utils/themePrefs.ts 的 THEME_PREFS_KEY_PREFIX，这里写字面量避免依赖），
+ * 以及工具页目录的收起记忆（src/utils/dirCollapsedPrefs.ts）。
  */
-const ACCOUNT_KEYED_PREFIXES = ['xq-text-prefs:', 'xq-theme-prefs:']
+const ACCOUNT_KEYED_PREFIXES = ['xq-text-prefs:', 'xq-theme-prefs:', 'xq-dir-collapsed:']
 
 /**
  * 当前账号的身份：后端用户 id（登录响应的 `userId`、`/auth/user-info` 的 `id`）。

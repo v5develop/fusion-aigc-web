@@ -1,0 +1,49 @@
+/*
+ * 路由三拍转场（原型 components/motion/route-stagger.css）：旧页右移淡出，新页淡入，指定分栏错峰从左推入。
+ * 旧页离场时脱离文档流（absolute 贴着容器顶），新页才不会被它挤到下面。
+ * 只在 AI 图片 / AI 视频 / 工具页之间切换时由 useRouteStagger 套上这组 class，别处是 motion-route-none（无任何过渡）。
+ */
+.motion-route-enter-active {
+  transition: opacity 260ms ease-out 40ms;
+}
+.motion-route-enter-from {
+  opacity: 0;
+}
+.motion-route-leave-active {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease-in,
+    transform 160ms ease-in;
+}
+.motion-route-leave-to {
+  opacity: 0;
+  transform: translateX(14px);
+}
+
+.motion-stagger-col {
+  animation: motion-col-in var(--motion-col-duration, 300ms) cubic-bezier(0.4, 0, 0.2, 1)
+    var(--motion-col-delay, 0ms) both;
+}
+@keyframes motion-col-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-route-enter-active,
+  .motion-route-leave-active,
+  .motion-stagger-col {
+    transition: none !important;
+    animation: none !important;
+  }
+}

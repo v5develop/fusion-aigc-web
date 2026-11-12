@@ -10,6 +10,11 @@ import { computed, onMounted, ref } from 'vue'
 import { NSkeleton } from 'naive-ui'
 import { getPointsBalance } from '@/api/points'
 import { useUserInfoStore } from '@/stores/user-info'
+import { emitBillingBlock } from '@/utils/billing-guide'
+
+withDefaults(defineProps<{ /** 余额旁出现「充值」：走宿主已有的点数引导弹框（BillingGuideHost），站内不做支付 */ recharge?: boolean }>(), {
+  recharge: false,
+})
 
 const store = useUserInfoStore()
 
@@ -68,5 +73,14 @@ onMounted(() => {
       余额 <b class="font-mono font-semibold tabular-nums text-ink">{{ availablePoints }}</b> 点
     </template>
     <n-skeleton v-else-if="showSkeleton" :width="56" :height="12" />
+    <button
+      v-if="recharge && availablePoints !== null"
+      type="button"
+      class="ml-2px cursor-pointer border-none bg-transparent p-0 text-12px leading-18px text-violet hover:underline sx-focus"
+      aria-label="充值点数"
+      @click="emitBillingBlock(3003)"
+    >
+      充值
+    </button>
   </span>
 </template>

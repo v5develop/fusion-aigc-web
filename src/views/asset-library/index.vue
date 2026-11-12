@@ -1073,6 +1073,15 @@ const emptyCopy = computed(() => {
               <PageEmpty :text="emptyCopy.text" :description="emptyCopy.desc">
                 <button v-if="debouncedQ" type="button" class="sx-btn" @click="filters.q = ''">清除搜索</button>
                 <button v-else-if="hasFilter" type="button" class="sx-btn" @click="clearFilters">清除筛选</button>
+                <!-- 空库（没有任何筛选在生效）：图片 / 视频域给去生成的出口 -->
+                <button
+                  v-else-if="domain === 'image' || domain === 'video'"
+                  type="button"
+                  class="sx-btn-primary"
+                  @click="router.push(domain === 'video' ? '/video' : '/image')"
+                >
+                  去生成
+                </button>
               </PageEmpty>
             </div>
           </TransitionGroup>

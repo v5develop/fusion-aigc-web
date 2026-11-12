@@ -80,7 +80,30 @@ const SUBMIT_HINT_MS = 60_000
 const NOTIFIED_KEY = 'xq_task_notified'
 const NOTIFIED_TTL_MS = 6 * 3600_000
 
-const tracked = new Map<string, { title: string; seenOn: string | null }>()
+/**
+ * 在途（排队中 + 生成中）任务数：主导航「任务中心」角标读它。
+ * 由 tracked 的增删驱动，数据仍来自推送 + 既有低频对账，不额外发请求；推送 / 总线回灌的事件也会更新它。
+ */
+export const activeTaskCount = shallowRef(0)
+
+class TrackedMap<V> extends Map<string, V> {
+  override set(key: string, value: V) {
+    super.set(key, value)
+    activeTaskCount.value = this.size
+    return this
+  }
+  override delete(key: string) {
+    const hit = super.delete(key)
+    activeTaskCount.value = this.size
+    return hit
+  }
+  override clear() {
+    super.clear()
+    activeTaskCount.value = 0
+  }
+}
+
+const tracked = new TrackedMap<{ title: string; seenOn: string | null }>()
 const listeners = new Set<Listener>()
 const taskListeners = new Set<TaskListener>()
 const resyncListeners = new Set<ResyncListener>()

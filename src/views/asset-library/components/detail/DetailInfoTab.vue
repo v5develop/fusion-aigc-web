@@ -126,7 +126,7 @@ const DISCLOSURE =
       <div class="asset-prompt-wrap" :class="{ 'is-fade': promptOverflow && !promptExpanded }">
         <p
           ref="promptEl"
-          class="asset-prompt-text m-0 px-12px pt-2px pb-10px whitespace-pre-wrap text-13px leading-21px text-ink-2"
+          class="asset-prompt-text m-0 px-12px pt-2px pb-10px whitespace-pre-wrap text-13px leading-[1.8] text-ink-2"
           :class="promptExpanded ? 'is-expanded' : 'line-clamp-5'"
         >
           {{ promptText }}

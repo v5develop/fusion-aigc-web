@@ -89,6 +89,7 @@ function renderReplyHtml(text: string, live?: boolean): string {
 import BatchHostingModal from './BatchHostingModal.vue'
 import TemplateBrowser from './TemplateBrowser.vue'
 import IconButton from '@/components/IconButton/index.vue'
+import PointsBalanceChip from '@/components/Points/PointsBalanceChip.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import {
   ColorFixDialog,
@@ -4190,6 +4191,7 @@ onUnmounted(() => {
                       </div>
                     </n-popover>
                     <span class="flex-1" />
+                    <PointsBalanceChip recharge class="mr-6px" />
                     <span
                       v-if="skillMissing && !streaming"
                       id="agent-skill-required"

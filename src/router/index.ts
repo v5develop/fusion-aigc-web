@@ -12,6 +12,7 @@ import taskCenterRouter from './task-center'
 import studioRouter from './studio'
 import workflowRouter from './workflow'
 import { generatorRedirect, studioToolRedirect } from './generator'
+import { isChunkLoadError, routeLoadFailure, summarizeError } from '@/utils/render-failure'
 
 const hasBridge = !!(window as any).ThirdServiceBridge
 
@@ -100,6 +101,14 @@ const router = createRouter({
           meta: { title: '用户中心' },
           component: () => import('@/views/user-center/index.vue'),
         },
+        // 兜底：不认识的地址显示「页面不存在」而不是悄悄跳走，错链才看得见。
+        // 登录守卫是全局 beforeEach，照常先于它执行（未登录的错链仍先去登录）
+        {
+          path: '/:pathMatch(.*)*',
+          name: 'not-found',
+          meta: { title: '页面不存在' },
+          component: () => import('@/views/not-found/index.vue'),
+        },
       ],
     },
   ],
@@ -185,6 +194,16 @@ async function ensureBootAuth() {
     // 绝不能因为这一枪失败就清 token —— 那等于把一次网络抖动变成强制登出
   }
 }
+
+// 路由懒加载失败（发版后旧分包 404、断网）：导航会被取消，页面停在原处没有任何反馈。
+// 记下摘要交给 layout 的错误边界显示「页面渲染失败 / 重新加载」；其它路由错误只记日志
+router.onError((err, to) => {
+  console.error('[router] 导航出错', to?.fullPath, err)
+  if (isChunkLoadError(err)) routeLoadFailure.value = summarizeError(err)
+})
+router.afterEach((_to, _from, failure) => {
+  if (!failure) routeLoadFailure.value = ''
+})
 
 // 入口参数 /image?entryCode=…、/video?… 转到生成页（排在登录守卫之后；见 generator.ts）
 router.beforeEach(generatorRedirect)

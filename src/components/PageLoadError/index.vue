@@ -5,12 +5,16 @@
  *
  *   <PageLoadError :subtitle="error" retryable @retry="reload" />
  */
-withDefaults(defineProps<{ title?: string; subtitle?: string; retryable?: boolean; compact?: boolean }>(), {
-  title: '加载失败',
-  subtitle: '网络异常或请求超时，请检查后重试',
-  retryable: false,
-  compact: false,
-})
+withDefaults(
+  defineProps<{ title?: string; subtitle?: string; retryable?: boolean; compact?: boolean; retryText?: string }>(),
+  {
+    title: '加载失败',
+    subtitle: '网络异常或请求超时，请检查后重试',
+    retryable: false,
+    compact: false,
+    retryText: '重试',
+  },
+)
 defineEmits<{ retry: [] }>()
 </script>
 
@@ -28,6 +32,6 @@ defineEmits<{ retry: [] }>()
     </div>
     <p class="m-0 mt-12px text-14px leading-20px text-ink-2">{{ title }}</p>
     <p class="m-0 mt-4px max-w-360px text-12px leading-18px text-placeholder">{{ subtitle }}</p>
-    <button v-if="retryable" type="button" class="sx-btn mt-12px" @click="$emit('retry')">重试</button>
+    <button v-if="retryable" type="button" class="sx-btn mt-12px" @click="$emit('retry')">{{ retryText }}</button>
   </div>
 </template>

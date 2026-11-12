@@ -2,15 +2,15 @@
 /**
  * 左侧主导航 —— 对齐新版 UI 原型（http://bdd1724.r3.cpolar.cn/#/ 首页外壳）。
  *
- * <p>结构：品牌块（logo 40 + 小岐AI / 一体化数字员工平台）→ 首页 → 「AI 创作」二级组
- * （智能体 / 工作流 / 画布 / AI 图片 / AI 视频）→ 电商 › / 商拍 › / 本地生活 → 我的资产 / 创意广场 →
- * 提示词库 → 弹性留白 → 更新条 + 用户行。
- * 「AI 图片」「AI 视频」点击直接进入落地页（/image、/video），不再并排展开目录栏；工具页自带同一份目录。
- * 「本地生活」同样直接进落地页（/local-life）。电商 / 商拍仍点开 160 宽的二级目录栏（原型 motion-col-in：透明 + 左移 24px 滑入）。
+ * <p>结构（2026-11-12 起平铺，不再有「AI 创作」二级组）：品牌块（logo 40 + 小岐AI / 一体化数字员工平台）→ 首页 →
+ * 智能体 / AI 图片 / AI 视频 / 我的资产 / 画布 / 任务中心（右侧带进行中角标）/ 创意广场 / 提示词库 → 弹性留白 → 更新条 + 用户行。
+ * 「AI 图片」「AI 视频」点击直接进入落地页（/image、/video）；鼠标悬停 300ms（键盘聚焦 / → 键）在侧栏右侧滑出 160 宽的
+ * 功能目录浮层（DirectoryPanel，240ms 过渡），指针离开行与浮层 150ms 后收回，点条目跳转并收起；触屏没有悬停，点一下就是跳转。
+ * 「本地生活」同样直接进落地页（/local-life）。电商 / 商拍（已隐藏）仍点开 160 宽的二级目录栏（原型 motion-col-in：透明 + 左移 24px 滑入）。
  *
- * <p>原型侧栏没有的老入口（电商 / 商拍 / 本地生活 / 提示词库）按产品决定保留为独立的一级入口；
+ * <p>原型侧栏没有的老入口（电商 / 商拍 / 本地生活 / 任务中心 / 创意广场 / 提示词库）按产品决定保留为独立的一级入口；
  * 电商 / 商拍点开后同样并排出二级目录（取已注册路由里带 meta.title 的下级静态页）。
- * 侧栏可收起为 44 图标条，此时「AI 创作」点开整组目录。
+ * 侧栏可收起为 44 图标条：行变成图标 + 悬停提示，悬浮目录照样可用。
  *
  * <p>2026-11-09 产品决定：「工作流」「AI 电商」「AI 商拍」「本地生活」四个入口只隐藏不删（`hidden: true`，去掉该标记即恢复）；
  * 页面与路由都留着，深链照开，子功能已按图片 / 视频并进 AI 图片 / AI 视频的落地页与工具目录（views/image/landing.ts）。
@@ -26,6 +26,7 @@ import { NDropdown, useDialog, type DropdownOption } from 'naive-ui'
 import { signOut } from '@/api/auth.ts'
 import { useUserInfoStore } from '@/stores/user-info.ts'
 import { useToolAvailability, withoutDisabledGroups } from '@/utils/toolAvailability'
+import { activeTaskCount } from '@/utils/taskWatcher'
 import { catalogFor, type CatalogGroup } from '@/views/tools/catalog'
 import { tools } from '@/views/home/tools'
 import { chuandaitu_data, shangpingshiping_data, shangpingtu_data, type EcEntry } from '@/views/e-commerce/entries'
@@ -96,17 +97,20 @@ const VITE_OSS_ASSET_URL = import.meta.env.VITE_OSS_ASSET_URL
 const DEFAULT_AVATAR =
   'https://feilianyun-aicdn.oss-cn-hangzhou.aliyuncs.com/permanent_client_upload/user/40179/ai_model/203441c5-2b04-4270-8014-282be543ec3d.jpg?x-oss-process=image/format,webp'
 
-type PanelKey = 'image' | 'video' | 'ai' | 'e-commerce' | 'studio'
+type PanelKey = 'e-commerce' | 'studio'
+type FlyKind = 'image' | 'video'
 
 interface NavSub {
   name: string
   path: string
   /** 带二级目录栏的入口：点开目录而不只是跳转 */
-  panel?: Exclude<PanelKey, 'ai'>
-  /** 归属的工具目录：落地页与该目录下的工具页都算选中，但不展开目录栏 */
-  owns?: 'image' | 'video'
-  /** 一级老入口的图标（24×24 描边片段） */
+  panel?: PanelKey
+  /** 归属的工具目录：落地页与该目录下的工具页都算选中；同时是悬停滑出的目录浮层 */
+  owns?: FlyKind
+  /** 一级入口的图标（24×24 描边片段） */
   icon?: string
+  /** 行尾显示在途任务数角标（任务中心） */
+  badge?: boolean
   /** 只隐藏不删：不渲染入口，路由、页面、目录代码都留着；恢复时去掉即可 */
   hidden?: boolean
 }
@@ -119,9 +123,8 @@ interface PanelEntry {
   /** undefined = 即将开放 */
   route?: string
   icon?: string
-  /** AI 创作组目录里，点开下一级目录栏 */
-  panel?: Exclude<PanelKey, 'ai'>
-  owns?: 'image' | 'video'
+  /** 点开下一级目录栏（目前没有条目带它，保留给以后） */
+  panel?: PanelKey
 }
 
 interface PanelGroup {
@@ -129,32 +132,24 @@ interface PanelGroup {
   entries: PanelEntry[]
 }
 
-const aiSubs: NavSub[] = [
-  { name: '智能体', path: '/agent' },
-  // 原型 AppSidebar 的 AI 创作组：智能体之后即工作流；进导航首页 /workflow/home，模板页 /workflow?flow=&category=&template= 由首页卡片进
-  // 2026-11-09 隐藏：模板功能多已由 AI 商拍另行实现；页面仍可深链，单图复刻 / SKU替换等模板从 AI 图片 / AI 视频进
-  { name: '工作流', path: '/workflow/home', hidden: true },
-  { name: '画布', path: '/canvas' },
-  { name: 'AI 图片', path: '/image', owns: 'image' },
-  { name: 'AI 视频', path: '/video', owns: 'video' },
-]
-
 const ICON = {
   home: 'M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1v-8.5z',
-  spark: [
-    'M10 7.5l1.6 4.4 4.4 1.6-4.4 1.6L10 19.5l-1.6-4.4L4 13.5l4.4-1.6L10 7.5z',
-    'M17.5 3.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z',
-    'M5 4v3M3.5 5.5h3',
-  ],
   chevL: ['M14.5 5.5 8 12l6.5 6.5'],
   chevR: ['m9.5 5.5 6.5 6.5-6.5 6.5'],
-  chevU: ['m5.5 14.5 6.5-6.5 6.5 6.5'],
   menu: ['M4 7h16M4 12h16M4 17h16'],
   info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 8h.01'],
 }
 
-/** 老入口图标（24×24 描边片段，与目录图标同规格） */
+/** 一级入口图标（24×24 描边片段，与目录图标同规格）；智能体 / 图片 / 视频 / 画布取原型 ionicons 的意象 */
 const LEGACY_ICON = {
+  agent:
+    '<path d="M10 7.5l1.6 4.4 4.4 1.6-4.4 1.6L10 19.5l-1.6-4.4L4 13.5l4.4-1.6L10 7.5z"/><path d="M17.5 3.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"/><path d="M5 4v3M3.5 5.5h3"/>',
+  image:
+    '<path d="M4 14V6.5A2.5 2.5 0 0 1 6.5 4H14"/><rect x="7.5" y="8" width="12.5" height="12" rx="2.5"/><circle cx="11.5" cy="12" r="1.2"/><path d="m8 18 3.7-3.7 2.8 2.8 1.8-1.8L20 18"/>',
+  video:
+    '<rect x="3.5" y="6.5" width="11.5" height="11" rx="2.5"/><path d="m15 10.5 5.5-2.5v8L15 13.5"/>',
+  canvas:
+    '<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
   ecommerce: '<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>',
   studio: '<path d="M4 8.5h3l1.5-2h7l1.5 2h3v10H4v-10z"/><path d="M12 16a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/>',
   localLife:
@@ -178,15 +173,25 @@ const toGroups = (groups: CatalogGroup[]): PanelGroup[] =>
 const imageCatalog = catalogFor('image-generate')
 const videoCatalog = catalogFor('ai-video-enhance')
 
-/** 原型侧栏没有、但产品决定保留的一级入口，接在「AI 创作」组之后；我的资产、创意广场与提示词库无下级目录 */
-const legacySubs: NavSub[] = [
+/**
+ * 首页之后的一级入口，平铺（2026-11-12 展平「AI 创作」组）。顺序对齐原型（智能体 / 图片 / 视频 / 资产 / 画布），
+ * 再接生产多出来的任务中心 / 创意广场 / 提示词库。隐藏项只隐藏不删。
+ */
+const navSubs: NavSub[] = [
+  { name: '智能体', path: '/agent', icon: LEGACY_ICON.agent },
+  // 原型 AppSidebar 的工作流：进导航首页 /workflow/home，模板页 /workflow?flow=&category=&template= 由首页卡片进
+  // 2026-11-09 隐藏：模板功能多已由 AI 商拍另行实现；页面仍可深链，单图复刻 / SKU替换等模板从 AI 图片 / AI 视频进
+  { name: '工作流', path: '/workflow/home', hidden: true },
+  { name: 'AI 图片', path: '/image', owns: 'image', icon: LEGACY_ICON.image },
+  { name: 'AI 视频', path: '/video', owns: 'video', icon: LEGACY_ICON.video },
+  { name: '我的资产', path: '/assets', icon: LEGACY_ICON.asset },
+  { name: '画布', path: '/canvas', icon: LEGACY_ICON.canvas },
   // 2026-11-09 隐藏：电商 / 商拍 / 本地生活的子功能按图片 / 视频并进 AI 图片 / AI 视频；页面与路由都在
   { name: 'AI 电商', path: '/e-commerce', panel: 'e-commerce', icon: LEGACY_ICON.ecommerce, hidden: true },
   { name: 'AI 商拍', path: '/studio', panel: 'studio', icon: LEGACY_ICON.studio, hidden: true },
   // 本地生活与 AI 图片 / AI 视频一样直接进落地页（/local-life），不再展开二级目录栏
   { name: '本地生活', path: '/local-life', icon: LEGACY_ICON.localLife, hidden: true },
-  { name: '我的资产', path: '/assets', icon: LEGACY_ICON.asset },
-  { name: '任务中心', path: '/tasks', icon: LEGACY_ICON.tasks },
+  { name: '任务中心', path: '/tasks', icon: LEGACY_ICON.tasks, badge: true },
   { name: '创意广场', path: '/plaza', icon: LEGACY_ICON.plaza },
   { name: '提示词库', path: '/prompt-library', icon: LEGACY_ICON.prompt },
 ]
@@ -237,20 +242,11 @@ function routeGroups(path: string): PanelGroup[] {
 }
 
 /** 实际渲染的入口（去掉 hidden） */
-const visibleAiSubs = aiSubs.filter((s) => !s.hidden)
-const visibleLegacySubs = legacySubs.filter((s) => !s.hidden)
+const visibleSubs = navSubs.filter((s) => !s.hidden)
 
-const panels: Record<'image' | 'video' | 'ai', { title: string; groups: PanelGroup[] }> = {
+const panels: Record<FlyKind, { title: string; groups: PanelGroup[] }> = {
   image: { title: imageCatalog.title, groups: toGroups(imageCatalog.groups) },
   video: { title: videoCatalog.title, groups: toGroups(videoCatalog.groups) },
-  ai: {
-    title: 'AI 创作',
-    groups: [
-      {
-        entries: visibleAiSubs.map((s) => ({ key: s.path, name: s.name, route: s.path, panel: s.panel, owns: s.owns })),
-      },
-    ],
-  },
 }
 
 /** 路由前缀是否命中（老入口按模块前缀，工具页按完整路径） */
@@ -259,7 +255,7 @@ function matches(path: string, prefix: string) {
   return path === prefix || path.startsWith(prefix + '/')
 }
 
-const panelRoutes = (key: 'image' | 'video') =>
+const panelRoutes = (key: FlyKind) =>
   panels[key].groups.flatMap((g) => g.entries.map((e) => e.route).filter((r): r is string => !!r))
 
 /** 落地页卡片的路径部分（去掉 query）；工作流模板都落在 /workflow，按 flow 另判，不进这张表 */
@@ -286,7 +282,7 @@ const ecVideoRoutes = shangpingshiping_data
 /** 已隐藏（不在目录 / 落地页）但深链仍可直达的图片类工具页：侧栏照样高亮 AI 图片 */
 const HIDDEN_TOOL_ROUTES = tools.filter((t) => t.hidden && t.route && t.category !== 'video').map((t) => t.route as string)
 
-const ownedRoutes: Record<'image' | 'video', string[]> = {
+const ownedRoutes: Record<FlyKind, string[]> = {
   image: ['/image', ...panelRoutes('image'), ...landingRoutes(pictureLanding), ...HIDDEN_TOOL_ROUTES].filter(
     (r) => !r.startsWith('/workflow'),
   ),
@@ -303,7 +299,7 @@ const HIDDEN_SECTION_PREFIXES = ['/e-commerce', '/studio', '/local-life', '/work
  * 工作流模板页按 query.flow（video 流算视频，其余算图片）；其余先查两份目录 / 落地页的路由，
  * 视频优先（同一路由不会两边都有，先查视频免得 /local-life 之类前缀被图片吞掉）；隐藏模块里查不到的页回落到图片。
  */
-function mediaKindOf(path: string, flow: unknown): 'image' | 'video' | null {
+function mediaKindOf(path: string, flow: unknown): FlyKind | null {
   if (path === '/workflow') return flow === 'video' ? 'video' : 'image'
   if (ownedRoutes.video.some((p) => matches(path, p))) return 'video'
   if (ownedRoutes.image.some((p) => matches(path, p))) return 'image'
@@ -324,7 +320,6 @@ const ROW_BASE =
 const ACTIVE = '!border-line !text-ink sx-grad-sunk shadow-sunk hover:sx-grad-sunk'
 
 const collapsed = ref(false)
-const aiExpanded = ref(true)
 const updateDismissed = ref(false)
 const panel = ref<PanelKey | null>(null)
 const panelRef = ref<HTMLElement>()
@@ -341,8 +336,6 @@ function subActive(sub: NavSub) {
   return matches(route.path, sub.path)
 }
 
-const legacyActive = (sub: NavSub) => subActive(sub)
-const aiSubActive = computed(() => visibleAiSubs.some(subActive))
 
 /** 一级 `.v3-row`：高 44、14/500、gap 10、内边距 0 10 */
 function rowClass(active: boolean) {
@@ -354,14 +347,8 @@ function rowClass(active: boolean) {
   ]
 }
 
-/** 二级 `.v3-sub`：高 40、14/400、左内边距 38（文字与一级文字对齐） */
-function subClass(active: boolean) {
-  return [ROW_BASE, 'h-40px flex-none gap-10px pl-38px pr-10px font-400', active ? ACTIVE : '']
-}
-
 function entryActive(e: PanelEntry) {
   if (e.panel) return panel.value === e.panel
-  if (e.owns) return routeKind.value === e.owns
   return !!e.route && matches(route.path, e.route)
 }
 
@@ -390,6 +377,7 @@ const viaKeyboard = (e: MouseEvent) => e.detail === 0
 
 function onSubClick(sub: NavSub, e: MouseEvent) {
   if (!sub.panel) {
+    closeFly()
     go(sub.path)
     return
   }
@@ -399,15 +387,6 @@ function onSubClick(sub: NavSub, e: MouseEvent) {
   }
   void router.push(sub.path)
   openPanel(sub.panel, e.currentTarget as HTMLElement, viaKeyboard(e) ? 'first' : undefined)
-}
-
-function onAiRowClick(e: MouseEvent) {
-  if (collapsed.value) {
-    if (panel.value === 'ai') closePanel()
-    else openPanel('ai', e.currentTarget as HTMLElement, viaKeyboard(e) ? 'first' : undefined)
-    return
-  }
-  aiExpanded.value = !aiExpanded.value
 }
 
 function onEntryClick(e: PanelEntry, ev: MouseEvent) {
@@ -441,6 +420,7 @@ function go(path: string) {
 function toggleCollapsed() {
   collapsed.value = !collapsed.value
   closePanel()
+  closeFly()
 }
 
 // 跳出目录所属页面就收起目录栏：工具页自带同一份目录，避免并排出现两份
@@ -448,12 +428,7 @@ watch(
   () => route.path,
   (path) => {
     if (!panel.value) return
-    // 收起态的整组目录：选完即收；切到 AI 图片 / AI 视频目录时 panel 已先一步换成对应 key
-    if (panel.value === 'ai') {
-      closePanel()
-      return
-    }
-    const owner = [...aiSubs, ...legacySubs].find((s) => s.panel === panel.value)
+    const owner = navSubs.find((s) => s.panel === panel.value)
     if (owner && path !== owner.path) closePanel()
   },
 )
@@ -475,14 +450,138 @@ useToolAvailability()
 const currentPanel = computed(() => {
   const key = panel.value
   if (!key) return null
-  if (key === 'image' || key === 'video') {
-    // 受控工具已知不可用时目录不列；归属高亮用的 panels / ownedRoutes 仍是全量，直达页照样高亮
-    return { ...panels[key], groups: withoutDisabledGroups(panels[key].groups) }
-  }
-  if (key === 'ai') return panels[key]
-  const owner = legacySubs.find((s) => s.panel === key)
+  const owner = navSubs.find((s) => s.panel === key)
   return owner ? { title: owner.name, groups: routeGroups(owner.path) } : null
 })
+
+// ---------- AI 图片 / AI 视频：悬停滑出的功能目录（原型 NextSidebar openFly + NextDirectory overlay 模式） ----------
+/** 悬停多久才滑出（原型 300ms）；已经有一份开着时换行直接切，不再等 */
+const FLY_OPEN_DELAY = 300
+/** 指针离开行与浮层之后的宽限，够鼠标从行移进浮层（间隙很小，150ms 足够） */
+const FLY_LEAVE_GRACE = 150
+const flyKind = ref<FlyKind | null>(null)
+const flyRef = ref<HTMLElement>()
+let flyAnchor: HTMLElement | null = null
+let flyOpenTimer: ReturnType<typeof setTimeout> | undefined
+let flyCloseTimer: ReturnType<typeof setTimeout> | undefined
+/** 是键盘打开的：键盘打开的浮层不跟指针走（指针划过不收），靠 Esc / 焦点离开收起 */
+let flyByKeyboard = false
+/** Esc 收起后把焦点还给行：这次聚焦不能又把浮层打开 */
+let flyFocusMuted = false
+
+function clearFlyTimers() {
+  flyOpenTimer = clearRailTimer(flyOpenTimer)
+  flyCloseTimer = clearRailTimer(flyCloseTimer)
+}
+function openFly(kind: FlyKind, anchor: HTMLElement | null, keyboard = false) {
+  clearFlyTimers()
+  closePanel()
+  flyKind.value = kind
+  flyByKeyboard = keyboard
+  if (anchor) flyAnchor = anchor
+}
+function closeFly(returnFocus = false) {
+  clearFlyTimers()
+  const had = !!flyKind.value
+  flyKind.value = null
+  flyByKeyboard = false
+  if (returnFocus && had) {
+    flyFocusMuted = true
+    flyAnchor?.focus()
+    flyFocusMuted = false
+  }
+  if (!had || returnFocus) flyAnchor = null
+}
+/** 只有鼠标悬停才触发；触屏 / 笔没有悬停，点一下就是跳转 */
+function onFlyRowEnter(kind: FlyKind, e: PointerEvent) {
+  if (e.pointerType !== 'mouse') return
+  clearFlyTimers()
+  const anchor = e.currentTarget as HTMLElement
+  if (flyKind.value) {
+    if (flyKind.value !== kind) openFly(kind, anchor)
+    else flyByKeyboard = false
+    return
+  }
+  flyOpenTimer = setTimeout(() => {
+    flyOpenTimer = undefined
+    openFly(kind, anchor)
+  }, FLY_OPEN_DELAY)
+}
+function onFlyPointerLeave(e: PointerEvent) {
+  if (e.pointerType !== 'mouse') return
+  flyOpenTimer = clearRailTimer(flyOpenTimer)
+  if (!flyKind.value || flyByKeyboard) return
+  flyCloseTimer = clearRailTimer(flyCloseTimer)
+  flyCloseTimer = setTimeout(() => closeFly(), FLY_LEAVE_GRACE)
+}
+function onFlyPointerEnter() {
+  flyCloseTimer = clearRailTimer(flyCloseTimer)
+}
+/** 键盘 Tab 聚焦到行（:focus-visible）就滑出；鼠标点击得到的焦点不算 */
+function onFlyRowFocus(kind: FlyKind, e: FocusEvent) {
+  const el = e.currentTarget as HTMLElement
+  if (flyFocusMuted || !el.matches(':focus-visible')) return
+  openFly(kind, el, true)
+}
+/** 焦点既不在行上也不在浮层里（键盘打开时）→ 收起 */
+function onFlyFocusOut(e: FocusEvent) {
+  if (!flyKind.value || !flyByKeyboard) return
+  const next = e.relatedTarget as Node | null
+  if (next && (flyRef.value?.contains(next) || flyAnchor?.contains(next))) return
+  closeFly()
+}
+function onFlyRowKeydown(kind: FlyKind, e: KeyboardEvent) {
+  if (e.key === 'ArrowRight') {
+    e.preventDefault()
+    openFly(kind, e.currentTarget as HTMLElement, true)
+    void nextTick(() => flyRef.value?.querySelector<HTMLElement>('[data-panel-node]')?.focus())
+  } else if (e.key === 'Escape' && flyKind.value) {
+    e.preventDefault()
+    closeFly(true)
+  }
+}
+function onFlyPanelKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    closeFly(true)
+    return
+  }
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault()
+    closeFly(true)
+    return
+  }
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  const nodes = Array.from(flyRef.value?.querySelectorAll<HTMLElement>('[data-panel-node]') ?? [])
+  if (!nodes.length) return
+  e.preventDefault()
+  const idx = nodes.indexOf(document.activeElement as HTMLElement)
+  const step = e.key === 'ArrowDown' ? 1 : -1
+  nodes[(idx + step + nodes.length) % nodes.length]?.focus()
+}
+const flyPanel = computed(() => {
+  const key = flyKind.value
+  if (!key) return null
+  // 受控工具已知不可用时目录不列；高亮归属用的 panels / ownedRoutes 仍是全量
+  return { ...panels[key], groups: withoutDisabledGroups(panels[key].groups) }
+})
+const flyGroups = computed(() => toDirGroups(flyPanel.value?.groups ?? []))
+const flyEntries = computed(() => new Map((flyPanel.value?.groups ?? []).flatMap((g) => g.entries).map((e) => [e.key, e])))
+const isFlyActive = (d: DirectoryEntry) => {
+  const e = flyEntries.value.get(d.key)
+  return !!e?.route && matches(route.path, e.route)
+}
+function onFlySelect(d: DirectoryEntry) {
+  const e = flyEntries.value.get(d.key)
+  closeFly()
+  if (e?.route) go(e.route)
+}
+// 换页（含点浮层里的条目、点行本身）一律收起；触屏点行只是跳转
+watch(
+  () => route.fullPath,
+  () => closeFly(),
+)
+onBeforeUnmount(clearFlyTimers)
 
 // ---------- 电商 / 商拍目录的收起条（与工具页目录 views/tools/index.vue 同一做法、同一组原型值） ----------
 /** 只有电商 / 商拍目录可收起；收起 = 44 宽图标条（原型 NextDirectory .v3-dir__rail） */
@@ -492,8 +591,8 @@ const railMode = computed(() => railable.value && dirCollapsed.value)
 const dirPanel = ref<InstanceType<typeof DirectoryPanel>>()
 
 /** 目录条目（共用目录组件的数据形状）；有下一级的条目点开子目录，没有 route 且无下一级 = 即将开放 */
-const dirGroups = computed<DirectoryGroup[]>(() =>
-  (currentPanel.value?.groups ?? []).map((g, gi) => ({
+const toDirGroups = (groups: PanelGroup[]): DirectoryGroup[] =>
+  groups.map((g, gi) => ({
     key: g.label ?? String(gi),
     label: g.label,
     entries: g.entries.map((e) => ({
@@ -504,8 +603,8 @@ const dirGroups = computed<DirectoryGroup[]>(() =>
       hasChildren: !!e.panel,
       title: e.tagline,
     })),
-  })),
-)
+  }))
+const dirGroups = computed<DirectoryGroup[]>(() => toDirGroups(currentPanel.value?.groups ?? []))
 const entryByKey = computed(
   () => new Map((currentPanel.value?.groups ?? []).flatMap((g) => g.entries).map((e) => [e.key, e])),
 )
@@ -615,7 +714,7 @@ onBeforeUnmount(() => hideRailTips(true))
   <aside
     ref="asideRef"
     class="sticky top-0 flex h-100vh bg-white"
-    :class="currentPanel ? 'z-38 lt-wide:z-140' : 'z-38'"
+    :class="flyKind ? 'z-140' : currentPanel ? 'z-38 lt-wide:z-140' : 'z-38'"
   >
     <!-- B1：宽 204、内边距 12、右边框 #e5e7eb、往右投影压在目录上（NextSidebar.vue:314-337） -->
     <div
@@ -692,106 +791,64 @@ onBeforeUnmount(() => hideRailTips(true))
           <span v-if="!collapsed" class="min-w-0 flex-1">首页</span>
         </button>
 
-        <!-- AI 创作：展开态点击开合二级；收起态点开整组目录栏 -->
+        <!--
+          一级入口平铺：智能体 / AI 图片 / AI 视频 / 我的资产 / 画布 / 任务中心 / 创意广场 / 提示词库（电商 / 商拍 / 本地生活 / 工作流已 hidden）。
+          AI 图片 / AI 视频（owns）：点击进落地页；悬停 300ms / 键盘聚焦 / → 键在右侧滑出功能目录。
+          带 panel 的（电商 / 商拍，隐藏）点开并排目录栏。
+        -->
         <button
-          type="button"
-          :class="rowClass((collapsed || !aiExpanded) && aiSubActive)"
-          :aria-expanded="collapsed ? panel === 'ai' : aiExpanded"
-          :aria-haspopup="collapsed ? 'menu' : undefined"
-          :aria-label="collapsed ? 'AI 创作' : undefined"
-          :title="collapsed ? 'AI 创作' : undefined"
-          @click="onAiRowClick"
-        >
-          <svg
-            class="h-18px w-18px flex-none"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path v-for="d in ICON.spark" :key="d" :d="d" />
-          </svg>
-          <template v-if="!collapsed">
-            <span class="min-w-0 flex-1">AI 创作</span>
-            <svg
-              class="h-12px w-12px flex-none text-placeholder transition-transform duration-150"
-              :class="aiExpanded ? '' : 'rotate-180'"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path v-for="d in ICON.chevU" :key="d" :d="d" />
-            </svg>
-          </template>
-        </button>
-
-        <div
-          v-if="!collapsed"
-          class="flex flex-col gap-2px overflow-hidden transition-all duration-150"
-          :class="aiExpanded ? 'max-h-[400px] opacity-100' : 'invisible max-h-0 opacity-0'"
-        >
-          <button
-            v-for="sub in visibleAiSubs"
-            :key="sub.path"
-            type="button"
-            :class="subClass(subActive(sub))"
-            :aria-current="!sub.panel && subActive(sub) ? 'page' : undefined"
-            :aria-haspopup="sub.panel ? 'menu' : undefined"
-            :aria-expanded="sub.panel ? panel === sub.panel : undefined"
-            @click="onSubClick(sub, $event)"
-          >
-            <span class="min-w-0 flex-1">{{ sub.name }}</span>
-            <svg
-              v-if="sub.panel"
-              class="h-12px w-12px flex-none text-placeholder"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path v-for="d in ICON.chevR" :key="d" :d="d" />
-            </svg>
-          </button>
-        </div>
-
-        <!-- 我的资产 / 任务中心 / 创意广场 / 提示词库：独立一级入口（电商 / 商拍 / 本地生活已 hidden）；带下级目录的点开并排目录栏 -->
-        <button
-          v-for="sub in visibleLegacySubs"
+          v-for="sub in visibleSubs"
           :key="sub.path"
           type="button"
-          :class="rowClass(legacyActive(sub))"
-          :aria-current="!sub.panel && legacyActive(sub) ? 'page' : undefined"
-          :aria-haspopup="sub.panel ? 'menu' : undefined"
-          :aria-expanded="sub.panel ? panel === sub.panel : undefined"
-          :aria-label="collapsed ? sub.name : undefined"
+          :class="rowClass(subActive(sub))"
+          :aria-current="!sub.panel && subActive(sub) ? 'page' : undefined"
+          :aria-haspopup="sub.panel || sub.owns ? 'menu' : undefined"
+          :aria-expanded="sub.panel ? panel === sub.panel : sub.owns ? flyKind === sub.owns : undefined"
+          :aria-label="
+            collapsed || (sub.badge && activeTaskCount > 0)
+              ? sub.badge && activeTaskCount > 0
+                ? `${sub.name}，${activeTaskCount} 个任务进行中`
+                : sub.name
+              : undefined
+          "
           :title="collapsed ? sub.name : undefined"
           @click="onSubClick(sub, $event)"
+          @pointerenter="sub.owns && onFlyRowEnter(sub.owns, $event)"
+          @pointerleave="sub.owns && onFlyPointerLeave($event)"
+          @focus="sub.owns && onFlyRowFocus(sub.owns, $event)"
+          @focusout="sub.owns && onFlyFocusOut($event)"
+          @keydown="sub.owns && onFlyRowKeydown(sub.owns, $event)"
         >
-          <svg
-            class="h-18px w-18px flex-none"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-            :innerHTML="sub.icon"
-          />
+          <span class="relative flex h-18px w-18px flex-none">
+            <svg
+              class="h-18px w-18px flex-none"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              :innerHTML="sub.icon"
+            />
+            <!-- 收起态：角标压在图标右上角 -->
+            <b
+              v-if="sub.badge && collapsed && activeTaskCount > 0"
+              class="absolute -right-6px -top-5px grid h-14px min-w-14px place-items-center rounded-full bg-violet-solid px-3px text-10px font-600 leading-none text-white tabular-nums"
+              aria-hidden="true"
+              >{{ activeTaskCount > 99 ? '99+' : activeTaskCount }}</b
+            >
+          </span>
           <template v-if="!collapsed">
             <span class="min-w-0 flex-1">{{ sub.name }}</span>
+            <b
+              v-if="sub.badge && activeTaskCount > 0"
+              class="grid h-18px min-w-18px flex-none place-items-center rounded-full bg-violet-solid px-5px text-11px font-600 leading-none text-white tabular-nums"
+              aria-hidden="true"
+              >{{ activeTaskCount > 99 ? '99+' : activeTaskCount }}</b
+            >
             <svg
-              v-if="sub.panel"
+              v-if="sub.panel || sub.owns"
               class="h-12px w-12px flex-none text-placeholder"
               viewBox="0 0 24 24"
               fill="none"
@@ -927,6 +984,41 @@ onBeforeUnmount(() => hideRailTips(true))
           @rail-hover="(e) => (hoveredRail = e.key)"
           @rail-focus="(e) => (showRailTips(), (hoveredRail = e.key))"
           @rail-blur="hideRailTips()"
+        />
+      </div>
+    </Transition>
+
+    <!--
+      悬停滑出的 AI 图片 / AI 视频功能目录（原型 NextDirectory overlay 模式）：贴着侧栏右缘、上下各 8、160 宽、r10、浮层影，
+      不挤内容；240ms 透明 + 左移 24px 滑入（reduced-motion 下无过渡）。指针在行与本浮层之间移动不收（宽限 150ms）。
+    -->
+    <Transition
+      enter-active-class="[transition:opacity_240ms_ease,transform_240ms_ease] motion-reduce:transition-none"
+      leave-active-class="[transition:opacity_240ms_ease,transform_240ms_ease] motion-reduce:transition-none"
+      enter-from-class="opacity-0 -translate-x-24px motion-reduce:translate-x-0"
+      leave-to-class="opacity-0 -translate-x-24px motion-reduce:translate-x-0"
+    >
+      <div
+        v-if="flyPanel"
+        ref="flyRef"
+        class="absolute bottom-8px left-full top-8px z-3 box-border flex w-160px flex-col overflow-hidden rounded-xl border border-solid border-shell-line bg-white shadow-pop"
+        role="dialog"
+        :aria-label="flyPanel.title + '目录'"
+        @pointerenter="onFlyPointerEnter"
+        @pointerleave="onFlyPointerLeave"
+        @focusout="onFlyFocusOut"
+        @keydown="onFlyPanelKeydown"
+      >
+        <DirectoryPanel
+          class="min-h-0 flex-1"
+          :title="flyPanel.title"
+          :groups="flyGroups"
+          :railable="false"
+          :is-active="isFlyActive"
+          list-id="nav-fly-list"
+          menu
+          @close="closeFly(true)"
+          @select="onFlySelect"
         />
       </div>
     </Transition>

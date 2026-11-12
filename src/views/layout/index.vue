@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import Navigation from '@/views/layout/Navigation/index.vue'
 import ECommerceTabs from '@/views/e-commerce/Tabs/index.vue'
 import { sessionKeyOf, useEcTabsStore } from '@/stores/e-commerce/tabs'
 import { useSessionIdStore } from '@/stores/e-commerce'
+import RouteErrorBoundary from '@/components/RouteErrorBoundary/index.vue'
+import { useRouteStagger } from '@/utils/composables/useRouteStagger'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +28,22 @@ useSessionIdStore().pruneSessionIds(new Set(tabs.value.map(sessionKeyOf)))
 const cacheKey = computed(() =>
   isFunctionPage.value && route.query.tab ? `${String(route.name)}#${route.query.tab}` : undefined,
 )
+
+// 路由三拍转场：只在 AI 图片 / AI 视频 / 工具页之间互切时做；其它跳转保持直接替换（无任何过渡）。
+// 记前一个路径要用同步 watcher：转场的开关在新路由渲染那一刻就要读到「从哪来」
+const previousPath = ref('')
+watch(
+  () => route.path,
+  (_to, from) => {
+    previousPath.value = from
+  },
+  { flush: 'sync' },
+)
+const isStaggerPage = (path: string) => path === '/image' || path === '/video' || path.startsWith('/tools/')
+const staggerActive = computed(() => isStaggerPage(route.path) && isStaggerPage(previousPath.value))
+const routeMotion = useRouteStagger(staggerActive, { selector: '.tool-split > *' })
+// 转场开着时按路径给 key：同一个工具页组件切不同工具（路由参数变）也要走一遍进出场；关着时保持原来的缓存键
+const viewKey = computed(() => (routeMotion.css.value ? route.path : cacheKey.value))
 
 // 标签由路由驱动而非点击驱动：卡片点击、URL 直达（刷新/容器初始地址）、浏览器前进后退
 // 全都自动开出标签。
@@ -68,11 +86,22 @@ watch(
       <!-- keep-alive 刻意挂在 layout 这层而不是电商子布局：挂在子布局里的话，点左侧导航去
            「图片」会连子布局一起卸载，缓存的功能页全被销毁。include 只列已打开的电商功能页，
            其它模块页面不进缓存，行为与改造前一致 -->
-      <RouterView v-slot="{ Component }">
-        <keep-alive :include="cachedNames">
-          <component :is="Component" :key="cacheKey" />
-        </keep-alive>
-      </RouterView>
+      <RouteErrorBoundary>
+        <RouterView v-slot="{ Component }">
+          <Transition
+            :name="routeMotion.name.value"
+            :css="routeMotion.css.value"
+            :duration="routeMotion.duration.value"
+            @enter="routeMotion.onEnter"
+            @after-enter="routeMotion.onAfter"
+            @after-leave="routeMotion.onAfter"
+          >
+            <keep-alive :include="cachedNames">
+              <component :is="Component" :key="viewKey" />
+            </keep-alive>
+          </Transition>
+        </RouterView>
+      </RouteErrorBoundary>
     </div>
   </div>
 </template>
