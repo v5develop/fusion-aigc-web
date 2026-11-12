@@ -82,6 +82,7 @@ import {
 } from '../../constants.ts'
 import { tryonItemParts } from '../../colorfix/mask-parts.ts'
 import { tryonReferences } from '../../colorfix/references.ts'
+import { studioAutoColor } from '../../colorfix/auto-color.ts'
 import {
   flushPending,
   lastSavedAssetColorFix,
@@ -484,6 +485,8 @@ const cf = useResultColorFix({
   maskParts: computed(() => selectedSuccess.value?.maskParts ?? null),
   maskSource: computed(() => (selectedSuccess.value ? { taskId: selectedSuccess.value.taskId } : null)),
   references: computed(() => tryonReferences(props.detail?.batch.payload)),
+  // 参考图自动校色：只传任务号，服务端按归属解析成品 / 参考图 / 蒙版；结果灌进各单品图层当初值（一步可撤销）
+  autoColor: studioAutoColor(computed(() => selectedSuccess.value?.taskId)),
   enabled: cfTool,
   segmenter: studioSegmenter,
   // 识别接口不可用：「全部服装」同样退回整图（与识别失败同口径，舞台给提示）

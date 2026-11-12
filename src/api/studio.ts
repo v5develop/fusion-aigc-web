@@ -176,6 +176,24 @@ export function studioHistory(params: types.StudioHistoryParams = {}) {
   })
 }
 
+// ---------------- 参考图自动校色 ----------------
+
+/** 自动校色超时：未命中蒙版缓存时先要一次分割（约 120s）再等求解（约 40s），比网关路由超时（250s）短 */
+export const AUTO_COLORFIX_TIMEOUT = 200000
+
+/**
+ * 参考图驱动的自动校色（POST /colorfix/auto，免费）：只传子任务号（本人、成功的商拍换装），服务端取成品、各单品参考图与逐件蒙版交给求解服务，
+ * 回每件单品的五个滑杆值（整数、已夹到取值范围）与分数；不落库，用户保存走 studioSaveTaskColorFix。
+ * 错误（已在 SILENT_ERROR_URLS，不弹全局 toast，调用方按信封 reason 就地提示）：7003 COLORFIX_AUTO_DISABLED（功能没开）、
+ * 6001 COLORFIX_AUTO_BUSY / COLORFIX_AUTO_TIMEOUT（可重试）/ COLORFIX_AUTO_UNAVAILABLE、4002 COLORFIX_AUTO_TOO_FREQUENT / COLORFIX_AUTO_TASK_NOT_READY、
+ * 4001 COLORFIX_AUTO_NO_PIECE（一件都解不出）、1003 COLORFIX_AUTO_NO_REFERENCE；老网关 HTTP 404。
+ */
+export function studioAutoColorFix(taskId: string, pieces?: string[], opts: { signal?: AbortSignal } = {}) {
+  const body: types.StudioAutoColorFixReq = { taskId }
+  if (pieces?.length) body.pieces = pieces
+  return post<types.StudioAutoColorFixResp>(`${PREFIX}/colorfix/auto`, body, undefined, AUTO_COLORFIX_TIMEOUT, opts.signal)
+}
+
 // ---------------- 区域蒙版（局部校色） ----------------
 
 /** 区域蒙版超时：服务端未命中缓存时要等一次分割调用（上限约 120s），比网关路由超时（250s）短 */

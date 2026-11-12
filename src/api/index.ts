@@ -239,6 +239,8 @@ const SILENT_ERROR_URLS = [
   '/agent/image-quote',
   // 校色「自动识别」选区：失败由参数台就地提示，不弹全局 toast
   '/studio/masks',
+  // 商拍参考图自动校色：失败（功能没开 / 繁忙 / 超时 / 解不出）由校色参考卡就地提示
+  '/studio/colorfix/auto',
   '/batch-hosting/ecom-image/quote',
   // 商拍工作室保存校色参数（PATCH /studio/tasks/{id}/color-fix）：后台防抖保存，失败本机 localStorage 兜底，不打扰
   '/color-fix',

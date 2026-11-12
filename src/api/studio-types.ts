@@ -280,6 +280,8 @@ export interface StudioModelsResp {
   items: StudioModelCapability[]
   /** with_price 时有：on / shadow / off */
   billingMode: string
+  /** 参考图自动校色已开启（求解服务已配置）；false = 隐藏「自动校色」。老网关没有这个字段 = 未知 */
+  colorfixAuto?: boolean
 }
 
 // ---------------- 批次 / 任务 ----------------
@@ -375,6 +377,35 @@ export interface StudioColorFixParams {
   value: number
   brightness: number
   contrast: number
+}
+
+/** POST /colorfix/auto 请求体：只认子任务号，成品 / 参考图 / 蒙版由服务端按归属解析 */
+export interface StudioAutoColorFixReq {
+  taskId: string
+  /** 只解这些单品（top / bottom / dress / outer / shoes / accessory / bra / panties）；空 = 批次里的全部单品 */
+  pieces?: string[]
+}
+
+/** 一件单品的自动校色结果；params 线上键名同 StudioColorFixParams（引擎里叫 sat / light / bright），已夹到取值范围的整数 */
+export interface StudioAutoColorFixPiece {
+  /** 单品码，与校色参考图的 key 同 */
+  key: string
+  params: StudioColorFixParams
+  /** 0–100，越高越接近参考色；< 60 提示「仅供参考」 */
+  score: number
+}
+
+/** 没解的单品：no_reference 没有参考图 / no_mask 没识别到该单品 / mask_unavailable 识别暂不可用 / unsolved 求解端没给结果 */
+export interface StudioAutoColorFixSkipped {
+  key: string
+  reason: string
+}
+
+export interface StudioAutoColorFixResp {
+  taskId: string
+  pieces: StudioAutoColorFixPiece[]
+  skipped: StudioAutoColorFixSkipped[]
+  version: string
 }
 
 /** PATCH /tasks/{task_id}/color-fix 请求体；回该子任务 */

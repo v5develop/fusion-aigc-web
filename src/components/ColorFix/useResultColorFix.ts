@@ -59,6 +59,7 @@ import {
   colorFixRenderLayers,
   colorFixSanitize,
   colorFixEquals,
+  colorFixIsZero,
   loadColorFix,
   saveColorFix,
   type ColorFixParams,
@@ -68,6 +69,8 @@ import { downloadImage } from '@/utils/download'
 import {
   COLORFIX_GARMENT_PARTS,
   COLORFIX_REGION_DEFAULT,
+  colorFixPartsEqual,
+  colorFixPartsSanitize,
   type ColorFixAutoTarget,
   type ColorFixGarmentPart,
   type ColorFixRegion,
@@ -136,6 +139,7 @@ import { triggerDownload, withImageExt, withPngExt } from './files.ts'
 import { packSession, unpackSession, type SelectionSession } from './selection-session.ts'
 import { adjustSignature, type ColorFixAdjust } from '@/utils/colorfix-math.ts'
 import type { ColorFixReference } from './references.ts'
+import type { ColorFixAutoColor } from './auto-color.ts'
 
 export { triggerDownload }
 
@@ -193,6 +197,11 @@ export interface ResultColorFixOptions {
    * 参数台 / 图上点选可按单品切换图层（见 ./references.ts）。不传 / 空 = 不出浮卡
    */
   references?: Ref<ColorFixReference[] | undefined | null>
+  /**
+   * 参考图自动校色（可选，见 ./auto-color.ts）：宿主给了才出「自动校色」按钮（参考卡里），结果经 {@link applyPieceParams}
+   * 灌进各单品图层当初值。不传 = 没有这个入口
+   */
+  autoColor?: ColorFixAutoColor
   /** 总开关（如只对图片结果开）；不传 = 开 */
   enabled?: Ref<boolean>
   /** 「恢复默认」/ 初始参数 */
@@ -829,6 +838,69 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     if (mode === 'point' && src.value && !pointSegmentBlocked.value) pointOpen.value = true
     if (mode === 'paint' && src.value) painterOpen.value = true
     return l.id
+  }
+
+  /**
+   * 把一组单品的校色参数灌进它们的图层，**整件事一步可撤销**（参考图自动校色用，见 ./auto-color.ts）：
+   * 每件单品 = 「自动识别 · 服装 · 这些部位」图层，已有就只换参数（识别、替换颜色、更多调整都留着），没有就新建（满 8 层的跳过并提示）；
+   * 参数先夹到合法范围，不合法的丢掉。最后选中第一件灌进去的单品。
+   * 求解是对**原图**解的：整图底层若有校色参数（如提交时开了「默认校色」），叠上去会重复校一遍，所以一并归零（同一步里，可撤销），
+   * 返回 baseReset 让调用方告诉用户。返回 applied = 实际灌进去的 key。
+   */
+  function applyPieceParams(
+    entries: ReadonlyArray<{ key: string; parts: readonly ColorFixGarmentPart[]; params: ColorFixParams }>,
+  ): { applied: string[]; baseReset: boolean } {
+    const applied: string[] = []
+    let baseReset = false
+    let capped = false
+    let focus = ''
+    structural(() => {
+      let list = layers.value
+      for (const e of entries) {
+        const params = colorFixSanitize(e.params)
+        const parts = colorFixPartsSanitize(e.parts)
+        if (!params || !parts.length) continue
+        const at = list.findIndex(
+          (l) =>
+            isSelectionLayer(l) &&
+            l.region.mode === 'auto' &&
+            l.region.target === 'garment' &&
+            colorFixPartsEqual(colorFixPartsSanitize(l.region.parts), parts),
+        )
+        if (at >= 0) {
+          const id = list[at]!.id
+          list = list.map((l, i) => (i === at ? { ...l, params: { ...params }, visible: true } : l))
+          focus ||= id
+        } else if (list.length < COLORFIX_LAYERS_MAX) {
+          const r: ColorFixRegion = { ...COLORFIX_REGION_DEFAULT, mode: 'auto', target: 'garment', parts }
+          const l: ColorFixLayer = {
+            id: newLayerId(),
+            name: autoLayerName(r, nextLayerIndex(list)),
+            autoName: true,
+            visible: true,
+            params: { ...params },
+            region: r,
+            recolor: null,
+          }
+          list = [...list, l]
+          focus ||= l.id
+        } else {
+          capped = true
+          continue
+        }
+        applied.push(e.key)
+      }
+      if (!applied.length) return
+      list = list.map((l) => {
+        if (!isBaseLayer(l) || isPixelLayer(l) || colorFixIsZero(l.params)) return l
+        baseReset = true
+        return { ...l, params: { ...COLORFIX_ZERO } }
+      })
+      layers.value = list
+      if (focus) selectedLayerId.value = focus
+    })
+    if (capped) noteCap()
+    return { applied, baseReset }
   }
 
   /** 复制图层（蒙版一并复制到新图层名下）；底层不能复制，超过上限返回 '' */
@@ -1653,6 +1725,9 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     /** 底层「恢复默认」用的那组参数 */
     defaults,
     references,
+    /** 参考图自动校色（宿主没给 = null，不出入口） */
+    autoColor: opts.autoColor ?? null,
+    applyPieceParams,
     layerMask,
     presetMaskFor,
     // 状态
