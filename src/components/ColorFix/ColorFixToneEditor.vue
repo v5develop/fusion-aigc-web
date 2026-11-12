@@ -6,12 +6,12 @@
  *   <li>色阶：输入黑场 / 中间调（gamma，对数刻度）/ 输入白场、输出黑场 / 白场五条滑杆；上方是原图（选区内）亮度直方图，
  *       竖线标出输入黑 / 白场；「自动」按直方图两端各 0.5% 定黑白场；</li>
  *   <li>曲线：RGB 主曲线 + 红 / 绿 / 蓝分通道（先主曲线再分通道），每条最多 8 个控制点（含两端），单调三次插值；
- *       底图是对应通道的直方图。鼠标：空白处单击加点、拖动移点、双击删点（两端不能删）；键盘：Tab 到控制点，方向键移动
- *       （Shift ×10）、Delete 删点；也可在下方输入框精确改选中点的输入 / 输出。</li>
+ *       底图是对应通道的直方图。鼠标：空白处单击加点、拖动移点、双击删点（两端不能删）；键盘：Tab / Shift+Tab 在控制点间循环，方向键移动
+ *       1（Shift ×10）、Delete 删点、Esc 回到曲线；也可在下方输入框精确改选中点的输入 / 输出。</li>
  * </ul>
  * 数学在 utils/colorfix-math（monotoneCurve / levelsMap / buildToneLuts，有 node 校验）；这里只做编辑。
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import {
   COLORFIX_CURVE_CHANNELS,
   COLORFIX_CURVE_LABELS,
@@ -73,8 +73,55 @@ function setLevels(patch: Partial<ColorFixLevels>) {
 /** 中间调滑杆：-100…100 ↔ gamma 0.1…10（对数刻度，0 = 1.00） */
 const gammaPos = computed(() => Math.round(Math.log10(lv.value.gamma) * 100))
 function setGammaPos(pos: number) {
-  const g = Math.pow(10, pos / 100)
-  setLevels({ gamma: Math.round(Math.min(LEVELS_GAMMA_MAX, Math.max(LEVELS_GAMMA_MIN, g)) * 100) / 100 })
+  setLevels({ gamma: clampGamma(Math.pow(10, pos / 100)) })
+}
+function clampGamma(g: number): number {
+  return Math.round(Math.min(LEVELS_GAMMA_MAX, Math.max(LEVELS_GAMMA_MIN, g)) * 100) / 100
+}
+/** 中间调键盘：方向键 ±0.01，Shift ±0.10（直接在 gamma 上加减，再取两位小数；滑杆位置由 gammaPos 反推，两者始终一致） */
+function onGammaKey(e: KeyboardEvent) {
+  const dir = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -1 : 0
+  if (!dir) return
+  e.preventDefault()
+  e.stopPropagation()
+  const next = clampGamma(lv.value.gamma + dir * (e.shiftKey ? 0.1 : 0.01))
+  if (next !== lv.value.gamma) setLevels({ gamma: next })
+}
+/** 点数值行内编辑中间调（0.10–9.99，两位小数；回车 / 失焦提交，Esc 取消，非数字忽略） */
+const gammaEditing = ref(false)
+const gammaDraft = ref('')
+const gammaBox = ref<HTMLInputElement | null>(null)
+let gammaCancelled = false
+function startGammaEdit(e: Event) {
+  e.preventDefault() // 值在 <label> 里，别让点击把焦点转给滑杆
+  gammaCancelled = false
+  gammaDraft.value = lv.value.gamma.toFixed(2)
+  gammaEditing.value = true
+  void nextTick(() => {
+    gammaBox.value?.focus()
+    gammaBox.value?.select()
+  })
+}
+function finishGammaEdit(commit: boolean) {
+  if (!gammaEditing.value) return
+  gammaEditing.value = false
+  if (!commit || gammaCancelled) return
+  const text = gammaDraft.value.trim()
+  const n = Number(text)
+  if (text === '' || !Number.isFinite(n)) return
+  const g = clampGamma(n)
+  if (g !== lv.value.gamma) setLevels({ gamma: g })
+}
+function onGammaBoxKey(e: KeyboardEvent) {
+  e.stopPropagation()
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    finishGammaEdit(true)
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    gammaCancelled = true
+    finishGammaEdit(false)
+  }
 }
 const levelsHist = computed(() => (hasHist.value ? histPath(histogram!.l, 48) : ''))
 /** 自动：亮度直方图两端各裁 0.5% */
@@ -240,7 +287,15 @@ function onPointKey(e: KeyboardEvent, i: number) {
   if (!p) return
   const step = e.shiftKey ? 10 : 1
   let handled = true
-  if (e.key === 'ArrowLeft') movePoint(i, p[0] - step, p[1])
+  if (e.key === 'Tab') {
+    const n = points.value.length
+    const next = (i + (e.shiftKey ? -1 : 1) + n) % n
+    selIndex.value = next
+    pointEls.value[next]?.focus()
+  } else if (e.key === 'Escape') {
+    if (selIndex.value < 0) return
+    svgEl.value?.focus()
+  } else if (e.key === 'ArrowLeft') movePoint(i, p[0] - step, p[1])
   else if (e.key === 'ArrowRight') movePoint(i, p[0] + step, p[1])
   else if (e.key === 'ArrowUp') movePoint(i, p[0], p[1] + step)
   else if (e.key === 'ArrowDown') movePoint(i, p[0], p[1] - step)
@@ -253,6 +308,11 @@ function onPointKey(e: KeyboardEvent, i: number) {
   if (!handled) return
   e.preventDefault()
   e.stopPropagation()
+}
+/** 编辑器本体（SVG）有焦点、已选中某点时，方向键 / Delete 同样作用于选中点 */
+function onSvgKey(e: KeyboardEvent) {
+  if (e.target !== e.currentTarget || selIndex.value < 0 || e.key === 'Tab' || e.key === 'Escape') return
+  onPointKey(e, selIndex.value)
 }
 function onChannelKey(e: KeyboardEvent) {
   const list = COLORFIX_CURVE_CHANNELS
@@ -272,6 +332,21 @@ function pickChannel(c: ColorFixCurveChannel) {
   selIndex.value = -1
 }
 
+function onFieldKey(e: KeyboardEvent) {
+  if (e.key === 'Tab') return
+  e.stopPropagation() // 输入框里的按键不触发画布 / 全局快捷键
+  const el = e.target as HTMLInputElement
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    el.blur()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    const p = points.value[selIndex.value]
+    if (p) el.value = String(el === xInput.value ? p[0] : p[1])
+    el.blur()
+  }
+}
+const xInput = ref<HTMLInputElement | null>(null)
 function num(e: Event) {
   return Math.round(Number((e.target as HTMLInputElement).value))
 }
@@ -279,9 +354,14 @@ function onSelInput(axis: 0 | 1, e: Event) {
   const i = selIndex.value
   const p = points.value[i]
   if (!p) return
-  const v = num(e)
-  if (!Number.isFinite(v)) return
+  const el = e.target as HTMLInputElement
+  const v = el.value.trim() === '' ? NaN : num(e)
+  if (!Number.isFinite(v)) {
+    el.value = String(p[axis])
+    return
+  }
   movePoint(i, axis === 0 ? v : p[0], axis === 1 ? v : p[1])
+  el.value = String(points.value[i]?.[axis] ?? v) // 被夹住时把框里的值同步成实际值
 }
 
 const QUARTERS = [64, 128, 192]
@@ -311,8 +391,9 @@ const QUARTERS = [64, 128, 192]
     </label>
     <label class="cft__row">
       <span class="cft__label">中间调</span>
-      <input v-cf-fine class="cft__range" type="range" min="-100" max="100" step="1" :value="gammaPos" style="--track: linear-gradient(90deg, #333, #888, #ddd)" aria-label="色阶中间调：向右提亮中间调，向左压暗" :aria-valuetext="`中间调 ${lv.gamma.toFixed(2)}`" @input="setGammaPos(num($event))" @dblclick="setLevels({ gamma: 1 })" />
-      <b class="cft__num" :class="{ 'is-zero': lv.gamma === 1 }">{{ lv.gamma.toFixed(2) }}</b>
+      <input class="cft__range" type="range" min="-100" max="100" step="1" :value="gammaPos" style="--track: linear-gradient(90deg, #333, #888, #ddd)" aria-label="色阶中间调：向右提亮中间调，向左压暗；方向键 ±0.01，Shift ±0.10，点右侧数值可直接输入" :aria-valuetext="`中间调 ${lv.gamma.toFixed(2)}`" @input="setGammaPos(num($event))" @keydown="onGammaKey" @dblclick="setLevels({ gamma: 1 })" />
+      <input v-if="gammaEditing" ref="gammaBox" v-model="gammaDraft" class="cft__gbox" type="text" inputmode="decimal" aria-label="输入中间调数值（0.10 到 9.99）" @keydown="onGammaBoxKey" @blur="finishGammaEdit(true)" @click.stop />
+      <b v-else class="cft__num cft__num--gamma" :class="{ 'is-zero': lv.gamma === 1 }" role="button" title="点击输入数值" @click="startGammaEdit">{{ lv.gamma.toFixed(2) }}</b>
     </label>
     <label class="cft__row">
       <span class="cft__label">输入白场</span>
@@ -359,7 +440,9 @@ const QUARTERS = [64, 128, 192]
         class="cft__svg"
         viewBox="-6 -6 268 268"
         role="group"
-        :aria-label="`${COLORFIX_CURVE_LABELS[channel]}曲线：Tab 到控制点后方向键移动（Shift 加大步长），Delete 删除；空白处单击曲线加点，双击控制点删除`"
+        tabindex="0"
+        :aria-label="`${COLORFIX_CURVE_LABELS[channel]}曲线：Tab / Shift+Tab 切换控制点，方向键移动 1（Shift 移动 10），Delete 删除，Esc 回到曲线；空白处单击曲线加点，双击控制点删除`"
+        @keydown="onSvgKey"
         @pointerdown="onSvgDown"
         @pointermove="onSvgMove"
         @pointerup="onSvgUp"
@@ -401,11 +484,11 @@ const QUARTERS = [64, 128, 192]
       <template v-if="sel">
         <label class="cft__field">
           <span>输入</span>
-          <input :id="`${uid}-x`" type="number" min="0" max="255" :value="sel[0]" class="cft__input" @change="onSelInput(0, $event)" />
+          <input ref="xInput" :id="`${uid}-x`" type="number" min="0" max="255" :value="sel[0]" class="cft__input" aria-label="选中控制点的输入值（0–255）" @change="onSelInput(0, $event)" @keydown="onFieldKey" />
         </label>
         <label class="cft__field">
           <span>输出</span>
-          <input :id="`${uid}-y`" type="number" min="0" max="255" :value="sel[1]" class="cft__input" @change="onSelInput(1, $event)" />
+          <input :id="`${uid}-y`" type="number" min="0" max="255" :value="sel[1]" class="cft__input" aria-label="选中控制点的输出值（0–255）" @change="onSelInput(1, $event)" @keydown="onFieldKey" />
         </label>
       </template>
       <span v-else class="cft__soft">{{ points.length }}/{{ CURVE_MAX_POINTS }} 个控制点</span>
@@ -491,6 +574,28 @@ const QUARTERS = [64, 128, 192]
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+.cft__num--gamma {
+  cursor: text;
+}
+.cft__gbox {
+  width: 40px;
+  flex: none;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border: 1px solid var(--xq-violet);
+  border-radius: 6px;
+  background: var(--xq-surface);
+  color: var(--xq-ink);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  text-align: center;
+}
+.cft__gbox:focus-visible {
+  outline: 2px solid var(--xq-violet);
+  outline-offset: 1px;
 }
 .cft__num.is-zero {
   color: var(--xq-muted);
@@ -594,6 +699,10 @@ const QUARTERS = [64, 128, 192]
 .cft__curve {
   display: flex;
   justify-content: center;
+}
+.cft__svg:focus-visible {
+  outline: 2px solid var(--xq-violet);
+  outline-offset: 2px;
 }
 .cft__svg {
   width: 100%;
