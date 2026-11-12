@@ -25,7 +25,12 @@ import type { ResultColorFix } from './useResultColorFix.ts'
 import type { ColorFixViewMode } from './types.ts'
 import ColorFixPeekButton from './ColorFixPeekButton.vue'
 import { MASK_VIEW_HINTS, MASK_VIEW_LABELS, type MaskViewMode } from './selection-ops.ts'
-import { activeTheme } from '@/utils/themePrefs.ts'
+import { NConfigProvider } from 'naive-ui'
+import { naiveBaseTheme, naiveThemeOverrides } from '@/theme/naive'
+
+/** 全屏调色台整块深色（含 naive 输入框 / 下拉的内联部分），与外观偏好无关 */
+const darkNaiveTheme = naiveBaseTheme('dark')
+const darkNaiveOverrides = naiveThemeOverrides('dark')
 
 const {
   cf,
@@ -168,8 +173,9 @@ const SEG =
 <template>
   <!-- 弹层根节点必须是 div：naive 的焦点圈定按「起始哨兵后第一个 DIV」认内容区，section 会让焦点进不来 -->
   <n-modal :show="show" :mask-closable="false" :auto-focus="true" transform-origin="center" @update:show="(v: boolean) => !v && exit()">
-    <!-- 全屏调色台始终是深色（看图要暗环境）：根节点锁 data-theme="dark"，里面的令牌一律取深色；
-         右侧参数台跟随站点外观（浅色时仍是白卡），所以单独把主题还给它 -->
+    <!-- 全屏调色台始终是深色（看图要暗环境，亮白参数台贴着图会让人把图看暗、看灰）：根节点锁 data-theme="dark"，
+         右侧参数台也一样，不随站点外观；naive 组件由根 div 内的 abstract provider 换成深色主题
+         （provider 不能包在 div 外：n-modal 只认第一个子节点做显隐，包在外面会导致退出全屏关不掉弹层） -->
     <div
       data-theme="dark"
       class="cf-fs flex flex-col bg-surface text-white"
@@ -179,6 +185,7 @@ const SEG =
       tabindex="-1"
       @keydown="onKey"
     >
+      <n-config-provider abstract :theme="darkNaiveTheme" :theme-overrides="darkNaiveOverrides">
       <header class="cf-fs-head flex flex-wrap items-center gap-8px px-16px py-8px bg-overlay border-b border-b-solid border-white/8">
         <b class="min-w-0 max-w-[28vw] truncate text-14px font-600 leading-20px">{{ title }}</b>
         <div role="radiogroup" aria-label="查看方式" class="flex items-center gap-2px p-3px rounded-full bg-white/8">
@@ -241,10 +248,11 @@ const SEG =
           <ColorFixZoomView ref="zoom" class="flex-1 min-w-0" :cf="cf" :mode="mode" :labels="labels" :show-mask="showMask" :mask-view="shownView" />
           <ColorFixReferenceCard v-if="cf.references.value.length" :cf="cf" storage-key="colorfix:ref-card:fullscreen" />
         </div>
-        <aside :data-theme="activeTheme" class="cf-fs-dock flex flex-col bg-surface text-ink" aria-label="校色参数">
+        <aside data-theme="dark" class="cf-fs-dock flex flex-col bg-surface text-ink" aria-label="校色参数">
           <ColorFixResultPanel :cf="cf" :title="title" :local-adjust="localAdjust" docked large />
         </aside>
       </div>
+      </n-config-provider>
     </div>
   </n-modal>
 </template>

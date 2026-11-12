@@ -210,7 +210,7 @@ function onInput(event: Event) {
 .cfs__value.is-zero {
   border-color: transparent;
   background: transparent;
-  color: #9aa1aa;
+  color: var(--xq-placeholder);
   font-weight: 500;
 }
 .cfs__track {
@@ -225,7 +225,7 @@ function onInput(event: Event) {
   left: 0;
   height: 4px;
   border-radius: 2px;
-  background: #ece8ef;
+  background: var(--xq-line);
   box-shadow: inset 0 1px 1px rgba(31, 35, 41, 0.05);
 }
 .cfs__zero {
@@ -234,14 +234,14 @@ function onInput(event: Event) {
   width: 1px;
   height: 10px;
   transform: translateX(-0.5px);
-  background: #c9c1cf;
+  background: var(--xq-control);
 }
 .cfs__fill {
   position: absolute;
   top: 7px;
   height: 4px;
   border-radius: 2px;
-  background: linear-gradient(90deg, #9a74ab, #83598f);
+  background: linear-gradient(90deg, var(--xq-violet-top), var(--xq-violet-bottom));
 }
 /* 可点区域：视觉轨道 18 高，range 本体撑到 32 高、上下各外扩 7px（绝对定位 + 负偏移，不改版面） */
 .cfs input[type='range'] {
@@ -269,7 +269,7 @@ function onInput(event: Event) {
   margin-top: 9px;
   appearance: none;
   -webkit-appearance: none;
-  border: 2px solid #83598f;
+  border: 2px solid var(--xq-violet);
   border-radius: 50%;
   background: var(--xq-surface);
   box-shadow: 0 1px 3px rgba(31, 35, 41, 0.22);
@@ -293,7 +293,7 @@ function onInput(event: Event) {
 .cfs input[type='range']::-moz-range-thumb {
   width: 10px;
   height: 10px;
-  border: 2px solid #83598f;
+  border: 2px solid var(--xq-violet);
   border-radius: 50%;
   background: var(--xq-surface);
   box-shadow: 0 1px 3px rgba(31, 35, 41, 0.22);
