@@ -47,7 +47,13 @@ export const NODE_CARD_SELECTED =
  * 线色用藤紫描边色，悬停加深到主色。
  */
 export const NODE_RESIZE_GRIP =
-  'absolute right-3px bottom-3px z-3 block w-18px h-18px cursor-nwse-resize opacity-0 transition-opacity duration-120 group-hover:opacity-100 [.is-selected_&]:opacity-100 before:content-empty before:absolute before:right-0 before:bottom-0 before:w-9px before:h-9px before:border-r before:border-b before:border-r-solid before:border-b-solid before:border-[#b9a0c7] before:rounded-br-4px hover:before:border-violet nodrag'
+  'absolute right-0 bottom-0 z-3 block w-14px h-14px cursor-nwse-resize touch-none nodrag nopan before:content-empty before:absolute before:right-3px before:bottom-3px before:w-8px before:h-8px before:border-r-2 before:border-b-2 before:border-r-solid before:border-b-solid before:border-[#b9a0c7] before:rounded-br-4px before:opacity-0 before:transition-opacity before:duration-120 group-hover:before:opacity-100 [.is-selected_&]:before:opacity-100 hover:before:!border-violet [[data-theme=dark]_&]:before:border-[#8a7596]'
+
+/** 右 / 下边缘缩放条：8px 命中区（一半压在卡片外），悬停显示 2px 主色线；角落 14px 留给 GRIP */
+export const NODE_RESIZE_EDGE_X =
+  'absolute -right-4px top-0 bottom-14px z-2 w-8px cursor-ew-resize touch-none nodrag nopan after:content-empty after:absolute after:right-3px after:top-8px after:bottom-0 after:w-2px after:rounded-full after:bg-violet after:opacity-0 after:transition-opacity after:duration-120 hover:after:opacity-60'
+export const NODE_RESIZE_EDGE_Y =
+  'absolute -bottom-4px left-0 right-14px z-2 h-8px cursor-ns-resize touch-none nodrag nopan after:content-empty after:absolute after:bottom-3px after:left-8px after:right-0 after:h-2px after:rounded-full after:bg-violet after:opacity-0 after:transition-opacity after:duration-120 hover:after:opacity-60'
 
 /** 节点头：36px / gap 6 / 左右 10 / 底部细分隔（canvas-v31 只给文字 / 图片 / 模型节点） */
 export const NODE_HEAD = 'flex h-36px items-center gap-6px px-10px border-b border-b-solid border-line-soft'

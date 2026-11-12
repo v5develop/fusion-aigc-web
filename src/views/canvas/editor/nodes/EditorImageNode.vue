@@ -52,6 +52,8 @@ const width = computed(() => props.data.width ?? 240)
 const naturalRatio = ref(0)
 const mediaHeight = computed(() => {
   const inner = width.value - 24
+  // 用户拖过高度：外框高度即准（媒体区 = 外框 − 头 36 − 内边距 24），图片 object-contain 居中
+  if (props.data.heightFixed && props.data.height) return Math.max(60, props.data.height - 36 - 24)
   if (props.data.image && naturalRatio.value > 0) {
     return Math.round(Math.min(520, Math.max(100, inner / naturalRatio.value)))
   }
@@ -262,7 +264,7 @@ const { dragging } = useFileDropPaste(dropRef, {
     <NodeQuickAdd :kinds="['image-model', 'video-model', 'tool']" @open="emit('quickAdd', $event)" />
     <Handle v-if="isResult" id="image-in" type="target" :position="Position.Left" :class="portClass('image')" />
     <Handle id="image" type="source" :position="Position.Right" :class="portClass('image')" />
-    <NodeResize :id="id" kind="image" :title="data.title || '图片'" />
+    <NodeResize :id="id" kind="image" :keep-ratio="Boolean(data.image)" :title="data.title || '图片'" />
     <NodeLightbox v-model:show="lightboxShow" :items="lightboxItems" />
   </div>
 </template>

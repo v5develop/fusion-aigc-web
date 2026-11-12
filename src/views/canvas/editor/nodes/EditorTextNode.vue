@@ -69,7 +69,7 @@ const sourceRefs = computed(() => {
   <div
     class="flex flex-col"
     :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
-    :style="{ width: `${width}px`, minHeight: `${height}px` }"
+    :style="{ width: `${width}px`, minHeight: `${height}px`, height: data.heightFixed ? `${height}px` : undefined }"
   >
     <header :class="NODE_HEAD">
       <span class="flex-1" :class="NODE_TITLE">{{ data.title || '文字' }}</span>
@@ -79,7 +79,7 @@ const sourceRefs = computed(() => {
     <div class="flex flex-1 flex-col gap-8px px-12px pt-4px pb-20px">
       <textarea
         v-model="text"
-        class="block flex-1 w-full min-h-72px p-0 border-none bg-transparent text-ink-2 text-13px leading-[1.6] resize-none outline-none placeholder:text-placeholder nodrag nowheel"
+        class="block flex-1 w-full min-h-40px overflow-y-auto p-0 border-none bg-transparent text-ink-2 text-13px leading-[1.6] resize-none outline-none placeholder:text-placeholder nodrag nowheel"
         :maxlength="TEXT_MAX"
         placeholder="输入提示词…"
         :aria-label="`${data.title || '文字'} 提示词`"

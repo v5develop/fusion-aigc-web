@@ -36,6 +36,11 @@ export interface CanvasNodeData {
   subtitle?: string
   width?: number
   height?: number
+  /**
+   * true = 用户拖过底边 / 自由角，height 即节点外框高度；缺省 / false = 媒体区高度随原图比例自动撑开（旧快照的行为）。
+   * add-only：旧快照没有该字段，加载后外观不变。
+   */
+  heightFixed?: boolean
   /** true = 已锁定：拖不动，仍可选中 / 解锁 / 删除（随快照持久化） */
   locked?: boolean
   /** true = 「成组」生成的分组底板（可选中 / 拖动带成员走）；模板模块底板不带此标记，只作视觉框、不挡画布操作 */

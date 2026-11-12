@@ -80,6 +80,7 @@ const imageRefCount = computed(
 const naturalRatio = ref(0)
 const mediaHeight = computed(() => {
   const inner = width.value - 20
+  if (props.data.heightFixed && props.data.height) return Math.max(60, props.data.height - 36 - 18)
   if ((props.data.image || props.data.video) && naturalRatio.value > 0) {
     return Math.round(Math.min(540, Math.max(120, inner / naturalRatio.value)))
   }
@@ -500,7 +501,7 @@ function onColorFix(e: MouseEvent) {
       :kinds="data.inputOnly ? ['video-model'] : ['image-model', 'video-model', 'tool']"
       @open="emit('quickAdd', $event)"
     />
-    <NodeResize :id="id" kind="model" :title="data.title || '生成节点'" />
+    <NodeResize :id="id" kind="model" :keep-ratio="Boolean(data.image || data.video)" :title="data.title || '生成节点'" />
     <NodeLightbox v-model:show="lightboxShow" v-model:index="lightboxIndex" :items="lightboxItems" />
   </div>
 </template>

@@ -15,6 +15,7 @@ import IconButton from '@/components/IconButton/index.vue'
 import { isGroupPlate } from '../graph.ts'
 import { useCanvasEditor } from '../useCanvasEditor.ts'
 import { FOCUS_RING } from '../ui.ts'
+import NodeResize from '../NodeResize.vue'
 
 const props = defineProps<{
   id: string
@@ -83,6 +84,7 @@ const tint = computed(() => {
     >
       解组
     </button>
+    <NodeResize v-if="isGroup" :id="id" kind="module" title="分组" />
     <IconButton
       v-else
       :label="`删除模块「${data.title || '模块'}」底板（模块内节点保留）`"

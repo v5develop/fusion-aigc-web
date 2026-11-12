@@ -20,7 +20,7 @@ const PORT_HIT =
 // 先给所有 .connecting 上红，再用更高优先级的 .connecting.valid 按端口色还原（见 PORT_TONE 里的 VALID_*）
 const PORT_CONNECTING =
   '[&.connecting]:!bg-danger-line [&.connecting]:!shadow-[0_0_0_3px_var(--xq-danger)] [&.connecting]:!opacity-100 [&.connecting.valid]:!shadow-[0_0_0_3px_rgb(var(--xq-success-rgb)/0.35)]'
-const PORT_BASE = `w-10px h-10px min-w-10px min-h-10px rounded-full border-[1.5px] border-solid border-surface ${PORT_HIT} ${PORT_CONNECTING}`
+const PORT_BASE = `z-4 w-10px h-10px min-w-10px min-h-10px rounded-full border-[1.5px] border-solid border-surface ${PORT_HIT} ${PORT_CONNECTING}`
 
 /**
  * 端口配色走设计系统（原型 --canvas-edge-* 主题变量同值）：提示词绿、图片藤紫、视频红；
