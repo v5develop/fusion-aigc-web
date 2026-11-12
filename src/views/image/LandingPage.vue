@@ -96,6 +96,15 @@ onMounted(async () => {
 const shelfCover = (t: IPlazaTemplate) => t.payload?.result?.[0] ?? t.payload?.image_urls?.[0] ?? ''
 const shelfTarget = (t: IPlazaTemplate) => ({ path: '/agent', query: { plazaTemplateId: String(t.plazaTemplateId) } })
 const shelfMeta = (t: IPlazaTemplate) => (t.tags ?? []).slice(1, 3).join(' · ')
+/** 作者 · N 人用过：两项都是后端可选字段，缺哪项就不拼哪项（用量为 0 / 缺失不显示，不放「0 人用过」） */
+const shelfAuthorUsage = (t: IPlazaTemplate) => {
+  const parts: string[] = []
+  const author = t.authorName?.trim()
+  if (author) parts.push(author)
+  const n = t.usageCount
+  if (typeof n === 'number' && Number.isFinite(n) && n > 0) parts.push(`${n > 9999 ? `${(n / 10000).toFixed(1)} 万` : n} 人用过`)
+  return parts.join(' · ')
+}
 
 const focusRing =
   'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-violet focus-visible:outline-offset-2'
@@ -393,6 +402,9 @@ const hasCover = (name: string) => !!toolCover(name)
               <span class="flex flex-col gap-3px min-w-0 pt-8px px-3px pb-3px">
                 <span class="truncate text-13px font-600 leading-18px text-ink">{{ t.title }}</span>
                 <span v-if="shelfMeta(t)" class="truncate text-11px leading-16px text-muted">{{ shelfMeta(t) }}</span>
+                <span v-if="shelfAuthorUsage(t)" class="truncate text-11px leading-16px text-placeholder">{{
+                  shelfAuthorUsage(t)
+                }}</span>
               </span>
             </RouterLink>
           </li>

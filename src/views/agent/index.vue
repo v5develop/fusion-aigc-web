@@ -54,6 +54,7 @@ import type {
   IAgentConversation,
   IAgentFrame,
   IAgentGenTask,
+  IAgentRetryView,
   IAgentImageQuote,
   IAgentMessage,
   IAgentQuestion,
@@ -87,6 +88,7 @@ function renderReplyHtml(text: string, live?: boolean): string {
   return html
 }
 import BatchHostingModal from './BatchHostingModal.vue'
+import RetryFasterButton from './RetryFasterButton.vue'
 import TemplateBrowser from './TemplateBrowser.vue'
 import IconButton from '@/components/IconButton/index.vue'
 import PointsBalanceChip from '@/components/Points/PointsBalanceChip.vue'
@@ -2084,32 +2086,36 @@ async function retryFailed(card: IResultCard) {
   })
 }
 
+/** 重试成功后的就地换格 + 提示 + 轮询；普通重试与「换更快模型」共用 */
+function applyRetryView(card: IResultCard, view: IAgentRetryView | undefined, conversationId: string) {
+  if (disposed || activeId.value !== conversationId) return
+  const next = new Map((view?.tasks ?? []).map((t) => [t.retryOf, t]))
+  // 就地把失败格换成新任务（排队中），服务端回读时按新 taskId 并回结果
+  card.tool.tasks = card.tool.tasks.map((k): IAgentGenTask => {
+    const r = next.get(k.taskId)
+    if (!r) return k
+    return {
+      taskId: r.taskId,
+      status: 'queued',
+      imageUrls: [],
+      retryOf: k.taskId,
+      ...(typeof r.pricePoints === 'number' ? { pricePoints: r.pricePoints } : {}),
+    }
+  })
+  const failed = view?.failed ?? []
+  if (next.size) message.success(`已重新提交 ${next.size} 张`)
+  if (failed.length) {
+    const reasons = [...new Set(failed.map((f) => f.reason).filter(Boolean))].join('；')
+    message.warning(`${failed.length} 张未能重试${reasons ? `：${reasons}` : ''}`)
+  }
+  scheduleResultPoll(true)
+}
+
 async function doRetry(card: IResultCard, conversationId: string, taskIds: string[]) {
   retryingCard.value = card.key
   try {
     const res = await agentGenerationRetry(conversationId, taskIds)
-    const view = res.data
-    if (disposed || activeId.value !== conversationId) return
-    const next = new Map((view?.tasks ?? []).map((t) => [t.retryOf, t]))
-    // 就地把失败格换成新任务（排队中），服务端回读时按新 taskId 并回结果
-    card.tool.tasks = card.tool.tasks.map((k): IAgentGenTask => {
-      const r = next.get(k.taskId)
-      if (!r) return k
-      return {
-        taskId: r.taskId,
-        status: 'queued',
-        imageUrls: [],
-        retryOf: k.taskId,
-        ...(typeof r.pricePoints === 'number' ? { pricePoints: r.pricePoints } : {}),
-      }
-    })
-    const failed = view?.failed ?? []
-    if (next.size) message.success(`已重新提交 ${next.size} 张`)
-    if (failed.length) {
-      const reasons = [...new Set(failed.map((f) => f.reason).filter(Boolean))].join('；')
-      message.warning(`${failed.length} 张未能重试${reasons ? `：${reasons}` : ''}`)
-    }
-    scheduleResultPoll(true)
+    applyRetryView(card, res.data, conversationId)
   } catch (err) {
     const e = toApiError(err)
     // HTTP 200 + 3003 已由拦截器弹了引导购买框（BILLING_GUARD_PATTERNS），这里不重复；
@@ -3839,6 +3845,15 @@ onUnmounted(() => {
                               retryingCard === card.key ? '提交中…' : `重试这 ${Math.min(card.retryable.length, 50)} 张`
                             }}
                           </button>
+                          <RetryFasterButton
+                            :conversation-id="activeId"
+                            :tasks="card.retryable.filter((k) => k.fasterModelAvailable)"
+                            :disabled="!!retryingCard || streaming"
+                            :button-class="BTN"
+                            @busy="(v) => (retryingCard = v ? card.key : '')"
+                            @retried="(view) => applyRetryView(card, view, activeId)"
+                            @unavailable="card.retryable.forEach((k) => (k.fasterModelAvailable = false))"
+                          />
                         </div>
                         <div v-if="card.urls.length" class="mt-10px flex items-center gap-8px">
                           <span

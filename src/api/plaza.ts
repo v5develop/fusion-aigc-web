@@ -27,6 +27,10 @@ export interface IPlazaTemplate {
   agentSkillId: string | null
   tags: string[]
   payload: IPlazaTemplatePayload
+  /** 作者展示名；列表接口附带（官方上架的为「官方」），详情 / 旧后端没有 */
+  authorName?: string
+  /** 近 7 天用它做同款的次数；列表接口附带，没有就不展示 */
+  usageCount?: number
 }
 
 /** v1 兼容分页信封 */

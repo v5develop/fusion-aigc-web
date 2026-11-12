@@ -199,15 +199,24 @@ export interface IAgentRetryView {
   failed: { taskId?: string | null; reason: string }[]
   totalPoints: number
   balance: number
+  /** 本次是否按「换更快模型」提交；modelCode / modelGroup 只在这时回显实际用的模型 */
+  fasterModel?: boolean
+  modelCode?: string | null
+  modelGroup?: string | null
 }
+
+/** 后端为「换更快模型」没有可用替代时的业务码（reason=NO_FASTER_MODEL） */
+export const AGENT_NO_FASTER_MODEL_CODE = 3015
 
 /**
  * 结果卡「重试这 n 张」：taskIds = 当前失败格子的 taskId（retryable=true，1~50）。
  * 服务端按 agent-retry:{taskId} 幂等，重复点只回放不重扣；点数不足走全局引导购买（BILLING_GUARD_PATTERNS 已登记）。
  */
-export function agentGenerationRetry(conversationId: string, taskIds: string[]) {
+export function agentGenerationRetry(conversationId: string, taskIds: string[], opts?: { fasterModel?: boolean }) {
   return post<IAgentRetryView>(`${PREFIX}/conversations/${encodeURIComponent(conversationId)}/generation-retry`, {
     taskIds,
+    // 只在需要时带：由服务端选更快的替代模型（客户端不能指定模型）；不带 = 原样重试
+    ...(opts?.fasterModel ? { fasterModel: true } : {}),
   })
 }
 
@@ -470,6 +479,8 @@ export interface IAgentGenTask {
   failReason?: string
   /** 失败后可走「重试这 n 张」 */
   retryable?: boolean
+  /** 失败且可重试时，服务端另给：存在更快的替代模型，可走「换更快模型」重试 */
+  fasterModelAvailable?: boolean
   /** 本格是重试出来的：原任务号（taskId 为重试任务号） */
   retryOf?: string
 }
@@ -514,6 +525,7 @@ function genTasks(result: unknown): IAgentGenTask[] {
           failCode: s(x.failCode),
           failReason: s(x.failReason),
           retryable: typeof x.retryable === 'boolean' ? x.retryable : undefined,
+          fasterModelAvailable: x.fasterModelAvailable === true ? true : undefined,
           retryOf: s(x.retryOf),
         }
         for (const [k, v] of Object.entries(opt)) if (v !== undefined) (t as unknown as Record<string, unknown>)[k] = v
