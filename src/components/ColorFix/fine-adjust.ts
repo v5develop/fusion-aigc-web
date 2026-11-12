@@ -15,7 +15,11 @@ export function shiftStepOf(min: number, max: number): number {
 function setRange(range: HTMLInputElement, n: number) {
   const min = Number(range.min || 0)
   const max = Number(range.max || 100)
-  const next = Math.min(max, Math.max(min, Math.round(n)))
+  const stepAttr = Number(range.step)
+  const step = Number.isFinite(stepAttr) && stepAttr > 0 ? stepAttr : 1
+  // 先吸到滑杆步长的整数倍（以 min 为基准），再夹区间，最后才与当前值比较
+  const snapped = min + Math.round((n - min) / step) * step
+  const next = Math.min(max, Math.max(min, Number(snapped.toFixed(6))))
   if (String(next) === range.value) return
   range.value = String(next)
   range.dispatchEvent(new Event('input', { bubbles: true }))
@@ -28,7 +32,9 @@ function onKey(event: KeyboardEvent) {
   event.preventDefault()
   const range = event.currentTarget as HTMLInputElement
   const override = (range as HTMLInputElement & { _cfShift?: number })._cfShift
-  const step = override ?? shiftStepOf(Number(range.min || 0), Number(range.max || 100))
+  const rangeStep = Number(range.step) > 0 ? Number(range.step) : 1
+  const base = override ?? shiftStepOf(Number(range.min || 0), Number(range.max || 100))
+  const step = Math.max(rangeStep, Math.round(base / rangeStep) * rangeStep)
   setRange(range, Number(range.value) + dir * step)
 }
 

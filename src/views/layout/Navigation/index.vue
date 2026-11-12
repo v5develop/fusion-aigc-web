@@ -741,11 +741,11 @@ onBeforeUnmount(() => hideRailTips(true))
           :class="[
             FOCUS,
             collapsed
-              ? 'h-32px w-32px'
+              ? 'relative h-32px w-32px'
               : 'absolute right-0 top-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
           ]"
-          :aria-label="collapsed ? '展开侧栏' : '收起侧栏'"
-          :title="collapsed ? '展开侧栏' : '收起侧栏'"
+          :aria-label="collapsed ? (updateNotice ? `展开侧栏（${updateNotice}）` : '展开侧栏') : '收起侧栏'"
+          :title="collapsed ? (updateNotice ? `展开侧栏（${updateNotice}）` : '展开侧栏') : '收起侧栏'"
           :aria-expanded="!collapsed"
           @click="toggleCollapsed"
         >
@@ -761,6 +761,12 @@ onBeforeUnmount(() => hideRailTips(true))
           >
             <path v-for="d in collapsed ? ICON.chevR : ICON.chevL" :key="d" :d="d" />
           </svg>
+          <!-- 收起时更新条不显示：在展开钮上点一个小红点，悬停提示同文案 -->
+          <span
+            v-if="collapsed && updateNotice"
+            class="pointer-events-none absolute right-4px top-4px h-8px w-8px rounded-full border-2 border-solid border-white bg-violet"
+            aria-hidden="true"
+          />
         </button>
       </div>
 

@@ -19,9 +19,12 @@ const POLL_MS = 30 * 60_000
 const FOCUS_THROTTLE_MS = 30_000
 const SNOOZE_MS = 2 * 60 * 60_000
 const SNOOZE_KEY = 'xq-update-snooze-until'
+const SNOOZE_BUILD_KEY = 'xq-update-snooze-build'
 
 const serverBuildId = ref('')
 const snoozeUntil = ref(readSnooze())
+/** 暂缓的是哪一版：之后又发了更新的版本（id 变了）就不再算暂缓，重新提示 */
+const snoozeBuildId = ref(readSnoozeBuild())
 const now = ref(Date.now())
 
 let started = false
@@ -41,17 +44,30 @@ function readSnooze(): number {
   }
 }
 
-function writeSnooze(until: number) {
+function readSnoozeBuild(): string {
   try {
-    if (until) sessionStorage.setItem(SNOOZE_KEY, String(until))
-    else sessionStorage.removeItem(SNOOZE_KEY)
+    return sessionStorage.getItem(SNOOZE_BUILD_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function writeSnooze(until: number, buildId = '') {
+  try {
+    if (until) {
+      sessionStorage.setItem(SNOOZE_KEY, String(until))
+      sessionStorage.setItem(SNOOZE_BUILD_KEY, buildId)
+    } else {
+      sessionStorage.removeItem(SNOOZE_KEY)
+      sessionStorage.removeItem(SNOOZE_BUILD_KEY)
+    }
   } catch {
     // 隐私模式 / 禁用存储：暂缓只在内存里生效，刷新后会重新提示
   }
 }
 
 const hasUpdate = computed(() => !!serverBuildId.value && serverBuildId.value !== __APP_BUILD_ID__)
-const snoozed = computed(() => snoozeUntil.value > now.value)
+const snoozed = computed(() => snoozeUntil.value > now.value && snoozeBuildId.value === serverBuildId.value)
 /** 给 Navigation 的 updateNotice：有新版且未暂缓时是提示文案，否则空串（不显示） */
 const updateNotice = computed(() => (hasUpdate.value && !snoozed.value ? NOTICE_TEXT : ''))
 
@@ -93,7 +109,8 @@ function armSnoozeTimer() {
 export function snoozeUpdateNotice() {
   snoozeUntil.value = Date.now() + SNOOZE_MS
   now.value = Date.now()
-  writeSnooze(snoozeUntil.value)
+  snoozeBuildId.value = serverBuildId.value
+  writeSnooze(snoozeUntil.value, serverBuildId.value)
   armSnoozeTimer()
 }
 

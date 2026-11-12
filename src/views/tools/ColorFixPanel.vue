@@ -36,6 +36,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ColorFixSlider from '@/views/studio/colorfix/ColorFixSlider.vue'
 import IconButton from '@/components/IconButton/index.vue'
 import { normalizeHex } from '@/utils/colorfix-math.ts'
+import { vCfFine, vCfValueEdit } from '@/components/ColorFix/fine-adjust.ts'
 import { COLORFIX_RECOLOR_DEFAULT, type ColorFixRecolor } from '@/components/ColorFix/layers.ts'
 import { COLORFIX_DEFAULT, COLORFIX_RANGES, colorFixEquals, type ColorFixParams } from '@/utils/colorfix.ts'
 import {

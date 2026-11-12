@@ -33,6 +33,7 @@ import {
 } from './types.ts'
 import { referenceParts, useColorFixPieces, type ColorFixReference } from './references.ts'
 import type { ResultColorFix } from './useResultColorFix.ts'
+import { vCfFine, vCfValueEdit } from './fine-adjust.ts'
 
 /** 1/3 高度的下限：舞台很矮时也要放得下头部 + 页签行 + 一点内容 */
 const MIN_MAX_H = 200
@@ -199,6 +200,8 @@ function observeParent() {
   if (!p || typeof ResizeObserver === 'undefined') return
   observer = new ResizeObserver(onParentResize)
   observer.observe(p)
+  // 面板自身高度变了（内容增减 / 折叠）也要夹回舞台里
+  if (root.value) observer.observe(root.value)
 }
 watch(
   () => props.open,
@@ -797,6 +800,11 @@ watch(
   -webkit-backdrop-filter: blur(10px);
   user-select: none;
   transition: box-shadow 0.16s ease;
+}
+.cft input[type='text'],
+.cft input[type='number'] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 .cft:not(.is-placed) {
   visibility: hidden;

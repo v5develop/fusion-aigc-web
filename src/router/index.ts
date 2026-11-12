@@ -1,4 +1,8 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { h } from 'vue'
+import { createDiscreteApi, NButton } from 'naive-ui'
+import type { RouteLocationNormalized } from 'vue-router'
+import { createRouter, createWebHashHistory, isNavigationFailure, NavigationFailureType, START_LOCATION } from 'vue-router'
+import { discreteConfigProviderProps } from '@/theme/naive'
 import { ensureModelCatalog } from '@/utils/model-catalog'
 import { closeAllOverlays } from '@/utils/overlay-guard'
 import { resolveUnionToken } from '@/utils/union-bridge'
@@ -197,12 +201,47 @@ async function ensureBootAuth() {
 
 // 路由懒加载失败（发版后旧分包 404、断网）：导航会被取消，页面停在原处没有任何反馈。
 // 记下摘要交给 layout 的错误边界显示「页面渲染失败 / 重新加载」；其它路由错误只记日志
-router.onError((err, to) => {
+// 已有页面在显示时不能把它换成整页错误（用户可能有未保存内容）：只弹一条「页面加载失败 / 重试」提示；
+// 只有首次导航（还没渲染任何东西）才走整页兜底
+let loadFailNotice: { destroy: () => void } | null = null
+function notifyRouteLoadFailed(to: RouteLocationNormalized) {
+  loadFailNotice?.destroy()
+  const { notification } = createDiscreteApi(['notification'], { configProviderProps: discreteConfigProviderProps })
+  const n = notification.error({
+    title: '页面加载失败',
+    content: '网络不稳定或页面刚刚更新，请重试。',
+    duration: 8000,
+    action: () =>
+      h(
+        NButton,
+        {
+          size: 'small',
+          type: 'primary',
+          onClick: () => {
+            n.destroy()
+            void router.push(to.fullPath)
+          },
+        },
+        { default: () => '重试' },
+      ),
+    onAfterLeave: () => {
+      if (loadFailNotice === n) loadFailNotice = null
+    },
+  })
+  loadFailNotice = n
+}
+router.onError((err, to, from) => {
   console.error('[router] 导航出错', to?.fullPath, err)
-  if (isChunkLoadError(err)) routeLoadFailure.value = summarizeError(err)
+  if (!isChunkLoadError(err)) return
+  if (from === START_LOCATION) routeLoadFailure.value = summarizeError(err)
+  else notifyRouteLoadFailed(to)
 })
 router.afterEach((_to, _from, failure) => {
-  if (!failure) routeLoadFailure.value = ''
+  if (!failure || isNavigationFailure(failure, NavigationFailureType.duplicated)) {
+    routeLoadFailure.value = ''
+    loadFailNotice?.destroy()
+    loadFailNotice = null
+  }
 })
 
 // 入口参数 /image?entryCode=…、/video?… 转到生成页（排在登录守卫之后；见 generator.ts）

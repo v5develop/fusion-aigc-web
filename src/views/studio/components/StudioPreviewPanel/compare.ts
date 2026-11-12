@@ -25,24 +25,28 @@ const parsePayload = (raw: string) => parseStudioPayload(raw)
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : '')
 
+/** 输入图的用途：对照里据此写脚注（不再靠名字前缀判断，改名不会让脚注悄悄消失） */
+export type SourceRole = 'pose' | 'garment'
+export type SourceItem = LightboxItem & { role?: SourceRole }
+
 /** 成品前面的输入图（不含成品） */
-export function sourceItems(d: StudioBatchDetail, task: StudioTask): LightboxItem[] {
+export function sourceItems(d: StudioBatchDetail, task: StudioTask): SourceItem[] {
   const p = parsePayload(d.batch.payload)
-  const out: LightboxItem[] = []
+  const out: SourceItem[] = []
   if (d.batch.kind === 'tryon') {
     const t = p as StudioTryonPayload
     const model = str(t.modelImageUrls?.[task.modelIndex])
     if (model) out.push({ url: model, name: `模特图 ${task.modelIndex + 1}` })
     for (const g of Array.isArray(t.garmentImages) ? t.garmentImages : []) {
       const url = str(g?.url)
-      if (url) out.push({ url, name: `服装图 · ${g.role || '单品'}` })
+      if (url) out.push({ url, name: `服装图 · ${g.role || '单品'}`, role: 'garment' })
     }
   } else if (d.batch.kind === 'pose') {
     const t = p as StudioPosePayload
     const source = str(t.sourceImageUrl)
     if (source) out.push({ url: source, name: '人物图' })
     const pose = str(t.poseImageUrls?.[task.poseIndex])
-    if (pose) out.push({ url: pose, name: `姿势图 ${task.poseIndex + 1}` })
+    if (pose) out.push({ url: pose, name: `姿势图 ${task.poseIndex + 1}`, role: 'pose' })
   } else {
     const t = p as StudioImageGenPayload
     ;(Array.isArray(t.imageUrls) ? t.imageUrls : []).forEach((u, i) => {

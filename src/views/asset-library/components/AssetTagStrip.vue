@@ -41,6 +41,11 @@ const shown = computed(() => {
   return q ? props.tags.filter((t) => t.name.toLowerCase().includes(q)) : props.tags
 })
 
+/** Esc 关掉输入框后把焦点还给触发它的按钮（输入框销毁后焦点会掉到 body） */
+function focusTrigger(selector: string) {
+  void nextTick(() => root.value?.querySelector<HTMLElement>(selector)?.focus())
+}
+
 // ---------------- 新建（带上「＋」与浮层「新增」共用） ----------------
 const composing = ref<'' | 'strip' | 'panel'>('')
 const draft = ref('')
@@ -101,7 +106,8 @@ async function commitRename() {
   try {
     await assetLibTagRename(id, name)
     if (active.value === old.name) active.value = name
-    cancelRename()
+    // 等待期间用户可能已改去重命名别的标签：只收起仍属于这次提交的那个输入框
+    if (renamingId.value === id) cancelRename()
     emit('changed')
   } catch {
     // 重名等失败 toast 已弹，输入框留着供修改重试
@@ -160,18 +166,43 @@ function onChip(t: IAssetLibTag) {
 function onDocDown(e: MouseEvent) {
   if (open.value && root.value && !root.value.contains(e.target as Node)) closePanel()
 }
+// 文档级 Esc：面板打开期间生效，逐层关闭（新建 / 改名输入 → 搜索 → 模式 → 面板），不依赖焦点在哪
 function onEsc(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || !open.value) return
+  if (e.key !== 'Escape' || !open.value || e.isComposing) return
   e.stopPropagation()
-  if (searching.value) closeSearch()
-  else if (mode.value) mode.value = ''
-  else closePanel()
+  if (composing.value) {
+    const where = composing.value
+    cancelCompose()
+    focusTrigger(`[data-tag-trigger="add-${where}"]`)
+  } else if (renamingId.value != null) {
+    const id = renamingId.value
+    cancelRename()
+    focusTrigger(`[data-tag-chip="${id}"]`)
+  } else if (searching.value) {
+    closeSearch()
+    focusTrigger('[data-tag-trigger="search"]')
+  } else if (mode.value) {
+    const m = mode.value
+    mode.value = ''
+    focusTrigger(`[data-tag-trigger="mode-${m}"]`)
+  } else {
+    closePanel()
+    focusTrigger('[data-tag-trigger="panel"]')
+  }
 }
 watch(open, (on) => {
-  if (on) document.addEventListener('mousedown', onDocDown)
-  else document.removeEventListener('mousedown', onDocDown)
+  if (on) {
+    document.addEventListener('mousedown', onDocDown)
+    document.addEventListener('keydown', onEsc, true)
+  } else {
+    document.removeEventListener('mousedown', onDocDown)
+    document.removeEventListener('keydown', onEsc, true)
+  }
 })
-onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown))
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocDown)
+  document.removeEventListener('keydown', onEsc, true)
+})
 
 const ACT =
   'h-26px cursor-pointer rounded-13px border border-solid px-10px text-12px leading-24px transition-colors sx-focus'
@@ -180,13 +211,14 @@ const CELL_INPUT =
 </script>
 
 <template>
-  <div ref="root" class="relative flex min-w-0 flex-1 items-center gap-6px" @keydown="onEsc">
+  <div ref="root" class="relative flex min-w-0 flex-1 items-center gap-6px">
     <IconButton
       label="全部标签"
       size="md"
       variant="plate"
       :aria-expanded="open"
       aria-haspopup="dialog"
+      data-tag-trigger="panel"
       @click="open = !open"
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
@@ -233,7 +265,7 @@ const CELL_INPUT =
         @keydown.esc.stop="cancelCompose"
         @blur="commitCompose"
       />
-      <button v-else type="button" aria-label="新建标签" title="新建标签" :class="[PILL_CLS, PILL_OFF]" @click="startCompose('strip')">＋</button>
+      <button v-else type="button" aria-label="新建标签" title="新建标签" data-tag-trigger="add-strip" :class="[PILL_CLS, PILL_OFF]" @click="startCompose('strip')">＋</button>
     </div>
 
     <!-- 全部标签浮层 -->
@@ -248,7 +280,7 @@ const CELL_INPUT =
           <b class="text-13px leading-20px text-ink">全部标签</b>
           <span v-if="tags.length" class="text-12px leading-16px text-placeholder tabular-nums">{{ tags.length }}</span>
           <span class="flex-1" />
-          <button v-if="!searching" type="button" aria-label="搜索标签" class="grid h-28px w-28px cursor-pointer place-items-center rounded-full border-none bg-transparent p-0 text-muted hover:(bg-surface3 text-ink) sx-focus" @click="openSearch">
+          <button v-if="!searching" type="button" aria-label="搜索标签" data-tag-trigger="search" class="grid h-28px w-28px cursor-pointer place-items-center rounded-full border-none bg-transparent p-0 text-muted hover:(bg-surface3 text-ink) sx-focus" @click="openSearch">
             <svg class="h-14px w-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
           </button>
           <input
@@ -261,9 +293,9 @@ const CELL_INPUT =
             class="h-28px w-130px box-border rounded-14px border border-solid border-line bg-surface px-10px text-12px text-ink outline-none placeholder:text-placeholder focus:border-violet"
             @blur="!query.trim() && closeSearch()"
           />
-          <button type="button" :class="[ACT, 'border-line bg-surface text-ink-2 hover:border-control']" @click="startCompose('panel')">新增</button>
-          <button type="button" :aria-pressed="mode === 'rename'" :class="[ACT, mode === 'rename' ? 'border-violet bg-violet-tint text-violet-ink' : 'border-line bg-surface text-ink-2 hover:border-control']" @click="toggleMode('rename')">改名</button>
-          <button type="button" :aria-pressed="mode === 'delete'" :class="[ACT, mode === 'delete' ? 'border-danger-line bg-danger-soft text-alert-danger' : 'border-line bg-surface text-ink-2 hover:border-control']" @click="toggleMode('delete')">删除</button>
+          <button type="button" :class="[ACT, 'border-line bg-surface text-ink-2 hover:border-control']" data-tag-trigger="add-panel" @click="startCompose('panel')">新增</button>
+          <button type="button" :aria-pressed="mode === 'rename'" data-tag-trigger="mode-rename" :class="[ACT, mode === 'rename' ? 'border-violet bg-violet-tint text-violet-ink' : 'border-line bg-surface text-ink-2 hover:border-control']" @click="toggleMode('rename')">改名</button>
+          <button type="button" :aria-pressed="mode === 'delete'" data-tag-trigger="mode-delete" :class="[ACT, mode === 'delete' ? 'border-danger-line bg-danger-soft text-alert-danger' : 'border-line bg-surface text-ink-2 hover:border-control']" @click="toggleMode('delete')">删除</button>
         </header>
 
         <p v-if="mode" class="m-0 text-12px leading-16px text-muted">
@@ -280,7 +312,6 @@ const CELL_INPUT =
               :aria-label="`重命名标签 ${t.name}`"
               :class="CELL_INPUT"
               @keydown.enter.prevent="commitRename"
-              @keydown.esc.stop="cancelRename"
               @blur="commitRename"
             />
             <span
@@ -293,6 +324,7 @@ const CELL_INPUT =
             <button
               v-else
               type="button"
+              :data-tag-chip="t.id"
               :aria-pressed="active === t.name"
               :title="mode ? undefined : '双击改名'"
               :class="[PILL_CLS, 'h-28px', active === t.name ? PILL_ON : PILL_OFF]"
@@ -312,8 +344,7 @@ const CELL_INPUT =
             :disabled="creating"
             :class="CELL_INPUT"
             @keydown.enter.prevent="commitCompose"
-            @keydown.esc.stop="cancelCompose"
-            @blur="commitCompose"
+                @blur="commitCompose"
           />
         </div>
         <p v-else class="m-0 py-16px text-center text-12px leading-18px text-placeholder">

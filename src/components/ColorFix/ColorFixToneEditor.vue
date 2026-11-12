@@ -12,6 +12,7 @@
  * 数学在 utils/colorfix-math（monotoneCurve / levelsMap / buildToneLuts，有 node 校验）；这里只做编辑。
  */
 import { computed, nextTick, ref } from 'vue'
+import { vCfFine, vCfValueEdit } from './fine-adjust.ts'
 import {
   COLORFIX_CURVE_CHANNELS,
   COLORFIX_CURVE_LABELS,

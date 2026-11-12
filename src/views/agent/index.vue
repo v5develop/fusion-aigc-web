@@ -2103,7 +2103,15 @@ function applyRetryView(card: IResultCard, view: IAgentRetryView | undefined, co
     }
   })
   const failed = view?.failed ?? []
-  if (next.size) message.success(`已重新提交 ${next.size} 张`)
+  if (next.size) {
+    if (view?.fasterModel) {
+      const model = view.modelCode ? `（${view.modelCode}）` : ''
+      const cost = typeof view.totalPoints === 'number' && view.totalPoints > 0 ? `，共 ${view.totalPoints} 点数` : ''
+      message.success(`已用更快的模型${model}重新提交 ${next.size} 张${cost}`)
+    } else {
+      message.success(`已重新提交 ${next.size} 张`)
+    }
+  }
   if (failed.length) {
     const reasons = [...new Set(failed.map((f) => f.reason).filter(Boolean))].join('；')
     message.warning(`${failed.length} 张未能重试${reasons ? `：${reasons}` : ''}`)

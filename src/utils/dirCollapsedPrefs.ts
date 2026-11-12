@@ -38,8 +38,18 @@ function write(value: boolean) {
 /** 用户选择的目录收起态（宽屏下才生效；窄屏由宿主固定收起 + 浮层） */
 export function useDirCollapsedPref() {
   const collapsed = ref(read())
-  watch(collapsed, write)
+  /** 账号还没认出来时用户就改了：等账号认出来再补写一次，不然这次选择白丢 */
+  let pendingWrite = false
+  watch(collapsed, (v) => {
+    if (!keyOf()) pendingWrite = true
+    write(v)
+  })
   const off = onAccountChange(() => {
+    if (pendingWrite && keyOf()) {
+      pendingWrite = false
+      write(collapsed.value)
+      return
+    }
     // 换到另一个账号：读它自己的值；赋同值不触发 watch，不会回写
     collapsed.value = read()
   })

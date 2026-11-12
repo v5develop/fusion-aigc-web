@@ -626,6 +626,13 @@ function setMaskRef(el: unknown) {
 }
 
 function setUploads(slot: number, urls: string[]) {
+  if (assetNotesSlot.value?.slot === slot) {
+    // 资产说明按图片地址记：同一张图加两次会共用一条说明。入口处去重，并清掉已被移除的图的说明
+    const unique = [...new Set(urls)]
+    if (unique.length < urls.length) message.warning('已添加过这张图')
+    urls = unique
+    for (const key of Object.keys(assetNotes)) if (!urls.includes(key)) delete assetNotes[key]
+  }
   uploads[slot] = urls
 }
 
@@ -2228,11 +2235,13 @@ async function downloadSelected() {
 const downloadAllItems = computed<BatchDownloadItem[]>(() =>
   products.value.map((p, i) => ({
     src: p.src,
-    name: p.name,
+    // 预览名自带「 · 序号」，批量下载会统一追加序号，这里还原成不带序号的基础名
+    name: (p.name || 'result').replace(/\s·\s\d+$/, ''),
+    isCurrent: () => selectedIndex.value === i,
     bake:
       i === selectedIndex.value && p.type === 'image' && canColorCompare.value
-        ? async () => {
-            const ok = await cf.downloadBaked(`${p.name || 'result'}-校色后.png`)
+        ? async (fileBase: string) => {
+            const ok = await cf.downloadBaked(`${fileBase}-校色后.png`)
             if (!ok) message.warning('校色效果未能写入，已下载原图')
             return ok
           }

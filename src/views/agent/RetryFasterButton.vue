@@ -5,7 +5,7 @@
  * <p>只在服务端说有更快替代时才出现——父组件把「失败且 retryable 且 fasterModelAvailable」的任务传进来，
  * 一个都没有就不渲染（没有可用替代时按钮自然隐藏）。模型由服务端选，这里不让用户挑；
  * 价格按替代模型重新计价，重试前服务端不提供只读报价，所以确认框只讲清「会按更快模型的价格重新扣点」，
- * 提交成功后用响应里的 totalPoints 回显实际扣了多少。
+ * 提交成功后响应里的 totalPoints / modelCode 由父组件的 applyRetryView 回显。
  *
  * <p>本组件只管「确认 → 调接口 → 错误处理」，不改父级数据：成功后 emit {@code retried}（带完整响应），
  * 父组件按它把失败格换成新任务（与普通重试同一套换格逻辑）。提交中通过 {@code busy} 事件告知父组件，
@@ -59,17 +59,8 @@ async function submit(taskIds: string[]) {
   try {
     const res = await agentGenerationRetry(props.conversationId, taskIds, { fasterModel: true })
     const view = res.data
+    // 成功 / 部分失败的提示统一由父组件 applyRetryView 弹（它知道会话有没有换走），这里只上报
     if (view) emit('retried', view)
-    const ok = view?.tasks?.length ?? 0
-    if (ok) {
-      const cost = typeof view?.totalPoints === 'number' && view.totalPoints > 0 ? `，共 ${view.totalPoints} 点数` : ''
-      message.success(`已用更快的模型重新提交 ${ok} 张${cost}`)
-    }
-    const failed = view?.failed ?? []
-    if (failed.length) {
-      const reasons = [...new Set(failed.map((f) => f.reason).filter(Boolean))].join('；')
-      message.warning(`${failed.length} 张未能重试${reasons ? `：${reasons}` : ''}`)
-    }
   } catch (err) {
     const e = toApiError(err)
     if (e?.code === AGENT_NO_FASTER_MODEL_CODE) {

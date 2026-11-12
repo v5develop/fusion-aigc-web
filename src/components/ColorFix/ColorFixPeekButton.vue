@@ -4,6 +4,7 @@
  * 指针：按下即看、抬起 / 取消 / 移出即还原；键盘：空格 / 回车按下看、抬起还原；失焦也还原。
  * 参数台标题栏可拖动，所以这里把 pointerdown 拦在按钮上，不触发拖动。
  */
+import { onBeforeUnmount } from 'vue'
 import type { ResultColorFix } from './useResultColorFix.ts'
 
 const props = defineProps<{ cf: ResultColorFix }>()
@@ -18,6 +19,7 @@ function down(e: PointerEvent) {
 function up() {
   peeking.value = false
 }
+onBeforeUnmount(up)
 function keydown(e: KeyboardEvent) {
   if (e.key !== ' ' && e.key !== 'Enter') return
   e.preventDefault() // 不触发原生 click；也不让空格滚页面
