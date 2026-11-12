@@ -237,8 +237,8 @@ const sizeStyle = computed(() => {
     return { height: `${Math.min(growH.value, stageMaxH())}px`, maxHeight: `${stageMaxH()}px` }
   }
   if (userH.value !== null && stageMaxH()) {
-    const h = Math.min(userH.value, stageMaxH())
-    return { height: `${h}px`, maxHeight: `${stageMaxH()}px` }
+    // 用户高度只当上限：内容比它矮时面板跟着内容缩，底部永不留白
+    return { maxHeight: `${Math.min(userH.value, stageMaxH())}px` }
   }
   return { maxHeight: maxH.value ? `${maxH.value}px` : undefined }
 })
@@ -263,6 +263,7 @@ function placeDefault() {
       pos.value = clamp(w - el.offsetWidth - 12, Math.max(12, Math.round((h - el.offsetHeight) / 2)))
       placed.value = true
       moved.value = false
+      measureOverflow()
     })
   })
 }
@@ -275,6 +276,7 @@ function restoreDefault() {
   placeDefault()
 }
 function onParentResize() {
+  void nextTick(measureOverflow)
   if (!props.open || !placed.value) return
   maxH.value = calcMaxH()
   void nextTick(() => (pos.value = clamp(pos.value.x, pos.value.y)))
@@ -287,6 +289,8 @@ function observeParent() {
   observer.observe(p)
   // 面板自身高度变了（内容增减 / 折叠）也要夹回舞台里
   if (root.value) observer.observe(root.value)
+  // 内容增减（展开 / 收起、换页）在面板到顶时不改面板尺寸，但会改有没有滚动条
+  body.value?.querySelectorAll<HTMLElement>('.cft__pane').forEach((pane) => observer?.observe(pane))
 }
 watch(
   () => props.open,
@@ -349,6 +353,8 @@ function releaseGrow() {
   }
   void nextTick(() => (pos.value = clamp(pos.value.x, y ?? pos.value.y)))
 }
+// 高度规则变了（撑高 / 收回 / 用户高度 / 舞台上限）：重新判断有没有滚动条，决定拖拽条显隐
+watch(sizeStyle, () => void nextTick(measureOverflow))
 // 换页签：临时撑高只属于展开它的那一页；切到的新页若有已展开的折叠区就再撑高
 watch(tab, () => {
   if (growH.value !== null) {
@@ -396,10 +402,25 @@ function onHeadDblClick(e: MouseEvent) {
 function curH(): number {
   return root.value?.offsetHeight ?? 0
 }
+/** 内容全部放下所需的面板高度（头部 + 页签 + 内容区完整高度） */
+function contentH(): number {
+  const el = root.value
+  const b = body.value
+  if (!el || !b) return 0
+  return el.offsetHeight - b.clientHeight + b.scrollHeight
+}
+/** 内容区放不下、有滚动条：只有这时才允许拖动改高度（放得下时拉长只会在底部留白） */
+const overflowing = ref(false)
+function measureOverflow() {
+  const b = body.value
+  overflowing.value = !!b && b.scrollHeight - b.clientHeight > 1
+}
 function applyH(h: number) {
   const { h: stageH } = parentBox()
   const room = stageH ? stageH - pos.value.y : undefined
-  userH.value = clampUserH(h, room)
+  // 拉长最多到内容刚好放下，再往下拖不动（不留白，回拖也没有死区）
+  const fit = contentH()
+  userH.value = clampUserH(fit ? Math.min(h, fit) : h, room)
   // 用户亲手调了高度：以它为准，临时撑高作废
   growH.value = null
   growRestoreY = null
@@ -993,6 +1014,7 @@ watch(
       </div>
 
       <div
+        v-show="overflowing || resizing"
         ref="hEl"
         class="cft__resize"
         role="separator"
