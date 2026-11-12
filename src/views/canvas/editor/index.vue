@@ -55,7 +55,7 @@ import {
 import { downloadImage } from '@/utils/download.ts'
 import { takeCanvasImport } from '@/utils/canvas-import-handoff.ts'
 import { isGroupPlate, normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
-import { viewportKeepingCenter, type ICanvasClipboard } from './clipboard.ts'
+import { stepZoomLevel, viewportKeepingCenter, type ICanvasClipboard } from './clipboard.ts'
 import { editorDialog, editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
 import { MAX_IMAGE_UPLOAD_MB, uploadSizeError } from './nodes/useNodeUpload.ts'
 import { clipboardFiles, useFileDropPaste } from '@/composables/useFileDropPaste'
@@ -81,8 +81,6 @@ const store = useCanvasEditor()
 const FLOW_ID = 'canvas-editor-flow'
 const {
   fitView,
-  zoomIn,
-  zoomOut,
   setCenter,
   setViewport,
   viewport,
@@ -98,6 +96,19 @@ function resetZoom() {
   const rect = stageRef.value?.getBoundingClientRect()
   if (!rect) return
   void setViewport(viewportKeepingCenter(viewport.value, rect.width, rect.height, 1), { duration: 200 })
+}
+
+/** 画布缩放上下限（与 VueFlow :min-zoom / :max-zoom 一致） */
+const MIN_ZOOM = 0.2
+const MAX_ZOOM = 2
+
+/** +/- 按钮：固定 10% 步长、对齐整 10 档，保持舞台中心对着的画布点不动 */
+function stepZoom(direction: 1 | -1) {
+  const rect = stageRef.value?.getBoundingClientRect()
+  if (!rect) return
+  const next = stepZoomLevel(viewport.value.zoom || 1, direction, MIN_ZOOM, MAX_ZOOM)
+  if (Math.abs(next - (viewport.value.zoom || 1)) < 1e-6) return
+  void setViewport(viewportKeepingCenter(viewport.value, rect.width, rect.height, next), { duration: 150 })
 }
 
 /**
@@ -2687,8 +2698,8 @@ useFileDropPaste(stageRef, {
             v-model:edges="edges"
             class="w-full h-full [&_.vue-flow\_\_pane]:cursor-default [&_.vue-flow\_\_selection]:border [&_.vue-flow\_\_selection]:border-solid [&_.vue-flow\_\_selection]:border-violet [&_.vue-flow\_\_selection]:bg-violet/8 [&_.vue-flow\_\_connection-path.invalid]:!stroke-danger [&_.vue-flow\_\_connection-path.invalid]:[stroke-dasharray:5_4]"
             :default-viewport="{ x: 40, y: 20, zoom: 0.86 }"
-            :min-zoom="0.2"
-            :max-zoom="2"
+            :min-zoom="MIN_ZOOM"
+            :max-zoom="MAX_ZOOM"
             :zoom-on-scroll="false"
             :pan-on-scroll="true"
             :pan-on-drag="toolMode === 'pan'"
@@ -3076,7 +3087,7 @@ useFileDropPaste(stageRef, {
               <EditorIcon name="grid" :size="16" />
             </IconButton>
             <span class="w-1px h-18px mx-2px bg-line" aria-hidden="true" />
-            <IconButton label="缩小" no-title data-tip="缩小" variant="quiet" @click="zoomOut()">
+            <IconButton label="缩小" no-title data-tip="缩小" variant="quiet" @click="stepZoom(-1)">
               <EditorIcon name="minus" :size="16" />
             </IconButton>
             <!-- 缩放读数（原型 .wf-zoom-value）：min-w 44、11px tabular，点击回 100%（保持视口中心不动） -->
@@ -3090,7 +3101,7 @@ useFileDropPaste(stageRef, {
             >
               {{ Math.round((viewport.zoom || 1) * 100) }}%
             </button>
-            <IconButton label="放大" no-title data-tip="放大" variant="quiet" @click="zoomIn()">
+            <IconButton label="放大" no-title data-tip="放大" variant="quiet" @click="stepZoom(1)">
               <EditorIcon name="plus" :size="16" />
             </IconButton>
             <IconButton

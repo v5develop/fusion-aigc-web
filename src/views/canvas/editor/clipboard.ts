@@ -52,6 +52,21 @@ export interface IViewport {
  * 换缩放档但保持舞台中心对着同一个画布点（缩放读数点回 100% 用）。
  * 屏幕坐标 = 画布坐标 × zoom + 平移：中心画布点 c = (w/2 − x) / zoom，新平移 = w/2 − c × newZoom。
  */
+/** 缩放按钮步长：固定 10 个百分点 */
+export const ZOOM_STEP_PERCENT = 10
+
+/**
+ * +/- 按钮的下一档缩放：按 10% 网格对齐——当前恰在整 10 档上就 ±10，否则先吸到相邻的整 10 档
+ * （87% 点 + → 90%，点 − → 80%），读数始终是整 10，最后夹在 [min, max]。
+ */
+export function stepZoomLevel(current: number, direction: 1 | -1, min: number, max: number): number {
+  const pct = Math.round((current || 1) * 1000) / 10 // 保留 0.1% 精度，消掉浮点噪声
+  const onGrid = Math.abs(pct / ZOOM_STEP_PERCENT - Math.round(pct / ZOOM_STEP_PERCENT)) < 1e-6
+  const base = onGrid ? Math.round(pct / ZOOM_STEP_PERCENT) : pct / ZOOM_STEP_PERCENT
+  const next = (direction > 0 ? (onGrid ? base + 1 : Math.ceil(base)) : onGrid ? base - 1 : Math.floor(base)) * ZOOM_STEP_PERCENT
+  return Math.min(max, Math.max(min, next / 100))
+}
+
 export function viewportKeepingCenter(viewport: IViewport, width: number, height: number, zoom: number): IViewport {
   const current = viewport.zoom || 1
   const cx = (width / 2 - viewport.x) / current
