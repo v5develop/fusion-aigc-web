@@ -241,8 +241,9 @@ export interface ModelConfig {
  * 图片生成（/tools/ai-image-generator）的模型与价目：default=true 的是默认模型（没标时第一项），运营启用后才有多项；
  * 每项 size[] 是该模型的分辨率 / 比例与单价。提交可带 model（不带或带第一项 = 默认行为）。
  */
-export function imageModelConfigs() {
-  return get<ModelConfig[]>('/api/v1/features/image-model-configs')
+export function imageModelConfigs(route?: string) {
+  // route（加法参数）：清单与单价按该路由自己的能力绑定出（如图片复刻 /tools/ai-poster-replicate）；不传 = 图片生成，行为不变
+  return get<ModelConfig[]>('/api/v1/features/image-model-configs', route ? { route } : undefined)
 }
 
 /** 视频生成（/tools/ai-video-generator）可选的模型与各档每秒单价，按 weight 降序 */

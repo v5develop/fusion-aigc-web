@@ -210,6 +210,26 @@ export interface ToolSchema {
    * - `video-model-configs`：GET /api/v1/features/video-model-configs 当前模型 size[清晰度].points（每秒）× 时长。
    */
   price?: 'image-model-configs' | 'video-model-configs'
+  /**
+   * price = image-model-configs 时取哪条路由自己的模型清单与单价（image-model-configs?route=）；不写 = 图片生成。
+   * 图片复刻（/tools/ai-poster-replicate）是另一条能力绑定，清单、可选模型与单价都按它出
+   */
+  priceRoute?: string
+  /**
+   * 总价 = 单价 × 这个上传槽的张数（图片复刻：一张资产图一个任务、每个任务只出 1 张）；不写 = 单价 × 生成张数（count 字段）。
+   * 写了它：前端仍只提交一次，任务数由服务端按这个槽的张数扇出；提交栏按这个张数写「将提交 N 个任务」
+   */
+  pricePerUpload?: number
+  /**
+   * 每个任务要同时喂给模型的图片数（图片复刻 = 参考海报 + 资产图 = 2）：模型清单里 refs.maxImages 小于它的模型不给选；
+   * 写了它，price 路由的 imageUrls 槽不再当「参考图槽」按模型 refs 限张数
+   */
+  minModelImages?: number
+  /**
+   * 输出比例提示取自哪个上传槽的图（实测宽高 → 所选模型比例清单里最近的一档，写进请求体 aspectRatio，不让用户选；
+   * 图片复刻 = 参考海报槽）。只是提示，服务端按实测宽高再算
+   */
+  ratioFromUpload?: number
   /** 每次提交都带上的固定键（界面不出现），如姿态复刻固定 mode=reference */
   constants?: Record<string, unknown>
   /** 提示词框显示「我的提示词」入口与提示词库浮层（生成类工具：图片生成 / 视频生成 / 场景生成 / 首屏主图） */
@@ -603,6 +623,50 @@ export const toolSchemas: ToolSchema[] = [
       costSource: '预设比例：工具单价（ratioConvert）× 张数；自定义尺寸不显示',
       countLabel: true,
     },
+    actions: [],
+  },
+  {
+    homeId: 'ai-poster-replicate',
+    schemaId: 'tool:ai-poster-replicate',
+    apiTool: 'ai-poster-replicate',
+    // Java 新增路由（v1 无此能力）：imageUrls = 资产图（1–6 张，每张一个任务、各出 1 张）、referenceImageUrl = 参考海报（1 张）、
+    // content = 统一补充要求（选填）。图序由服务端定（图1 参考海报 / 图2 资产图），出图比例由服务端按参考海报实测宽高取模型支持的最近档，
+    // 前端只带一个 aspectRatio 提示。前端只提交一次，不拆请求（不设 perItemSubmit）
+    javaRoute: '/api/v1/tools/ai-poster-replicate',
+    historyTitle: 'ai-poster-replicate',
+    title: '图片复刻',
+    description: '放一张参考海报，再传自己的商品或人物图；版式、字体气质、色块和网格照参考图来，主体换成你的图。',
+    steps: ['上传 1 张参考海报', '上传 1–6 张资产图（商品或人物）', '（选填）写统一补充要求', '点击「开始复刻」，每张资产图单独出一张'],
+    intro: '放一张参考海报，再传自己的商品或人物图；标题层级、色块、网格和印刷质感都照参考图来，参考图上的原句、品牌名和 logo 不会被照抄。',
+    scenarios: ['照着喜欢的海报版式，换自己的商品', '一张参考图批量出多张同风格海报', '没有设计稿时，快速套出一版可用的主视觉'],
+    hint: '每张资产图一个任务、各出一张；输出比例跟随参考海报',
+    compare: { index: 1, label: '参考海报' },
+    colorFix: false,
+    media: 'image',
+    uploads: [
+      { ...imageSlot('资产图', 6, 'imageUrls'), layout: 'material' },
+      { ...imageSlot('参考海报', 1, 'referenceImageUrl', true, 1), layout: 'material' },
+    ],
+    fields: [
+      {
+        key: 'prompt',
+        label: '补充说明',
+        type: 'textarea',
+        required: false,
+        maxLength: 3000,
+        placeholder: '统一补充要求，会加到每一张里，例如：标题用「夏日特惠」、整体偏暖色（选填）',
+        javaKey: 'content',
+        verified: true,
+      },
+      // 不放比例选择器：输出比例跟随参考海报（ratioFromUpload）。分辨率 / 模型取 image-model-configs?route=（priceRoute）
+      resolutionField('清晰度', '1K'),
+    ],
+    price: 'image-model-configs',
+    priceRoute: '/tools/ai-poster-replicate',
+    pricePerUpload: 0,
+    minModelImages: 2,
+    ratioFromUpload: 1,
+    submit: { label: '开始复刻', costUnit: '张', costSource: 'image-model-configs.points[清晰度] × 资产图张数', countLabel: true },
     actions: [],
   },
   {

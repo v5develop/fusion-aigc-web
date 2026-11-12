@@ -79,6 +79,7 @@ const imageHead = group('图片处理', [
   ['image-translate', '图片翻译', '多语换字'],
   ['text-replace', '文字替换', '换字不换版'],
   ['aspect-ratio-convert', '比例转换', '智能改比例'],
+  ['ai-poster-replicate', '图片复刻', '参考海报出同款版式'],
   ['image-generate', '图片生成', '提示词生图'],
 ])
 

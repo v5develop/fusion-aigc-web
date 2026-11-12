@@ -58,6 +58,7 @@ import ToolTryonMaterials from './ToolTryonMaterials.vue'
 import MaskPainter from './MaskPainter.vue'
 import InpaintRegionPicker from './InpaintRegionPicker.vue'
 import { inpaintImages, inpaintMissingReason, type InpaintBoxes } from './inpaint'
+import { DEFAULT_POSTER_RATIOS, nearestAspectRatio, readImageSize } from './posterRatio'
 import PollingOfflineBanner from './PollingOfflineBanner.vue'
 import ToolImageCompare from './ToolImageCompare.vue'
 import ToolMediaPreview, { type PreviewItem } from './ToolMediaPreview.vue'
@@ -370,8 +371,12 @@ const history = useToolHistory(() => schema.value?.historyTitle ?? '')
 /** GET /api/v1/features/video-model-configs：视频生成的模型、各档清晰度 / 比例 / 每秒单价、时长区间 */
 const videoModels = ref<ModelConfig[]>([])
 const videoModelsLoaded = ref(false)
-/** GET /api/v1/features/image-model-configs：图片生成各分辨率单价；null = 还没拿到（失败时保持原文案） */
-const imageModels = ref<ModelConfig[] | null>(null)
+/**
+ * GET /api/v1/features/image-model-configs：各分辨率单价；按路由分开存（图片生成与图片复刻是两条绑定、两份清单与单价），
+ * 当前工具那一份没拿到 = null（失败时保持原文案）
+ */
+const imageModelsByRoute = reactive<Record<string, ModelConfig[]>>({})
+const imageModels = computed<ModelConfig[] | null>(() => imageModelsByRoute[schema.value?.priceRoute ?? ''] ?? null)
 
 async function loadVideoModels() {
   const res = await videoModelConfigs()
@@ -412,8 +417,17 @@ let pendingImageModel = ''
 /** 图片模型的界面取值键（不进 schema、不在 values 的普通字段里出网，提交时按需落成 model） */
 const IMAGE_MODEL_KEY = '__imageModel'
 const imageModelChoices = computed<ModelConfigExt[]>(() =>
-  (imageModels.value ?? []).filter((m) => m && typeof m.model === 'string' && m.model),
+  (imageModels.value ?? []).filter((m) => m && typeof m.model === 'string' && m.model && modelAcceptsImages(m)),
 )
+/**
+ * 每个任务要同时喂给模型 schema.minModelImages 张图（图片复刻 = 参考海报 + 资产图 = 2）：模型 refs.maxImages 小于它的
+ * 不进清单（选了也出不了图，后端会在扣费前拒）；没下发 refs 视为不限
+ */
+function modelAcceptsImages(m: ModelConfig): boolean {
+  const need = schema.value?.minModelImages
+  const cap = m.refs?.maxImages
+  return !need || typeof cap !== 'number' || cap >= need
+}
 /** 多于一个模型才让用户选；只有一个时照旧按它报价、不传 model */
 const imageModelSelectable = computed(
   () => schema.value?.price === 'image-model-configs' && imageModelChoices.value.length > 1,
@@ -436,7 +450,11 @@ const imageRefCap = computed<number | null>(() => {
 })
 /** 图片生成的参考图槽（ml 版式的图片槽） */
 const isImageRefSlot = (u: ToolUpload) =>
-  schema.value?.price === 'image-model-configs' && u.kind === 'image' && u.javaKey === 'imageUrls'
+  schema.value?.price === 'image-model-configs' &&
+  // 图片复刻的资产图不是「参考图」：每件只带一张，模型 refs 管的是单次任务的图数，不卡资产张数
+  schema.value.minModelImages === undefined &&
+  u.kind === 'image' &&
+  u.javaKey === 'imageUrls'
 /** 图片生成工具且模型表已到：分辨率 / 比例按所选（默认第一项）模型的 size[] 出 */
 const imageModelDriven = computed(
   () => schema.value?.price === 'image-model-configs' && !!currentImageModel.value?.size?.length,
@@ -664,9 +682,10 @@ watch(
     if ((s.price === 'video-model-configs' || s.fields.some((f) => f.dynamic)) && !videoModelsLoaded.value) {
       loadVideoModels().catch((err) => reportError(err, '视频模型加载失败'))
     }
-    if (s.price === 'image-model-configs' && !imageModels.value) {
-      imageModelConfigs()
-        .then((res) => (imageModels.value = res.data ?? []))
+    if (s.price === 'image-model-configs' && !imageModelsByRoute[s.priceRoute ?? '']) {
+      const key = s.priceRoute ?? ''
+      imageModelConfigs(s.priceRoute)
+        .then((res) => (imageModelsByRoute[key] = res.data ?? []))
         .catch(() => {})
     }
   },
@@ -900,6 +919,7 @@ const settingsSummary = computed(() => {
     const part = summaryPart(f)
     if (part) parts.push(part)
   }
+  if (posterRatioHint.value) parts.unshift(posterRatioHint.value)
   return parts.join(' · ')
 })
 
@@ -1141,6 +1161,10 @@ const localDisabledReason = computed(() => {
       return (u.slot === 0 && EMPTY_UPLOAD_HINTS[s.title]) || `还没上传${u.label.replace(/（.*）/, '')}`
     }
   }
+  // 图片复刻：模型清单到了、但没有任何模型能同时接收参考海报 + 资产图（refs.maxImages ≥ 2）
+  if (s.minModelImages !== undefined && imageModels.value && !imageModelChoices.value.length) {
+    return '暂无支持图片复刻的模型'
+  }
   for (const f of visibleFields.value) {
     if (!f.required || f.uiOnly) continue
     if (f.type === 'mask') {
@@ -1192,6 +1216,8 @@ const localDisabledReason = computed(() => {
 const fanOutCount = computed(() => {
   const s = schema.value
   if (!s) return 0
+  // 图片复刻：前端只提交一次，服务端按资产图扇出，任务数 = 资产图张数
+  if (s.pricePerUpload !== undefined) return Math.max(uploads[s.pricePerUpload]?.length ?? 0, 1)
   const fan = fanSlot(s)
   return fan ? Math.max(uploads[fan.slot]?.length ?? 0, 1) : 1
 })
@@ -1214,7 +1240,8 @@ const submitLabel = computed(() => {
   const s = schema.value
   if (!s) return ''
   const fan = fanSlot(s)
-  const n = fan ? (uploads[fan.slot]?.length ?? 0) : 0
+  const n =
+    s.pricePerUpload !== undefined ? (uploads[s.pricePerUpload]?.length ?? 0) : fan ? (uploads[fan.slot]?.length ?? 0) : 0
   const label = baseSubmitLabel.value
   if (s.sync && syncResultUrl.value) return '重新抠图'
   return s.submit.countLabel && n ? `${label}（${n} 张）` : label
@@ -1274,6 +1301,36 @@ onBeforeUnmount(() => {
   releaseMetaEl()
 })
 
+// ---------------- 图片复刻：输出比例跟随参考海报 ----------------
+
+/** 参考海报（schema.ratioFromUpload 槽）的实测宽高；读不出 / 还没读到 = null */
+const posterRefSize = ref<{ url: string; width: number; height: number } | null>(null)
+watch(
+  () => {
+    const slot = schema.value?.ratioFromUpload
+    return slot === undefined ? '' : (uploads[slot]?.[0] ?? '')
+  },
+  async (url) => {
+    posterRefSize.value = null
+    if (!url) return
+    const size = await readImageSize(url)
+    const slot = schema.value?.ratioFromUpload
+    // 读图期间换了图 / 切了工具：丢掉这次结果
+    if (size && slot !== undefined && uploads[slot]?.[0] === url) posterRefSize.value = { url, ...size }
+  },
+  { immediate: true },
+)
+/** 提示比例：参考海报宽高在所选模型（当前分辨率）比例清单里最近的一档；模型没下发清单时用 13 档默认 */
+const posterRatioHint = computed<string | null>(() => {
+  const size = posterRefSize.value
+  if (!size || schema.value?.ratioFromUpload === undefined) return null
+  return nearestAspectRatio(size.width, size.height, imageModelRatios.value ?? DEFAULT_POSTER_RATIOS)
+})
+/** 提交栏上方的一句话：输出比例由参考海报决定，换模型（比例清单不同）可能随之变化 */
+const posterRatioNote = computed(() =>
+  posterRatioHint.value ? `输出比例 ${posterRatioHint.value}：跟随参考海报，换模型后会按该模型支持的比例重算` : '',
+)
+
 /** 只在价目表给出该工具的数字时返回 { 点数, 计价单位 }（单位空 = 按次）；其余返回 null */
 const estimate = computed<{ points: number; unit: string } | null>(() => {
   const s = schema.value
@@ -1307,7 +1364,8 @@ const modelEstimate = computed<{ points: number; unit: string } | null>(() => {
     // 按所选模型（默认第一项）的单价报
     const unit = videoSizeOf(currentImageModel.value, tier)?.points
     if (typeof unit !== 'number') return null
-    const count = Number(values.count ?? 1)
+    // 图片复刻：一张资产图一个任务，总价 = 单价 × 资产图张数（每个任务只出 1 张）；其余 = 单价 × 生成张数
+    const count = s.pricePerUpload !== undefined ? (uploads[s.pricePerUpload]?.length ?? 0) : Number(values.count ?? 1)
     return { points: unit * (Number.isFinite(count) && count > 0 ? count : 1), unit: '' }
   }
   if (s?.price === 'video-model-configs') {
@@ -1426,13 +1484,16 @@ function formBase(s: ToolSchema): {
     else delete base.imageUrls
     Object.assign(base, vc.buildPayload(refs))
   }
-  // 图片生成多模型：只有让用户选了模型时才传 model（CoreToolSubmissionRequest.model）
+  // 图片生成多模型：只有让用户选了模型时才传 model（CoreToolSubmissionRequest.model）；
+  // 图片复刻的清单里滤掉了装不下两张图的模型，「默认项」可能已不是服务端的默认模型，所以有清单就明确传所选
   if (
     imageModelSelectable.value &&
     currentImageModel.value &&
-    currentImageModel.value.model !== defaultImageModel.value?.model
+    (s.minModelImages !== undefined || currentImageModel.value.model !== defaultImageModel.value?.model)
   )
     base.model = currentImageModel.value.model
+  // 图片复刻：输出比例跟随参考海报，服务端按实测宽高再算一遍，这里只带提示值
+  if (s.ratioFromUpload !== undefined && posterRatioHint.value) base.aspectRatio = posterRatioHint.value
   return { base, fan }
 }
 
@@ -1493,7 +1554,12 @@ async function onSubmit() {
       if (total > 1) progressText.value = `正在提交 ${done + 1} / ${total}`
       const res = await submitTool(s.javaRoute, body)
       if (!rememberSubmission(res.data)) allKnown = false
-      done += 1
+      if (s.pricePerUpload !== undefined) {
+        // 服务端按资产图扇出：返回几个任务号就是几张已提交（第 k 件失败时前面的保留、其余没提交也没扣点）
+        total = Math.max(uploads[s.pricePerUpload]?.length ?? 0, 1)
+        done = Math.min(submittedTaskCount(res.data), total)
+        if (done < total) allKnown = false
+      } else done += 1
     }
     // 这一轮全部成功且都拿到了号：撤掉本次记的时间兜底（之前没认领完的那笔保留）
     if (allKnown && unknownSubmitAt.value === submitAt) unknownSubmitAt.value = null
@@ -1694,6 +1760,13 @@ function ensureBaseline() {
 }
 
 /** 记下本次提交响应里的号：taskId / taskIds（工具路由）、workflowHistoryIds（工作流路由）；一个都没有返回 false */
+/** 提交返回里的任务号个数（taskId 单值或 taskIds 数组） */
+function submittedTaskCount(data: unknown): number {
+  const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  const ids = [d.taskId, ...(Array.isArray(d.taskIds) ? d.taskIds : [])]
+  return ids.filter((x) => typeof x === 'string' && !!x).length
+}
+
 function rememberSubmission(data: unknown): boolean {
   const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
   const tasks = [d.taskId, ...(Array.isArray(d.taskIds) ? d.taskIds : [])].filter(
@@ -2856,6 +2929,9 @@ const plateBtnCls =
             role="status"
           >
             本次将替换 {{ changedRegions.length }} 处文字
+          </p>
+          <p v-if="posterRatioNote" class="m-0 text-12px leading-18px text-muted" role="status">
+            {{ posterRatioNote }}
           </p>
           <p v-if="refLimitText && !promptStripOwned" class="m-0 text-12px leading-18px text-muted">
             {{ refLimitText }}

@@ -11,6 +11,8 @@ export const TOOL_COVERS: Record<string, string> = {
   图片翻译: '/images/tool-covers/image-translate.jpg',
   文字替换: '/images/tool-covers/text-replace.jpg',
   比例转换: '/images/tool-covers/aspect-convert.jpg',
+  // 没有专属实拍图（2026-11-12）：借「单图复刻」的海报版式封面
+  图片复刻: '/images/tool-covers/single-copy.jpg',
   图片生成: '/images/tool-covers/image-generate.jpg',
   商品精修: '/images/tool-covers/product-retouch.jpg',
   产品替换: '/images/tool-covers/product-replace.jpg',

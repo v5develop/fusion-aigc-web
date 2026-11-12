@@ -83,6 +83,12 @@ const ICONS = {
   ratio: `
     <rect x="4.4" y="5.2" width="15.2" height="13.6" rx="2.4"/>
     <path d="M1.8 12h20.4M4 10.2 1.8 12 4 13.8M20 10.2 22.2 12 20 13.8"/>`,
+  posterReplicate: `
+    <rect x="3.2" y="3.4" width="8.6" height="11.2" rx="1.8"/>
+    <path d="M5.4 7h4.2M5.4 9.4h2.8"/>
+    <rect x="12.6" y="9.2" width="8.2" height="11.4" rx="1.8" stroke-dasharray="2.2 2.2"/>
+    <path d="M15.6 15.4h2.2M16.7 14.3v2.2"/>
+    <path d="M8.2 18.4h2.8M9.7 16.9l1.5 1.5-1.5 1.5"/>`,
   productReplace: `
     <rect x="3" y="4.9" width="7.4" height="9.2" rx="1.6"/>
     <rect x="13.6" y="4.9" width="7.4" height="9.2" rx="1.6"/>
@@ -207,6 +213,15 @@ export const tools: ToolItem[] = [
     inputShape: 'batch-image',
     route: '/tools/aspect-ratio-convert',
     icon: ICONS.ratio,
+  },
+  {
+    id: 'ai-poster-replicate',
+    name: '图片复刻',
+    category: 'edit',
+    description: '放一张参考海报，再传自己的商品或人物图；版式、字体气质、色块和网格照参考图来，主体换成你的图。',
+    inputShape: 'dual-image',
+    route: '/tools/ai-poster-replicate',
+    icon: ICONS.posterReplicate,
   },
   {
     // 不接 /e-commerce/product-replace：那一页是「商品视频」下的视频替换，与这里的双图换商品不是同一能力
