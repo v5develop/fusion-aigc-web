@@ -2503,6 +2503,33 @@ watch(
 const DOCK_NARROW_BELOW = 1100
 const workRef = ref<HTMLElement | null>(null)
 const containerWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
+// 右侧一次只出一个：提示词库（原型 .wf-prompt-drawer：宽 380、top 56 / right 12 / bottom 避开底部工具条、圆角 18 的浮动卡，
+// 叠在画布上不挤舞台）打开时，生成卡控制台暂时让位（原型也是打开就隐藏控制台），关闭后控制台自动回来；
+// 提示词库不随选中节点切换而关。控制台仍是自己的 300 / 280 在流停靠栏。
+const consoleDocked = computed(() => !promptFlyoutOpen.value && !!dockedNode.value)
+const promptWidth = computed(() => (containerWidth.value <= 1280 ? 340 : 380))
+/** 提示词库下沿留白：按底部工具条 / 引导卡的真实顶沿量（≥12 间隙），量不到退回原型的 76 */
+const promptBottom = ref(76)
+function measurePromptBottom() {
+  const work = workRef.value
+  if (!work) return
+  const w = work.getBoundingClientRect()
+  let top = Infinity
+  work.querySelectorAll<HTMLElement>('[data-safe-block="bottom"]').forEach((el) => {
+    const r = el.getBoundingClientRect()
+    if (r.width && r.height) top = Math.min(top, r.top)
+  })
+  promptBottom.value = Number.isFinite(top) ? Math.max(12, Math.round(w.bottom - top + 12)) : 76
+}
+watch(
+  [promptFlyoutOpen, () => containerWidth.value, () => showOnboard.value],
+  async ([open]) => {
+    if (!open) return
+    await nextTick()
+    measurePromptBottom()
+  },
+  { flush: 'post' },
+)
 const dockWidth = computed(() => (containerWidth.value <= 1280 ? 280 : 300))
 const dockOverlay = computed(() => containerWidth.value < DOCK_NARROW_BELOW)
 // 宽度取画布工作区容器（资产栏 + 舞台 + 在流内的停靠栏），不用窗口宽：左导航、资产栏收展都会改变可用宽度
@@ -2535,10 +2562,15 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointercancel', trackPointer, true)
 })
 
+/** 需要避让停靠栏的节点：提示词库打开时是当前选中节点（插入目标），否则是停靠的生成卡 */
+const revealTargetId = computed(() =>
+  promptFlyoutOpen.value ? (selectedNode.value?.id ?? '') : (dockedNode.value?.id ?? ''),
+)
+
 /** 平移视口让选中的生成卡完整落在「停靠栏之外、左工具条之右」的可见区；不改 zoom，已可见就不动 */
 function revealDockedNode(id: string) {
   const stage = stageRef.value
-  if (!stage || dockedNode.value?.id !== id) return
+  if (!stage || revealTargetId.value !== id) return
   const el = stage.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"]`)
   if (!el) return
   const s = stage.getBoundingClientRect()
@@ -2577,7 +2609,7 @@ function revealWhenIdle(id: string) {
 
 // 选中一张生成卡（含从别的节点切过来、多选收回单选）：等停靠栏撑开舞台后再量，量完才知道卡片有没有被盖
 watch(
-  () => dockedNode.value?.id ?? '',
+  revealTargetId,
   async (id) => {
     if (!id) return
     await nextTick()
@@ -2975,7 +3007,7 @@ useFileDropPaste(stageRef, {
 
             <!-- 小地图（原型 .wf-minimap：150×96、右下 16、r14、白 92%、蒙版藤紫 8%、节点圆角 3、可拖动 / 滚轮缩放） -->
             <MiniMap
-              v-if="!(dockedNode && dockOverlay)"
+              v-if="!promptFlyoutOpen && !(consoleDocked && dockOverlay)"
               position="bottom-right"
               :width="150"
               :height="96"
@@ -3606,7 +3638,7 @@ useFileDropPaste(stageRef, {
 
         <!-- 生成卡控制台停靠栏：在流内时画布区变窄；容器 < 1100 叠在右缘上（带投影），不压缩画布 -->
         <aside
-          v-if="dockedNode"
+          v-if="consoleDocked"
           class="min-h-0 bg-overlay"
           :data-safe-block="dockOverlay ? 'right' : undefined"
           :class="
@@ -3617,7 +3649,26 @@ useFileDropPaste(stageRef, {
           :style="{ width: `${dockWidth}px` }"
           aria-label="生成卡控制台"
         >
-          <NodeParamsPanel :key="dockedNode.id" :node="dockedNode" docked @locate="locateNode" />
+          <NodeParamsPanel v-if="dockedNode" :key="dockedNode.id" :node="dockedNode" docked @locate="locateNode" />
+        </aside>
+
+        <!-- 提示词库浮动抽屉（原型几何）：同时登记为右侧安全区块，适应 / 聚焦 / 避让都绕开它 -->
+        <aside
+          v-if="promptFlyoutOpen"
+          class="absolute right-12px top-56px z-20 overflow-hidden rounded-18px border border-solid border-line bg-overlay shadow-pop max-w-[calc(100%-24px)]"
+          :style="{ width: `${promptWidth}px`, bottom: `${promptBottom}px` }"
+          data-safe-block="right"
+          aria-label="提示词库"
+        >
+          <PromptLibraryFlyout
+            v-model:show="promptFlyoutOpen"
+            dock
+            :anchor="promptAnchorEl"
+            heading="提示词库"
+            show-counts
+            keep-open
+            @select="(item) => insertPrompt(item.prompt)"
+          />
         </aside>
       </div>
 
@@ -3639,14 +3690,6 @@ useFileDropPaste(stageRef, {
         :initial="renameTarget?.title ?? ''"
         placeholder="给这个节点起个名字（最多 40 字）"
         @confirm="confirmRename"
-      />
-      <PromptLibraryFlyout
-        v-model:show="promptFlyoutOpen"
-        :anchor="promptAnchorEl"
-        heading="提示词库"
-        show-counts
-        keep-open
-        @select="(item) => insertPrompt(item.prompt)"
       />
     </div>
   </n-config-provider>

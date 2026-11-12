@@ -10,11 +10,15 @@ import { modelLabelOf, modelLabelsOf } from '@/utils/model-label'
  * <p>定位：调用方用 `anchor` 传触发按钮元素，面板吸附其下方、右缘对齐（超出视口左移）；
  * 不传 anchor 时屏幕居中。
  *
+ * <p>`dock` 模式（画布）：不再是锚定浮层，而是铺满父容器的右侧停靠面板（父级给宽度 / 高度 / 圆角 / 投影）；
+ * 不做「点外部关闭」（停靠栏常驻，边选节点边插入），Esc 在焦点不在别处输入框时关闭，关闭后焦点还给触发按钮；
+ * 打开时焦点落在搜索框。每条提示词右上角另有「复制提示词」图标，只复制不插入（两种模式都有）。
+ *
  * <p>根节点带 data-canvas-popover + tabindex=-1：画布页的全局快捷键（Backspace / Delete / Esc / Ctrl+C …）
  * 遇到焦点在浮层里就让给浮层；点到面板里的非控件区域时焦点落在面板本身，不会掉回 body 被画布当成操作选中节点。
  */
 import IconButton from '@/components/IconButton/index.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { promptLibList, promptLibRemove, type IPromptLibItem } from '@/api/prompt-library.ts'
 import PromptEditor from '@/views/prompt-library/PromptEditor.vue'
 import { useMessage } from 'naive-ui'
@@ -37,9 +41,12 @@ const props = defineProps<{
   showCounts?: boolean
   /** 选中提示词后保持面板打开（画布：连续往多个节点里插）；默认选完即关 */
   keepOpen?: boolean
+  /** 右侧停靠面板形态（画布）：铺满父容器，不定位、不因点外部关闭 */
+  dock?: boolean
 }>()
 
 const panelRef = ref<HTMLElement>()
+const searchRef = ref<HTMLInputElement>()
 /** 无锚点时屏幕居中 */
 const CENTERED = { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }
 const panelStyle = ref<Record<string, string>>(CENTERED)
@@ -137,14 +144,19 @@ watch([vertical, model, group, () => q.value.trim()], () => {
   if (JSON.stringify(currentParams()) === lastKey) return
   void load()
 })
-watch(show, (open) => {
-  if (open) {
-    group.value = ''
-    q.value = ''
-    void load()
-    place()
-    requestAnimationFrame(place)
+function onOpened() {
+  group.value = ''
+  q.value = ''
+  void load()
+  if (props.dock) {
+    void nextTick(() => searchRef.value?.focus({ preventScroll: true }))
+    return
   }
+  place()
+  requestAnimationFrame(place)
+}
+watch(show, (open) => {
+  if (open) onOpened()
 })
 
 // ---------- 定位 / 关闭 ----------
@@ -164,7 +176,7 @@ function place() {
 }
 
 function onDocPointerDown(e: PointerEvent) {
-  if (!show.value) return
+  if (!show.value || props.dock) return
   const target = e.target as Node
   if (panelRef.value?.contains(target)) return
   if (props.anchor?.contains(target)) return
@@ -180,10 +192,49 @@ function onDocPointerDown(e: PointerEvent) {
 function onKeydown(e: KeyboardEvent) {
   if (editorShow.value || e.defaultPrevented) return
   if (e.key === 'Escape' && show.value) {
+    if (props.dock) {
+      // 停靠栏常驻：焦点在面板外的输入框 / 文本编辑里时，Esc 留给那边（退出编辑）
+      const t = e.target as HTMLElement | null
+      const outside = !!t && !panelRef.value?.contains(t)
+      if (outside && t.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return
+    }
     e.preventDefault()
-    show.value = false
-    props.anchor?.focus()
+    closePanel()
   }
+}
+
+/** 关闭并把焦点还给触发按钮（anchor 可能是包着按钮的 span） */
+function closePanel() {
+  show.value = false
+  const a = props.anchor
+  const target = a?.matches('button,[tabindex]') ? a : a?.querySelector<HTMLElement>('button,[tabindex]')
+  void nextTick(() => target?.focus())
+}
+
+// ---------- 复制（只复制不插入） ----------
+async function copyPrompt(item: IPromptLibItem) {
+  const text = item.prompt ?? ''
+  if (!text.trim()) return message.warning('这条提示词没有内容')
+  let ok = false
+  try {
+    await navigator.clipboard.writeText(text)
+    ok = true
+  } catch {
+    // 非安全上下文 / 权限被拒：退回隐藏 textarea + execCommand（长文本同样可用）
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0'
+    document.body.appendChild(ta)
+    ta.select()
+    try {
+      ok = document.execCommand('copy')
+    } catch {
+      ok = false
+    }
+    ta.remove()
+  }
+  if (ok) message.success('已复制')
+  else message.warning('浏览器不允许复制，请手动选中文本复制')
 }
 
 function pick(item: IPromptLibItem) {
@@ -230,9 +281,15 @@ const tabCount = (key: string) => {
   const t = domainTotals.value
   return t[key] != null ? t[key] : null
 }
+/** 选中态：浮层沿用原渐变，停靠栏改用令牌（深色主题下不出现死色） */
+const chipOn = (shadow = false) =>
+  props.dock
+    ? 'border-violet-line bg-violet-soft font-600 text-violet-ink'
+    : `border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] font-600 text-violet-ink${shadow ? ' shadow-[0_1px_2px_rgba(31,35,41,0.05)]' : ''}`
 const isFiltered = computed(() => !!(group.value || q.value.trim() || model.value !== '全部'))
 
 onMounted(() => {
+  if (show.value) onOpened()
   document.addEventListener('pointerdown', onDocPointerDown, true)
   window.addEventListener('resize', place)
   window.addEventListener('keydown', onKeydown, true)
@@ -248,8 +305,13 @@ onBeforeUnmount(() => {
   <div
     v-if="show"
     ref="panelRef"
-    class="fixed z-[6000] flex flex-col box-border outline-none overflow-hidden w-400px max-w-[calc(100vw-16px)] max-h-[min(480px,62vh)] rounded-18px border border-solid border-line bg-white shadow-[0_12px_24px_rgba(31,35,41,0.14),0_2px_6px_rgba(31,35,41,0.06)]"
-    :style="panelStyle"
+    class="flex flex-col box-border outline-none overflow-hidden"
+    :class="
+      dock
+        ? 'h-full w-full min-h-0 border-0 bg-overlay'
+        : 'fixed z-[6000] w-400px max-w-[calc(100vw-16px)] max-h-[min(480px,62vh)] rounded-18px border border-solid border-line bg-white shadow-[0_12px_24px_rgba(31,35,41,0.14),0_2px_6px_rgba(31,35,41,0.06)]'
+    "
+    :style="dock ? undefined : panelStyle"
     role="dialog"
     :aria-label="heading || '我的提示词'"
     tabindex="-1"
@@ -276,7 +338,7 @@ onBeforeUnmount(() => {
         </svg>
         上传
       </button>
-      <IconButton label="关闭提示词库" variant="quiet" @click="show = false">
+      <IconButton label="关闭提示词库" variant="quiet" @click="closePanel">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
           <path d="m6 6 12 12M18 6 6 18" />
         </svg>
@@ -294,7 +356,7 @@ onBeforeUnmount(() => {
         class="h-32px flex-1 rounded-6px border border-solid text-12px cursor-pointer [transition:background_180ms,border-color_180ms,color_180ms] motion-reduce:transition-none"
         :class="
           vertical === v.key
-            ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] font-600 text-violet-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)]'
+            ? chipOn(true)
             : 'border-transparent bg-transparent text-muted hover:(bg-surface3 text-ink)'
         "
         @click="vertical = v.key"
@@ -322,6 +384,7 @@ onBeforeUnmount(() => {
           <path d="m20 20-4.2-4.2" />
         </svg>
         <input
+          ref="searchRef"
           v-model="q"
           type="search"
           placeholder="搜场景、卖点、风格…"
@@ -338,7 +401,7 @@ onBeforeUnmount(() => {
           class="h-28px box-border px-12px rounded-full border border-solid text-12px leading-26px cursor-pointer [transition:background_140ms,border-color_140ms,color_140ms] motion-reduce:transition-none"
           :class="
             model === m
-              ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] font-600 text-violet-ink'
+              ? chipOn()
               : 'border-line bg-white text-muted hover:(border-control text-ink)'
           "
           @click="model = m"
@@ -355,7 +418,7 @@ onBeforeUnmount(() => {
           class="h-28px box-border px-12px rounded-full border border-solid text-12px leading-26px cursor-pointer [transition:background_140ms,border-color_140ms,color_140ms] motion-reduce:transition-none"
           :class="
             group === g
-              ? 'border-violet-line bg-[linear-gradient(180deg,#fff_0%,#f8f3fc_100%)] font-600 text-violet-ink'
+              ? chipOn()
               : 'border-line bg-white text-muted hover:(border-control text-ink)'
           "
           @click="group = group === g ? '' : g"
@@ -410,7 +473,7 @@ onBeforeUnmount(() => {
         <li
           v-for="item in items"
           :key="item.id"
-          class="rounded-10px border border-solid border-transparent hover:(border-line bg-surface2)"
+          class="relative rounded-10px border border-solid border-transparent hover:(border-line bg-surface2)"
         >
           <button
             type="button"
@@ -418,7 +481,7 @@ onBeforeUnmount(() => {
             :title="item.prompt"
             @click="pick(item)"
           >
-            <span class="flex items-center gap-6px min-w-0">
+            <span class="flex items-center gap-6px min-w-0 pr-28px">
               <b class="min-w-0 flex-1 truncate text-13px font-600 text-ink">{{ item.title }}</b>
               <span
                 v-for="m in modelLabelsOf(item.models).slice(0, 2)"
@@ -442,6 +505,18 @@ onBeforeUnmount(() => {
               >
             </span>
           </button>
+          <IconButton
+            label="复制提示词"
+            size="sm"
+            variant="quiet"
+            class="!absolute right-6px top-6px"
+            @click.stop="copyPrompt(item)"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="11" height="11" rx="2.5" />
+              <path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H15" />
+            </svg>
+          </IconButton>
           <div v-if="item.owner === 'mine'" class="flex items-center justify-end gap-4px px-8px pb-6px">
             <template v-if="confirmingId === item.id">
               <span class="mr-auto text-12px text-danger">删除这条提示词？</span>
