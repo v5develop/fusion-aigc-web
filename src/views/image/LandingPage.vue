@@ -12,14 +12,19 @@
  * 原型 banner 右侧是实拍图：有封面的条目用真图（public/images/tool-covers，名称对齐原型 toolCovers.ts），
  * 没有的（本地生活导航首页）沿用同色调渐变占位。
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { plazaTemplateList, stashPlazaTemplate, type IPlazaTemplate } from '@/api/plaza.ts'
+import { useToolAvailability, withoutDisabledSections } from '@/utils/toolAvailability.ts'
 import { useTilt } from '@/utils/composables/useTilt.ts'
 import { toolCover } from './tool-covers.ts'
 import type { LandingBanner, LandingPageData } from './landing'
 
 const props = defineProps<{ data: LandingPageData }>()
+
+// 受控工具（后端绑定被关停）已知不可用时不列卡片；未知 / 加载中照常显示
+useToolAvailability()
+const sections = computed(() => withoutDisabledSections(props.data.sections))
 
 // 页面内边距的高度档位媒体查询变体（区间互斥，不用比先后）：≥960 = [@media(min-height:960px)]，761–880 = [@media(min-height:761px)_and_(max-height:880px)]，≤760 = [@media(max-height:760px)]。
 // 类名必须整串写成字面量，UnoCSS 只扫源码文本，拼接出来的类不会生成。
@@ -236,7 +241,7 @@ const hasCover = (name: string) => !!toolCover(name)
       </ul>
 
       <section
-        v-for="(sec, si) in data.sections"
+        v-for="(sec, si) in sections"
         :key="sec.label"
         :aria-labelledby="`landing-sec-${si}`"
         class="flex flex-col gap-12px box-border px-20px py-18px rounded-14px border border-solid border-line bg-surface shadow-[0_1px_2px_rgba(31,35,41,0.03)] motion-reduce:animate-none"

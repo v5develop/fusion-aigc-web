@@ -25,6 +25,7 @@ import { storeToRefs } from 'pinia'
 import { NDropdown, useDialog, type DropdownOption } from 'naive-ui'
 import { signOut } from '@/api/auth.ts'
 import { useUserInfoStore } from '@/stores/user-info.ts'
+import { useToolAvailability, withoutDisabledGroups } from '@/utils/toolAvailability'
 import { catalogFor, type CatalogGroup } from '@/views/tools/catalog'
 import { tools } from '@/views/home/tools'
 import { chuandaitu_data, shangpingshiping_data, shangpingtu_data, type EcEntry } from '@/views/e-commerce/entries'
@@ -468,10 +469,15 @@ onMounted(() => {
 })
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown))
 
+useToolAvailability()
 const currentPanel = computed(() => {
   const key = panel.value
   if (!key) return null
-  if (key === 'image' || key === 'video' || key === 'ai') return panels[key]
+  if (key === 'image' || key === 'video') {
+    // 受控工具已知不可用时目录不列；归属高亮用的 panels / ownedRoutes 仍是全量，直达页照样高亮
+    return { ...panels[key], groups: withoutDisabledGroups(panels[key].groups) }
+  }
+  if (key === 'ai') return panels[key]
   const owner = legacySubs.find((s) => s.panel === key)
   return owner ? { title: owner.name, groups: routeGroups(owner.path) } : null
 })

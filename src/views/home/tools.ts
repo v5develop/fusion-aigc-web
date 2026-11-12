@@ -29,6 +29,11 @@ export interface ToolItem {
   icon: string
   /** 不在工具箱 / 目录 / 总览里列出；路由仍可直达，图标仍可被别处按 id 取用。注意：任何遍历 tools 做列表 / 目录 / 总览的代码都必须过滤 !hidden */
   hidden?: boolean
+  /**
+   * 受控工具：后端能力绑定可被运营关停。已知不可用时各列表（工具箱 / 目录 / 落地页）不列出，直达页面显示「该功能暂未开放」。
+   * 判据与探针见 utils/toolAvailability.ts（目前只支持图片别名模型路由）。
+   */
+  gated?: boolean
 }
 
 export const toolCategories: { key: ToolCategory; label: string }[] = [
@@ -221,6 +226,7 @@ export const tools: ToolItem[] = [
     description: '放一张参考海报，再传自己的商品或人物图；版式、字体气质、色块和网格照参考图来，主体换成你的图。',
     inputShape: 'dual-image',
     route: '/tools/ai-poster-replicate',
+    gated: true,
     icon: ICONS.posterReplicate,
   },
   {

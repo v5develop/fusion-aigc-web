@@ -7,6 +7,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toolCover } from '@/views/image/tool-covers.ts'
+import { useToolAvailability, withoutDisabled } from '@/utils/toolAvailability'
 import { tools, toolCategories, toolInputShapeLabels, type ToolCategory } from './tools'
 
 type TabKey = 'all' | ToolCategory
@@ -16,9 +17,10 @@ const tabs: { key: TabKey; label: string }[] = [{ key: 'all', label: '全部' },
 const active = ref<TabKey>('all')
 const tabRefs = ref<HTMLButtonElement[]>([])
 
-const visibleTools = tools.filter((t) => !t.hidden)
+useToolAvailability()
+const visibleTools = computed(() => withoutDisabled(tools.filter((t) => !t.hidden)))
 const list = computed(() =>
-  active.value === 'all' ? visibleTools : visibleTools.filter((t) => t.category === active.value),
+  active.value === 'all' ? visibleTools.value : visibleTools.value.filter((t) => t.category === active.value),
 )
 
 // WAI-ARIA tabs：左右键在分类间移动并选中，Home/End 跳到首尾

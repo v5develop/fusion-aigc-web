@@ -49,6 +49,7 @@ import {
   type ToolUpload,
 } from './schemas'
 import { tools as toolRegistry } from '@/views/home/tools'
+import { useToolAvailability, isRouteDisabled, withoutDisabledGroups } from '@/utils/toolAvailability'
 import { catalogFor, catalogKindOf, catalogKinds } from './catalog'
 import { isTerminal, useToolHistory } from './useToolHistory'
 import { takeRefill } from '@/utils/refill-handoff'
@@ -108,7 +109,13 @@ const userInfo = useUserInfoStore()
 const toolId = computed(() => String(route.params.toolId ?? ''))
 const schema = computed<ToolSchema | undefined>(() => findToolSchema(toolId.value))
 /** 左侧目录（原型「AI 图片」分组栏）；当前工具高亮 */
-const catalog = computed(() => catalogFor(toolId.value))
+const catalog = computed(() => {
+  const c = catalogFor(toolId.value)
+  return { ...c, groups: withoutDisabledGroups(c.groups) }
+})
+useToolAvailability()
+/** 当前工具是受控工具且后端已知不可用（绑定被关停）：显示「该功能暂未开放」，不渲染表单 */
+const toolUnavailable = computed(() => isRouteDisabled(toolRegistry.find((x) => x.id === toolId.value)?.route))
 /** 当前工具在目录里的条目：头卡的图标与短说明取这里 */
 // 隐藏工具（不在目录里，如场景生成）回退到注册表定义，头卡图标与说明不丢
 const currentEntry = computed<{ icon?: string; tagline?: string } | undefined>(() => {
@@ -183,7 +190,10 @@ function setSwitcherPop(el: unknown) {
 const switcherPop = ref<HTMLElement | null>(null)
 const switcherStyle = ref<Record<string, string>>({})
 const switcherKind = ref<'image' | 'video'>(catalogKindOf(toolId.value))
-const switcherCatalog = computed(() => catalogKinds.find((k) => k.key === switcherKind.value)?.catalog ?? catalog.value)
+const switcherCatalog = computed(() => {
+  const c = catalogKinds.find((k) => k.key === switcherKind.value)?.catalog
+  return c ? { ...c, groups: withoutDisabledGroups(c.groups) } : catalog.value
+})
 function placeSwitcher() {
   const card = switcherCard.value?.getBoundingClientRect()
   if (!card) return
@@ -1534,7 +1544,7 @@ const disabledReason = computed(
 
 async function onSubmit() {
   const s = schema.value
-  if (!s || submitting.value || disabledReason.value) return
+  if (!s || submitting.value || disabledReason.value || toolUnavailable.value) return
   submitting.value = true
   progressText.value = ''
   ensureBaseline()
@@ -2214,6 +2224,11 @@ const plateBtnCls =
 <template>
   <div v-if="!schema" class="h-full flex flex-col items-center justify-center gap-12px bg-page">
     <p class="m-0 text-15px text-ink">没有找到这个工具</p>
+    <RouterLink to="/tools" class="ll-link" :class="focusRing">返回工具箱</RouterLink>
+  </div>
+
+  <div v-else-if="toolUnavailable" class="h-full flex flex-col items-center justify-center gap-12px bg-page" role="status">
+    <p class="m-0 text-15px text-ink">该功能暂未开放</p>
     <RouterLink to="/tools" class="ll-link" :class="focusRing">返回工具箱</RouterLink>
   </div>
 
