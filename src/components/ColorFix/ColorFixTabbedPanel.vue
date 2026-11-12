@@ -34,10 +34,16 @@ import {
 import { referenceParts, useColorFixPieces, type ColorFixReference } from './references.ts'
 import type { ResultColorFix } from './useResultColorFix.ts'
 import { vCfFine, vCfValueEdit } from './fine-adjust.ts'
+import { currentAccountId, onAccountChange } from '@/utils/auth-session.ts'
 
 /** 1/3 高度的下限：舞台很矮时也要放得下头部 + 页签行 + 一点内容 */
 const MIN_MAX_H = 200
 const TAB_KEY = 'xq-colorfix-panel-tab'
+/** 用户拖出来的面板高度，按账号存本机（前缀登记在 auth-session 的 ACCOUNT_KEYED_PREFIXES） */
+const HEIGHT_KEY_PREFIX = 'xq-colorfix-panel-h:'
+/** 用户可拖到的最小高度（头部 + 页签行 + 至少一行内容） */
+const MIN_USER_H = 200
+const H_KEY_STEP = 16
 type TabKey = 'adjust' | 'region' | 'layers'
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'layers', label: '图层' },
@@ -154,6 +160,13 @@ const pos = ref({ x: 0, y: 0 })
 const placed = ref(false)
 const dragging = ref(false)
 const maxH = ref(0)
+/** 用户选的高度；null = 默认规则（内容撑开，最高 舞台/3） */
+const userH = ref<number | null>(null)
+/** 位置或高度偏离了默认（头部「恢复默认位置和大小」按钮的显隐依据） */
+const moved = ref(false)
+const resizing = ref(false)
+const hEl = ref<HTMLElement | null>(null)
+let resizeStart = { y: 0, h: 0 }
 let dragStart = { x: 0, y: 0, px: 0, py: 0 }
 let observer: ResizeObserver | null = null
 
@@ -170,6 +183,55 @@ function calcMaxH() {
   if (!h) return 0
   return Math.max(120, Math.min(Math.max(MIN_MAX_H, Math.round(h / 3)), h - 24))
 }
+/** 用户可调的上限：舞台高度 − 上下边距 */
+function stageMaxH() {
+  const { h } = parentBox()
+  return h ? Math.max(120, h - 24) : 0
+}
+function clampUserH(h: number, bottomRoom?: number) {
+  const top = stageMaxH()
+  const hi = Math.max(MIN_USER_H, Math.min(top || Infinity, bottomRoom ?? Infinity))
+  return Math.round(Math.min(Math.max(MIN_USER_H, h), hi))
+}
+function hKey(): string {
+  const who = currentAccountId()
+  return who ? `${HEIGHT_KEY_PREFIX}${who}` : ''
+}
+function readUserH(): number | null {
+  const key = hKey()
+  if (!key) return null
+  try {
+    const n = Number(localStorage.getItem(key))
+    return Number.isFinite(n) && n >= MIN_USER_H ? n : null
+  } catch {
+    return null
+  }
+}
+function writeUserH(v: number | null) {
+  const key = hKey()
+  if (!key) return
+  try {
+    if (v === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, String(v))
+  } catch {
+    /* 存不了就只在本次生效 */
+  }
+}
+userH.value = readUserH()
+const offAccount = onAccountChange(() => {
+  userH.value = readUserH()
+  void nextTick(() => {
+    if (placed.value) onParentResize()
+  })
+})
+/** 实际下发的 height / maxHeight：有用户高度时固定高度，内容在里面滚动 */
+const sizeStyle = computed(() => {
+  if (userH.value !== null && stageMaxH()) {
+    const h = Math.min(userH.value, stageMaxH())
+    return { height: `${h}px`, maxHeight: `${stageMaxH()}px` }
+  }
+  return { maxHeight: maxH.value ? `${maxH.value}px` : undefined }
+})
 function clamp(x: number, y: number) {
   const el = root.value
   if (!el) return { x, y }
@@ -187,7 +249,14 @@ function placeDefault() {
     const { w, h } = parentBox()
     pos.value = clamp(w - el.offsetWidth - 12, Math.max(12, Math.round((h - el.offsetHeight) / 2)))
     placed.value = true
+    moved.value = false
   })
+}
+/** 恢复默认位置和大小：清掉记住的高度，重新贴右缘垂直居中 */
+function restoreDefault() {
+  userH.value = null
+  writeUserH(null)
+  placeDefault()
 }
 function onParentResize() {
   if (!props.open || !placed.value) return
@@ -228,6 +297,7 @@ function onAfterLeave() {
 function onPointerDown(e: PointerEvent) {
   if (e.button !== 0) return
   if ((e.target as HTMLElement).closest('button')) return
+  if (resizing.value) return
   dragging.value = true
   dragStart = { x: e.clientX, y: e.clientY, px: pos.value.x, py: pos.value.y }
   window.addEventListener('pointermove', onPointerMove)
@@ -237,6 +307,52 @@ function onPointerDown(e: PointerEvent) {
 function onPointerMove(e: PointerEvent) {
   if (!dragging.value) return
   pos.value = clamp(dragStart.px + (e.clientX - dragStart.x), dragStart.py + (e.clientY - dragStart.y))
+  if (pos.value.x !== dragStart.px || pos.value.y !== dragStart.py) moved.value = true
+}
+function onHeadDblClick(e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('button')) return
+  restoreDefault()
+}
+
+// ---- 底边拖拽改高度（指针捕获，触屏同走 pointer 事件；键盘 ↑↓ 每次 16px） ----
+function curH(): number {
+  return root.value?.offsetHeight ?? 0
+}
+function applyH(h: number) {
+  const { h: stageH } = parentBox()
+  const room = stageH ? stageH - pos.value.y : undefined
+  userH.value = clampUserH(h, room)
+  moved.value = true
+  void nextTick(() => (pos.value = clamp(pos.value.x, pos.value.y)))
+}
+function onResizeDown(e: PointerEvent) {
+  if (e.button !== 0 && e.pointerType === 'mouse') return
+  e.preventDefault()
+  e.stopPropagation()
+  resizing.value = true
+  resizeStart = { y: e.clientY, h: curH() }
+  hEl.value?.setPointerCapture?.(e.pointerId)
+}
+function onResizeMove(e: PointerEvent) {
+  if (!resizing.value) return
+  applyH(resizeStart.h + (e.clientY - resizeStart.y))
+}
+function onResizeUp(e: PointerEvent) {
+  if (!resizing.value) return
+  resizing.value = false
+  try {
+    hEl.value?.releasePointerCapture?.(e.pointerId)
+  } catch {
+    /* 已释放 */
+  }
+  if (userH.value !== null) writeUserH(userH.value)
+}
+function onResizeKey(e: KeyboardEvent) {
+  const d = e.key === 'ArrowDown' ? H_KEY_STEP : e.key === 'ArrowUp' ? -H_KEY_STEP : 0
+  if (!d) return
+  e.preventDefault()
+  applyH(curH() + d)
+  if (userH.value !== null) writeUserH(userH.value)
 }
 function stopDrag() {
   window.removeEventListener('pointermove', onPointerMove)
@@ -251,6 +367,7 @@ function onPointerUp() {
 onMounted(() => window.addEventListener('resize', onParentResize))
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onParentResize)
+  offAccount()
   stopDrag()
   observer?.disconnect()
 })
@@ -396,11 +513,11 @@ watch(
       v-if="open"
       ref="root"
       class="cft"
-      :class="{ 'is-dragging': dragging, 'is-placed': placed }"
-      :style="{ left: `${pos.x}px`, top: `${pos.y}px`, maxHeight: maxH ? `${maxH}px` : undefined }"
+      :class="{ 'is-dragging': dragging, 'is-resizing': resizing, 'is-placed': placed }"
+      :style="{ left: `${pos.x}px`, top: `${pos.y}px`, ...sizeStyle }"
       :aria-label="`${title}参数`"
     >
-      <header class="cft__head" title="拖动调整面板" @pointerdown="onPointerDown">
+      <header class="cft__head" title="拖动调整面板 · 双击恢复默认位置和大小" @pointerdown="onPointerDown" @dblclick="onHeadDblClick">
         <span class="cft__grip" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
         <span class="cft__titles">
           <b class="cft__title">{{ title }}</b>
@@ -423,6 +540,12 @@ watch(
           </svg>
         </IconButton>
         <slot name="head-extra" />
+        <IconButton v-if="moved" label="恢复默认位置和大小" size="sm" variant="quiet" @click="restoreDefault">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+        </IconButton>
         <button type="button" class="cft__close sx-hit" aria-label="收起校色参数" title="收起校色参数" @click="emit('done')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
             <path d="m7 7 10 10M17 7 7 17" />
@@ -485,7 +608,7 @@ watch(
 
               <template v-if="region.mode === 'auto'">
                 <!-- 有单品参考图：只出用户上传的那几件 -->
-                <div v-if="hasPieces" class="cft__row cft__row--top">
+                <div v-if="hasPieces" class="cft__row cft__row--top cft__row--piece">
                   <span class="cft__label">单品</span>
                   <span class="cft__chips" role="radiogroup" aria-label="识别哪一件">
                     <button
@@ -536,7 +659,7 @@ watch(
                     </button>
                   </span>
                 </div>
-                <div v-if="showParts && (!hasPieces || moreOpen)" class="cft__row cft__row--top">
+                <div v-if="showParts && (!hasPieces || moreOpen)" class="cft__row cft__row--top cft__row--part">
                   <span class="cft__label" />
                   <span class="cft__chips" role="group" aria-label="服装部位（可多选）">
                     <button
@@ -612,7 +735,7 @@ watch(
             <!-- 整图底层：没有选区设置；有单品参考图时仍可直接点一件新建它的选区 -->
             <template v-else>
               <p class="cft__note">当前是「整图」底层，作用于整幅图片。{{ hasPieces ? '点一件单品，新建它的选区图层：' : '要只调局部，请在「图层」页添加选区。' }}</p>
-              <div v-if="hasPieces" class="cft__row cft__row--top">
+              <div v-if="hasPieces" class="cft__row cft__row--top cft__row--piece">
                 <span class="cft__chips" role="group" aria-label="新建单品选区">
                   <button
                     v-for="r in pieceRefs"
@@ -775,6 +898,24 @@ watch(
             <button type="button" class="cft__text-btn sx-hit" :disabled="!valuesMoved" @click="reset">恢复默认</button>
           </div>
         </div>
+      </div>
+
+      <div
+        ref="hEl"
+        class="cft__resize"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="拖动调整面板高度（上下方向键 ±16px）"
+        title="拖动调整高度"
+        tabindex="0"
+        @pointerdown="onResizeDown"
+        @pointermove="onResizeMove"
+        @pointerup="onResizeUp"
+        @pointercancel="onResizeUp"
+        @dblclick.stop="restoreDefault"
+        @keydown="onResizeKey"
+      >
+        <i aria-hidden="true" />
       </div>
     </section>
   </Transition>
@@ -977,6 +1118,50 @@ watch(
   font-weight: 600;
 }
 
+/* 底边拖拽条：8px 命中区 + 居中小握条，右下角叠一个斜纹 grip */
+.cft__resize {
+  position: relative;
+  display: grid;
+  height: 8px;
+  flex: 0 0 8px;
+  place-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.cft__resize i {
+  width: 28px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--xq-violet-line);
+  opacity: 0.7;
+  transition: opacity 0.12s ease;
+}
+.cft__resize::after {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  width: 8px;
+  height: 8px;
+  background: linear-gradient(135deg, transparent 0 45%, var(--xq-violet-line) 45% 55%, transparent 55% 70%, var(--xq-violet-line) 70% 80%, transparent 80%);
+  content: '';
+  pointer-events: none;
+}
+.cft__resize:hover i,
+.cft__resize:focus-visible i,
+.cft.is-resizing .cft__resize i {
+  opacity: 1;
+  background: var(--xq-violet);
+}
+.cft__resize:focus-visible {
+  outline: 2px solid var(--xq-violet);
+  outline-offset: -2px;
+  border-radius: 0 0 12px 12px;
+}
+.cft.is-resizing {
+  cursor: ns-resize;
+  user-select: none;
+}
+
 /* 页签内容：中间滚动，头尾固定 */
 .cft__body {
   min-height: 0;
@@ -1003,24 +1188,39 @@ watch(
   margin: 0 12px;
   padding: 9px 0 8px;
 }
+/* 统一行布局：标签列固定宽，标签行高 = 控件行高（--cft-row-h），文字垂直正中；
+   换行的 chip 行（--top）标签与第一行控件对齐，其余行 align-items:center */
 .cft__row {
+  --cft-row-h: 28px;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 24px;
+  min-height: var(--cft-row-h);
 }
 .cft__row--top {
   align-items: flex-start;
 }
+.cft__row--piece {
+  --cft-row-h: 30px;
+}
+.cft__row--part {
+  --cft-row-h: 24px;
+}
 .cft__label {
+  display: flex;
   width: 30px;
+  height: var(--cft-row-h, 28px);
   flex: 0 0 30px;
+  align-items: center;
   color: var(--xq-ink-2);
   font-size: 11.5px;
   font-weight: 500;
+  line-height: var(--cft-row-h, 28px);
+  white-space: nowrap;
 }
 .cft__label--soft {
   width: auto;
+  height: var(--cft-row-h, 28px);
   flex: 0 0 auto;
   margin-left: 6px;
 }
@@ -1067,6 +1267,7 @@ watch(
   min-width: 0;
   flex: 1;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 .cft__chip,
