@@ -32,6 +32,8 @@ import { chuandaitu_data, shangpingshiping_data, shangpingtu_data, type EcEntry 
 import { pictureLanding, videoLanding, SECTION_ENTRY_ICONS, type LandingPageData } from '@/views/image/landing'
 import NotificationBell from '@/components/Notifications/NotificationBell.vue'
 import CheckInButton from '@/components/CheckIn/CheckInButton.vue'
+import DirectoryPanel from '@/components/DirectoryPanel/index.vue'
+import type { DirectoryEntry, DirectoryGroup } from '@/components/DirectoryPanel/types'
 
 const props = defineProps<{
   /** 更新条标题（原型「部分功能有新版本」）；不传则不显示更新条 */
@@ -487,7 +489,34 @@ const currentPanel = computed(() => {
 const railable = computed(() => panel.value === 'e-commerce' || panel.value === 'studio')
 const dirCollapsed = ref(false)
 const railMode = computed(() => railable.value && dirCollapsed.value)
-const railListRef = ref<HTMLElement>()
+const dirPanel = ref<InstanceType<typeof DirectoryPanel>>()
+
+/** 目录条目（共用目录组件的数据形状）；有下一级的条目点开子目录，没有 route 且无下一级 = 即将开放 */
+const dirGroups = computed<DirectoryGroup[]>(() =>
+  (currentPanel.value?.groups ?? []).map((g, gi) => ({
+    key: g.label ?? String(gi),
+    label: g.label,
+    entries: g.entries.map((e) => ({
+      key: e.key,
+      name: e.name,
+      icon: e.icon,
+      route: e.route,
+      hasChildren: !!e.panel,
+      title: e.tagline,
+    })),
+  })),
+)
+const entryByKey = computed(
+  () => new Map((currentPanel.value?.groups ?? []).flatMap((g) => g.entries).map((e) => [e.key, e])),
+)
+const isDirActive = (d: DirectoryEntry) => {
+  const e = entryByKey.value.get(d.key)
+  return !!e && entryActive(e)
+}
+function onDirSelect(d: DirectoryEntry, ev: MouseEvent) {
+  const e = entryByKey.value.get(d.key)
+  if (e) onEntryClick(e, ev)
+}
 
 /**
  * 收起态的功能名气泡（原型 NextDirectory 收起条）：悬停 300ms 后把整列名字一次性挂出来，从折叠条底下推出
@@ -514,7 +543,7 @@ function clearRailTimer(t: ReturnType<typeof setTimeout> | undefined) {
 function showRailTips() {
   closeTimer = clearRailTimer(closeTimer)
   tipsClosing.value = false
-  const el = railListRef.value
+  const el = dirPanel.value?.stageEl
   if (!el || !railMode.value || !currentPanel.value) return
   const entries = new Map(currentPanel.value.groups.flatMap((g) => g.entries).map((e) => [e.key, e]))
   railTips.value = [...el.querySelectorAll<HTMLElement>('[data-rail-id]')].flatMap((node) => {
@@ -872,193 +901,33 @@ onBeforeUnmount(() => hideRailTips(true))
       <div
         v-if="currentPanel"
         ref="panelRef"
-        class="z-1 flex flex-none flex-col box-border overflow-hidden border-x border-solid border-shell-line bg-white [transition:width_0.2s_ease] motion-reduce:transition-none wide:(relative h-full shadow-cast-r) lt-wide:(absolute bottom-8px left-full top-8px border-y rounded-xl shadow-pop)"
+        class="z-1 flex flex-none flex-col box-border overflow-hidden border-x border-solid border-shell-line bg-white [transition:width_220ms_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none wide:(relative h-full shadow-cast-r) lt-wide:(absolute bottom-8px left-full top-8px border-y rounded-xl shadow-pop)"
         :class="railMode ? 'w-44px' : 'w-160px'"
         role="dialog"
         :aria-label="currentPanel.title + '目录'"
         @keydown="onPanelKeydown"
       >
-        <div class="flex h-48px flex-none items-center gap-8px" :class="railMode ? 'justify-center' : 'pl-14px pr-8px'">
-          <b
-            class="min-w-0 flex-1 truncate text-16px font-600 leading-[1.25] text-ink"
-            :class="railMode ? 'sr-only' : ''"
-            >{{ currentPanel.title }}</b
-          >
-          <!-- 电商 / 商拍：原型 .v3-iconbtn 28 / r4，展开态菜单图标 = 收起为图标条，收起态右箭头 = 展开（同工具页目录） -->
-          <button
-            v-if="railable"
-            type="button"
-            class="grid h-28px w-28px flex-none place-items-center rounded-4px border-none bg-transparent p-0 text-muted cursor-pointer hover:(bg-surface3 text-ink)"
-            :class="FOCUS"
-            :aria-expanded="!dirCollapsed"
-            aria-controls="nav-panel-list"
-            :aria-label="dirCollapsed ? '展开目录' : '收起目录'"
-            :title="dirCollapsed ? '展开目录' : '收起目录'"
-            @click="dirCollapsed = !dirCollapsed"
-          >
-            <svg
-              class="h-16px w-16px"
-              viewBox="0 0 512 512"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="32"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path v-if="dirCollapsed" stroke-width="48" d="M184 112l144 144-144 144" />
-              <path v-else stroke-miterlimit="10" d="M80 160h352M80 256h352M80 352h352" />
-            </svg>
-          </button>
-          <button
-            v-else
-            type="button"
-            class="grid h-28px w-28px flex-none place-items-center rounded-sm border-none bg-transparent p-0 text-muted cursor-pointer hover:bg-surface3 hover:text-ink"
-            :class="FOCUS"
-            aria-label="收起目录"
-            title="收起目录"
-            @click="closePanel(true)"
-          >
-            <svg
-              class="h-14px w-14px"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              aria-hidden="true"
-            >
-              <path v-for="d in ICON.menu" :key="d" :d="d" />
-            </svg>
-          </button>
-        </div>
-
-        <!--
-          展开（原型 .v3-dir__body）：内边距 0 6 10；组距上 16 / 下 10，组线 0.8px #efefef + 2px 淡影。
-          收起（原型 .v3-dir__rail，仅电商 / 商拍）：内边距 2 0 2 3、gap 2；图标钮 36 / r6、muted，悬停 110ms；组间 11 高分隔线。
-        -->
-        <div
-          id="nav-panel-list"
-          ref="railListRef"
-          class="[scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-h-0 flex-1 overflow-y-auto"
-          :class="railMode ? 'flex flex-col items-start gap-2px pb-2px pl-3px pr-0 pt-2px' : 'px-6px pb-10px'"
-          role="menu"
-          :aria-label="currentPanel.title"
-          @scroll="railMode && onRailScroll()"
-          @mouseenter="railMode && scheduleRailTips()"
-          @mouseleave="railMode && scheduleHideRailTips()"
-        >
-          <template v-for="(g, gi) in currentPanel.groups" :key="g.label ?? gi">
-            <div
-              v-if="railMode && gi"
-              class="mb-1px ml-[-3px] mr-0 mt-1px flex h-11px flex-[0_0_11px] items-center self-stretch before:(h-[0.8px] w-full bg-shell-line shadow-[0_1px_2px_rgba(31,35,41,0.07)] content-[''])"
-              aria-hidden="true"
-            />
-            <section
-              :class="
-                railMode
-                  ? 'contents'
-                  : gi
-                    ? 'mt-16px pt-10px shadow-[inset_0_0.8px_0_var(--xq-engrave),inset_0_2px_3px_-2px_rgba(31,35,41,0.10)]'
-                    : ''
-              "
-            >
-              <!-- 分组标题：高 28、内边距 0 8、12/600、字距 .02em（NextDirectory.vue:457-466）；收起态只留给读屏 -->
-              <h3
-                v-if="g.label"
-                class="m-0 flex h-28px items-center whitespace-nowrap px-8px text-12px font-600 tracking-[.02em] text-muted"
-                :class="railMode ? 'sr-only' : ''"
-              >
-                {{ g.label }}
-              </h3>
-              <component
-                :is="e.route || e.panel ? 'button' : 'div'"
-                v-for="e in g.entries"
-                :key="e.key"
-                :type="e.route || e.panel ? 'button' : undefined"
-                role="menuitem"
-                :data-panel-node="e.route || e.panel ? '' : undefined"
-                :data-rail-id="railMode ? e.key : undefined"
-                :aria-current="!e.panel && entryActive(e) ? 'page' : undefined"
-                :aria-disabled="e.route || e.panel ? undefined : 'true'"
-                :aria-label="e.route || e.panel ? (railMode ? e.name : undefined) : `${e.name}（即将开放）`"
-                class="flex items-center rounded-md border border-solid border-transparent bg-transparent text-left"
-                :class="[
-                  railMode
-                    ? 'h-36px w-36px flex-[0_0_36px] justify-center p-0 [transition:background_110ms,color_110ms] motion-reduce:transition-none'
-                    : ['w-full gap-10px', e.icon ? 'h-48px pl-8px pr-14px' : 'h-40px px-8px'],
-                  e.route || e.panel ? ['cursor-pointer hover:bg-surface3', FOCUS] : 'cursor-not-allowed',
-                  entryActive(e)
-                    ? ACTIVE
-                    : railMode
-                      ? e.route
-                        ? 'text-muted hover:text-ink'
-                        : 'text-muted opacity-60'
-                      : '',
-                ]"
-                @click="(e.route || e.panel) && onEntryClick(e, $event)"
-                @mouseenter="hoveredRail = e.key"
-                @focus="railMode && (showRailTips(), (hoveredRail = e.key))"
-                @blur="railMode && hideRailTips()"
-              >
-                <svg
-                  v-if="railMode && e.icon"
-                  class="h-18px w-18px"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.6"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                  :innerHTML="e.icon"
-                />
-                <template v-else-if="!railMode">
-                  <!-- 图标框：36 / r6、line 描边、浅紫渐变 + 内高光，图标 18（同工具页目录） -->
-                  <span
-                    v-if="e.icon"
-                    class="grid h-36px w-36px flex-none place-items-center rounded-6px border border-solid border-line sx-grad-icon shadow-[inset_0_1px_0_#fff]"
-                    :class="e.route ? 'text-violet' : 'text-muted opacity-60'"
-                    aria-hidden="true"
-                  >
-                    <svg
-                      class="h-18px w-18px"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.6"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      :innerHTML="e.icon"
-                    />
-                  </span>
-                  <span class="flex min-w-0 flex-1 flex-col">
-                    <span
-                      class="truncate text-13px text-ink"
-                      :class="e.icon ? 'font-500 leading-[1.3]' : 'font-400 leading-18px'"
-                    >
-                      {{ e.name }}
-                    </span>
-                    <span v-if="e.tagline" class="truncate text-11px leading-[1.35] text-muted">{{ e.tagline }}</span>
-                  </span>
-                </template>
-                <svg
-                  v-if="e.panel && !railMode"
-                  class="h-12px w-12px flex-none text-placeholder"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path v-for="d in ICON.chevR" :key="d" :d="d" />
-                </svg>
-              </component>
-            </section>
-          </template>
-        </div>
+        <!-- 头 + 展开 / 收起两层（共用目录组件，与工具页目录同一份）：两层叠放交叉淡入淡出，不再 v-if 装卸 -->
+        <DirectoryPanel
+          ref="dirPanel"
+          class="min-h-0 flex-1"
+          :title="currentPanel.title"
+          :groups="dirGroups"
+          :collapsed="railMode"
+          :railable="railable"
+          :is-active="isDirActive"
+          list-id="nav-panel-list"
+          menu
+          @toggle="dirCollapsed = !dirCollapsed"
+          @close="closePanel(true)"
+          @select="onDirSelect"
+          @rail-enter="scheduleRailTips"
+          @rail-leave="scheduleHideRailTips"
+          @rail-scroll="onRailScroll"
+          @rail-hover="(e) => (hoveredRail = e.key)"
+          @rail-focus="(e) => (showRailTips(), (hoveredRail = e.key))"
+          @rail-blur="hideRailTips()"
+        />
       </div>
     </Transition>
 

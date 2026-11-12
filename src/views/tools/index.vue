@@ -29,6 +29,8 @@ import {
 import { useUserInfoStore } from '@/stores/user-info'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import IconButton from '@/components/IconButton/index.vue'
+import DirectoryPanel from '@/components/DirectoryPanel/index.vue'
+import type { DirectoryGroup } from '@/components/DirectoryPanel/types'
 import HistoryActionRow from '@/components/HistoryActionRow/index.vue'
 import { formatFullTime, formatShortTime } from '@/utils/time.ts'
 import {
@@ -245,26 +247,22 @@ watch(toolId, () => {
   switcherOpen.value = false
 })
 
-// 目录上下渐隐：只在还能往那个方向滚时显示
-const catalogScroll = ref<HTMLElement | null>(null)
-const fadeTop = ref(false)
-const fadeBottom = ref(false)
-function updateFades() {
-  const el = catalogScroll.value
-  if (!el) return
-  fadeTop.value = el.scrollTop > 0
-  fadeBottom.value = el.scrollTop + el.clientHeight < el.scrollHeight - 1
-}
-let catalogObserver: ResizeObserver | null = null
-watch(catalogScroll, (el) => {
-  catalogObserver?.disconnect()
-  catalogObserver = null
-  if (!el) return
-  catalogObserver = new ResizeObserver(updateFades)
-  catalogObserver.observe(el)
-})
-watch([catalog, catalogCollapsed], () => void nextTick(updateFades))
-onBeforeUnmount(() => catalogObserver?.disconnect())
+// 目录条目（共用目录组件的数据形状；没有页面的条目显示「即将开放」）
+const catalogGroups = computed<DirectoryGroup[]>(() =>
+  catalog.value.groups.map((g) => ({
+    key: g.label,
+    label: g.label,
+    entries: g.entries.map((e) => ({
+      key: e.id,
+      name: e.name,
+      icon: e.icon,
+      route: e.route,
+      ariaLabel: e.route ? `${e.name}，${e.tagline}` : undefined,
+      title: e.route ? e.tagline : '即将开放',
+    })),
+  })),
+)
+const catalogPanel = ref<InstanceType<typeof DirectoryPanel> | null>(null)
 
 /**
  * 收起态的功能名气泡（原型 NextDirectory 收起条）：悬停 300ms 后把整列名字一次性挂出来，从折叠条底下推出
@@ -291,7 +289,7 @@ function clearRailTimer(t: ReturnType<typeof setTimeout> | undefined) {
 function showRailTips() {
   closeTimer = clearRailTimer(closeTimer)
   tipsClosing.value = false
-  const el = catalogScroll.value
+  const el = catalogPanel.value?.stageEl
   if (!el || !catalogCollapsed.value) return
   const entries = new Map(catalog.value.groups.flatMap((g) => g.entries).map((e) => [e.id, e]))
   railTips.value = [...el.querySelectorAll<HTMLElement>('[data-rail-id]')].flatMap((node) => {
@@ -351,7 +349,6 @@ function clickRailTip(tip: RailTip) {
   if (tip.route) void router.push(tip.route)
 }
 function onCatalogScroll() {
-  updateFades()
   if (railTips.value.length && !tipsClosing.value) showRailTips()
 }
 watch([catalogCollapsed, toolId], () => hideRailTips(true))
@@ -2245,190 +2242,42 @@ const plateBtnCls =
     -->
     <nav
       ref="catalogNav"
-      class="relative z-34 flex-none w-44px basis-44px"
+      class="relative z-34 flex-none"
       :class="
         wideViewport
-          ? catalogCollapsed
-            ? ''
-            : '!w-160px !basis-160px [transition:width_0.2s_ease,flex-basis_0.2s_ease] motion-reduce:transition-none'
-          : ''
+          ? [
+              catalogCollapsed ? 'w-44px basis-44px' : 'w-160px basis-160px',
+              '[transition:width_220ms_cubic-bezier(0.4,0,0.2,1),flex-basis_220ms_cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none',
+            ]
+          : 'w-44px basis-44px'
       "
       aria-labelledby="tool-catalog-title"
     >
-      <div
-        class="flex min-h-0 flex-col box-border overflow-hidden bg-white"
+      <DirectoryPanel
+        ref="catalogPanel"
         :class="
           catalogOverlay
-            ? 'absolute left-0 top-0 z-40 h-full w-160px border border-solid border-shell-line rounded-10px shadow-[0_12px_32px_rgba(31,35,41,0.18)]'
-            : 'h-full w-full border-l border-solid border-shell-line shadow-[10px_0_16px_-12px_rgba(31,35,41,0.22)]'
+            ? 'absolute left-0 top-0 z-40 h-full w-160px box-border overflow-hidden bg-white border border-solid border-shell-line rounded-10px shadow-[0_12px_32px_rgba(31,35,41,0.18)]'
+            : 'h-full w-full box-border overflow-hidden bg-white border-l border-solid border-shell-line shadow-[10px_0_16px_-12px_rgba(31,35,41,0.22)]'
         "
-      >
-        <div
-          class="flex-none flex items-center gap-8px h-48px"
-          :class="catalogCollapsed ? 'justify-center' : 'justify-between pl-14px pr-8px'"
-        >
-          <h2
-            id="tool-catalog-title"
-            class="m-0 min-w-0 flex-1 truncate text-16px font-600 leading-[1.55] text-ink"
-            :class="catalogCollapsed ? 'sr-only' : ''"
-          >
-            {{ catalog.title }}
-          </h2>
-          <!-- 原型 .v3-iconbtn：28 / r4、muted，悬停 #f3f4f5 + ink（无过渡）；展开态是菜单图标、收起态是右箭头 -->
-          <IconButton
-            id="tool-catalog-toggle"
-            variant="quiet"
-            :label="catalogCollapsed ? '展开目录' : '收起目录'"
-            :aria-expanded="!catalogCollapsed"
-            aria-controls="tool-catalog-list"
-            @click="toggleCatalog"
-          >
-            <svg
-              viewBox="0 0 512 512"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="32"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path v-if="catalogCollapsed" stroke-width="48" d="M184 112l144 144-144 144" />
-              <path v-else stroke-miterlimit="10" d="M80 160h352M80 256h352M80 352h352" />
-            </svg>
-          </IconButton>
-        </div>
-        <div class="relative flex-1 min-h-0">
-          <!-- 上下渐隐：只在还能往那个方向滚时出现（opacity 160ms） -->
-          <span
-            class="pointer-events-none absolute inset-x-0 top-0 z-1 h-16px bg-[linear-gradient(var(--xq-surface),rgb(var(--xq-surface-rgb)/0))] [transition:opacity_0.16s_ease]"
-            :class="fadeTop ? 'opacity-100' : 'opacity-0'"
-            aria-hidden="true"
-          />
-          <!--
-          展开（原型 .v3-dir__body）：内边距 0 6 10、滚动条隐藏；组距上 16 / 下 10，组线 0.8px #efefef + 2px 淡影；
-          条目 48、r6，图标 + 56 定宽文字列整簇居中，悬停 #f3f4f5（无过渡）。
-          收起（原型 .v3-dir__rail）：内边距 2 0 2 3、gap 2；图标钮 36 / r6、muted，悬停 110ms；组间 11 高分隔线。
-        -->
-          <div
-            id="tool-catalog-list"
-            ref="catalogScroll"
-            class="h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            :class="catalogCollapsed ? 'flex flex-col items-start gap-2px pt-2px pr-0 pb-2px pl-3px' : 'px-6px pb-10px'"
-            @scroll="onCatalogScroll"
-            @mouseenter="catalogCollapsed && scheduleRailTips()"
-            @mouseleave="catalogCollapsed && scheduleHideRailTips()"
-          >
-            <template v-for="(g, gi) in catalog.groups" :key="g.label">
-              <div
-                v-if="catalogCollapsed && gi"
-                class="flex self-stretch items-center flex-[0_0_11px] h-11px mt-1px mr-0 mb-1px ml-[-3px] before:(content-[''] w-full h-[0.8px] bg-shell-line shadow-[0_1px_2px_rgba(31,35,41,0.07)])"
-                aria-hidden="true"
-              />
-              <section
-                :class="
-                  catalogCollapsed
-                    ? 'contents'
-                    : gi
-                      ? 'mt-16px pt-10px shadow-[inset_0_0.8px_0_var(--xq-engrave),inset_0_2px_3px_-2px_rgba(31,35,41,0.1)]'
-                      : ''
-                "
-                :aria-labelledby="`tool-catalog-group-${gi}`"
-              >
-                <h3
-                  :id="`tool-catalog-group-${gi}`"
-                  class="m-0 flex items-center h-28px px-8px text-12px font-600 tracking-[0.02em] whitespace-nowrap text-muted"
-                  :class="catalogCollapsed ? 'sr-only' : ''"
-                >
-                  {{ g.label }}
-                </h3>
-                <ul class="m-0 p-0 list-none flex flex-col" :class="catalogCollapsed ? 'contents' : ''">
-                  <li v-for="e in g.entries" :key="e.id" :class="catalogCollapsed ? 'contents' : ''">
-                    <component
-                      :is="e.route ? RouterLink : 'div'"
-                      v-bind="
-                        e.route
-                          ? { to: e.route, 'aria-current': e.id === toolId ? 'page' : undefined }
-                          : { 'aria-disabled': 'true' }
-                      "
-                      :data-rail-id="e.id"
-                      :aria-label="e.route ? `${e.name}，${e.tagline}` : `${e.name}（即将开放）`"
-                      :title="catalogCollapsed ? undefined : e.route ? e.tagline : '即将开放'"
-                      class="flex items-center box-border rounded-6px border border-solid no-underline"
-                      :class="[
-                        catalogCollapsed
-                          ? 'flex-[0_0_36px] justify-center w-36px h-36px p-0 [transition:background_110ms,color_110ms] motion-reduce:transition-none'
-                          : 'justify-start gap-10px w-full h-48px px-8px',
-                        e.route ? focusRing : 'cursor-not-allowed',
-                        e.id === toolId
-                          ? [
-                              'border-line bg-[linear-gradient(var(--xq-surface3),var(--xq-sunk-bottom))] shadow-[inset_0_1px_3px_rgba(31,35,41,0.1),inset_0_-1px_0_#fff]',
-                              catalogCollapsed ? 'text-ink' : '',
-                            ]
-                          : [
-                              'border-transparent',
-                              e.route ? 'hover:bg-surface3' : '',
-                              catalogCollapsed ? (e.route ? 'text-muted hover:text-ink' : 'text-muted opacity-60') : '',
-                            ],
-                      ]"
-                      @mouseenter="hoveredRail = e.id"
-                      @click="e.route && onCatalogItemClick()"
-                      @focus="catalogCollapsed && (showRailTips(), (hoveredRail = e.id))"
-                      @blur="catalogCollapsed && hideRailTips()"
-                    >
-                      <svg
-                        v-if="catalogCollapsed && e.icon"
-                        class="w-18px h-18px"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.6"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                        :innerHTML="e.icon"
-                      />
-                      <template v-else-if="!catalogCollapsed">
-                        <span
-                          :class="[
-                            tileCls,
-                            'flex-none w-36px h-36px',
-                            e.route ? 'text-violet' : 'text-muted opacity-60',
-                          ]"
-                          aria-hidden="true"
-                        >
-                          <svg
-                            v-if="e.icon"
-                            class="w-18px h-18px"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.6"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            :innerHTML="e.icon"
-                          />
-                        </span>
-                        <!-- 单行：名称 14/500/20，说明移到 title 悬停提示 -->
-                        <span
-                          class="flex-1 min-w-0 truncate text-14px font-500 leading-20px"
-                          :class="e.route ? 'text-ink' : 'text-muted'"
-                        >
-                          {{ e.name }}
-                        </span>
-                      </template>
-                    </component>
-                  </li>
-                </ul>
-              </section>
-            </template>
-          </div>
-          <span
-            class="pointer-events-none absolute inset-x-0 bottom-0 z-1 h-16px bg-[linear-gradient(to_top,var(--xq-surface),rgb(var(--xq-surface-rgb)/0))] [transition:opacity_0.16s_ease]"
-            :class="fadeBottom ? 'opacity-100' : 'opacity-0'"
-            aria-hidden="true"
-          />
-        </div>
-      </div>
+        title-id="tool-catalog-title"
+        list-id="tool-catalog-list"
+        toggle-id="tool-catalog-toggle"
+        :title="catalog.title"
+        :groups="catalogGroups"
+        :collapsed="catalogCollapsed"
+        :is-active="(e) => e.key === toolId"
+        link
+        fades
+        @toggle="toggleCatalog"
+        @select="onCatalogItemClick"
+        @rail-enter="scheduleRailTips"
+        @rail-leave="scheduleHideRailTips"
+        @rail-scroll="onCatalogScroll"
+        @rail-hover="(e) => (hoveredRail = e.key)"
+        @rail-focus="(e) => (showRailTips(), (hoveredRail = e.key))"
+        @rail-blur="hideRailTips()"
+      />
     </nav>
 
     <!--
