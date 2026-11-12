@@ -5,7 +5,7 @@
  * （分类 / 授权即改即存；尺寸 / 比例 / 格式 / 来源 / 模型 / 创建时间只读）、补充信息（行业 / 风格 / 镜头 / 颜色，
  * 草稿 + 保存）与生成记录（溯源）按需展开、校色状态说明。
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NInput, NSelect } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
 import { formatTime } from '@/views/local-life/constants.ts'
@@ -23,7 +23,52 @@ import {
 const d = useAssetDetail()
 
 const promptExpanded = ref(false)
-const promptLong = computed(() => (d.asset.value?.prompt || '').length > 160)
+const promptText = computed(() => d.asset.value?.prompt || '')
+const promptEl = ref<HTMLElement | null>(null)
+const promptBlock = ref<HTMLElement | null>(null)
+/** 折叠态下是否真的被截断（按实际渲染高度量，不看字数） */
+const promptOverflow = ref(false)
+let promptRO: ResizeObserver | null = null
+
+function measurePrompt() {
+  const el = promptEl.value
+  // 展开态不重量：展开前已确认过溢出，收起后会再量一次
+  if (!el || promptExpanded.value) return
+  promptOverflow.value = el.scrollHeight - el.clientHeight > 1
+}
+
+function observePrompt() {
+  promptRO?.disconnect()
+  promptRO = null
+  if (!promptEl.value || typeof ResizeObserver === 'undefined') return
+  promptRO = new ResizeObserver(() => measurePrompt())
+  promptRO.observe(promptEl.value)
+}
+
+function togglePrompt() {
+  const next = !promptExpanded.value
+  promptExpanded.value = next
+  if (!next) {
+    void nextTick(() => {
+      measurePrompt()
+      const r = promptBlock.value?.getBoundingClientRect()
+      if (r && r.top < 0) promptBlock.value?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    })
+  }
+}
+
+watch(promptText, () => {
+  promptExpanded.value = false
+  void nextTick(() => {
+    observePrompt()
+    measurePrompt()
+  })
+})
+onMounted(() => void nextTick(() => {
+  observePrompt()
+  measurePrompt()
+}))
+onBeforeUnmount(() => promptRO?.disconnect())
 const metaOpen = ref(false)
 const provOpen = ref(false)
 
@@ -66,29 +111,40 @@ const DISCLOSURE =
     </p>
 
     <!-- 提示词 -->
-    <section v-if="d.asset.value.prompt" class="asset-prompt relative rounded-14px border border-solid border-violet-line">
+    <section v-if="d.asset.value.prompt" ref="promptBlock" class="asset-prompt relative rounded-14px border border-solid border-violet-line">
       <header class="flex items-center justify-between pl-12px pr-6px pt-6px">
-        <h3 class="m-0 text-12px font-600 text-violet-ink">提示词</h3>
+        <h3 class="m-0 flex items-baseline gap-6px text-12px font-600 text-violet-ink">
+          提示词
+          <span class="font-400 text-11px text-muted tabular-nums">{{ promptText.length }} 字</span>
+        </h3>
         <IconButton label="复制提示词" size="sm" variant="quiet" @click="d.copyPrompt">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
             <rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
           </svg>
         </IconButton>
       </header>
-      <p
-        class="m-0 px-12px pt-2px pb-10px whitespace-pre-wrap break-words text-13px leading-21px text-ink-2"
-        :class="!promptExpanded && promptLong && 'line-clamp-5'"
-      >
-        {{ d.asset.value.prompt }}
-      </p>
+      <div class="asset-prompt-wrap" :class="{ 'is-fade': promptOverflow && !promptExpanded }">
+        <p
+          ref="promptEl"
+          class="asset-prompt-text m-0 px-12px pt-2px pb-10px whitespace-pre-wrap text-13px leading-21px text-ink-2"
+          :class="promptExpanded ? 'is-expanded' : 'line-clamp-5'"
+        >
+          {{ promptText }}
+        </p>
+      </div>
       <button
-        v-if="promptLong"
+        v-if="promptOverflow || promptExpanded"
         type="button"
-        class="block ml-12px mb-8px -mt-4px h-28px px-0 border-none bg-transparent text-12px text-violet-ink cursor-pointer hover:underline sx-focus"
+        class="inline-flex items-center gap-2px ml-12px mb-8px -mt-4px h-28px px-0 border-none bg-transparent text-12px text-violet-ink cursor-pointer hover:underline sx-focus"
         :aria-expanded="promptExpanded"
-        @click="promptExpanded = !promptExpanded"
+        @click="togglePrompt"
       >
-        {{ promptExpanded ? '收起' : '展开全部' }}
+        {{ promptExpanded ? '收起' : '展开全文' }}
+        <svg
+          class="w-12px h-12px transition-transform motion-reduce:transition-none"
+          :class="promptExpanded && 'rotate-180'"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+        ><path d="m6 9 6 6 6-6" /></svg>
       </button>
     </section>
     <p v-else class="m-0 text-12px text-placeholder">没有提示词（上传的素材通常不带）</p>
@@ -239,5 +295,27 @@ const DISCLOSURE =
 <style scoped>
 .asset-prompt {
   background: linear-gradient(180deg, var(--xq-violet-soft-tint) 0%, var(--xq-surface) 100%);
+}
+.asset-prompt-wrap {
+  position: relative;
+}
+.asset-prompt-text {
+  overflow-wrap: anywhere;
+}
+.asset-prompt-text.is-expanded {
+  max-height: calc(260px * var(--xq-fs, 1));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.asset-prompt-wrap.is-fade::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.6em;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, var(--xq-surface) 100%);
 }
 </style>
