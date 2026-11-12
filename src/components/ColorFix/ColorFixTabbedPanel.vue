@@ -3,7 +3,7 @@
  * 校色悬浮参数台 · 分页版（2026-11-12，非全屏的页面上那份；全屏停靠仍用 views/tools/ColorFixPanel，布局不变）。
  *
  * <p>为什么拆页：旧版把图层 / 选区 / 替换颜色 / 更多调整 / 五个滑杆全叠在一列，浮在结果图上把模特盖住。
- * 现在固定部分只有两行：头部（拖动 + 标题与当前图层名 + 状态 + 显隐 + 看原图 + ×，40px）、页签行（三个页签 + 「完成」，32px）；「恢复默认」与脚注在「调整」页滚动区末尾；
+ * 现在固定部分只有两行：头部（拖动 + 标题与当前图层名 + 状态 + 显隐 + 看原图 + ×，40px）、页签行（三个页签 + 「完成」，32px）；「恢复默认」常驻页签行（「完成」左侧），脚注在「调整」页滚动区末尾；
  * 页签内容在中间滚动，同一时刻只显示一页——「调整」（替换颜色 / 更多调整 / 五滑杆，默认页）、「选区」、「图层」。
  * 最后一次用的页签按本机记住（localStorage，读写都包 try/catch）。
  *
@@ -572,7 +572,19 @@ watch(
             {{ t.label }}
           </button>
         </div>
-        <button type="button" class="cft__btn is-primary sx-hit" @click="emit('done')">完成</button>
+        <div class="cft__tabbar-actions">
+          <!-- 「恢复默认」是重做时的高频操作：常驻页签行，任何页签下一眼可见；没改过时置灰 -->
+          <button
+            type="button"
+            class="cft__btn sx-hit"
+            :disabled="!valuesMoved"
+            :title="valuesMoved ? '把调整参数恢复为默认值' : '参数已是默认值'"
+            @click="reset"
+          >
+            恢复默认
+          </button>
+          <button type="button" class="cft__btn is-primary sx-hit" @click="emit('done')">完成</button>
+        </div>
       </div>
 
       <div ref="body" class="cft__body">
@@ -894,8 +906,7 @@ watch(
             </div>
           </template>
           <div class="cft__foot">
-            <span class="cft__hint">参数只作用于当前结果，可随时恢复默认 · 方向键微调 · Shift 加速 · 点数值可输入</span>
-            <button type="button" class="cft__text-btn sx-hit" :disabled="!valuesMoved" @click="reset">恢复默认</button>
+            <span class="cft__hint">参数只作用于当前结果 · 方向键微调 · Shift 加速 · 点数值可输入</span>
           </div>
         </div>
       </div>
@@ -1084,6 +1095,12 @@ watch(
   justify-content: space-between;
   gap: 8px;
   padding: 0 12px;
+}
+.cft__tabbar-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
 }
 .cft__tabs {
   display: flex;
@@ -1627,29 +1644,6 @@ watch(
   align-items: center;
   gap: 8px;
   padding: 2px 12px 8px;
-}
-.cft__text-btn {
-  flex: none;
-  height: 24px;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--xq-violet-ink);
-  font: inherit;
-  font-size: 11.5px;
-  cursor: pointer;
-}
-.cft__text-btn:hover:not(:disabled) {
-  background: var(--xq-violet-soft);
-}
-.cft__text-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.cft__text-btn:focus-visible {
-  outline: 2px solid var(--xq-violet);
-  outline-offset: 2px;
 }
 .cft__hint {
   min-width: 0;
