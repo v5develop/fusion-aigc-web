@@ -40,6 +40,7 @@ import ImageActionPanel from './ImageActionPanel.vue'
 import { IMAGE_ACTIONS, activeImageAction, collectImageSources, openImageAction } from './image-actions.ts'
 import CanvasColorFixDialog from './CanvasColorFixDialog.vue'
 import { activeColorFix, colorFixSources, openColorFix } from './color-fix-action.ts'
+import { canSaveNodeAsAsset, saveNodeAsAsset } from './save-as-asset.ts'
 import { hasTransientMedia } from './library-status.ts'
 import EditorAssetPanel from './EditorAssetPanel.vue'
 import TitleModal from '../TitleModal.vue'
@@ -1885,6 +1886,21 @@ function hasImageActions(node: CanvasEditorNode): boolean {
   return false
 }
 
+/** 正在「存为资产」的节点 id：菜单项置灰，防止重复点击（服务端另按内容幂等兜底） */
+const savingAssetIds = ref<ReadonlySet<string>>(new Set())
+
+async function saveNodeToAssets(node: CanvasEditorNode) {
+  if (savingAssetIds.value.has(node.id)) return
+  savingAssetIds.value = new Set(savingAssetIds.value).add(node.id)
+  try {
+    await saveNodeAsAsset(node, canvasId.value)
+  } finally {
+    const next = new Set(savingAssetIds.value)
+    next.delete(node.id)
+    savingAssetIds.value = next
+  }
+}
+
 /** 先关菜单再做事（动作里可能弹窗 / 改选中） */
 function menuAction(fn: (node: CanvasEditorNode) => void): () => void {
   return () => {
@@ -1968,6 +1984,18 @@ const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
       { key: 'crop', label: '裁剪', icon: 'crop', run: menuAction((n) => spawnToolFrom(n, 'crop')) },
       { key: 'upscale', label: '高清放大', icon: 'sparkles', run: menuAction((n) => spawnToolFrom(n, 'upscale')) },
     )
+    // 用户自己上传的图才有入口；生成结果 / 从素材库选进来的图本来就在资产库里
+    if (canSaveNodeAsAsset(node)) {
+      const saving = savingAssetIds.value.has(node.id)
+      media.push({
+        key: 'save-asset',
+        label: saving ? '正在存入资产库…' : '存为资产',
+        icon: 'albums',
+        disabled: saving,
+        hint: saving ? '正在保存，请稍候' : '把这张图存进资产库',
+        run: menuAction((n) => void saveNodeToAssets(n)),
+      })
+    }
   }
   const locked = store.isLocked(node.id)
   const edit: INodeMenuItem[] = [

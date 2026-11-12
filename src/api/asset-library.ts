@@ -226,6 +226,28 @@ export interface IAssetLibDeleteResp {
   deletedIds: number[]
 }
 
+/** 「存为资产」请求（POST /assets/from-url） */
+export interface IAssetLibFromUrlReq {
+  /** 本人上传的图片地址，或本人资产库里已有的图片地址；别人的 / 外链 / mr:// 后端拒收（1003） */
+  url: string
+  /** 1-100 字；缺省「画布图片」 */
+  title?: string
+  /** 目前只有 canvas */
+  source?: 'canvas'
+  /** 来源画布 / 节点，写进资产溯源 */
+  canvasId?: string
+  nodeId?: string
+  /** 标签名，≤10 个 */
+  tags?: string[]
+}
+
+export interface IAssetLibFromUrlResp {
+  /** 新建的 / 已存在的资产（image 是素材库公开地址） */
+  asset: IAssetLibAsset
+  /** true = 已在资产库里（重复点击 / 已入库），没有新建 */
+  existing: boolean
+}
+
 // ---------------- 资产 ----------------
 
 export function assetLibList(params: IAssetLibListParams) {
@@ -250,6 +272,15 @@ export function assetLibDetail(id: number, params: IAssetLibDetailParams = {}) {
 /** 改标题 / 分类 / 收藏 / 标签 / 元数据 / 授权 / 当前版本（只改带了的字段），返回改后的完整资产 */
 export function assetLibUpdate(id: number, data: IAssetLibUpdateReq) {
   return patch<IAssetLibAsset>(`${PREFIX}/assets/${id}`, data)
+}
+
+/**
+ * 把自己的一张图存为资产（画布「存为资产」）。后端按「本人 + 内容 sha256」幂等：重复点击返回已有资产（existing=true）。
+ * 业务失败（1003 来源无法确认 / 不是图片 / 超 10MB，4002 同一张图正在保存，5001 繁忙）由全局拦截器 toast 后端原话，
+ * 调用方不要再叠一条（网络失败 isNetwork 才需要自己提示）。
+ */
+export function assetLibCreateFromUrl(data: IAssetLibFromUrlReq) {
+  return post<IAssetLibFromUrlResp>(`${PREFIX}/assets/from-url`, data)
 }
 
 /** 追加版本（版本号自增），并设为当前版本。image_url 须为 Go 签发的地址（goUploadImage） */
