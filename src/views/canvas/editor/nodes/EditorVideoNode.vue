@@ -11,6 +11,7 @@ import { useCanvasEditor } from '../useCanvasEditor.ts'
 import type { CanvasNodeData } from '../types.ts'
 import { portClass } from '../ports.ts'
 import { FOCUS_RING, NODE_CARD, NODE_CARD_SELECTED, NODE_HEAD_H, NODE_HEAD_PLAIN, NODE_TITLE, type IQuickAddRequest } from '../ui.ts'
+import NodeDeleteBtn from '../NodeDeleteBtn.vue'
 import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
@@ -84,6 +85,7 @@ const { dragging } = useFileDropPaste(dropRef, {
     :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
     :style="{ width: `${width}px` }"
   >
+    <NodeDeleteBtn :title="data.title || '视频'" :hidden="!!data.locked || uploading" @remove="emit('remove')" />
     <header :class="NODE_HEAD_PLAIN">
       <span class="flex-1" :class="NODE_TITLE">{{ data.title || '视频' }}</span>
       <NodeMenu :title="data.title || '视频'" @remove="emit('remove')" />

@@ -45,6 +45,8 @@ const store = useCanvasEditor()
 const fileRef = ref<HTMLInputElement | null>(null)
 
 const isResult = computed(() => props.data.kind === 'result')
+/** 模板承接的结果图不可删（与 NodeMenu removable 同口径） */
+const removable = computed(() => !isResult.value || Boolean(props.data.actionOrigin))
 const width = computed(() => props.data.width ?? 240)
 
 /**
@@ -122,7 +124,7 @@ const { dragging } = useFileDropPaste(dropRef, {
     :class="[NODE_CARD, { 'is-selected': selected, [NODE_CARD_SELECTED]: selected }]"
     :style="{ width: `${width}px` }"
   >
-    <NodeDeleteBtn :title="data.title || '图片'" :hidden="!!data.locked || uploading" @remove="emit('remove')" />
+    <NodeDeleteBtn :title="data.title || '图片'" :hidden="!!data.locked || uploading || !removable" @remove="emit('remove')" />
     <header :class="NODE_HEAD">
       <span class="flex-1" :class="NODE_TITLE">{{ data.title || '图片' }}</span>
       <span
@@ -132,7 +134,7 @@ const { dragging } = useFileDropPaste(dropRef, {
       >
       <NodeMenu
         :title="data.title || '图片'"
-        :removable="!isResult || Boolean(data.actionOrigin)"
+        :removable="removable"
         :image-actions-for="id"
         @remove="emit('remove')"
       />

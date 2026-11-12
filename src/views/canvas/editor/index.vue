@@ -87,6 +87,7 @@ const {
   setViewport,
   viewport,
   getSelectedNodes,
+  addSelectedNodes,
   getNodes,
   onNodesInitialized,
   removeSelectedElements,
@@ -106,7 +107,7 @@ const MAX_ZOOM = 2
 
 // ---------------- 安全区 ----------------
 // 安全区 = 舞台矩形 − 实际压在舞台上的浮层（左竖工具条、底横工具条、首启引导卡、叠放模式的停靠栏）。
-// 浮层在模板里标 data-safe-block="left|bottom|right"，用到时现量真实矩形（不写死常量），
+// 浮层在模板里标 data-safe-block="left|top|bottom|right"，用到时现量真实矩形（不写死常量），
 // 资产栏 / 在流内的停靠栏本来就不在舞台里，舞台矩形已经扣掉了。
 interface SafeArea {
   /** 相对舞台左上角的像素 */
@@ -125,7 +126,7 @@ function measureSafeArea(): SafeArea | null {
   const s = stage.getBoundingClientRect()
   if (!s.width || !s.height) return null
   let left = 0
-  const top = 0
+  let top = 0
   let right = s.width
   let bottom = s.height
   stage.parentElement?.querySelectorAll<HTMLElement>('[data-safe-block]').forEach((el) => {
@@ -134,6 +135,7 @@ function measureSafeArea(): SafeArea | null {
     if (r.right <= s.left || r.left >= s.right || r.bottom <= s.top || r.top >= s.bottom) return
     const side = el.dataset.safeBlock
     if (side === 'left') left = Math.max(left, r.right - s.left + SAFE_GAP)
+    else if (side === 'top') top = Math.max(top, r.bottom - s.top + SAFE_GAP)
     else if (side === 'bottom') bottom = Math.min(bottom, r.top - s.top - SAFE_GAP)
     else if (side === 'right') right = Math.min(right, r.left - s.left - SAFE_GAP)
   })
@@ -321,25 +323,35 @@ function initialZoom(): number {
   return readCanvasZoom(canvasId.value, MIN_ZOOM, MAX_ZOOM) ?? DEFAULT_CANVAS_ZOOM
 }
 
+/** 用户已动过画布（平移 / 缩放 / 拖节点 / 点选 / 新增节点）：不再自动居中 */
+let userEngaged = false
+let fitting = false
+
 function fitOnce() {
-  if (!pendingFit) return
-  pendingFit = false
+  if (!pendingFit || fitting || userEngaged) return
+  fitting = true
   // 有记忆缩放就沿用，只把内容居中到安全区；没有则取 min(1, 放进安全区的缩放)，下限 0.5
   const remembered = readCanvasZoom(canvasId.value, MIN_ZOOM, MAX_ZOOM)
   const placed =
     remembered !== undefined
       ? placeInSafeArea({ zoom: remembered })
       : placeInSafeArea({ ratio: 0.06, minZoom: 0.5, maxZoom: DEFAULT_CANVAS_ZOOM })
-  void placed.then(() => {
+  void placed.then((ok) => {
+    fitting = false
+    // 放置成功才算完成；量不到安全区 / 包围盒时保留 pendingFit，等下一次节点量好再试
+    if (!ok) return
+    pendingFit = false
     zoomReady = true
   })
 }
 
 watch(loading, async (value) => {
   if (value) {
+    flushZoomWrite()
     zoomReady = false
     return
   }
+  userEngaged = false
   if (!nodes.value.length) {
     // 空画布：原点居中
     pendingFit = false
@@ -354,18 +366,27 @@ watch(loading, async (value) => {
   })
 })
 
-// 用户缩放（滚轮 / 双指 / +- / 读数 / 适应画布）后防抖 300ms 记下；key 在变化当刻捕获，防止切画布串号
+// 用户缩放（滚轮 / 双指 / +- / 读数 / 适应画布）后防抖 300ms 记下；key 在变化当刻捕获，防止切画布串号。
+// 卸载 / 切画布时把还没落盘的那次立即写掉（而不是丢弃）
 let zoomSaveTimer: ReturnType<typeof setTimeout> | undefined
+let pendingZoomWrite: { id: string; zoom: number } | null = null
+function flushZoomWrite() {
+  clearTimeout(zoomSaveTimer)
+  zoomSaveTimer = undefined
+  const pending = pendingZoomWrite
+  pendingZoomWrite = null
+  if (pending && zoomReady) writeCanvasZoom(pending.id, pending.zoom, MIN_ZOOM, MAX_ZOOM)
+}
 watch(
   () => viewport.value.zoom,
   (zoom) => {
     if (!zoomReady || !zoom) return
-    const id = canvasId.value
     clearTimeout(zoomSaveTimer)
-    zoomSaveTimer = setTimeout(() => writeCanvasZoom(id, zoom, MIN_ZOOM, MAX_ZOOM), 300)
+    pendingZoomWrite = { id: canvasId.value, zoom }
+    zoomSaveTimer = setTimeout(flushZoomWrite, 300)
   },
 )
-onBeforeUnmount(() => clearTimeout(zoomSaveTimer))
+onBeforeUnmount(flushZoomWrite)
 
 onNodesInitialized(() => fitOnce())
 
@@ -375,12 +396,39 @@ const selectedEdgeId = ref('')
 
 function onNodeClick(event: NodeMouseEvent) {
   selectedEdgeId.value = ''
+  userEngaged = true
   closeAddPanel()
+  const mouse = event.event as MouseEvent
+  if (mouse.shiftKey || mouse.ctrlKey || mouse.metaKey) {
+    // 带修饰键：以 Vue Flow 当前选区为准写回 store（取消选中最后一个 → 空）
+    void nextTick(() => {
+      const picked = getSelectedNodes.value
+      store.selectNode(picked.find((n) => n.id === event.node.id)?.id ?? picked[picked.length - 1]?.id ?? '')
+    })
+    return
+  }
   store.selectNode(event.node.id)
 }
 
+// store.selectedNodeId 是唯一选中源（行内控件 / 定位 / 新建节点都只写它），这里把 Vue Flow 的选中态对齐过去；
+// 多选（store 选中的节点仍在 Vue Flow 选区里）不收拢
+watch(
+  () => store.selectedNodeId.value,
+  (id) => {
+    if (id) userEngaged = true
+    const current = getSelectedNodes.value.map((n) => n.id)
+    if (id ? current.includes(id) : current.length === 0) return
+    removeSelectedElements()
+    if (!id) return
+    const target = getNodes.value.find((n) => n.id === id)
+    if (target) addSelectedNodes([target])
+  },
+  { flush: 'post' },
+)
+
 function onPaneClick() {
   selectedEdgeId.value = ''
+  userEngaged = true
   closeAddPanel()
   store.selectNode('')
 }
@@ -615,7 +663,7 @@ function connectFrom(sourceId: string, targetId: string, sourceHandle?: string) 
 
 function deleteSelection() {
   ctxMenu.value = null
-  if (selectedFlowNodes.value.length > 1) {
+  if (barNodes.value.length > 1) {
     confirmDeleteNodes()
     return
   }
@@ -625,7 +673,11 @@ function deleteSelection() {
     editorMessage.success('已断开连线')
     return
   }
-  if (selectedNode.value) store.removeNode(selectedNode.value.id)
+  const only = barNodes.value[0]
+  if (only && isRemovable(only) && !only.data.locked) {
+    store.removeNode(only.id)
+    clearFlowSelection()
+  }
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -1420,9 +1472,15 @@ function runSelectionNodes() {
 const barCanRun = computed(() => executableInOrder(barNodes.value).length > 0)
 
 function confirmDeleteNodes() {
-  const ids = barNodes.value.map((node) => node.id)
-  if (!ids.length) return
-  if (ids.length === 1 && barNodes.value[0]?.type === 'module') {
+  // 模板结果图（不可删）与锁定节点不进删除集合
+  const deletable = barNodes.value.filter((node) => isRemovable(node) && !node.data.locked)
+  const ids = deletable.map((node) => node.id)
+  if (!ids.length) {
+    if (barNodes.value.length) editorMessage.warning('选中的节点已锁定或不可删除')
+    return
+  }
+  if (ids.length < barNodes.value.length) editorMessage.info('已跳过锁定 / 不可删除的节点')
+  if (ids.length === 1 && deletable[0]?.type === 'module') {
     confirmRemoveModule(ids[0] ?? '')
     return
   }
@@ -1636,7 +1694,13 @@ let moduleDrag: {
   members: { node: CanvasEditorNode; x: number; y: number }[]
 } | null = null
 
+/** 用户亲手平移 / 缩放（带 sourceEvent）后不再自动居中；程序化 setViewport 没有 sourceEvent */
+function onMoveStart(payload: { event?: { sourceEvent?: unknown } }) {
+  if (payload?.event?.sourceEvent) userEngaged = true
+}
+
 function onNodeDragStart(payload: { node: { id: string; position: { x: number; y: number } } }) {
+  userEngaged = true
   const full = store.findNode(payload.node.id)
   if (!full || !isGroupPlate(full)) return
   moduleDrag = {
@@ -2450,6 +2514,9 @@ function dismissOnboard() {
 // ---------------- 提示词库浮层（2026-11-06 二轮：画布内直开，插入选中节点） ----------------
 
 const promptFlyoutOpen = ref(false)
+/** 文字节点默认尺寸（与 EditorTextNode 的 320 × 220 一致） */
+const TEXT_NODE_W = 320
+const TEXT_NODE_H = 220
 const promptAnchorEl = ref<HTMLElement | null>(null)
 
 /**
@@ -2459,7 +2526,8 @@ const promptAnchorEl = ref<HTMLElement | null>(null)
  * 全程同一个同步 tick 内改 store：撤销栈按内容签名静默合并，Ctrl+Z 一步还原。
  */
 function insertPrompt(text: string) {
-  const node = selectedNode.value
+  // 多选（Vue Flow 选区 > 1）没有唯一目标：一律新建文字节点
+  const node = selectedFlowNodes.value.length > 1 ? undefined : selectedNode.value
   const writable = node && !node.data.locked
   if (writable && node.type === 'text') {
     const r = joinPrompt(String(node.data.text ?? ''), text)
@@ -2468,7 +2536,7 @@ function insertPrompt(text: string) {
     if (r.truncated) editorMessage.warning(`超出 ${PROMPT_MAX_LEN} 字，已截断`)
     return
   }
-  if (writable && node.type === 'model') {
+  if (writable && node.type === 'model' && !node.data.inputOnly) {
     const connected = edges.value.some((edge) => edge.target === node.id && normalizeHandle(edge.targetHandle) === 'prompt')
     if (!connected) {
       const r = joinPrompt(String(node.data.prompt ?? ''), text)
@@ -2485,6 +2553,11 @@ function insertPrompt(text: string) {
     safe && rect
       ? screenToFlowCoordinate({ x: rect.left + safe.left + safe.width / 2, y: rect.top + safe.top + safe.height / 2 })
       : undefined
+  // addNode 的坐标是节点左上角：减去文字节点默认尺寸的一半，让节点本体居中
+  if (at) {
+    at.x -= TEXT_NODE_W / 2
+    at.y -= TEXT_NODE_H / 2
+  }
   const created = store.addNode('text', undefined, at)
   if (!created) return
   const cut = text.length > PROMPT_MAX_LEN
@@ -2566,6 +2639,7 @@ onMounted(() => {
   if (!el) return
   containerWidth.value = el.clientWidth || containerWidth.value
   if (typeof ResizeObserver === 'undefined') return
+  workObserver?.disconnect()
   workObserver = new ResizeObserver(() => {
     containerWidth.value = el.clientWidth || containerWidth.value
   })
@@ -3012,6 +3086,7 @@ useFileDropPaste(stageRef, {
             @connect-end="onConnectEnd"
             @node-contextmenu="onNodeContextMenu"
             @pane-contextmenu="onPaneContextMenu"
+            @move-start="onMoveStart"
             @node-drag-start="onNodeDragStart"
             @node-drag="onNodeDrag"
             @node-drag-stop="onNodeDragStop"
@@ -3155,6 +3230,7 @@ useFileDropPaste(stageRef, {
             :class="POP_FADE"
             role="toolbar"
             aria-label="节点操作"
+            data-safe-block="top"
             @click.stop
           >
             <span class="px-5px text-ink-2 text-13px whitespace-nowrap" aria-live="polite"
@@ -3212,7 +3288,7 @@ useFileDropPaste(stageRef, {
             <button
               type="button"
               :class="SELECTION_BTN"
-              :title="selectionAllLocked ? '解锁选中节点' : '锁定选中节点（拖不动，可解锁 / 删除）'"
+              :title="selectionAllLocked ? '解锁选中节点' : '锁定选中节点（拖不动、不可删除，解锁后恢复）'"
               @click="toggleLockSelection"
             >
               <EditorIcon :name="selectionAllLocked ? 'unlock' : 'lock'" :size="12" />

@@ -26,6 +26,7 @@ import {
   NODE_TITLE,
   type IQuickAddRequest,
 } from '../ui.ts'
+import NodeDeleteBtn from '../NodeDeleteBtn.vue'
 import NodeMenu from '../NodeMenu.vue'
 import NodeQuickAdd from '../NodeQuickAdd.vue'
 import NodeResize from '../NodeResize.vue'
@@ -93,6 +94,9 @@ const modelCount = computed(
     store.edges.value.filter((edge) => edge.target === props.id && normalizeHandle(edge.targetHandle) === 'models')
       .length,
 )
+
+/** 试穿没接任何模特图：「开始生成」不可点 */
+const noModels = computed(() => isTryon.value && modelCount.value === 0)
 
 const runLabel = computed(() => (isTryon.value ? `开始生成（${modelCount.value} 张）` : (RUN_LABEL[props.data.tool ?? ''] ?? '执行')))
 
@@ -259,13 +263,24 @@ function measureContentMin() {
       2,
   )
 }
+const observedKids = new Set<Element>()
+/** 观察器只建一次；更新时只对子元素做增删差量，不重建 */
 function observeContent() {
-  contentObserver?.disconnect()
   measureContentMin()
   if (typeof ResizeObserver === 'undefined' || !bodyRef.value) return
-  contentObserver = new ResizeObserver(measureContentMin)
-  for (const child of Array.from(bodyRef.value.children)) {
-    if (child !== mediaRef.value) contentObserver.observe(child)
+  if (!contentObserver) contentObserver = new ResizeObserver(measureContentMin)
+  const now = new Set<Element>(Array.from(bodyRef.value.children).filter((child) => child !== mediaRef.value))
+  for (const old of Array.from(observedKids)) {
+    if (!now.has(old)) {
+      contentObserver.unobserve(old)
+      observedKids.delete(old)
+    }
+  }
+  for (const child of now) {
+    if (!observedKids.has(child)) {
+      contentObserver.observe(child)
+      observedKids.add(child)
+    }
   }
 }
 onMounted(observeContent)
@@ -283,6 +298,7 @@ const fixedHeight = computed(() => Boolean(props.data.heightFixed && props.data.
     ]"
     :style="{ width: `${width}px`, minHeight: fixedHeight ? `${Math.max(data.height ?? 0, contentMin)}px` : undefined }"
   >
+    <NodeDeleteBtn :title="data.title || toolLabel(data.tool)" :hidden="isRunning || !!data.locked" @remove="emit('remove')" />
     <header ref="headRef" :class="NODE_HEAD_PLAIN">
       <span class="shrink-0 w-9px h-9px rounded-full" :class="DOT_CLASS[data.tool ?? ''] ?? 'bg-violet'" />
       <span class="flex-1" :class="NODE_TITLE">{{ data.title || toolLabel(data.tool) }}</span>
@@ -447,8 +463,8 @@ const fixedHeight = computed(() => Boolean(props.data.heightFixed && props.data.
             ? 'border-control bg-white text-ink-2 hover:border-control-hover hover:text-ink'
             : 'border-transparent bg-violet-solid text-white hover:opacity-90',
         ]"
-        :disabled="notReady && !isRunning"
-        :title="notReady && !isRunning ? '该功能暂未开放' : undefined"
+        :disabled="(notReady || noModels) && !isRunning"
+        :title="notReady && !isRunning ? '该功能暂未开放' : noModels && !isRunning ? '先连一张模特图' : undefined"
         :aria-label="isRunning ? `取消执行 ${data.title}` : `${runLabel}：${data.title}`"
         @pointerdown.stop="store.selectNode(id)"
         @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"

@@ -124,13 +124,24 @@ function measureContentMin() {
     head.offsetHeight + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + others + MEDIA_MIN + 2,
   )
 }
+const observedKids = new Set<Element>()
+/** 观察器只建一次；更新时只对子元素做增删差量，不重建 */
 function observeContent() {
-  contentObserver?.disconnect()
   measureContentMin()
   if (typeof ResizeObserver === 'undefined' || !bodyRef.value) return
-  contentObserver = new ResizeObserver(measureContentMin)
-  for (const child of Array.from(bodyRef.value.children)) {
-    if (child !== mediaRef.value) contentObserver.observe(child)
+  if (!contentObserver) contentObserver = new ResizeObserver(measureContentMin)
+  const now = new Set<Element>(Array.from(bodyRef.value.children).filter((child) => child !== mediaRef.value))
+  for (const old of Array.from(observedKids)) {
+    if (!now.has(old)) {
+      contentObserver.unobserve(old)
+      observedKids.delete(old)
+    }
+  }
+  for (const child of now) {
+    if (!observedKids.has(child)) {
+      contentObserver.observe(child)
+      observedKids.add(child)
+    }
   }
 }
 onMounted(observeContent)

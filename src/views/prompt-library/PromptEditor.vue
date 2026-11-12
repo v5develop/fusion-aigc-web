@@ -34,7 +34,7 @@ const GROUP_OPTIONS = [
 ]
 
 const form = reactive({
-  group: 'favorite' as 'mine' | 'favorite',
+  group: 'favorite' as 'mine' | 'favorite' | null,
   title: '',
   prompt: '',
   models: ['通用'] as string[],
@@ -44,7 +44,9 @@ const form = reactive({
 watch(show, (v) => {
   if (!v) return
   if (props.editing) {
-    form.group = props.editing.group === 'mine' ? 'mine' : 'favorite'
+    // 编辑时保留原分类：不是「我的 / 我的收藏」（如系统分类）就留空，不改写，保存时也不带 group
+    const g = props.editing.group
+    form.group = g === 'mine' || g === 'favorite' ? g : null
     form.title = props.editing.title
     form.prompt = props.editing.prompt
     form.models = props.editing.models?.length ? [...props.editing.models] : ['通用']
@@ -80,7 +82,13 @@ async function save() {
 
   saving.value = true
   try {
-    const payload = { title, prompt, models: form.models, tags, group: form.group }
+    const payload = {
+      title,
+      prompt,
+      models: form.models,
+      tags,
+      ...(form.group ? { group: form.group } : {}),
+    }
     if (props.editing) {
       await promptLibUpdate(props.editing.id, payload)
       message.success('已保存')

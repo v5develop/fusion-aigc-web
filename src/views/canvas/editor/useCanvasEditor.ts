@@ -713,23 +713,20 @@ function connect(conn: {
   targetHandle?: string | null
 }): boolean {
   if (!conn.source || !conn.target) return false
-  // 提示词口语义是「新线替换旧线」：容量校验时先剔除旧 prompt 线
+  // 提示词口 / 服装口语义是「新线替换旧线」：容量校验时先剔除旧线，校验通过后再移除
   const targetHandle = conn.targetHandle ?? ''
-  const pool =
-    normalizeHandle(targetHandle) === 'prompt'
-      ? edges.value.filter((edge) => !(edge.target === conn.target && normalizeHandle(edge.targetHandle) === 'prompt'))
-      : edges.value
+  const normalized = normalizeHandle(targetHandle)
+  const replaceSingle = normalized === 'prompt' || normalized === 'garment'
+  const isOld = (edge: { target: string; targetHandle?: string | null }) =>
+    edge.target === conn.target && normalizeHandle(edge.targetHandle) === normalized
+  const pool = replaceSingle ? edges.value.filter((edge) => !isOld(edge)) : edges.value
   const check = validateConnection(nodes.value, pool, conn)
   if (!check.ok) {
     if (check.reason) message.warning(check.reason)
     return false
   }
   if (isDuplicateEdge(edges.value, conn)) return false
-  if (normalizeHandle(targetHandle) === 'prompt') {
-    edges.value = edges.value.filter(
-      (edge) => !(edge.target === conn.target && normalizeHandle(edge.targetHandle) === 'prompt'),
-    )
-  }
+  if (replaceSingle) edges.value = edges.value.filter((edge) => !isOld(edge))
   const siblings = edges.value.filter(
     (edge) => edge.target === conn.target && normalizeHandle(edge.targetHandle) === normalizeHandle(targetHandle),
   )
@@ -803,7 +800,7 @@ function removeModule(moduleId: string): number {
 }
 
 /**
- * 锁定 / 解锁（2026-11-06 二轮）：锁后拖不动（draggable=false），仍可选中 / 解锁 / 删除；
+ * 锁定 / 解锁（2026-11-06 二轮）：锁后拖不动（draggable=false）且不可删除，仍可选中 / 解锁；
  * 锁定标记存 data.locked（随快照持久化），拖动分组底板时锁定成员照样跟着走（成员是被程序挪的）。
  */
 function toggleLock(id: string): boolean {

@@ -244,6 +244,7 @@ watch(sentinelRef, (el) => {
   if (!el || typeof IntersectionObserver === 'undefined') return
   observer = new IntersectionObserver(
     (entries) => {
+      if (loadMoreError.value) return
       if (entries.some((e) => e.isIntersecting)) void loadMore()
     },
     { root: listRef.value ?? null, rootMargin: '0px 0px 80px 0px' },
@@ -316,6 +317,7 @@ function onKeydown(e: KeyboardEvent) {
       if (outside && t.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return
     }
     e.preventDefault()
+    e.stopPropagation()
     closePanel()
   }
 }

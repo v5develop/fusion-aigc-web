@@ -75,42 +75,38 @@ function sourceHandleOf(node: CanvasEditorNode): string {
   return node.type === 'image' ? 'image' : 'image-out'
 }
 
-/** 把来源节点接到本槽；服装口替换旧线 */
+/** 把来源节点接到本槽；服装口由 connect 负责「新线替换旧线」，校验不过时旧服装保留 */
 function link(slot: Slot, sourceId: string): boolean {
   const source = store.findNode(sourceId)
   if (!source) return false
-  if (slot === 'garment') {
-    const previous = garmentLinks.value.map((item) => item.edgeId)
-    const ok = store.connect({
-      source: sourceId,
-      target: props.nodeId,
-      sourceHandle: sourceHandleOf(source),
-      targetHandle: 'garment',
-    })
-    // 新线成功后再断旧线：校验不过时旧服装保留
-    if (ok) previous.forEach((id) => store.removeEdgeById(id))
-    return ok
-  }
   return store.connect({
     source: sourceId,
     target: props.nodeId,
     sourceHandle: sourceHandleOf(source),
-    targetHandle: 'models',
+    targetHandle: slot,
   })
 }
 
-/** 资产 / 上传得到的地址：在工具左侧新建图片输入节点并连线 */
+/** 工具左侧第一个不压住既有节点的纵向位置（从 startY 起每 200px 试一格） */
+function freeSpot(x: number, startY: number): { x: number; y: number } {
+  let y = startY
+  const taken = (cy: number) =>
+    store.nodes.value.some((n) => Math.abs(n.position.x - x) < 260 && Math.abs(n.position.y - cy) < 190)
+  for (let i = 0; i < 40 && taken(y); i += 1) y += 200
+  return { x, y }
+}
+
+/** 资产 / 上传得到的地址：在工具左侧新建图片输入节点并连线；连线失败则回滚新节点 */
 function addImageFor(slot: Slot, urls: string[]) {
   const tool = store.findNode(props.nodeId)
   if (!tool || !urls.length) return
   const label = slot === 'garment' ? '服装' : '模特'
-  let index = slot === 'garment' ? 0 : modelLinks.value.length + 1
+  const startY = tool.position.y + (slot === 'garment' ? 0 : modelLinks.value.length * 200)
   for (const url of urls) {
-    const created = store.addNode('image', undefined, { x: tool.position.x - 300, y: tool.position.y + index * 200 })
-    index += 1
+    const created = store.addNode('image', undefined, freeSpot(tool.position.x - 300, startY))
     if (!created) continue
     store.updateNodeData(created.id, { image: url, title: label })
-    link(slot, created.id)
+    if (!link(slot, created.id)) store.removeNode(created.id)
   }
   store.selectNode(props.nodeId)
 }
