@@ -7,6 +7,7 @@
  * - groups：一组 = 一次对照（输入列 + 结果列，列数不限）；多组时顶栏出「上一组 / 下一组」（studio 一批多张、工具多产物）。
  * - 同步：缩放 + 平移按「占舞台宽高的比例」存，各列比例不同也落在图上同一相对位置；滚轮以光标处为中心，拖动平移，
  *   双击 / 0 复位，键盘 + / − / 0；Esc 先退出单列再关闭，←/→ 切组。
+ * - 缩放范围 0.5–8×；「适应」回到整图适应舞台（= 键盘 0 / 双击）。多组时底部有结果缩略图条，点哪张切到哪一组。
  * - 单列放大：点列（未拖动）或列头「放大」钮 → 只显示该列；再点 / 「返回对照」退出。每列头带下载（走 utils/download，原件）。
  * - 窄屏（< 720px）：不并排，改页签切列，缩放状态在页签间保留。
  * - 与 MediaLightbox / ToolImageCompare 的分工：灯箱看单张、滑动对比看前后两张叠放；这里是并排 + 同步放大看细节。
@@ -26,6 +27,8 @@ export interface CompareColumn {
   generated?: boolean
   /** 下载文件名（不含扩展名）；不写 = label */
   filename?: string
+  /** 列脚注（一句话说明这张图在这次生成里的作用，如「姿势参考只贡献动作」）；不写 = 不出 */
+  footnote?: string
 }
 export interface CompareGroup {
   /** 组名（顶栏计数旁，如任务标题） */
@@ -37,7 +40,7 @@ const props = defineProps<{ groups: CompareGroup[]; title?: string }>()
 const show = defineModel<boolean>('show', { required: true })
 const index = defineModel<number>('index', { default: 0 })
 
-const MIN = 1
+const MIN = 0.5
 const MAX = 8
 const STEP = 0.5
 
@@ -68,8 +71,8 @@ const shown = computed(() => {
 const single = computed(() => shown.value.length === 1)
 
 function clampPan(x: number, y: number, z = zoom.value) {
-  // 放大后每轴最多平移 (z − 1) / 2 个舞台尺寸，边缘不会拖出空白
-  const m = (z - 1) / 2
+  // 放大后每轴最多平移 (z − 1) / 2 个舞台尺寸，边缘不会拖出空白；缩小到适应以下不平移
+  const m = Math.max(0, (z - 1) / 2)
   return { x: Math.min(m, Math.max(-m, x)), y: Math.min(m, Math.max(-m, y)) }
 }
 function setZoom(next: number, cx = 0, cy = 0) {
@@ -271,6 +274,14 @@ onBeforeUnmount(() => {
 })
 
 const pct = computed(() => `${Math.round(zoom.value * 100)}%`)
+/** 底部结果缩略图条：每组的生成结果列（没有就取最后一列） */
+const thumbs = computed(() =>
+  props.groups.map((g, i) => {
+    const cols = g.columns.filter((c) => !!c.url)
+    const c = cols.find((x) => x.generated) ?? cols[cols.length - 1]
+    return { i, url: c?.url ?? '', name: g.name || `第 ${i + 1} 组` }
+  }),
+)
 const ICONS = {
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',
@@ -315,9 +326,17 @@ const ICONS = {
         <IconButton label="放大（+）" variant="quiet" :disabled="zoom >= MAX" @click="setZoom(zoom + STEP)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path :d="ICONS.plus" /></svg>
         </IconButton>
-        <IconButton label="复位（0 / 双击）" variant="quiet" :disabled="zoom === 1" @click="reset">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path :d="ICONS.reset" /></svg>
-        </IconButton>
+        <button
+          type="button"
+          class="inline-flex h-32px flex-none cursor-pointer items-center gap-4px rounded-6px border border-solid border-line bg-surface2 px-10px text-12px font-500 text-ink-2 hover:(border-violet-line text-ink) disabled:(cursor-not-allowed opacity-50) motion-reduce:transition-none"
+          title="适应窗口（0 / 双击）"
+          aria-label="适应窗口"
+          :disabled="zoom === 1 && pan.x === 0 && pan.y === 0"
+          @click="reset"
+        >
+          <svg class="h-14px w-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="ICONS.reset" /></svg>
+          适应
+        </button>
         <span class="mx-4px h-16px w-1px bg-[var(--xq-line)]" aria-hidden="true" />
         <button ref="closeBtn" type="button" class="sx-iconbtn sx-iconbtn-quiet" aria-label="关闭（Esc）" title="关闭（Esc）" @click="close">
           <span class="inline-flex text-16px leading-none [&>svg]:(w-1em h-1em)" aria-hidden="true">
@@ -398,7 +417,30 @@ const ICONS = {
             />
             <div v-else class="absolute inset-0 grid place-items-center text-12px text-muted">图片加载失败</div>
           </div>
+          <p v-if="c.footnote" class="m-0 flex-none px-10px py-6px text-11px leading-16px text-muted">{{ c.footnote }}</p>
         </section>
+      </div>
+
+      <!-- 多组：底部结果缩略图条，点哪张切到哪一组（← / → 同样可切） -->
+      <div
+        v-if="total > 1"
+        class="flex flex-none items-center gap-8px overflow-x-auto px-12px py-8px box-border border-0 border-t border-solid border-line"
+        role="group"
+        aria-label="切换结果"
+      >
+        <button
+          v-for="t in thumbs"
+          :key="t.i"
+          type="button"
+          class="relative h-48px w-48px flex-none cursor-pointer overflow-hidden rounded-6px border border-solid bg-surface2 p-0 motion-reduce:transition-none"
+          :class="t.i === at ? 'border-violet shadow-[0_0_0_1px_var(--xq-violet)]' : 'border-line hover:border-control'"
+          :aria-label="`第 ${t.i + 1} 组：${t.name}`"
+          :aria-pressed="t.i === at"
+          :title="t.name"
+          @click="index = t.i"
+        >
+          <img v-if="t.url" :src="t.url" alt="" class="block h-full w-full object-cover" draggable="false" />
+        </button>
       </div>
     </div>
   </Teleport>

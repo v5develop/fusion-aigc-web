@@ -65,6 +65,8 @@ import ToolImageCompare from '@/views/tools/ToolImageCompare.vue'
 import ImageCompareSync, { type CompareGroup } from '@/components/ImageCompareSync/index.vue'
 import { COLORFIX_DEFAULT, colorFixEquals, corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import { downloadImage } from '@/utils/download.ts'
+import ResultDownloadAll from '@/components/ResultDownloadAll.vue'
+import type { BatchDownloadItem } from '@/utils/batchDownload.ts'
 import type { useStudioHistory } from '../../hooks.ts'
 import {
   KIND_LABEL,
@@ -593,6 +595,34 @@ function download() {
   else void downloadImage(t.resultUrl, `${fileTitle.value}.${extOf(t.resultUrl)}`)
 }
 
+/**
+ * 「下载全部」清单：成功任务的 resultUrl（与单张下载同一个地址，免费档水印规则不变）；
+ * 校色效果只在选中的那张上，烘图复用 downloadCorrected
+ */
+const downloadAllItems = computed<BatchDownloadItem[]>(() =>
+  tasks.value
+    .filter((t) => isTaskSuccess(t) && t.resultUrl)
+    .map((t, i) => ({
+      src: t.resultUrl,
+      name: `${fileTitle.value}_${i + 1}`,
+      bake: cfOn.value && selectedSuccess.value?.taskId === t.taskId ? () => bakeSelected() : undefined,
+    })),
+)
+
+/** 批量里选中那张的校色烘图：失败时与单张下载一样退回原图并提示，返回是否烘成 */
+async function bakeSelected(): Promise<boolean> {
+  const t = selectedSuccess.value
+  if (!t) return false
+  try {
+    triggerDownload(await cf.bakeToBlob(), withPngExt(`${fileTitle.value}-校色后`))
+    return true
+  } catch {
+    message.warning('校色效果未能写入，已下载原图')
+    await downloadImage(t.resultUrl, `${fileTitle.value}.${extOf(t.resultUrl)}`)
+    return false
+  }
+}
+
 function downloadBefore() {
   const t = selectedSuccess.value
   if (t) void downloadImage(t.resultUrl, `${fileTitle.value}-校色前.${extOf(t.resultUrl)}`)
@@ -714,7 +744,15 @@ const syncGroups = computed<CompareGroup[]>(() => {
     out.push({
       name,
       columns: [
-        ...inputs.map((i) => ({ url: i.url, label: i.name || '输入图' })),
+        ...inputs.map((i) => ({
+          url: i.url,
+          label: i.name || '输入图',
+          footnote: i.name?.startsWith('姿势图')
+            ? '姿势参考只贡献动作'
+            : i.name?.startsWith('服装图')
+              ? '服装参考只贡献服装'
+              : undefined,
+        })),
         {
           url: t.taskId === selectedSuccess.value?.taskId && !liveFilter.value ? displaySrc.value : t.resultUrl,
           label: '生成结果',
@@ -1084,6 +1122,7 @@ const emptyCls =
         </ul>
 
         <!-- 候选 4 列、gap 6，方形 r4；选中 1px violet 描边 + 1px 光晕；悬停 / 聚焦看大图 -->
+        <ResultDownloadAll v-if="downloadAllItems.length > 1" :items="downloadAllItems" />
         <div v-if="tasks.length > 1" class="flex-none grid gap-6px grid-cols-4" role="group" aria-label="候选结果">
           <div v-for="(task, i) in tasks" :key="task.taskId" class="group relative">
             <button

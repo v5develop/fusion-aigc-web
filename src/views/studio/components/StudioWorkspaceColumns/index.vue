@@ -186,7 +186,10 @@ defineExpose({
 
       <!-- 三栏（原型 ToolWorkspaceColumns ml 档实测：426 / 249 / 1fr，列间 16，四周 16；
            原型无整宽页头，功能名 / 切换 / 返回收进左列顶部的功能卡） -->
-      <div class="grid min-h-0 flex-1 grid-cols-[426px_249px_minmax(0,1fr)] gap-16px p-16px">
+      <!-- ≥1440 三栏等高、各栏内部滚动；<1440 单列堆叠、整页滚动（同工具页 .tool-split）：行高按内容，历史 / 预览给定高，操作区不再内滚 -->
+      <div
+        class="grid min-h-0 flex-1 grid-cols-1 gap-12px overflow-y-auto p-16px max-[1439px]:auto-rows-max min-[1440px]:(grid-cols-[426px_249px_minmax(0,1fr)] gap-16px overflow-hidden)"
+      >
         <!-- 左：一块白板（原型 .studio-split__operate.sx-card：1px line / r10 / 白底 / shadow-panel），
              板内三段：功能卡（外缘 12，不滚）→ 操作区（内边距 12、段距 12，板内唯一滚动区）→ 设置行 + 主按钮（0 12 12） -->
         <section
@@ -334,7 +337,7 @@ defineExpose({
             </div>
           </NPopover>
           <!-- 操作区：子项 flex-col 段距 12；min-h-full 让页面的素材卡 flex-1 撑到设置行上沿（原型 .tool-op 内提示词框吃剩余高度） -->
-          <div class="stu-scroll min-h-0 flex-1 overflow-y-auto">
+          <div class="stu-scroll min-h-0 flex-1 overflow-y-auto max-[1439px]:(flex-none overflow-visible)">
             <div class="flex min-h-full flex-col gap-12px box-border p-12px">
               <slot name="operate" />
             </div>
@@ -346,7 +349,7 @@ defineExpose({
 
         <!-- 中：历史列表（原型 .v3-hist.sx-card：r10 = --sx-r-5，影 0 2 4 -1 .08 + 0 10 18 -10 .22 = shadow-panel） -->
         <section
-          class="flex min-h-0 flex-col overflow-hidden rounded-10px border border-solid border-line bg-white shadow-panel"
+          class="flex min-h-0 flex-col overflow-hidden rounded-10px border border-solid border-line bg-white shadow-panel max-[1439px]:h-[min(60vh,520px)]"
           aria-label="历史记录"
         >
           <StudioHistoryColumn
@@ -359,7 +362,7 @@ defineExpose({
 
         <!-- 右：预览区 -->
         <section
-          class="flex min-h-0 flex-col overflow-hidden rounded-10px border border-solid border-line bg-white shadow-panel"
+          class="flex min-h-0 flex-col overflow-hidden rounded-10px border border-solid border-line bg-white shadow-panel max-[1439px]:h-[min(72vh,680px)]"
           aria-label="生成结果"
         >
           <StudioPreviewPanel

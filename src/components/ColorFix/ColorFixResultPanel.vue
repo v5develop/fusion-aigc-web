@@ -20,6 +20,7 @@
  */
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import ColorFixPanel from '@/views/tools/ColorFixPanel.vue'
+import ColorFixPeekButton from './ColorFixPeekButton.vue'
 import ColorFixLayerList from './ColorFixLayerList.vue'
 import ColorFixEyedropper from './ColorFixEyedropper.vue'
 import ColorFixAdjustments from './ColorFixAdjustments.vue'
@@ -234,6 +235,9 @@ function done() {
     @point="cf.openPointSelect()"
     @pick-source="pickerShow = true"
   >
+    <template #head-extra>
+      <ColorFixPeekButton :cf="cf" class="ml-auto" />
+    </template>
     <template #layers>
       <ColorFixLayerList :cf="cf" :docked="docked" />
     </template>
@@ -249,7 +253,11 @@ function done() {
     :docked="docked"
     @done="done"
     @reset="emit('reset')"
-  />
+  >
+    <template #head-extra>
+      <ColorFixPeekButton :cf="cf" class="ml-auto" />
+    </template>
+  </ColorFixPanel>
   <!-- 参考图浮卡（宿主传了 references 才有）：页面上的参数台开着时浮在结果卡左上；全屏时由全屏层自己放 -->
   <ColorFixReferenceCard v-if="!docked && panelOpen && cf.references.value.length" :cf="cf" />
   <!-- key = 原图 + 图层：换图 / 换层时重建弹窗，旧的点 / 笔迹不会带过去 -->

@@ -18,10 +18,19 @@ import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
 import { useStudioUploader } from '../components/StudioImageUpload/useStudioUploader.ts'
 import { MIN_SHORT_SIDE } from '../image-size.ts'
 
-const { max = 9, disabled = false } = defineProps<{
+const {
+  max = 9,
+  disabled = false,
+  part = 'all',
+} = defineProps<{
   /** 姿势图上限 */
   max?: number
   disabled?: boolean
+  /**
+   * all = 人物图 + 姿势图同排（原版式）；source / poses = 只画其中一块（页面分成「1 人物与服装」「2 姿势参考」两节时用，
+   * 计数与操作钮由节自己写，这里不再画块下的小标题）
+   */
+  part?: 'all' | 'source' | 'poses'
 }>()
 
 const emit = defineEmits<{
@@ -42,7 +51,14 @@ const poseUp = useStudioUploader({
 })
 /** 任一入口还有图在上传：页面提交前据此拦截 */
 const uploading = computed(() => sourceUp.uploading.value || poseUp.uploading.value)
-defineExpose({ uploading })
+defineExpose({
+  uploading,
+  /** 节内操作钮（上传 / 更换人物、资产库、清空）直接调这几个 */
+  pickSource: () => pickSource(),
+  openSourceAssets: () => openAssets('source'),
+  clearSource: () => clearSource(),
+  hasSource: computed(() => !!source.value[0]),
+})
 // 清空 / 回填 / 重置整组换掉时，还在路上的上传作废（不追加进新内容）
 sourceUp.invalidateOnReplace(() => source.value)
 poseUp.invalidateOnReplace(() => poses.value)
@@ -72,7 +88,8 @@ onMounted(() => {
 const step = computed(() => {
   const gaps = poseN.value - 1
   if (!gaps) return 63
-  const room = (slotsWidth.value || 410) - 60 - SLOT_GAP
+  const lead = part === 'poses' ? 0 : 60 + SLOT_GAP
+  const room = (slotsWidth.value || 410) - lead
   return Math.min(63, Math.max(8, (room - 60) / gaps))
 })
 
@@ -167,7 +184,7 @@ const poseEntry = ref<HTMLElement | null>(null)
 const { dragging: sourceDragging } = useFileDropPaste(sourceEntry, {
   accept: 'image',
   multiple: false,
-  disabled: () => disabled || sourceUp.uploading.value,
+  disabled: () => disabled || part === 'poses' || sourceUp.uploading.value,
   // 人物图 / 姿态图两块并排：没指向哪块时粘贴进人物图
   pastePrimary: true,
   rejectMessage: () => '已跳过非图片文件',
@@ -176,7 +193,7 @@ const { dragging: sourceDragging } = useFileDropPaste(sourceEntry, {
 const { dragging: poseDragging } = useFileDropPaste(poseEntry, {
   accept: 'image',
   multiple: true,
-  disabled: () => disabled || poseUp.uploading.value,
+  disabled: () => disabled || part === 'source' || poseUp.uploading.value,
   rejectMessage: () => '已跳过非图片文件',
   onFiles: (files) => void addPoses(files),
 })
@@ -230,6 +247,8 @@ function onAssets(picked: string[]) {
 
 const assetLimit = computed(() => (assetFor.value === 'poses' ? Math.max(1, max - poses.value.length) : 1))
 
+const seamCls =
+  "before:(content-[''] absolute top-0 left-[-12px] w-9px h-100px pointer-events-none bg-[linear-gradient(90deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.026)_35%,rgb(var(--xq-ink-rgb)/0.026)_65%,rgb(var(--xq-ink-rgb)/0)_100%)] [mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]) after:(content-[''] absolute top-0 left-[-8px] w-1px h-100px pointer-events-none bg-[linear-gradient(180deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.09)_14%,rgb(var(--xq-ink-rgb)/0.09)_86%,rgb(var(--xq-ink-rgb)/0)_100%)])"
 const plateCls =
   'relative block w-60px h-100px box-border overflow-hidden border border-solid border-white rounded-5px bg-surface3 shadow-[0_1px_3px_rgba(31,35,41,0.16)] transition-[margin-left] duration-220 ease-[cubic-bezier(0.25,0.8,0.25,1)] motion-reduce:transition-none'
 const entryCls =
@@ -246,6 +265,7 @@ const popCls =
   <div ref="slotsEl" class="relative flex items-start gap-16px">
     <!-- 人物图：单张片子，悬停出大图 -->
     <div
+      v-if="part !== 'poses'"
       class="relative flex flex-[0_0_auto] min-w-0 flex-col items-center"
       @mouseenter="sourcePeeking = true"
       @mouseleave="sourcePeeking = false"
@@ -290,6 +310,7 @@ const popCls =
           </span>
         </button>
         <StudioMedBtn
+          v-if="part === 'all'"
           label="从资产库选人物图"
           class="-right-12px -bottom-12px z-12"
           :disabled="disabled"
@@ -304,7 +325,7 @@ const popCls =
           </svg>
         </StudioMedBtn>
         <StudioMedBtn
-          v-if="sourceUrl && !disabled"
+          v-if="part === 'all' && sourceUrl && !disabled"
           label="清空人物图"
           class="-top-8px left-52px z-14"
           @click.stop="clearSource"
@@ -322,14 +343,14 @@ const popCls =
           </svg>
         </StudioMedBtn>
       </div>
-      <p :class="capCls">
+      <p v-if="part === 'all'" :class="capCls">
         <b class="text-11px font-500 text-ink-2">人物图</b>
         <span>{{ sourceUrl ? '1张' : '最多1张' }}</span>
       </p>
     </div>
 
     <div
-      v-if="sourcePeeking && sourceUrl"
+      v-if="part !== 'poses' && sourcePeeking && sourceUrl"
       :class="popCls"
       class="z-20 left-0 w-240px p-8px pointer-events-none before:(content-[''] absolute -top-12px inset-x-0 h-12px)"
       aria-hidden="true"
@@ -340,7 +361,9 @@ const popCls =
 
     <!-- 姿势图：最多 9 张叠片，满 9 张后只拦点击，悬停照样摊开 -->
     <div
-      class="relative flex flex-[0_0_auto] min-w-0 flex-col items-center before:(content-[''] absolute top-0 left-[-12px] w-9px h-100px pointer-events-none bg-[linear-gradient(90deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.026)_35%,rgb(var(--xq-ink-rgb)/0.026)_65%,rgb(var(--xq-ink-rgb)/0)_100%)] [mask:linear-gradient(180deg,transparent_0%,#000_12%,#000_88%,transparent_100%)]) after:(content-[''] absolute top-0 left-[-8px] w-1px h-100px pointer-events-none bg-[linear-gradient(180deg,rgb(var(--xq-ink-rgb)/0)_0%,rgb(var(--xq-ink-rgb)/0.09)_14%,rgb(var(--xq-ink-rgb)/0.09)_86%,rgb(var(--xq-ink-rgb)/0)_100%)])"
+      v-if="part !== 'source'"
+      class="relative flex flex-[0_0_auto] min-w-0 flex-col items-center"
+      :class="part === 'all' ? seamCls : ''"
       @mouseenter="enterPose"
       @mouseleave="leavePose"
     >
@@ -432,7 +455,7 @@ const popCls =
           </svg>
         </StudioMedBtn>
       </div>
-      <p :class="capCls">
+      <p v-if="part === 'all'" :class="capCls">
         <b class="text-11px font-500 text-ink-2">姿势图</b>
         <span>{{ poses.length ? `${poses.length}/${max}` : `最多${max}张` }}</span>
       </p>
@@ -440,8 +463,9 @@ const popCls =
 
     <!-- 姿势图面板：左缘压在切口上（左块 60 + 间距 16），右缘到卡右缘 -->
     <div
-      v-if="poseExpanded"
+      v-if="part !== 'source' && poseExpanded"
       :class="popCls"
+      :style="part === 'poses' ? { left: 'auto', width: '300px' } : undefined"
       class="z-21 left-76px right-0 p-10px before:(content-[''] absolute -top-12px inset-x-0 h-12px)"
       role="group"
       :aria-label="`姿势图，共 ${poses.length} 张`"

@@ -1626,10 +1626,22 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   /** 当前参数的烘图已就绪 */
   const ready = computed(() => !!currentKey.value && bakedKey.value === currentKey.value && !!baked.value)
 
+  /**
+   * 「按住看原图」：按住期间所有读 displaySrc / liveFilter / wholeFilter 的画面（舞台、对比、全屏）都显示未校色的原图，
+   * 松开即恢复；不动任何参数。面板收起 / 换图 / 卸载时一并复位。
+   */
+  const peeking = ref(false)
+  watch([panelOpen, currentKey, src], () => (peeking.value = false))
+  if (typeof window !== 'undefined') {
+    const stopPeek = () => (peeking.value = false)
+    window.addEventListener('blur', stopPeek)
+    onBeforeUnmount(() => window.removeEventListener('blur', stopPeek))
+  }
+
   /** 该显示的图：校色开着时是烘好的图；烘好前整图 = 原图（配 previewStyle），有选区 = 上一张烘好的 */
   const displaySrc = computed(() => {
     const image = src.value || opts.src.value || ''
-    if (!currentKey.value) return image
+    if (!currentKey.value || peeking.value) return image
     if (ready.value) return baked.value
     if (!filterOnly.value && !failed.value && bakedSrc.value === image && baked.value) return baked.value
     return image
@@ -1637,14 +1649,14 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   /** 挂在 displaySrc 上的 CSS filter：只在整图校色、显示的还是原图时有 */
   const liveFilter = computed<string | undefined>(() => {
-    if (!currentKey.value || !filterOnly.value || displaySrc.value !== src.value) return undefined
+    if (peeking.value || !currentKey.value || !filterOnly.value || displaySrc.value !== src.value) return undefined
     return colorFixFilter(renderLayers.value[0]!.params)
   })
   const previewStyle = computed(() => (liveFilter.value ? { filter: liveFilter.value } : undefined))
 
   /** 只靠 CSS filter 就能表达的整图校色（全屏放大时直接给原图挂它，原分辨率清晰）；其余 undefined */
   const wholeFilter = computed<string | undefined>(() =>
-    currentKey.value && filterOnly.value ? colorFixFilter(renderLayers.value[0]!.params) : undefined,
+    currentKey.value && filterOnly.value && !peeking.value ? colorFixFilter(renderLayers.value[0]!.params) : undefined,
   )
   /** 烘好的预览图长边（全屏据此判断放大后是否需要局部高清） */
   const previewSide = PREVIEW_SIDE
@@ -1798,6 +1810,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     /** 点选不可用的原因（'' = 可用） */
     pointBlocked: pointSegmentBlocked,
     // 预览
+    peeking,
     displaySrc,
     liveFilter,
     previewStyle,

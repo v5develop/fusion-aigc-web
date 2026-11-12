@@ -17,6 +17,7 @@
  * 须给 ariaLabel 作为无障碍名称。
  */
 import { computed, ref, useId, useSlots } from 'vue'
+import { useMessage } from 'naive-ui'
 import BookOutlineIcon from '@/components/Icons/BookOutlineIcon.vue'
 import PromptWriteButton from '@/components/PromptWrite/PromptWriteButton.vue'
 import PromptLibraryFlyout from '@/components/Creation/PromptLibraryFlyout.vue'
@@ -96,11 +97,14 @@ function toggleLibrary(anchor: HTMLElement) {
 }
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
+const message = useMessage()
+
 /** 提示词库选中：整条插入，按上限截断 */
 function onLibraryPick(item: { prompt: string }) {
   const base = modelValue ?? ''
   const merged = (base ? `${base}${base.endsWith('\n') ? '' : '\n'}` : '') + item.prompt
   emit('update:modelValue', merged.slice(0, maxLength))
+  message.success('已填入提示词')
 }
 
 /** 页面进页自动聚焦用（preventScroll，不把整页滚走） */

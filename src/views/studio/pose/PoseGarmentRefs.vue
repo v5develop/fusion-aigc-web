@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 姿态复刻 · 服装参考图（选填，最多 6 张，单人姿态专用）。
+ * 姿态复刻 · 服装参考图（选填，最多 6 张，单人姿态专用）：「1 人物与服装」节里与人物图并排的服装叠片 + 可逐张删除的小图。
  *
  * <p>补充背面、侧面、五金等细节，生图时排在人物图（图1）、姿势图（图2）之后，从图3 起。
  * 上传 / 拖入 / 粘贴 / 资产库与其它入口同一套（useStudioUploader + useFileDropPaste + AssetPickerModal）。
@@ -40,7 +40,6 @@ const up = useStudioUploader({
   onOverflow: ({ room, max: cap }) => message.info(`只放了前 ${room} 张，最多 ${cap} 张`),
 })
 const uploading = up.uploading
-defineExpose({ uploading })
 up.invalidateOnReplace(() => garments.value)
 
 const blocked = computed(() => !!blockedReason)
@@ -105,14 +104,22 @@ function onAssets(picked: string[]) {
   if (fresh.length) garments.value = [...garments.value, ...fresh.slice(0, room.value)]
 }
 
-const countText = computed(() => {
-  if (blocked.value) return `${garments.value.length} 张`
-  return `${garments.value.length}/${max}${max > 0 ? ` · 还可加 ${room.value} 张` : ''}`
+/** 叠片：最多画 6 张，每张露 6px（同姿势图叠片的尺寸，60×100 白边浮片） */
+const stackWidth = computed(() => `${60 + (Math.max(1, Math.min(garments.value.length, 6)) - 1) * 6}px`)
+const PLATE_CLS =
+  'absolute top-0 block w-60px h-100px box-border overflow-hidden border border-solid border-white rounded-5px bg-surface3 shadow-[0_1px_3px_rgba(31,35,41,0.16)]'
+
+defineExpose({
+  uploading,
+  /** 节内操作钮（「+ 服装」、资产库）直接调 */
+  pick: () => pick(),
+  openAssets: () => openAssets(),
+  blocked,
 })
 </script>
 
 <template>
-  <section ref="zone" class="flex flex-col gap-6px" aria-labelledby="pose-garment-title">
+  <section ref="zone" class="flex min-w-0 flex-col gap-8px" aria-label="服装参考图">
     <input
       ref="input"
       type="file"
@@ -123,32 +130,105 @@ const countText = computed(() => {
       aria-hidden="true"
       @change="onFiles"
     />
-    <div class="flex items-baseline gap-8px">
-      <h2 id="pose-garment-title" class="m-0 text-12px font-600 text-ink">服装参考图（选填，最多 {{ hardMax }} 张）</h2>
-      <span class="ml-auto text-11px leading-15px tabular-nums text-placeholder">{{ countText }}</span>
+    <!-- 叠片入口：与人物图同尺寸的白边浮片，点击添加，右下角云钮选资产；满了只拦点击 -->
+    <div class="relative h-100px" :style="{ width: stackWidth }" :class="blocked ? 'opacity-60' : ''">
+      <button
+        type="button"
+        class="relative block h-100px w-full cursor-pointer overflow-visible rounded-5px border-0 bg-transparent p-0 disabled:cursor-not-allowed focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
+        :class="[
+          dragging ? 'sx-drop-ring' : '',
+          garments.length
+            ? ''
+            : 'border border-solid border-white !bg-white shadow-[0_1px_3px_rgba(31,35,41,0.16)] hover:shadow-[0_2px_6px_rgba(31,35,41,0.2)]',
+        ]"
+        :disabled="locked || uploading || max <= 0"
+        :aria-label="
+          blocked
+            ? `服装参考图不可用：${blockedReason}`
+            : garments.length
+              ? `服装参考图 ${garments.length} 张，点击继续添加`
+              : '添加服装参考图'
+        "
+        :title="blocked ? blockedReason : '点击添加，也可拖入或粘贴；须与人物图同款'"
+        @click="pick"
+      >
+        <span
+          v-for="(url, index) in garments.slice(0, 6)"
+          :key="url"
+          :class="PLATE_CLS"
+          :style="{ left: `${index * 6}px`, zIndex: index }"
+          aria-hidden="true"
+        >
+          <img class="block h-full w-full object-cover" :src="url" alt="" />
+        </span>
+        <span
+          v-if="!garments.length"
+          class="absolute inset-0 flex flex-col items-center justify-center gap-4px text-placeholder"
+        >
+          <n-spin v-if="uploading" :size="16" />
+          <template v-else>
+            <svg
+              class="h-18px w-18px text-muted"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+              <circle cx="9" cy="10" r="1.6" />
+              <path d="M20.5 16l-5-5L6 19.5" />
+            </svg>
+            <span class="text-9px leading-13px">待上传</span>
+          </template>
+        </span>
+        <span
+          v-else-if="uploading"
+          class="absolute inset-0 z-20 grid place-items-center rounded-5px bg-surface/60"
+        >
+          <n-spin :size="16" />
+        </span>
+      </button>
+      <StudioMedBtn
+        label="从资产库选服装参考图"
+        class="-bottom-12px -right-12px z-12"
+        :disabled="locked || uploading || max <= 0"
+        @click.stop="openAssets"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path
+            d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 0 0 7 18.5z"
+            stroke-linejoin="round"
+            transform="translate(0 -0.5)"
+          />
+        </svg>
+      </StudioMedBtn>
     </div>
-    <p class="m-0 text-11px leading-16px text-muted">用于补充背面、侧面、五金等细节，作为图3 起</p>
+
     <p v-if="blockedReason" class="m-0 text-12px leading-18px text-warning" role="note">{{ blockedReason }}</p>
     <p v-else-if="over" class="m-0 text-12px leading-18px text-warning" role="note">
       当前模型最多再放 {{ max }} 张服装参考图，请删到 {{ max }} 张以内再提交
     </p>
 
-    <div class="flex flex-wrap items-start gap-x-14px gap-y-12px pt-6px" :class="blocked ? 'opacity-60' : ''">
+    <!-- 逐张小图：可单独删（图3 起） -->
+    <div v-if="garments.length" class="flex flex-wrap items-start gap-x-10px gap-y-10px pt-6px">
       <span
         v-for="(url, index) in garments"
         :key="url"
-        class="group relative block w-48px h-64px box-border rounded-5px border border-solid border-line bg-surface3"
+        class="group relative block h-48px w-36px box-border rounded-4px border border-solid border-line bg-surface3"
       >
-        <img :src="url" alt="" class="block w-full h-full object-cover rounded-4px" />
+        <img :src="url" alt="" class="block h-full w-full rounded-3px object-cover" />
         <span
-          class="absolute left-2px bottom-2px px-3px rounded-3px text-10px leading-14px text-white bg-[rgb(0_0_0/0.55)]"
+          class="absolute bottom-1px left-1px rounded-3px bg-[rgb(0_0_0/0.55)] px-3px text-9px leading-13px text-white"
           aria-hidden="true"
           >图{{ index + 3 }}</span
         >
         <StudioMedBtn
           v-if="!disabled"
           :label="`移除服装参考图 ${index + 1}`"
-          class="-top-6px -right-6px z-2"
+          class="-right-6px -top-6px z-2"
           @click.stop="remove(url)"
         >
           <svg
@@ -161,48 +241,6 @@ const countText = computed(() => {
             aria-hidden="true"
           >
             <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
-          </svg>
-        </StudioMedBtn>
-      </span>
-
-      <span v-if="!full || !garments.length" class="relative block">
-        <button
-          type="button"
-          class="flex flex-col items-center justify-center gap-2px w-48px h-64px box-border p-0 rounded-5px border border-dashed border-control bg-surface2 text-muted cursor-pointer disabled:cursor-not-allowed hover:border-violet focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
-          :class="dragging ? 'sx-drop-ring' : ''"
-          :disabled="locked || uploading || max <= 0"
-          :aria-label="blocked ? `服装参考图不可用：${blockedReason}` : '添加服装参考图'"
-          :title="blocked ? blockedReason : '点击添加，也可拖入或粘贴'"
-          @click="pick"
-        >
-          <n-spin v-if="uploading" :size="16" />
-          <template v-else>
-            <svg
-              class="w-16px h-16px"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            <span class="text-11px leading-14px">添加</span>
-          </template>
-        </button>
-        <StudioMedBtn
-          label="从资产库选服装参考图"
-          class="-right-10px -bottom-10px"
-          :disabled="locked || uploading || max <= 0"
-          @click.stop="openAssets"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path
-              d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 0 0 7 18.5z"
-              stroke-linejoin="round"
-              transform="translate(0 -0.5)"
-            />
           </svg>
         </StudioMedBtn>
       </span>

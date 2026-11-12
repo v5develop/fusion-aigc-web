@@ -97,6 +97,10 @@ function clearPoses() {
 const submitting = ref(false)
 const shell = ref<InstanceType<typeof StudioWorkspaceColumns> | null>(null)
 const slots = ref<InstanceType<typeof PoseMaterialSlots> | null>(null)
+const poseSlots = ref<InstanceType<typeof PoseMaterialSlots> | null>(null)
+const miniBtnCls =
+  'inline-flex h-28px cursor-pointer items-center justify-center rounded-6px border border-solid border-line bg-white px-10px text-12px font-500 text-ink-2 hover:(border-violet-line text-violet-ink) disabled:(cursor-not-allowed opacity-55) motion-reduce:transition-none sx-focus'
+
 
 /** 幂等重试：失败缓存 key 进「重试生成」态；表单任意字段变化换新 key */
 const idem = useIdempotentSubmit()
@@ -117,7 +121,7 @@ const submitText = computed(() => (poseImages.value.length ? `开始复刻（${p
 
 /** 未就绪原因：按钮保持可点（点了 toast 同一句），悬停在提交条上能看到；空 = 就绪 */
 const disabledReason = computed(() => {
-  if (slots.value?.uploading || garmentRef.value?.uploading) return UPLOADING_TEXT
+  if (slots.value?.uploading || poseSlots.value?.uploading || garmentRef.value?.uploading) return UPLOADING_TEXT
   if (!sourceImages.value.length) return NEED_SOURCE
   if (!poseImages.value.length) return NEED_POSE
   if (garmentOver.value) return garmentOverText()
@@ -131,7 +135,7 @@ const SUBMIT_HINT = '每个姿势一个任务，单独出图'
 
 async function submit() {
   if (submitting.value) return
-  if (slots.value?.uploading || garmentRef.value?.uploading) return message.warning(UPLOADING_TEXT)
+  if (slots.value?.uploading || poseSlots.value?.uploading || garmentRef.value?.uploading) return message.warning(UPLOADING_TEXT)
   if (!sourceImages.value.length) return message.warning(NEED_SOURCE)
   if (!poseImages.value.length) return message.warning(NEED_POSE)
   if (garmentOver.value) return message.warning(garmentOverText())
@@ -221,16 +225,125 @@ function onReedit(payload: Record<string, unknown>) {
       <div
         class="flex min-h-320px flex-1 flex-col gap-10px box-border p-12px rounded-6px border border-solid border-line bg-white shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)]"
       >
-        <!-- 人物图 + 姿势图：两块白边浮片同排，中间切口；人物图悬停单图预览，姿势图悬停摊开 + 3 列序号面板 -->
-        <PoseMaterialSlots
-          ref="slots"
-          v-model:source="sourceImages"
-          v-model:poses="poseImages"
-          :max="MAX_POSE_IMAGES"
-          :disabled="submitting"
-          @remove-pose="removePose"
-          @clear-poses="clearPoses"
-        />
+        <!--
+          两节（对齐原型 .pm-board）：「1 人物与服装」人物图 + 服装参考两块白边浮片、计数、操作钮；「2 姿势参考」姿势叠片（悬停摊开）。
+          服装与人物须同款，姿势图只取动作。
+        -->
+        <div class="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] items-start gap-x-16px gap-y-14px">
+          <section class="flex min-w-0 flex-col gap-10px" aria-labelledby="pose-zone-1">
+            <div class="flex items-center gap-6px">
+              <span
+                class="grid h-18px w-18px flex-none place-items-center rounded-full bg-violet-solid text-11px font-600 leading-none text-on-accent"
+                aria-hidden="true"
+                >1</span
+              >
+              <b id="pose-zone-1" class="text-13px font-600 leading-18px text-ink">人物与服装</b>
+            </div>
+            <div class="grid grid-cols-[60px_minmax(0,1fr)] items-start gap-x-16px">
+              <PoseMaterialSlots
+                ref="slots"
+                part="source"
+                v-model:source="sourceImages"
+                v-model:poses="poseImages"
+                :max="MAX_POSE_IMAGES"
+                :disabled="submitting"
+              />
+              <PoseGarmentRefs
+                ref="garmentRef"
+                v-model="garmentImages"
+                :max="garmentMax"
+                :hard-max="MAX_GARMENT_REFS"
+                :blocked-reason="garmentBlockedReason"
+                :disabled="submitting"
+              />
+            </div>
+            <p class="m-0 text-11px leading-16px tabular-nums text-muted" aria-live="polite">
+              人物图 {{ sourceImages.length ? 1 : 0 }}/1 · 服装参考 {{ garmentImages.length }}/{{
+                garmentMax > 0 ? garmentMax : MAX_GARMENT_REFS
+              }}
+            </p>
+            <div class="flex flex-wrap items-center gap-6px">
+              <button type="button" :class="miniBtnCls" :disabled="submitting" @click="slots?.pickSource()">
+                {{ sourceImages.length ? '更换人物' : '上传人物' }}
+              </button>
+              <button
+                type="button"
+                :class="miniBtnCls"
+                :disabled="submitting || garmentBlockedReason !== ''"
+                :title="garmentBlockedReason || undefined"
+                @click="garmentRef?.pick()"
+              >
+                + 服装
+              </button>
+              <button
+                type="button"
+                :class="[miniBtnCls, 'w-28px !px-0']"
+                title="从资产库选人物图"
+                aria-label="从资产库选人物图"
+                :disabled="submitting"
+                @click="slots?.openSourceAssets()"
+              >
+                <svg class="h-14px w-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <path
+                    d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 0 0 7 18.5z"
+                    stroke-linejoin="round"
+                    transform="translate(0 -0.5)"
+                  />
+                </svg>
+              </button>
+              <button
+                v-if="sourceImages.length"
+                type="button"
+                :class="[miniBtnCls, 'w-28px !px-0 hover:!(border-danger-line text-danger)']"
+                title="清空人物图"
+                aria-label="清空人物图"
+                :disabled="submitting"
+                @click="slots?.clearSource()"
+              >
+                <svg
+                  class="h-14px w-14px"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11v5" />
+                </svg>
+              </button>
+            </div>
+          </section>
+
+          <section
+            class="relative flex min-w-0 flex-col gap-10px before:(absolute -left-8px top-0 bottom-0 w-1px bg-line-soft content-[''])"
+            aria-labelledby="pose-zone-2"
+          >
+            <div class="flex items-center gap-6px">
+              <span
+                class="grid h-18px w-18px flex-none place-items-center rounded-full bg-violet-solid text-11px font-600 leading-none text-on-accent"
+                aria-hidden="true"
+                >2</span
+              >
+              <b id="pose-zone-2" class="text-13px font-600 leading-18px text-ink">姿势参考</b>
+            </div>
+            <PoseMaterialSlots
+              ref="poseSlots"
+              part="poses"
+              v-model:source="sourceImages"
+              v-model:poses="poseImages"
+              :max="MAX_POSE_IMAGES"
+              :disabled="submitting"
+              @remove-pose="removePose"
+              @clear-poses="clearPoses"
+            />
+            <p class="m-0 text-11px leading-16px tabular-nums text-muted">
+              姿势参考 {{ poseImages.length }}/{{ MAX_POSE_IMAGES }}
+            </p>
+          </section>
+        </div>
+        <p class="m-0 text-11px leading-16px text-muted">服装须与人物同款；姿势图只取动作</p>
 
         <!-- 补充说明（全局）：框内无边 textarea；底行左计数 11px、右「默认校色」开关 -->
         <div class="flex min-h-0 flex-1 flex-col gap-6px">
@@ -257,16 +370,6 @@ function onReedit(payload: Record<string, unknown>) {
 
         <!-- 各姿势补充：两列，每格 32 缩略图（悬停小预览 / 右上删除）+ 30 高 / 11px 单行输入（200 字） -->
         <PoseNotesList v-model:notes="poseNotes" :items="poseImages" :disabled="submitting" @remove="removePose" />
-
-        <!-- 服装参考图（选填，图3 起；多人姿态 / 模型名额不够时禁用并写明原因） -->
-        <PoseGarmentRefs
-          ref="garmentRef"
-          v-model="garmentImages"
-          :max="garmentMax"
-          :hard-max="MAX_GARMENT_REFS"
-          :blocked-reason="garmentBlockedReason"
-          :disabled="submitting"
-        />
 
         <!-- 多人配对（付费前确认）：排在补充说明与逐张补充之后，不挤占补充说明框 -->
         <PosePairingPanel

@@ -46,6 +46,7 @@ const bookBtnEl = ref<HTMLElement | null>(null)
 
 function onPickPrompt(item: { prompt: string }) {
   form.prompt = item.prompt.slice(0, PROMPT_MAX)
+  message.success('已填入提示词')
 }
 
 // ---------------- 提交 ----------------

@@ -11,6 +11,7 @@
  */
 import { computed, effectScope, ref, type ComputedRef } from 'vue'
 import { colorFixMaskAlpha } from '@/utils/colorfix.ts'
+import { COLORFIX_ZERO } from '../../utils/colorfix-math.ts'
 import { isSelectionLayer, layerEffective, type ColorFixLayer } from './layers.ts'
 import { colorFixPartsEqual, colorFixPartsSanitize, type ColorFixGarmentPart } from './types.ts'
 import type { ResultColorFix } from './useResultColorFix.ts'
@@ -56,6 +57,12 @@ export interface ColorFixPieces {
   active: ComputedRef<ColorFixReference | null>
   /** 这件单品是不是调过（它的图层存在且有非零调整） */
   adjusted: (key: string) => boolean
+  /** 调过的单品件数（参数台里「N 件已调 · 只作用于当前这件」） */
+  adjustedCount: ComputedRef<number>
+  /** 当前这件调过（「恢复这件」可点） */
+  canResetActive: ComputedRef<boolean>
+  /** 只把当前这件单品的图层恢复到未调（滑杆归零、清掉替换颜色与更多调整）；别的单品与底层不动 */
+  resetActive: () => void
   /** 切到这件单品：已有图层就选中，没有就按部位新建一层「自动识别」图层；没有部位只切浮卡 */
   select: (key: string) => void
   /** 图上点选单品可用：有带部位的参考图 */
@@ -112,6 +119,20 @@ function build(cf: ResultColorFix): ColorFixPieces {
     return !!l && layerEffective(l)
   }
 
+  const adjustedCount = computed(() => references.value.filter((r) => adjusted(r.key)).length)
+  const canResetActive = computed(() => !!active.value && adjusted(active.value.key))
+
+  function resetActive() {
+    const r = active.value
+    const l = r && layerOf(r)
+    if (!l || !layerEffective(l)) return
+    // 参数 / 替换颜色 / 更多调整都作用在「选中的图层」上：先选中这件的图层再清，不碰别的层
+    if (cf.selectedLayerId.value !== l.id) cf.selectLayer(l.id)
+    cf.setParams({ ...COLORFIX_ZERO })
+    cf.setRecolor(null)
+    cf.setAdjust(null)
+  }
+
   function select(key: string) {
     const r = references.value.find((x) => x.key === key)
     if (!r) return
@@ -164,5 +185,17 @@ function build(cf: ResultColorFix): ColorFixPieces {
     return true
   }
 
-  return { hasReferences, references, activeKey, active, adjusted, select, pickable, pickPiece }
+  return {
+    hasReferences,
+    references,
+    activeKey,
+    active,
+    adjusted,
+    adjustedCount,
+    canResetActive,
+    resetActive,
+    select,
+    pickable,
+    pickPiece,
+  }
 }

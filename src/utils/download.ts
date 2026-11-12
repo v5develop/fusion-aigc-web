@@ -67,7 +67,7 @@ function triggerAnchorDownload(href: string, filename?: string, newTab = false) 
  * 抓取失败（OSS 未开 CORS / 网络异常）时只能裸链打开，由用户手动另存 ——
  * 不能再拼 response-content-disposition，见上方说明。
  */
-export async function downloadImage(url: string, filename?: string): Promise<void> {
+export async function downloadImage(url: string, filename?: string, opts?: { strict?: boolean }): Promise<void> {
   if (!url) return
   const name = filename || `AI素材_${Date.now()}.${extFromUrl(url)}`
   try {
@@ -78,7 +78,9 @@ export async function downloadImage(url: string, filename?: string): Promise<voi
     const objectUrl = URL.createObjectURL(await res.blob())
     triggerAnchorDownload(objectUrl, name)
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
-  } catch {
+  } catch (err) {
+    // strict（批量下载）：连续新开标签页会被拦截，抓取失败原样抛给调用方计数
+    if (opts?.strict) throw err
     // 跨域时 a.download 会被忽略，退化为新开标签页展示，用户可右键另存（绝不在当前页导航）
     triggerAnchorDownload(url, name, true)
   }

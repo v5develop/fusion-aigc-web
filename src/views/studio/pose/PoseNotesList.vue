@@ -9,10 +9,22 @@
 import { onBeforeUnmount, ref } from 'vue'
 import StudioMedBtn from '../components/StudioImageUpload/StudioMedBtn.vue'
 
-const { items, disabled = false } = defineProps<{
-  /** 姿势图地址（按提交顺序） */
+const {
+  items,
+  disabled = false,
+  title = '各姿势补充',
+  itemLabel = '姿势',
+  placeholder = '这张的动作补充（选填）',
+  maxlength = 200,
+} = defineProps<{
+  /** 图片地址（按提交顺序） */
   items: string[]
   disabled?: boolean
+  /** 复用于工具页「各资产补充」：标题 / 行名 / 占位 / 字数上限可换 */
+  title?: string
+  itemLabel?: string
+  placeholder?: string
+  maxlength?: number
 }>()
 
 const notes = defineModel<Record<string, string>>('notes', { required: true })
@@ -62,9 +74,9 @@ onBeforeUnmount(clearPeek)
 </script>
 
 <template>
-  <section v-if="items.length" class="flex flex-[0_0_auto] flex-col gap-8px" aria-label="各姿势补充">
+  <section v-if="items.length" class="flex flex-[0_0_auto] flex-col gap-8px" :aria-label="title">
     <header class="flex items-baseline gap-8px">
-      <span class="text-12px font-600 leading-18px text-ink-2">各姿势补充</span>
+      <span class="text-12px font-600 leading-18px text-ink-2">{{ title }}</span>
     </header>
     <!-- 行缩略图的删除钮探出上沿 9px：第一行别顶到标题 -->
     <div class="grid grid-cols-2 gap-x-12px gap-y-8px items-start mt-5px">
@@ -74,7 +86,7 @@ onBeforeUnmount(clearPeek)
           @mouseenter="schedulePeek(url, $event)"
           @mouseleave="clearPeek()"
         >
-          <img class="block w-full h-full object-cover" :src="url" :alt="`姿势${i + 1}`" />
+          <img class="block w-full h-full object-cover" :src="url" :alt="`${itemLabel}${i + 1}`" />
         </span>
         <StudioMedBtn
           v-if="!disabled"
@@ -99,9 +111,9 @@ onBeforeUnmount(clearPeek)
           v-model="notes[url]"
           type="text"
           class="flex-[1_1_0] w-0 min-w-0 h-30px box-border px-10px border border-solid border-line rounded-6px bg-white text-11px leading-18px text-ink outline-none shadow-inset-input placeholder:text-placeholder focus:(border-violet shadow-[0_0_0_3px_rgba(135,95,154,0.12),inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]) disabled:opacity-55"
-          maxlength="200"
-          placeholder="这张的动作补充（选填）"
-          :aria-label="`姿势${i + 1}：动作补充`"
+          :maxlength="maxlength"
+          :placeholder="placeholder"
+          :aria-label="`${itemLabel}${i + 1}：${placeholder.replace(/（选填）$/, '')}`"
           :disabled="disabled"
         />
       </label>

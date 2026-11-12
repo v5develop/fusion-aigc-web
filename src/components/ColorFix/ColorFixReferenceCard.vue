@@ -230,6 +230,22 @@ const title = computed(() => (act.value && !multi.value ? `参考图 · ${act.va
       </button>
     </div>
 
+    <!-- 多件单品：调过几件 + 只作用于当前这件；「恢复这件」只清当前这件的图层 -->
+    <div v-if="multi" class="cfref__count flex items-center gap-8px px-10px pb-8px flex-none" data-no-drag>
+      <span class="min-w-0 flex-1 text-11px leading-16px text-muted tabular-nums" role="status" aria-live="polite">
+        {{ pieces.adjustedCount.value }} 件已调 · 只作用于当前这件
+      </span>
+      <button
+        type="button"
+        class="sx-hit sx-focus inline-flex h-24px flex-none cursor-pointer items-center rounded-12px border border-solid border-line bg-surface2 px-10px text-11px font-500 leading-none text-ink-2 hover:(border-violet-line text-violet-ink) disabled:(cursor-not-allowed opacity-50) motion-reduce:transition-none"
+        :disabled="!pieces.canResetActive.value"
+        :title="pieces.canResetActive.value ? `只把「${act?.label ?? ''}」恢复到未调，其它单品不动` : '这件还没有调整'"
+        @click="pieces.resetActive()"
+      >
+        恢复这件
+      </button>
+    </div>
+
     <div v-if="auto.supported.value" class="cfref__auto flex flex-col gap-6px px-10px pb-10px flex-none">
       <button
         type="button"

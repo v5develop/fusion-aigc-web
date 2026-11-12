@@ -23,6 +23,7 @@ import ColorFixZoomView from './ColorFixZoomView.vue'
 import ColorFixReferenceCard from './ColorFixReferenceCard.vue'
 import type { ResultColorFix } from './useResultColorFix.ts'
 import type { ColorFixViewMode } from './types.ts'
+import ColorFixPeekButton from './ColorFixPeekButton.vue'
 import { MASK_VIEW_HINTS, MASK_VIEW_LABELS, type MaskViewMode } from './selection-ops.ts'
 import { activeTheme } from '@/utils/themePrefs.ts'
 
@@ -194,6 +195,7 @@ const SEG =
             {{ m.label }}
           </button>
         </div>
+        <ColorFixPeekButton :cf="cf" />
         <button
           v-if="hasMask"
           type="button"
