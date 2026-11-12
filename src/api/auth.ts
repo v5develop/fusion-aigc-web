@@ -29,6 +29,21 @@ export function updateProfile(data: IProfileUpdate) {
   return put('/api/v1/auth/profile', data)
 }
 
+/** POST /api/v1/auth/avatar 的响应：新头像的公网地址 */
+export interface IAvatarUploadResult {
+  avatar: string
+}
+
+/**
+ * POST /api/v1/auth/avatar（multipart，part 名 file；PNG / JPEG / WebP ≤ 5 MB，服务端含内容审核）。
+ * 不手填 Content-Type：交给浏览器带上 boundary。
+ */
+export function uploadAvatar(file: Blob, filename = 'avatar.png') {
+  const body = new FormData()
+  body.append('file', file, filename)
+  return post<IAvatarUploadResult>('/api/v1/auth/avatar', body, undefined, 30000)
+}
+
 /** PUT /api/v1/auth/change-password */
 export function changePassword(data: IChangePassword) {
   return put('/api/v1/auth/change-password', data)

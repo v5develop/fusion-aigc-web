@@ -49,3 +49,15 @@ export function reportRequestError(err: unknown, error: (msg: string) => void) {
   const e = toApiError(err)
   if (e?.message) error(e.message)
 }
+
+/** 内容审核服务不可用：后端 5006 / HTTP 503 */
+export const MODERATION_UNAVAILABLE_MSG = '审核服务暂时不可用，请稍后再试'
+
+/** 资料 / 头像提交失败的就地文案：审核不可用统一话术，其余取后端 msg，兜底给通用提示 */
+export function profileErrorMessage(err: unknown, fallback: string): string {
+  const e = toApiError(err)
+  if (!e) return fallback
+  if (e.code === 5006 || e.httpStatus === 503) return MODERATION_UNAVAILABLE_MSG
+  if (e.isNetwork) return '网络异常，请稍后重试'
+  return e.message || fallback
+}

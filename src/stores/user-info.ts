@@ -80,5 +80,10 @@ export const useUserInfoStore = defineStore('useUserInfoStore', () => {
     userInfo.value = undefined
   }
 
-  return { userInfo, updateUserInfo, reset }
+  /** 头像改完立即写入，导航栏等处不必等下一轮刷新 */
+  const setAvatar = (avatar: string) => {
+    if (userInfo.value) userInfo.value = { ...userInfo.value, avatar }
+  }
+
+  return { userInfo, updateUserInfo, setAvatar, reset }
 })

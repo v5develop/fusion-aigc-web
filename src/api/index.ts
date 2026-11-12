@@ -215,6 +215,9 @@ async function handleTokenExpired(config: InternalAxiosRequestConfig, httpStatus
 
 // 业务失败(code!==0)不弹全局 toast 的接口白名单：由调用方自行降级展示（如询价预览失败显示「获取失败」）
 const SILENT_ERROR_URLS = [
+  // 个人资料保存 / 头像上传：审核拒绝等原因由用户中心就地展示在字段 / 裁剪框内
+  '/auth/profile',
+  '/auth/avatar',
   // 画布 run / 商拍任务「重新存入素材库」：4002（太频繁）等由调用方就地提示，不叠全局 toast
   '/library-retry',
   // 创意广场模板列表 / 标签 / 本周头条：失败由页内 PageLoadError 展示后端原话（加载更多失败由调用方补 toast），不再叠全局 toast
