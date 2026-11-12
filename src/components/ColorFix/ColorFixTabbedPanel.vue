@@ -256,10 +256,14 @@ function placeDefault() {
   if (!el) return
   maxH.value = calcMaxH()
   void nextTick(() => {
-    const { w, h } = parentBox()
-    pos.value = clamp(w - el.offsetWidth - 12, Math.max(12, Math.round((h - el.offsetHeight) / 2)))
-    placed.value = true
-    moved.value = false
+    // 当前页里已经展开着的折叠区（「更多调整」展开状态会被记住）：先撑高，再按撑高后的高度居中放
+    autoGrow()
+    void nextTick(() => {
+      const { w, h } = parentBox()
+      pos.value = clamp(w - el.offsetWidth - 12, Math.max(12, Math.round((h - el.offsetHeight) / 2)))
+      placed.value = true
+      moved.value = false
+    })
   })
 }
 /** 恢复默认位置和大小：清掉记住的高度，重新贴右缘垂直居中 */
@@ -308,7 +312,11 @@ function onBodyToggle(e: MouseEvent) {
     }),
   )
 }
-function growToFit(anchor: HTMLElement) {
+/**
+ * @param anchor 点开的折叠钮：撑高后把它滚进可见区；null = 打开面板 / 切页时的自动撑高（不滚动，
+ *               也不记撑高前的 y——收起时若用户没拖过面板就整体回默认位置居中）
+ */
+function growToFit(anchor: HTMLElement | null) {
   const el = root.value
   const b = body.value
   if (!el || !b) return
@@ -316,23 +324,41 @@ function growToFit(anchor: HTMLElement) {
   const cap = stageMaxH()
   const target = Math.round(cap ? Math.min(need, cap) : need)
   if (target > el.offsetHeight) {
-    if (growRestoreY === null) growRestoreY = pos.value.y
+    if (anchor && growRestoreY === null) growRestoreY = pos.value.y
     growH.value = target
   }
   void nextTick(() => {
     pos.value = clamp(pos.value.x, pos.value.y)
-    anchor.scrollIntoView({ block: 'nearest' })
+    anchor?.scrollIntoView({ block: 'nearest' })
   })
+}
+/** 当前页里有已展开的折叠区就撑高（打开面板、切到该页时） */
+function autoGrow() {
+  const pane = body.value?.querySelector<HTMLElement>(`#cft-pane-${tab.value}`)
+  if (pane?.querySelector('button[aria-expanded="true"]')) growToFit(null)
 }
 function releaseGrow() {
   if (growH.value === null) return
   growH.value = null
   const y = growRestoreY
   growRestoreY = null
+  if (y === null && !moved.value) {
+    // 自动撑高（打开 / 切页时）收起：面板没被拖过就整体回默认位置
+    placeDefault()
+    return
+  }
   void nextTick(() => (pos.value = clamp(pos.value.x, y ?? pos.value.y)))
 }
-// 换页签：临时撑高只属于展开它的那一页
-watch(tab, () => releaseGrow())
+// 换页签：临时撑高只属于展开它的那一页；切到的新页若有已展开的折叠区就再撑高
+watch(tab, () => {
+  if (growH.value !== null) {
+    growH.value = null
+    growRestoreY = null
+  }
+  void nextTick(() => {
+    if (placed.value && props.open) autoGrow()
+  })
+})
 
 // 内容高度变了（换页签 / 展开更多）：贴着底边的面板要再夹回舞台里
 watch([tab, () => props.pixelLayer], () => {
