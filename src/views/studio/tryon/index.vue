@@ -18,6 +18,7 @@ import { checkMinShortSide } from '../image-size.ts'
 import type {
   StudioDetailCrop,
   StudioGarmentImage,
+  StudioModelView,
   StudioTryonPayload,
   StudioTryonSubmitReq,
 } from '@/api/studio-types.ts'
@@ -104,6 +105,11 @@ const g = useTryonGarment(() => CLOTH_SPEC, { upload: studioUpload })
 /** 工具页契约的单张服装图槽位；studio 不用它（按 garment_images 提交），只给素材板回写 */
 const clothSlot = ref<string[]>([])
 const modelImages = ref<string[]>([])
+/** 模特图拍摄面：按图片地址记（删图 / 调序不错位），没选 = 未选；提交时按 modelImages 的顺序对齐展开 */
+const modelViews = ref<Record<string, StudioModelView | undefined>>({})
+const materials = ref<InstanceType<typeof ToolTryonMaterials> | null>(null)
+const missingViewCount = computed(() => modelImages.value.filter((u) => !modelViews.value[u]).length)
+const missingViewText = computed(() => `还有 ${missingViewCount.value} 位模特没选正面 / 背面 / 侧面`)
 
 const lengths = reactive<Record<string, string>>({})
 const sleeves = reactive<Record<string, string>>({})
@@ -226,6 +232,7 @@ idem.bindForm(
   () => g.allPhotos,
   () => g.selected.map((key) => g.photosOf(key).map((p) => p.angle)),
   modelImages,
+  modelViews,
   lengths,
   sleeves,
   fabrics,
@@ -300,6 +307,7 @@ const notReadyReason = computed(() => {
   if (missing.value.length) return `还没传图：${missing.value.join('、')}`
   if (garmentOver.value) return `服装图最多 ${garmentMax.value} 张`
   if (!modelImages.value.length) return '至少上传 1 位模特'
+  if (missingViewCount.value) return missingViewText.value
   return ''
 })
 const SUBMIT_HINT = '按模特 × 生成张数逐个提交，每个任务单独出图'
@@ -312,6 +320,11 @@ async function submit() {
   if (missing.value.length) return message.warning(`还没传图：${missing.value.join('、')}`)
   if (garmentOver.value) return message.warning(`服装图最多 ${garmentMax.value} 张`)
   if (!modelImages.value.length) return message.warning('至少上传 1 位模特')
+  if (missingViewCount.value) {
+    message.warning(missingViewText.value)
+    materials.value?.revealModels()
+    return
+  }
 
   const lengthsOut: Record<string, string> = {}
   const sleevesOut: Record<string, string> = {}
@@ -324,6 +337,7 @@ async function submit() {
 
   const body: StudioTryonSubmitReq = {
     modelImageUrls: [...modelImages.value],
+    modelViews: modelImages.value.map((u) => modelViews.value[u] as StudioModelView),
     garmentImages: garmentImages.value.map((gi) => ({ ...gi })),
     items: [...g.selected],
     setMode: g.isTogether ? 'one' : 'two',
@@ -403,9 +417,16 @@ function onReedit(payload: Record<string, unknown>) {
   // 快照是整套模式却没有整套图（异常 / 旧数据）：按分别上传回填，别让提交被拦
   g.restore({ selected: items, mode: together ? 'together' : 'separate', photos, look })
 
-  modelImages.value = (Array.isArray(p.modelImageUrls) ? p.modelImageUrls : [])
-    .filter((u): u is string => !!u)
-    .slice(0, MAX_MODEL_IMAGES)
+  // 拍摄面按下标与模特图对齐后改按地址记；老快照没有 modelViews（或长度对不上的位）= 未选，用户必须逐张重选
+  const snapModels = Array.isArray(p.modelImageUrls) ? p.modelImageUrls : []
+  const snapViews = Array.isArray(p.modelViews) ? p.modelViews : []
+  const viewMap: Record<string, StudioModelView | undefined> = {}
+  snapModels.forEach((u, i) => {
+    const v = snapViews[i]
+    if (u && (v === 'front' || v === 'back' || v === 'side')) viewMap[u] = v
+  })
+  modelImages.value = snapModels.filter((u): u is string => !!u).slice(0, MAX_MODEL_IMAGES)
+  modelViews.value = viewMap
 
   for (const key of items) {
     const len = p.lengths?.[key]
@@ -461,8 +482,11 @@ const trashPath = 'M4.5 7h15M9.5 7V5h5v2M6.5 7l1 12.5h9l1-12.5M10.5 11v5M13.5 11
       <!-- 素材板（原型 .dm-mat，与工具页 /tools/ai-digital-model 同一个组件）：
            服装图 / 模特图叠片 → 补充说明 + 左下计数 → 各单品参数 -->
       <ToolTryonMaterials
+        ref="materials"
         v-model:cloth="clothSlot"
         v-model:models="modelImages"
+        v-model:model-views="modelViews"
+        require-model-views
         v-model:uploading="materialsUploading"
         :cloth-spec="CLOTH_SPEC"
         :model-spec="MODEL_SPEC"

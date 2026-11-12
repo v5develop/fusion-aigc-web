@@ -4,6 +4,7 @@
  * 用于商拍成品的默认选区「自动识别 · 服装 · 所选单品」。
  */
 import { colorFixPartsSanitize, type ColorFixGarmentPart } from '@/components/ColorFix/types.ts'
+import { parseStudioPayload } from '../payload.ts'
 
 const ITEM_PARTS: Record<string, ColorFixGarmentPart[]> = {
   top: ['tops'],
@@ -18,12 +19,7 @@ const ITEM_PARTS: Record<string, ColorFixGarmentPart[]> = {
 
 /** 批次 payload（JSON 文本）里的 items → 部位（固定顺序）；不是商拍 / 解析失败 / 都映射不上 → []（全部服装） */
 export function tryonItemParts(payload: string | undefined | null): ColorFixGarmentPart[] {
-  let items: unknown
-  try {
-    items = (JSON.parse(payload || '{}') as { items?: unknown }).items
-  } catch {
-    return []
-  }
+  const items = parseStudioPayload(payload).items
   if (!Array.isArray(items)) return []
   return colorFixPartsSanitize(
     items.flatMap((it) => (typeof it === 'string' ? (ITEM_PARTS[it.trim().toLowerCase()] ?? []) : [])),

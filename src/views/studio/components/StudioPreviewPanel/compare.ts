@@ -19,15 +19,9 @@ import type {
   StudioTryonPayload,
 } from '@/api/studio-types.ts'
 import { taskCaption } from '../../constants.ts'
+import { parseStudioPayload } from '../../payload.ts'
 
-function parsePayload(raw: string): Record<string, unknown> {
-  try {
-    const v = JSON.parse(raw || '{}')
-    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
-  } catch {
-    return {}
-  }
-}
+const parsePayload = (raw: string) => parseStudioPayload(raw)
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : '')
 

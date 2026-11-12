@@ -20,6 +20,7 @@ import IconButton from '@/components/IconButton/index.vue'
 import { COLORFIX_MASK_LOAD_FAILED } from '@/utils/colorfix.ts'
 import ColorFixResultPanel from './ColorFixResultPanel.vue'
 import ColorFixZoomView from './ColorFixZoomView.vue'
+import ColorFixReferenceCard from './ColorFixReferenceCard.vue'
 import type { ResultColorFix } from './useResultColorFix.ts'
 import type { ColorFixViewMode } from './types.ts'
 import { MASK_VIEW_HINTS, MASK_VIEW_LABELS, type MaskViewMode } from './selection-ops.ts'
@@ -233,7 +234,11 @@ const SEG =
         </IconButton>
       </header>
       <div class="cf-fs-body flex-1 min-h-0 flex">
-        <ColorFixZoomView ref="zoom" class="cf-fs-stage flex-1 min-w-0" :cf="cf" :mode="mode" :labels="labels" :show-mask="showMask" :mask-view="shownView" />
+        <!-- 舞台外包一层定位容器：参考图浮卡浮在大图左上（不随图缩放平移） -->
+        <div class="cf-fs-stage relative flex flex-1 min-w-0">
+          <ColorFixZoomView ref="zoom" class="flex-1 min-w-0" :cf="cf" :mode="mode" :labels="labels" :show-mask="showMask" :mask-view="shownView" />
+          <ColorFixReferenceCard v-if="cf.references.value.length" :cf="cf" storage-key="colorfix:ref-card:fullscreen" />
+        </div>
         <aside :data-theme="activeTheme" class="cf-fs-dock flex flex-col bg-surface text-ink" aria-label="校色参数">
           <ColorFixResultPanel :cf="cf" :title="title" :local-adjust="localAdjust" docked large />
         </aside>

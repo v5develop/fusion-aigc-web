@@ -17,9 +17,11 @@ import StudioSubmitBar from '../components/StudioSubmitBar/index.vue'
 import ColorFixToggle from '../components/StudioSubmitBar/ColorFixToggle.vue'
 import { useColorFix } from '@/views/studio/colorfix/useColorFix'
 import ModelSettings from '../components/ModelSettings/index.vue'
+import { useStudioModels } from '../components/ModelSettings/useStudioModels.ts'
 import PoseMaterialSlots from './PoseMaterialSlots.vue'
 import PoseNotesList from './PoseNotesList.vue'
 import PosePairingPanel from './PosePairingPanel.vue'
+import PoseGarmentRefs from './PoseGarmentRefs.vue'
 import { usePosePairing } from './usePosePairing.ts'
 import { useIdempotentSubmit, useStudioCost } from '../hooks.ts'
 import { MAX_POSE_IMAGES, MODEL_OPTIONS, RESOLUTION_OPTIONS } from '../constants.ts'
@@ -62,6 +64,28 @@ function removePose(url: string) {
 /** 多人配对（付费前确认）：状态随人物图 / 姿势图签名失效，没跑识别时提交体不带任何配对字段 */
 const pairing = usePosePairing(sourceImages, poseImages)
 
+// ---------------- 服装参考图（选填，单人姿态，图3 起） ----------------
+
+const MAX_GARMENT_REFS = 6
+const garmentImages = ref<string[]>([])
+const garmentRef = ref<InstanceType<typeof PoseGarmentRefs> | null>(null)
+/** 原图识别出 ≥2 人（配对结果有效时）：服务端对多人配对拒收服装参考图 */
+const multiPerson = computed(() => (pairing.current.value?.sourceCount ?? 0) >= 2)
+const poseCaps = useStudioModels('pose')
+/** 当前模型档的参考图上限（人物图 + 姿势图 + 服装参考图合计；没拉到 = 0 = 只受 6 张限制） */
+const maxRefImages = computed(() => poseCaps.value?.find((c) => c.code === form.model)?.maxRefImages ?? 0)
+/** 服装参考图可放几张：min(6, 上限 − 2)；上限未知不收窄 */
+const garmentMax = computed(() =>
+  maxRefImages.value > 0 ? Math.max(0, Math.min(MAX_GARMENT_REFS, maxRefImages.value - 2)) : MAX_GARMENT_REFS,
+)
+const GARMENT_MULTI_TEXT = '多人姿态暂不支持服装参考图'
+const garmentBlockedReason = computed(() => {
+  if (multiPerson.value) return garmentImages.value.length ? `${GARMENT_MULTI_TEXT}，已添加的不会提交` : GARMENT_MULTI_TEXT
+  if (garmentMax.value <= 0) return `当前模型最多参考 ${maxRefImages.value} 张图，放不下服装参考图`
+  return ''
+})
+const garmentOver = computed(() => !multiPerson.value && garmentImages.value.length > garmentMax.value)
+
 /** 叠片右上清空：姿势图和全部逐张说明一起清 */
 function clearPoses() {
   poseImages.value = []
@@ -87,27 +111,30 @@ const { points: costPoints } = useStudioCost('pose', () => ({
   resolution: form.resolution || undefined,
   aspectRatio: form.aspectRatio || undefined,
 }))
-idem.bindForm(form, sourceImages, poseImages, poseNotes, pairing.state, colorFix)
+idem.bindForm(form, sourceImages, poseImages, poseNotes, pairing.state, colorFix, garmentImages)
 
 const submitText = computed(() => (poseImages.value.length ? `开始复刻（${poseImages.value.length} 张）` : '开始复刻'))
 
 /** 未就绪原因：按钮保持可点（点了 toast 同一句），悬停在提交条上能看到；空 = 就绪 */
 const disabledReason = computed(() => {
-  if (slots.value?.uploading) return UPLOADING_TEXT
+  if (slots.value?.uploading || garmentRef.value?.uploading) return UPLOADING_TEXT
   if (!sourceImages.value.length) return NEED_SOURCE
   if (!poseImages.value.length) return NEED_POSE
+  if (garmentOver.value) return garmentOverText()
   return ''
 })
 const UPLOADING_TEXT = '图片还在上传中，请稍候'
 const NEED_SOURCE = '先上传一张人物图'
 const NEED_POSE = '至少放 1 张姿势图'
+const garmentOverText = () => `服装参考图最多 ${garmentMax.value} 张（当前模型参考图上限），请先删减`
 const SUBMIT_HINT = '每个姿势一个任务，单独出图'
 
 async function submit() {
   if (submitting.value) return
-  if (slots.value?.uploading) return message.warning(UPLOADING_TEXT)
+  if (slots.value?.uploading || garmentRef.value?.uploading) return message.warning(UPLOADING_TEXT)
   if (!sourceImages.value.length) return message.warning(NEED_SOURCE)
   if (!poseImages.value.length) return message.warning(NEED_POSE)
+  if (garmentOver.value) return message.warning(garmentOverText())
 
   // 提交即放弃进行中的识别；有效的多人配对先校验，不合规直接拦下
   pairing.cancel()
@@ -118,6 +145,8 @@ async function submit() {
   const body: StudioPoseSubmitReq = {
     sourceImageUrl: sourceImages.value[0] ?? '',
     poseImageUrls: [...poseImages.value],
+    // 多人姿态不带服装参考图（入口已禁用并提示）；单人且有图才下发
+    ...(!multiPerson.value && garmentImages.value.length ? { garmentImageUrls: [...garmentImages.value] } : {}),
     globalPrompt: form.globalPrompt.trim() || undefined,
     ...(Object.keys(prompts).length ? { posePrompts: prompts } : {}),
     model: form.model || undefined,
@@ -159,6 +188,9 @@ function onReedit(payload: Record<string, unknown>) {
   sourceImages.value = []
   poseImages.value = []
   Object.keys(poseNotes).forEach((k) => delete poseNotes[k])
+  garmentImages.value = (Array.isArray(p.garmentImageUrls) ? p.garmentImageUrls : [])
+    .filter((u): u is string => typeof u === 'string' && !!u)
+    .slice(0, MAX_GARMENT_REFS)
 
   sourceImages.value = p.sourceImageUrl ? [p.sourceImageUrl] : []
   const poses = (Array.isArray(p.poseImageUrls) ? p.poseImageUrls : []).filter((u): u is string => !!u)
@@ -225,6 +257,16 @@ function onReedit(payload: Record<string, unknown>) {
 
         <!-- 各姿势补充：两列，每格 32 缩略图（悬停小预览 / 右上删除）+ 30 高 / 11px 单行输入（200 字） -->
         <PoseNotesList v-model:notes="poseNotes" :items="poseImages" :disabled="submitting" @remove="removePose" />
+
+        <!-- 服装参考图（选填，图3 起；多人姿态 / 模型名额不够时禁用并写明原因） -->
+        <PoseGarmentRefs
+          ref="garmentRef"
+          v-model="garmentImages"
+          :max="garmentMax"
+          :hard-max="MAX_GARMENT_REFS"
+          :blocked-reason="garmentBlockedReason"
+          :disabled="submitting"
+        />
 
         <!-- 多人配对（付费前确认）：排在补充说明与逐张补充之后，不挤占补充说明框 -->
         <PosePairingPanel

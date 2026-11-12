@@ -1,6 +1,7 @@
 /** 商拍工作室套件共享常量与展示辅助 */
 
 import type { StudioBatch, StudioKind, StudioPosePayload, StudioTask } from '@/api/studio-types.ts'
+import { parseStudioPayload } from './payload.ts'
 
 // ---------------- 选项 ----------------
 
@@ -177,13 +178,9 @@ export const KIND_LABEL: Record<StudioKind, string> = {
 /** 多人姿态：该姿势配对的人数 > 1 时追加「 · N 人」（取自 batch.payload.mappings[].posePersonCount；没有 / 解析失败不加） */
 function poseCountSuffix(task: StudioTask, batch?: Pick<StudioBatch, 'payload'>) {
   if (!batch?.payload) return ''
-  try {
-    const p = JSON.parse(batch.payload) as StudioPosePayload
-    const n = p.mappings?.find((m) => m.poseIndex === task.poseIndex)?.posePersonCount ?? 0
-    return n > 1 ? ` · ${n} 人` : ''
-  } catch {
-    return ''
-  }
+  const p = parseStudioPayload(batch.payload) as StudioPosePayload
+  const n = p.mappings?.find((m) => m.poseIndex === task.poseIndex)?.posePersonCount ?? 0
+  return n > 1 ? ` · ${n} 人` : ''
 }
 
 /** 任务备注行：商拍=模特 N · 第 M 张；姿态=「姿态复刻 · 姿势 N」（s1.1 E6）；图片生成=第 N 张 */
@@ -240,4 +237,14 @@ export function urlIdentity(url: string | null | undefined): string {
   if (!url) return ''
   const cut = url.search(/[?#]/)
   return cut < 0 ? url : url.slice(0, cut)
+}
+
+/** 从地址推扩展名（下载「校色前」原图用），认不出按 jpg */
+export function extOf(url: string): string {
+  try {
+    const ext = new URL(url, location.href).pathname.match(/\.(png|jpe?g|webp|gif|bmp)$/i)?.[1]
+    return ext ? ext.toLowerCase().replace('jpeg', 'jpg') : 'jpg'
+  } catch {
+    return 'jpg'
+  }
 }

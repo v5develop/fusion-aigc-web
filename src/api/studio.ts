@@ -8,7 +8,7 @@
  * <p>幂等：三个提交接口必须带 Idempotency-Key（UUID），每次点「生成」新生成一个；
  * 重新编辑后的再提交是新的一次提交，自然拿到新 key。
  */
-import { post, patch, authorizedFetch, get, del } from './index.ts'
+import { post, patch, authorizedFetch, get, getQuiet, del } from './index.ts'
 import type * as types from './studio-types.ts'
 import { llIdempotencyHeaders } from './local-life.ts'
 
@@ -95,6 +95,17 @@ export function studioBatchDetail(id: number) {
  */
 export function studioTaskDetail(taskId: string) {
   return get<types.StudioTask>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}`)
+}
+
+/**
+ * 静默版 GET /tasks/{task_id} 与 GET /batches/{id}：业务失败（任务 / 批次已删除、不是本人的）不弹全局 toast。
+ * 素材库详情用它由来源任务号反查商拍批次提交快照（校色的服装参考图），查不到就不出参考图，不打扰用户。
+ */
+export function studioTaskDetailQuiet(taskId: string) {
+  return getQuiet<types.StudioTask>(`${PREFIX}/tasks/${encodeURIComponent(taskId)}`)
+}
+export function studioBatchDetailQuiet(id: number) {
+  return getQuiet<types.StudioBatchDetail>(`${PREFIX}/batches/${id}`)
 }
 
 /**

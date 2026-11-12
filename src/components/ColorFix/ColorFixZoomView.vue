@@ -22,6 +22,7 @@ import type { ResultColorFix } from './useResultColorFix.ts'
 import type { ColorFixViewMode } from './types.ts'
 import { renderMaskView, type MaskViewMode } from './selection-ops.ts'
 import { contoursToPath, maskContours } from './selection-geometry.ts'
+import { useColorFixPieces } from './references.ts'
 
 const {
   cf,
@@ -179,6 +180,7 @@ function onPointerDown(e: PointerEvent) {
   pointers.set(e.pointerId, localPoint(e))
   if (pointers.size === 1) {
     const p = localPoint(e)
+    tapFrom = { x: p.x, y: p.y }
     panFrom = { x: p.x, y: p.y, tx: tx.value, ty: ty.value }
     panning.value = true
   } else if (pointers.size === 2) {
@@ -211,7 +213,9 @@ function onPointerUp(e: PointerEvent) {
     splitDragging = false
     return
   }
+  const wasTap = pointers.size === 1 && e.type === 'pointerup' && isTap(e)
   pointers.delete(e.pointerId)
+  if (wasTap) scheduleTapPick(localPoint(e))
   if (pointers.size < 2) pinchFrom = null
   if (pointers.size === 1) {
     const p = [...pointers.values()][0]!
@@ -224,10 +228,41 @@ function onPointerUp(e: PointerEvent) {
 
 function onDblClick(e: MouseEvent) {
   if ((e.target as HTMLElement).closest('[data-no-pan]')) return
+  cancelTapPick()
   const p = localPoint(e)
   if (Math.abs(scale.value - 1) < 0.01) fit()
   else actual(p.x, p.y)
 }
+
+// ---------------- 点图切换单品（宿主给了参考图时） ----------------
+
+const pieces = useColorFixPieces(cf)
+let tapFrom: { x: number; y: number } | null = null
+let tapTimer: ReturnType<typeof setTimeout> | null = null
+/** 轻点（没拖动、不在缩放条 / 分割线上） */
+function isTap(e: PointerEvent): boolean {
+  if (!tapFrom || (e.target as HTMLElement).closest('[data-no-pan]') || (e.target as HTMLElement).closest('[role="slider"]')) return false
+  const p = localPoint(e)
+  return Math.hypot(p.x - tapFrom.x, p.y - tapFrom.y) < 5
+}
+function cancelTapPick() {
+  if (tapTimer) clearTimeout(tapTimer)
+  tapTimer = null
+}
+/** 等一个双击的时间：双击是「适应 ↔ 100%」，不能顺手切了单品 */
+function scheduleTapPick(p: { x: number; y: number }) {
+  cancelTapPick()
+  if (!pieces.pickable.value || !natural.value.w || cf.painterOpen.value || cf.pointOpen.value) return
+  tapTimer = setTimeout(() => {
+    tapTimer = null
+    const bw = natural.value.w * scale.value
+    const bh = natural.value.h * scale.value
+    const left = view.value.w / 2 + tx.value - bw / 2
+    const top = view.value.h / 2 + ty.value - bh / 2
+    void pieces.pickPiece((p.x - left) / bw, (p.y - top) / bh)
+  }, 260)
+}
+onBeforeUnmount(cancelTapPick)
 
 // ---------------- 对比分割线 ----------------
 

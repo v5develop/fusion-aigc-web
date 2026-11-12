@@ -399,11 +399,20 @@ export function layersNeedLocalMask(layers: readonly ColorFixLayer[]): boolean {
 }
 
 /**
+ * 蒙版 / 像素的存储作用域里用的「原图标识」：去掉查询串与 #：短期签名地址（入库中 / 免费档水印视图）每次现签，
+ * 带着签名进键会让重新签发后找不回刚涂的选区，过期后还成了死键。没有查询串的地址原样（老键不变）。
+ */
+function scopeImage(src: string): string {
+  const cut = src.search(/[?#]/)
+  return cut < 0 ? src : src.slice(0, cut)
+}
+
+/**
  * 像素层数据在 pixel-store 里的作用域：`<key>::px::<pid>::<full|preview>::<原图>`（以 `<key>::` 开头，clearStoredColorFix 一并清）。
  * full = 原图分辨率；preview = 预览分辨率副本（原图不大于预览尺寸时没有）。
  */
 export function pixelScope(key: string, src: string, pid: string, kind: 'full' | 'preview'): string {
-  return key && src && pid ? `${key}::px::${pid}::${kind}::${src}` : ''
+  return key && src && pid ? `${key}::px::${pid}::${kind}::${scopeImage(src)}` : ''
 }
 
 /**
@@ -412,6 +421,7 @@ export function pixelScope(key: string, src: string, pid: string, kind: 'full' |
  */
 export function layerMaskScope(key: string, src: string, layerId: string, mode: 'paint' | 'point'): string {
   if (!src) return ''
+  src = scopeImage(src)
   if (layerId === LEGACY_LAYER_ID) return mode === 'paint' ? `${key}::${src}` : `${key}::point::${src}`
   return `${key}::${layerId}::${mode}::${src}`
 }

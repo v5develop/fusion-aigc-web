@@ -21,6 +21,8 @@ import {
 import type { IAssetLibAsset, IAssetLibDetail, IAssetLibTag, IAssetLibUpdateReq } from '@/api/asset-library.ts'
 import { formatTime } from '@/views/local-life/constants.ts'
 import { goUploadImage } from '@/api/go-upload.ts'
+import { studioBatchDetailQuiet, studioTaskDetailQuiet } from '@/api/studio.ts'
+import { tryonReferences } from '@/views/studio/colorfix/references.ts'
 import {
   colorFixRegionSanitize,
   colorFixSanitize,
@@ -29,11 +31,18 @@ import {
   saveColorFixVersion,
   saveFlattenedVersion,
   useResultColorFix,
+  type ColorFixReference,
 } from '@/components/ColorFix'
 import { copyText, downloadName } from '../../ui.ts'
 import { useAssetsInCanvas } from '../../useInCanvas.ts'
 
 export const PAGE_SIZE = 6
+
+/** 商拍换装成品入素材库时的入口码（Go studio 配置 Entry.Tryon 默认值） */
+const STUDIO_TRYON_ENTRY = 'studio_tryon'
+/** 来源任务号 → 校色参考图（翻页回看不重复请求；批次快照不会变） */
+const referencesCache = new Map<string, ColorFixReference[]>()
+const REFERENCES_CACHE_MAX = 40
 
 export const KIND_OPTIONS = [
   { label: '其他分类', value: '' },
@@ -555,9 +564,41 @@ export function createAssetDetail(assetId: Ref<number | null>, props: DetailProp
     const base = colorFixBase.value
     return a && base ? `asset:${a.id}:${(base.split('?')[0] ?? '').slice(-64)}` : ''
   })
+  // 商拍换装产出的资产：由来源任务号（provenance.runId）反查批次提交快照，取原服装图作校色浮卡的参考图 / 单品切换。
+  // 只用现有接口（GET /studio/tasks/{id} → batchId → GET /studio/batches/{id}）；批次已删除 / 不是本人的 / 取不到 = 不出参考图
+  const colorFixReferences = ref<ColorFixReference[]>([])
+  let referencesTicket = 0
+  watch(
+    () => {
+      const a = asset.value
+      return a && a.media === 'image' && a.entryCode === STUDIO_TRYON_ENTRY ? (a.provenance?.runId ?? '') : ''
+    },
+    async (taskId) => {
+      const my = ++referencesTicket
+      colorFixReferences.value = []
+      if (!taskId) return
+      try {
+        let list = referencesCache.get(taskId)
+        if (!list) {
+          const task = (await studioTaskDetailQuiet(taskId)).data
+          if (my !== referencesTicket || !task?.batchId) return
+          const batch = (await studioBatchDetailQuiet(task.batchId)).data
+          list = tryonReferences(batch?.batch.payload)
+          referencesCache.set(taskId, list)
+          if (referencesCache.size > REFERENCES_CACHE_MAX) referencesCache.delete(referencesCache.keys().next().value!)
+        }
+        if (my === referencesTicket) colorFixReferences.value = list
+      } catch {
+        /* 取不到：不出参考图，校色照常 */
+      }
+    },
+    { immediate: true },
+  )
+
   const cf = useResultColorFix({
     key: colorFixKey,
     src: colorFixBase,
+    references: colorFixReferences,
     enabled: computed(() => asset.value?.media === 'image' && !previewFailed.value),
     // 本机没存过、当前又是整图校色版本：参数从版本里取（选区版本还原不了蒙版，不自动套）
     saver: {

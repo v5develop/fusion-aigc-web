@@ -16,6 +16,7 @@ import ColorFixPill from './ColorFixPill.vue'
 import ColorFixResultPanel from './ColorFixResultPanel.vue'
 import ColorFixFullscreen from './ColorFixFullscreen.vue'
 import type { ResultColorFix } from './useResultColorFix.ts'
+import { useColorFixPieces } from './references.ts'
 import type { ColorFixViewMode } from './types.ts'
 
 const {
@@ -71,6 +72,15 @@ function openFullscreen() {
   cf.openFullscreen()
 }
 
+/** 点图上的衣服 = 切到那件单品（宿主给了参考图且参数台开着时；涂抹 / 点选弹窗开着时它们盖在上面，点不到这里） */
+const pieces = useColorFixPieces(cf)
+function onImgClick(e: MouseEvent) {
+  if (!pieces.pickable.value || !cf.panelOpen.value || cf.painterOpen.value || cf.pointOpen.value) return
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  if (!r.width || !r.height) return
+  void pieces.pickPiece((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height)
+}
+
 function onImgError() {
   markCorsBlocked(cf.displaySrc.value)
 }
@@ -115,6 +125,9 @@ function onImgError() {
           :alt="alt"
           draggable="false"
           class="block max-w-full max-h-full object-contain select-none"
+          :class="{ 'cursor-pointer': pieces.pickable.value }"
+          :title="pieces.pickable.value ? '点衣服切换到那一件' : undefined"
+          @click="onImgClick"
           @error="onImgError"
         />
       </div>

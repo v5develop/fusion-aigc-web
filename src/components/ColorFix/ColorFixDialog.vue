@@ -21,6 +21,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import ColorFixView from './ColorFixView.vue'
 import { useResultColorFix, type ResultColorFix } from './useResultColorFix.ts'
+import type { ColorFixReference } from './references.ts'
 import type { ColorFixMaskSource } from './segment.ts'
 import { withPngExt } from './files.ts'
 import { COLORFIX_MASK_LOAD_FAILED, colorFixFailureText } from '@/utils/colorfix.ts'
@@ -38,8 +39,10 @@ const props = withDefaults(
     maskUrl?: string
     /** 图的来源标识（商拍任务号 / 画布 run + 候选下标），自动识别时带上；其它图不传 */
     maskSource?: ColorFixMaskSource | null
+    /** 参考图（如商拍的原服装图）：浮卡对色 + 按单品切换图层，见 ./references.ts */
+    references?: ColorFixReference[] | null
   }>(),
-  { title: '图片校色', fileName: '校色图', maskUrl: '', maskSource: null },
+  { title: '图片校色', fileName: '校色图', maskUrl: '', maskSource: null, references: null },
 )
 
 const show = defineModel<boolean>('show', { required: true })
@@ -59,6 +62,7 @@ const cf = useResultColorFix({
   src: computed(() => (show.value ? props.src : '')),
   maskUrl: computed(() => props.maskUrl),
   maskSource: computed(() => props.maskSource),
+  references: computed(() => props.references),
 })
 
 const mode = ref<'result' | 'compare'>('result')

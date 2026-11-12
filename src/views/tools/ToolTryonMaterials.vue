@@ -10,6 +10,10 @@
  * 开资产库选图（产品决定 2026-10-29：模特库选择撤掉；AssetPickerModal 暂不支持预置 kind，打开即全部分类）；
  * 悬停出「模特 n 位」面板，3 列逐位删除。满 9 位入口不再弹文件框，给原型同一句提示。
  *
+ * <p>拍摄面（requireModelViews，商拍工作室开）：悬停面板里每张缩略图下一行「正面 / 背面 / 侧面」，没有默认、逐张必选；
+ * 状态按图片地址记（v-model:modelViews），删图 / 调序不会错位；没选的缩略图琥珀描边，最上面那片叠片角标写当前面或「未选」。
+ * 工具页（Java 单张提交契约没有这个字段）不开，行为不变。
+ *
  * <p>校验（格式 / 体积）与上传通道同 ToolUploadSlot（api/ossUpload.ts）。
  */
 import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
@@ -21,6 +25,7 @@ import ToolGarmentDialog from './ToolGarmentDialog.vue'
 import { outfitLabel, useToolImageUpload, useTryonGarment } from './useTryonGarment'
 import type { TryonGarment } from './useTryonGarment'
 import type { UploadSpec } from './schemas'
+import type { StudioModelView } from '@/api/studio-types'
 
 const props = defineProps<{
   clothSpec: UploadSpec
@@ -37,6 +42,8 @@ const props = defineProps<{
   garmentNote?: string
   /** 服装图合计上限（默认 9，最多 9）：商拍工作室按模型传 min(9, 参考图上限 − 1)，到顶后不再收图、计数按它写 */
   maxGarments?: number
+  /** 模特图逐张必选拍摄面（正面 / 背面 / 侧面）；不传 = 不显示选择，工具页保持原样 */
+  requireModelViews?: boolean
 }>()
 
 defineSlots<{
@@ -48,6 +55,31 @@ defineSlots<{
 const cloth = defineModel<string[]>('cloth', { required: true })
 /** 模特图槽位（modelImageUrl，逐张提交） */
 const models = defineModel<string[]>('models', { required: true })
+/** 拍摄面，按模特图地址记（只在 requireModelViews 时读写）；没有的地址 = 未选 */
+const modelViews = defineModel<Record<string, StudioModelView | undefined>>('modelViews', { default: () => ({}) })
+const MODEL_VIEW_OPTIONS: { key: StudioModelView; label: string }[] = [
+  { key: 'front', label: '正面' },
+  { key: 'back', label: '背面' },
+  { key: 'side', label: '侧面' },
+]
+const viewOf = (url: string): StudioModelView | undefined => modelViews.value[url]
+const viewLabel = (url: string) => MODEL_VIEW_OPTIONS.find((o) => o.key === viewOf(url))?.label ?? '未选'
+const missingViews = computed(() => (props.requireModelViews ? models.value.filter((u) => !viewOf(u)).length : 0))
+function setView(url: string, view: StudioModelView) {
+  if (props.disabled) return
+  modelViews.value = { ...modelViews.value, [url]: view }
+}
+// 图删掉后把它的面一并丢掉：同一地址日后再加回来要重新选，不会带着旧面混进去
+watch(
+  models,
+  (list) => {
+    if (!props.requireModelViews) return
+    const keys = Object.keys(modelViews.value)
+    if (!keys.some((k) => !list.includes(k))) return
+    modelViews.value = Object.fromEntries(keys.filter((k) => list.includes(k)).map((k) => [k, modelViews.value[k]]))
+  },
+  { flush: 'post' },
+)
 
 const message = useMessage()
 const uploadOptions = props.uploadFn ? { upload: props.uploadFn } : {}
@@ -145,6 +177,13 @@ const modelsExpanded = computed(() => modelsPeek.value && models.value.length > 
 const modelsStep = computed(() =>
   modelsExpanded.value ? expandStep(modelPlates.value, garmentPlates.value) : COLLAPSED_STEP,
 )
+
+/** 页面点提交被「没选面」拦下时调用：把模特面板摊开，让用户看到哪几张没选 */
+function revealModels() {
+  clearTimeout(peekTimer)
+  modelsPeek.value = true
+}
+defineExpose({ revealModels })
 
 /** 模特块 / 面板之间悬停接力：离开任意一边先等 180ms */
 let peekTimer: ReturnType<typeof setTimeout> | undefined
@@ -500,6 +539,17 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
                 :style="{ zIndex: index, marginLeft: index ? `${modelsStep - PLATE_W}px` : '0px' }"
               >
                 <img :src="url" alt="" class="block w-full h-full object-cover" />
+                <!-- 只有最上面那片叠片写当前面：下面的片子只露 8px，角标放不下也不该抢眼 -->
+                <span
+                  v-if="requireModelViews && index === Math.min(models.length, PLATES) - 1"
+                  class="absolute left-3px top-3px max-w-[calc(100%-6px)] px-4px rounded-3px border border-solid text-11px leading-15px font-500 whitespace-nowrap"
+                  :class="
+                    viewOf(url)
+                      ? 'border-transparent bg-violet-solid text-white'
+                      : 'border-warning-line bg-warning-soft text-warning'
+                  "
+                  >{{ viewLabel(url) }}</span
+                >
               </span>
             </span>
             <template v-else>
@@ -556,7 +606,11 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
           class="flex flex-col items-center gap-2px w-78px mt-8px mb-0 text-11px leading-15px text-center text-placeholder"
         >
           <b class="text-12px font-500 text-ink-2">模特图</b>
-          <span>{{ models.length ? `${models.length}/${MAX_MODELS}` : `最多${MAX_MODELS}张` }}</span>
+          <span :class="missingViews ? 'text-warning' : ''" :title="missingViews ? '正面 / 背面 / 侧面 必选' : undefined">{{
+            models.length
+              ? `${models.length}/${MAX_MODELS}${missingViews ? ` · ${missingViews}未选` : ''}`
+              : `最多${MAX_MODELS}张`
+          }}</span>
         </p>
       </div>
 
@@ -573,33 +627,61 @@ const cloudPath = 'M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.4 9.1 4.75 4.75 0 
         <div class="flex items-baseline gap-6px mb-6px text-10px text-muted">
           <b class="text-11px font-600 text-ink-2">模特</b>
           <span>{{ models.length }} 位</span>
+          <span v-if="missingViews" class="ml-auto text-10px font-500 text-warning">每张都要选面</span>
         </div>
-        <div class="grid grid-cols-3 gap-8px">
-          <span
-            v-for="(url, index) in models"
-            :key="url"
-            class="relative aspect-[3/4] overflow-hidden rounded-5px border border-solid border-line"
-          >
-            <img :src="url" alt="" class="block w-full h-full object-cover" />
-            <StudioMedBtn
-              v-if="!disabled"
-              label="移除模特"
-              class="top-3px right-3px z-2"
-              @click.stop="removeModel(index)"
+        <div class="grid grid-cols-3 gap-8px" :class="requireModelViews ? 'items-start' : ''">
+          <div v-for="(url, index) in models" :key="url" class="flex min-w-0 flex-col gap-4px">
+            <span
+              class="relative aspect-[3/4] overflow-hidden rounded-5px border border-solid"
+              :class="requireModelViews && !viewOf(url) ? 'border-warning' : 'border-line'"
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
+              <img :src="url" alt="" class="block w-full h-full object-cover" />
+              <StudioMedBtn
+                v-if="!disabled"
+                label="移除模特"
+                class="top-3px right-3px z-2"
+                @click.stop="removeModel(index)"
               >
-                <path :d="trashPath" />
-              </svg>
-            </StudioMedBtn>
-          </span>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path :d="trashPath" />
+                </svg>
+              </StudioMedBtn>
+            </span>
+            <!-- 拍摄面：没有默认，逐张必选；未选时整条琥珀底，选中是实色藤紫 + 白字 -->
+            <span
+              v-if="requireModelViews"
+              role="radiogroup"
+              :aria-label="`模特 ${index + 1} 是哪一面`"
+              class="flex gap-2px p-2px box-border rounded-6px border border-solid"
+              :class="viewOf(url) ? 'border-line bg-surface3' : 'border-warning-line bg-warning-soft'"
+            >
+              <button
+                v-for="opt in MODEL_VIEW_OPTIONS"
+                :key="opt.key"
+                type="button"
+                role="radio"
+                :aria-checked="viewOf(url) === opt.key"
+                :disabled="disabled"
+                class="flex-1 min-w-0 h-26px px-0 border-0 rounded-4px text-12px leading-16px whitespace-nowrap cursor-pointer disabled:cursor-not-allowed focus-visible:(outline-2 outline-solid outline-violet outline-offset-1)"
+                :class="
+                  viewOf(url) === opt.key
+                    ? 'bg-violet-solid text-white font-500'
+                    : 'bg-transparent text-ink-2 hover:bg-surface'
+                "
+                @click.stop="setView(url, opt.key)"
+              >
+                {{ opt.label }}
+              </button>
+            </span>
+          </div>
         </div>
       </div>
     </div>

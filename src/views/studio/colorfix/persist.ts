@@ -115,7 +115,7 @@ function schedule(taskId: string, value: ColorFixParams, delay: number) {
 }
 
 /** 记下这个任务的参数（立即进内存与 localStorage，停手 500ms 后同步到网关） */
-export function saveTaskColorFix(task: StudioTask, p: ColorFixParams) {
+export function saveTaskColorFix(task: Pick<StudioTask, 'taskId' | 'status'>, p: ColorFixParams) {
   const id = task.taskId
   const value = { ...p }
   session.set(id, value)
@@ -125,7 +125,7 @@ export function saveTaskColorFix(task: StudioTask, p: ColorFixParams) {
 }
 
 /** 页面关闭 / 切走：防抖里还没发的保存立即用 keepalive 发出去（发不出去也没关系，本机 pendingSync 下次补发） */
-function flushPending() {
+export function flushPending() {
   if (!pending.size) return
   const list = [...pending.entries()]
   pending.clear()
@@ -141,7 +141,12 @@ function flushPending() {
   }
 }
 
-if (typeof window !== 'undefined') window.addEventListener('pagehide', flushPending)
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushPending)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPending()
+  })
+}
 
 // ---------------- 「存为资产」去重：每个任务记住上次存进素材库的那组参数（内存 + localStorage） ----------------
 

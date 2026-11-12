@@ -19,6 +19,7 @@ import { studioCancelBatch, studioDeleteBatch } from '@/api/studio.ts'
 import type { StudioBatchDetail } from '@/api/studio-types.ts'
 import { downloadImagesAsZip } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
+import { parseStudioPayload } from '../../payload.ts'
 import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal, isTransientResult } from '../../constants.ts'
 import HistoryActionRow from '@/components/HistoryActionRow/index.vue'
 import { formatFullTime, formatShortTime } from '@/utils/time.ts'
@@ -84,12 +85,7 @@ async function download(d: StudioBatchDetail) {
 
 /** 提交快照（payload JSON）；解析失败按空对象 */
 function payloadOf(d: StudioBatchDetail): Record<string, unknown> {
-  try {
-    const p = JSON.parse(d.batch.payload || '{}')
-    return p && typeof p === 'object' && !Array.isArray(p) ? (p as Record<string, unknown>) : {}
-  } catch {
-    return {}
-  }
+  return parseStudioPayload(d.batch.payload)
 }
 const strList = (v: unknown) =>
   (Array.isArray(v) ? v : []).filter((u): u is string => typeof u === 'string' && /^https?:\/\//i.test(u))
@@ -170,12 +166,8 @@ function openLightbox(d: StudioBatchDetail) {
 }
 
 function reedit(d: StudioBatchDetail) {
-  let payload: Record<string, unknown>
-  try {
-    const parsed = JSON.parse(d.batch.payload || '{}')
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('bad payload')
-    payload = parsed as Record<string, unknown>
-  } catch {
+  const payload = parseStudioPayload(d.batch.payload)
+  if (!d.batch.payload || !Object.keys(payload).length) {
     message.error('该记录没有可回填的参数')
     return
   }
@@ -192,17 +184,13 @@ const page = ref(1)
 /** 一条批次可被搜到的提示词：提交快照里的 prompt / global_prompt / pose_prompts + 各任务 prompt_summary */
 function promptTextOf(d: StudioBatchDetail): string {
   const parts: string[] = []
-  try {
-    const p = JSON.parse(d.batch.payload || '{}') as Record<string, unknown>
-    if (typeof p.prompt === 'string') parts.push(p.prompt)
-    if (typeof p.globalPrompt === 'string') parts.push(p.globalPrompt)
-    if (p.posePrompts && typeof p.posePrompts === 'object') {
-      for (const v of Object.values(p.posePrompts as Record<string, unknown>)) {
-        if (typeof v === 'string') parts.push(v)
-      }
+  const p = parseStudioPayload(d.batch.payload)
+  if (typeof p.prompt === 'string') parts.push(p.prompt)
+  if (typeof p.globalPrompt === 'string') parts.push(p.globalPrompt)
+  if (p.posePrompts && typeof p.posePrompts === 'object') {
+    for (const v of Object.values(p.posePrompts as Record<string, unknown>)) {
+      if (typeof v === 'string') parts.push(v)
     }
-  } catch {
-    // payload 不是合法 JSON：只按任务摘要搜
   }
   for (const t of d.tasks) if (t.promptSummary) parts.push(t.promptSummary)
   return parts.join('\n').toLowerCase()

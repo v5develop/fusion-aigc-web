@@ -58,6 +58,7 @@ import {
   type ColorFixCropResult,
   colorFixRenderLayers,
   colorFixSanitize,
+  colorFixEquals,
   loadColorFix,
   saveColorFix,
   type ColorFixParams,
@@ -68,6 +69,7 @@ import {
   COLORFIX_GARMENT_PARTS,
   COLORFIX_REGION_DEFAULT,
   type ColorFixAutoTarget,
+  type ColorFixGarmentPart,
   type ColorFixRegion,
   type ColorFixRegionMode,
 } from './types.ts'
@@ -133,6 +135,7 @@ import { pointSegmentBlocked } from './point-support.ts'
 import { triggerDownload, withImageExt, withPngExt } from './files.ts'
 import { packSession, unpackSession, type SelectionSession } from './selection-session.ts'
 import { adjustSignature, type ColorFixAdjust } from '@/utils/colorfix-math.ts'
+import type { ColorFixReference } from './references.ts'
 
 export { triggerDownload }
 
@@ -155,9 +158,13 @@ let instanceSeq = 0
 
 /** 远端保存（可选）：本机 localStorage 照写，另外停手 500ms 调 save；load 在切到这个键时调一次（本机没有时才采用） */
 export interface ColorFixRemoteSaver {
-  load?(key: string): Promise<ColorFixParams | null> | ColorFixParams | null
+  load?(key: string, ctx?: { hasLocal: boolean }): Promise<ColorFixParams | null> | ColorFixParams | null
+  /** true = 本机已有存档时也问 load，返回值与本机不同就采纳（宿主自己管优先级，如商拍的 内存 → 待同步 → 服务端 → 本机） */
+  authoritative?: boolean
   /** params / region 为折回旧形状的值（见 layers.ts legacyOf）；layers 为完整图层（新增参数，老实现可忽略） */
   save?(key: string, params: ColorFixParams, region: ColorFixRegion, layers?: ColorFixLayer[]): Promise<unknown> | void
+  /** 宿主自己的防抖也立即发出去（引擎在页面关闭 / 切走 / 卸载、发完最后一次 save 后调） */
+  flush?(): void
 }
 
 export interface ResultColorFixOptions {
@@ -165,6 +172,11 @@ export interface ResultColorFixOptions {
   key: Ref<string | undefined | null>
   /** 当前要校色的原图地址；空 = 没有可校色的图 */
   src: Ref<string | undefined | null>
+  /**
+   * 蒙版 / 像素存储的稳定标识（可选，如商拍任务号）：换图（私有 → 公有地址）后选区、像素层、撤销里引用的数据都不变。
+   * 给了它之后，按旧作用域（图片地址）存过的手动蒙版在新作用域读不到时，会读一次旧的并搬过来（老数据照常还原）
+   */
+  scopeImage?: Ref<string | undefined | null>
   /** 现成的蒙版（如商拍任务的 mask_url）：作为 {@link maskTarget} 这个目标的「自动识别」结果，免一次识别请求 */
   maskUrl?: Ref<string | undefined | null>
   /** 当前图的来源标识（商拍任务号 / 画布 run + 候选下标）：自动识别时带上，私有签名地址靠它识别；素材库等不传 */
@@ -176,6 +188,11 @@ export interface ResultColorFixOptions {
    * 是数组（哪怕空）即说明服务端支持服装细分部位；undefined = 不知道（老网关）
    */
   maskParts?: Ref<ColorFixPresetPart[] | undefined | null>
+  /**
+   * 参考图（可选，如商拍换装的原服装图）：校色时以浮卡显示，供肉眼对色；带 part 的参考图同时是「单品」，
+   * 参数台 / 图上点选可按单品切换图层（见 ./references.ts）。不传 / 空 = 不出浮卡
+   */
+  references?: Ref<ColorFixReference[] | undefined | null>
   /** 总开关（如只对图片结果开）；不传 = 开 */
   enabled?: Ref<boolean>
   /** 「恢复默认」/ 初始参数 */
@@ -184,6 +201,11 @@ export interface ResultColorFixOptions {
   defaultRegion?: Partial<ColorFixRegion>
   /** 提供哪些选区方式；默认都给（自动识别在接口 404 / segmenter=null 时自动隐藏） */
   regionModes?: ColorFixRegionMode[]
+  /**
+   * 自动识别不可用（接口 404 / segmenter=null）且没有现成蒙版时的宿主兜底：返回蒙版地址就当作这层的识别结果，
+   * 返回 ''/null 照常报「不支持自动识别」。不传 = 不兜底（其它页面行为不变）
+   */
+  unsupportedMask?: (target: ColorFixAutoTarget, parts: ColorFixGarmentPart[]) => string | null
   /** 自动识别函数；null = 不提供自动识别（有 maskUrl 时仍可用那一个目标） */
   segmenter?: ColorFixSegmenter | null
   /** 远端保存（可选） */
@@ -238,6 +260,11 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   /** 没有持久化键时蒙版作用域用的临时键（本实例唯一；蒙版只进内存） */
   const memKey = `~mem${(instanceSeq = (instanceSeq + 1) % 1e9)}${Math.floor(Math.random() * 1e6).toString(36)}`
   const scopeKey = computed(() => key.value || memKey)
+  /**
+   * 蒙版 / 像素在存储里的「原图标识」：宿主给了 `scopeImage`（如商拍的任务号）就用它——图片地址在入库后会从私有桶签名地址换成
+   * 公有地址，不稳定的地址进键会让入库窗口里涂的选区 / 合并的像素层换地址后找不回；没给就是图片地址本身（去查询串，见 layers.ts）。
+   */
+  const scopeImg = computed(() => opts.scopeImage?.value || src.value)
   /** 当前蒙版只放内存（没有持久化键） */
   const memoryOnly = computed(() => !key.value)
 
@@ -317,6 +344,8 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
         : [],
   )
   const presetParts = computed(() => opts.maskParts?.value ?? null)
+  /** 参考图（浮卡 / 单品切换用） */
+  const references = computed<ColorFixReference[]>(() => opts.references?.value ?? [])
   // 任务带 mask_parts 字段（哪怕空数组）= 新服务端，支持服装细分部位
   watch(
     () => Array.isArray(opts.maskParts?.value),
@@ -353,6 +382,14 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     if (l.region.mode === 'point') return m.point
     return ''
   }
+  /** 某层当前生效的蒙版（未反选；底层 / 未就绪 / 没有这层 = ''）——单品命中检测用 */
+  const layerMask = (id: string): string => {
+    const l = layers.value.find((x) => x.id === id)
+    return l ? effectiveMaskOf(l) : ''
+  }
+  /** 现成蒙版里能直接当作「服装 · parts」的那张（商拍任务的 mask_url / mask_parts）；没有 = '' */
+  const presetMaskFor = (parts: readonly ColorFixGarmentPart[]): string =>
+    colorFixPresetFor(colorFixRequestParts(maskTarget, [...parts]), presetMask.value, presetParts.value)
   const pendingOf = (l: ColorFixLayer) => (isPixelLayer(l) ? !pixelReady(l) : !isBaseLayer(l) && !effectiveMaskOf(l))
 
   // --- 像素层的数据（按 pid；复制图层共用同一份）：换图 / 换键就重读 ---
@@ -371,7 +408,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     return pixelOf(l)?.state === 'ok'
   }
   const pixelScopes = (pid: string) =>
-    [pixelScope(scopeKey.value, src.value, pid, 'full'), pixelScope(scopeKey.value, src.value, pid, 'preview')] as const
+    [pixelScope(scopeKey.value, scopeImg.value, pid, 'full'), pixelScope(scopeKey.value, scopeImg.value, pid, 'preview')] as const
   const pixelTickets = new Map<string, number>()
   async function loadPixelData(pid: string) {
     const my = (pixelTickets.get(pid) ?? 0) + 1
@@ -386,7 +423,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   watch(
     () => [
       ...new Set(layers.value.filter((l) => isPixelLayer(l) && l.pixel).map((l) => l.pixel!.pid)),
-    ].map((pid) => `${pid}|${scopeKey.value}|${src.value}`),
+    ].map((pid) => `${pid}|${scopeKey.value}|${scopeImg.value}`),
     (list) => {
       const alive = new Set<string>()
       for (const sig of list) {
@@ -448,6 +485,13 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     }
     patchMask(l.id, { auto: '' })
     if (!segmenter || !colorFixSegmentSupported.value) {
+      // 宿主兜底（可选，如商拍「全部服装」退回整图）：给了蒙版就用它，不报「不支持自动识别」
+      const fallback = opts.unsupportedMask?.(target, parts)
+      if (fallback) {
+        prevAbort?.abort()
+        patchMask(l.id, { auto: fallback, busy: false })
+        return
+      }
       prevAbort?.abort()
       patchMask(l.id, { busy: false, error: '当前环境不支持自动识别，请改用手动涂抹' })
       return
@@ -524,21 +568,30 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   // --- 手动蒙版（涂抹 / 点选）：每层两份作用域，换图 / 换键就重读 ---
 
+  /** 读一个蒙版；给了 scopeImage 且新作用域里没有：读一次旧作用域（图片地址）并搬过来 */
+  async function loadStoredMask(scope: string, id: string, mode: 'paint' | 'point'): Promise<string> {
+    const url = await loadPaintedMask(scope)
+    if (url || !opts.scopeImage?.value || !src.value) return url
+    const old = layerMaskScope(scopeKey.value, src.value, id, mode)
+    if (!old || old === scope) return ''
+    const moved = await copyPaintedMask(old, scope, { memoryOnly: memoryOnly.value }).catch(() => null)
+    return moved?.url ?? ''
+  }
   const storeTickets = new Map<string, number>()
   async function loadStoredMasks(id: string) {
     const my = (storeTickets.get(id) ?? 0) + 1
     storeTickets.set(id, my)
-    const paintScope = layerMaskScope(scopeKey.value, src.value, id, 'paint')
-    const pointScope = layerMaskScope(scopeKey.value, src.value, id, 'point')
+    const paintScope = layerMaskScope(scopeKey.value, scopeImg.value, id, 'paint')
+    const pointScope = layerMaskScope(scopeKey.value, scopeImg.value, id, 'point')
     patchMask(id, { paint: '', point: '', paintVolatile: false, pointVolatile: false })
     const [paint, point] = await Promise.all([
-      paintScope ? loadPaintedMask(paintScope) : '',
-      pointScope ? loadPaintedMask(pointScope) : '',
+      paintScope ? loadStoredMask(paintScope, id, 'paint') : '',
+      pointScope ? loadStoredMask(pointScope, id, 'point') : '',
     ])
     if (storeTickets.get(id) === my) patchMask(id, { paint, point })
   }
   const storeSigs = computed(() =>
-    layers.value.filter(isSelectionLayer).map((l) => `${l.id}|${scopeKey.value}|${src.value}`),
+    layers.value.filter(isSelectionLayer).map((l) => `${l.id}|${scopeKey.value}|${scopeImg.value}`),
   )
   const storeLoaded = new Map<string, string>()
   watch(
@@ -567,7 +620,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     for (const l of layers.value) {
       if (!isSelectionLayer(l)) continue
       for (const mode of ['paint', 'point'] as const) {
-        if (scope !== layerMaskScope(scopeKey.value, src.value, l.id, mode)) continue
+        if (scope !== layerMaskScope(scopeKey.value, scopeImg.value, l.id, mode)) continue
         const my = (storeTickets.get(l.id) ?? 0) + 1
         storeTickets.set(l.id, my)
         void loadPaintedMask(scope).then((url) => {
@@ -663,7 +716,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       [...now].flatMap((pid) => pixelScopes(pid)).filter(Boolean),
     )
   }
-  watch([scopeKey, src], () => syncPixelRefs(), { flush: 'post' })
+  watch([scopeKey, scopeImg], () => syncPixelRefs(), { flush: 'post' })
 
   // 撤销 / 重做（只记图层）
   type Snapshot = { layers: ColorFixLayer[]; selected: string }
@@ -806,8 +859,8 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     const image = src.value
     void (async () => {
       for (const mode of ['paint', 'point'] as const) {
-        const fromScope = layerMaskScope(k, image, from.id, mode)
-        const toScope = layerMaskScope(k, image, copy.id, mode)
+        const fromScope = layerMaskScope(k, scopeImg.value, from.id, mode)
+        const toScope = layerMaskScope(k, scopeImg.value, copy.id, mode)
         if (!fromScope || !toScope) continue
         const saved = await copyPaintedMask(fromScope, toScope, { memoryOnly: memOnly })
         if (saved && image === src.value && layers.value.some((l) => l.id === copy.id))
@@ -890,7 +943,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     const k = scopeKey.value
     const memOnly = memoryOnly.value
     const image = src.value
-    const scope = layerMaskScope(k, image, l.id, mode)
+    const scope = layerMaskScope(k, scopeImg.value, l.id, mode)
     if (!scope) return
     const { url, persisted } = await savePaintedMask(scope, blob, { memoryOnly: memOnly })
     // 选区会话（继续编辑用）与蒙版同作用域、同生命周期；没给会话 = 删掉旧的（免得下次还原成过期的编辑状态）
@@ -927,7 +980,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   async function loadSelectionSessionOf(mode: 'paint' | 'point'): Promise<SelectionSession | null> {
     const l = selectedLayer.value
     if (!isSelectionLayer(l) || !maskOf(l.id)[mode]) return null
-    const scope = layerMaskScope(scopeKey.value, src.value, l.id, mode)
+    const scope = layerMaskScope(scopeKey.value, scopeImg.value, l.id, mode)
     if (!scope) return null
     const hit = await loadSelectionSession(scope).catch(() => null)
     if (!hit || hit.maskSize < 0) return null
@@ -937,7 +990,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
 
   async function clearPaintedMask() {
     const l = selectedLayer.value
-    const scope = layerMaskScope(scopeKey.value, src.value, l.id, 'paint')
+    const scope = layerMaskScope(scopeKey.value, scopeImg.value, l.id, 'paint')
     patchMask(l.id, { paint: '' })
     if (scope) await deletePaintedMask(scope)
   }
@@ -980,11 +1033,36 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     if (opts.saver?.save) {
       if (remoteTimer) clearTimeout(remoteTimer)
       const snap = cloneLayers(layers.value)
+      remoteJob = () => void Promise.resolve(opts.saver?.save?.(k, leg.params, leg.region, snap)).catch(() => {})
       remoteTimer = setTimeout(() => {
         remoteTimer = null
-        void Promise.resolve(opts.saver?.save?.(k, leg.params, leg.region, snap)).catch(() => {})
+        const job = remoteJob
+        remoteJob = null
+        job?.()
       }, 500)
     }
+  }
+
+  /** 防抖里还没发出去的远端保存立即发（页面关闭 / 切走 / 卸载），再让宿主 saver 把它自己的防抖也冲掉 */
+  let remoteJob: (() => void) | null = null
+  function flushRemote() {
+    if (remoteTimer) clearTimeout(remoteTimer)
+    remoteTimer = null
+    const job = remoteJob
+    remoteJob = null
+    job?.()
+    opts.saver?.flush?.()
+  }
+  // pagehide 无条件冲（Safari / bfcache 下它触发时 visibilityState 可能还是 visible）；visibilitychange 只在变 hidden 时冲
+  function onPageHide() {
+    flushRemote()
+  }
+  function onVisibility() {
+    if (document.visibilityState === 'hidden') flushRemote()
+  }
+  if (opts.saver?.save && typeof window !== 'undefined') {
+    window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisibility)
   }
 
   let loading = false
@@ -1003,6 +1081,8 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   watch(
     key,
     async (k, oldK) => {
+      // 换键（切任务 / 切资产）：上一条防抖里还没发的远端保存立即发出去，不被新键的保存顶掉
+      if (oldK !== undefined) flushRemote()
       loading = true
       if (flattenNext) {
         const fromFlattened = oldK === flattenFromKey
@@ -1031,11 +1111,32 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       pointOpen.value = false
       fullscreen.value = false
       loading = false
+      if (stored && k && opts.saver?.load && opts.saver.authoritative) {
+        // 宿主说远端 / 它自己的存取顺序为准（如商拍：内存 → 待同步 → 服务端 → 本机）：本机有存档也问一次，与本机不同就采纳
+        const remote = colorFixSanitize(await Promise.resolve(opts.saver.load(k, { hasLocal: true })).catch(() => null))
+        if (remote && key.value === k && !panelOpen.value) {
+          const leg = legacyOf(layers.value)
+          const base = layers.value.find(isBaseLayer)
+          const mine = leg.exact ? leg.params : (base?.params ?? leg.params)
+          if (!colorFixEquals(remote, mine)) {
+            loading = true
+            // 只换五参数：能折回旧形状的整套换；多层时只换整图底层，选区图层留本机
+            if (leg.exact) loadFrom(layersFromLegacy(remote, leg.region), selectedLayerId.value)
+            else loadFrom(layers.value.map((l) => (isBaseLayer(l) ? { ...l, params: { ...remote } } : l)), selectedLayerId.value)
+            touched.value = true
+            const after = legacyOf(layers.value)
+            saveColorFix(k, after.params)
+            saveRegion(k, after.region)
+            saveLayers(k, layers.value, selectedLayerId.value, legacySignature(after.params, after.region))
+            loading = false
+          }
+        }
+      }
       if (!stored && k && opts.saver?.load) {
-        const remote = colorFixSanitize(await Promise.resolve(opts.saver.load(k)).catch(() => null))
+        const remote = colorFixSanitize(await Promise.resolve(opts.saver.load(k, { hasLocal: false })).catch(() => null))
         if (remote && key.value === k && !touched.value) {
           loading = true
-          loadFrom(layersFromLegacy(remote, regionDefault()))
+          loadFrom(layersFromLegacy(remote, storedRegion ?? regionDefault()))
           touched.value = true
           loading = false
           saveColorFix(k, remote)
@@ -1102,6 +1203,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
     const k = key.value
     if (remoteTimer) clearTimeout(remoteTimer)
     remoteTimer = null
+    remoteJob = null
     loading = true
     panelOpen.value = false
     painterOpen.value = false
@@ -1174,7 +1276,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
         return false
       }
       const pid = newPixelId()
-      const fullScope = pixelScope(k, image, pid, 'full')
+      const fullScope = pixelScope(k, scopeImg.value, pid, 'full')
       const fs = await savePixel(fullScope, out.full, { memoryOnly: memOnly })
       if (!fs.ok) {
         noteLayers(mergeTooLargeText(), 6000)
@@ -1183,7 +1285,7 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
       saved.push(fullScope)
       let previewUrl = fs.url
       if (out.preview) {
-        const previewScope = pixelScope(k, image, pid, 'preview')
+        const previewScope = pixelScope(k, scopeImg.value, pid, 'preview')
         const ps = await savePixel(previewScope, out.preview, { memoryOnly: memOnly })
         if (!ps.ok) {
           discard()
@@ -1439,7 +1541,11 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   onBeforeUnmount(() => {
     clearTimers()
     ticket += 1
-    if (remoteTimer) clearTimeout(remoteTimer)
+    if (opts.saver?.save && typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+    flushRemote()
     if (burstTimer) clearTimeout(burstTimer)
     if (capTimer) clearTimeout(capTimer)
     if (flattenTimer) clearTimeout(flattenTimer)
@@ -1546,6 +1652,9 @@ export function useResultColorFix(opts: ResultColorFixOptions) {
   return {
     /** 底层「恢复默认」用的那组参数 */
     defaults,
+    references,
+    layerMask,
+    presetMaskFor,
     // 状态
     params,
     region,

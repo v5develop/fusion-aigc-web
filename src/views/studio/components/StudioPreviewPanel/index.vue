@@ -12,69 +12,57 @@
  *   <li>批次摘要：成功 / 失败 / 点数 / 时间 / 阶段进度 + 取消批次 / 重新编辑 / 删除批次；失败任务在舞台给「重试这张」。</li>
  * </ul>
  *
- * <p>校色（商拍换装 / 姿态复刻 / 图片生成）：参数台编辑 useColorFix 单例里的 params；切任务时按任务还原参数
- * （colorfix/persist.ts），**不改**输入区的提交开关 enabled（胶囊用 openPanelOnly）——这一批结果是否校色只看它提交时的
- * `payload.colorFix`，或这张图保存过参数 / 本次调过 / 参数台开着。参数台开着时切到别的任务，新任务直接进校色态并套用
- * 它自己的参数（面板数值与舞台一致）。用户打开过参数台、调过参数或点过候选后，选中的任务就钉住，轮询带来的新成品
- * 不会把舞台切走。显示、灯箱、对比右侧、下载、存资产都用烘进像素的图（colorfix/useColorFixBake.ts），
- * CSS filter 只在烘好之前做即时预览。
+ * <p>校色（商拍换装 / 姿态复刻 / 图片生成）：与全站同一份分层引擎（components/ColorFix：useResultColorFix + ColorFixResultPanel /
+ * ColorFixCompare / ColorFixFullscreen），键 `studio:<task_id>`；整图底层 + 选区图层、替换颜色、更多调整、撤销都在引擎里。
+ * 服务端那一份五参数（PATCH /studio/tasks/{id}/color-fix）经 saver 接入（colorfix/persist.ts 的读取顺序 / 防抖 / 兜底不变）：
+ * 只有整图底层（或底层全零 + 一个选区层）时与旧版逐值相同，多层时只存整图底层的值，完整图层只在本机与「存为资产」版本里。
+ * 服务端从不烘像素，素材库版本 1 = 原图，不会出现「所见 ≠ 交付」。商拍批次的服装图（payload 的 items + garmentImages）作参考图浮卡
+ * （colorfix/references.ts），点图上的衣服 / 点浮卡页签 = 切到那件单品的图层。不改输入区的提交开关 enabled（useColorFix 单例只剩它）——
+ * 这一批结果是否校色只看它提交时的 `payload.colorFix`（没存过参数时套默认参数），或这张图保存过参数 / 本次调过 / 参数台开着。
+ * 参数台开着切到别的任务，新任务直接进校色态。用户打开过参数台或点过候选后，选中的任务就钉住，轮询带来的新成品不会把舞台切走。
+ * 显示、灯箱、对比右侧、下载、存资产都用烘进像素的图，CSS filter 只在烘好之前做即时预览。
  *
- * <p>选区（局部调色，复用 components/ColorFix 套件的识别 / 涂抹 / 存储）：整图 / 自动识别（服装 · 商品 · 人物 · 背景，
- * POST /api/v1/studio/masks）/ 手动涂抹，可反选、柔化。商拍 / 姿态默认「自动识别 · 服装」：任务带 `mask_url` 直接用，
- * 没有就向接口要（与服务端补的蒙版共用缓存）；仍然没有服装区域时退回整图并提示「未识别到服装区域，校色将作用于整张图」。
- * 图片生成默认整图。选区按任务存本机（colorfix-region:studio:<task_id>）。
- * 服装细分部位（服务端支持时）：商拍默认只选用户提交的单品（items → 上衣 / 下装 / 裙装 / 外套 / 鞋 / 包帽），任务的 `mask_url`
- * 就是这些单品的合并蒙版、`mask_parts` 是逐件；改选部位时单件直接用 `mask_parts`，其余组合向接口要。
+ * <p>选区：商拍 / 姿态默认「自动识别 · 服装」：任务带 `mask_url` 直接用，没有就向接口要（带任务号，与服务端补的蒙版共用缓存）；
+ * 入库刚完成、服务端补蒙版前最多等 10 秒再自己识别；「全部服装」没识别到时用全白蒙版退回整图并提示「未识别到服装区域，校色将作用于整张图」。
+ * 图片生成默认整图。商拍默认只选用户提交的单品（items → 上衣 / 下装 / 裙装 / 外套 / 鞋 / 包帽），任务的 `mask_url` 是这些单品的合并蒙版、
+ * `mask_parts` 是逐件。选区区域按键存本机（`colorfix-region:studio:<task_id>`，与旧版同名，老选区原样还原）。
  *
  * <p>未选中 / 无历史时：有功能介绍文案就按原型 ToolIntroPanel 整列显示「功能介绍 + 适用场景」（有在跑任务时补一行提示），
  * 否则显示空态引导。在跑批次由 useStudioHistory 轮询，这里只做展示。
  */
-import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue'
+import { computed, nextTick, reactive, ref, useSlots, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { studioBatchDetail, studioCancelBatch, studioDeleteBatch, studioRetryTask } from '@/api/studio.ts'
 import { toApiError } from '@/api/index.ts'
 import {
-  COLORFIX_REGION_DEFAULT,
-  ColorFixMaskPainter,
-  colorFixGarmentParts,
-  colorFixPresetFor,
-  colorFixRequestParts,
-  colorFixSegmentSupported,
-  defaultColorFixSegmenter,
-  colorFixSegmentErrorText,
+  ColorFixCompare,
+  ColorFixFullscreen,
+  ColorFixPill,
+  ColorFixResultPanel,
   COLORFIX_SRC_NOT_FOUND,
   COLORFIX_SRC_NOT_READY,
-  noteColorFixGarmentParts,
-  bakeForUpload,
-  COLORFIX_GARMENT_PARTS,
-  type ColorFixAutoTarget,
+  colorFixRequestParts,
+  colorFixSegmentErrorText,
+  defaultColorFixSegmenter,
+  isBaseLayer,
+  legacyOf,
+  triggerDownload,
+  withPngExt,
+  saveColorFixLayersVersion,
+  useColorFixPieces,
+  useResultColorFix,
   type ColorFixRegion,
-  type ColorFixRegionMode,
+  type ColorFixRemoteSaver,
+  type ColorFixSegmenter,
+  type ColorFixViewMode,
 } from '@/components/ColorFix/index.ts'
-import {
-  copyPaintedMask,
-  loadPaintedMask,
-  loadRegion,
-  savePaintedMask,
-  saveRegion,
-} from '@/components/ColorFix/mask-store.ts'
-import { goUploadImage } from '@/api/go-upload.ts'
-import { assetLibAddVersion } from '@/api/asset-library.ts'
 import type { StudioBatchDetail, StudioTask } from '@/api/studio-types.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import LibraryRetryButton from '@/components/LibraryRetryButton/index.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import type { LightboxItem } from '@/components/MediaLightbox/index.vue'
 import ToolImageCompare from '@/views/tools/ToolImageCompare.vue'
-import ColorFixPanel from '@/views/tools/ColorFixPanel.vue'
-import {
-  COLORFIX_DEFAULT,
-  COLORFIX_MASK_LOAD_FAILED,
-  colorFixDataUrlToFile,
-  colorFixEquals,
-  corsAttr,
-  markCorsBlocked,
-} from '@/utils/colorfix.ts'
+import { COLORFIX_DEFAULT, colorFixEquals, corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import { downloadImage } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
 import {
@@ -84,24 +72,25 @@ import {
   LIBRARY_PENDING_LABEL,
   batchChip,
   batchProgress,
+  extOf,
   formatTime,
   isBatchTerminal,
   isTransientResult,
   taskCaption,
   taskChip,
   taskLibraryStatus,
-  urlIdentity,
 } from '../../constants.ts'
-import { useColorFix } from '../../colorfix/useColorFix.ts'
 import { tryonItemParts } from '../../colorfix/mask-parts.ts'
-import { downloadDataUrl, extOf, useColorFixBake } from '../../colorfix/useColorFixBake.ts'
+import { tryonReferences } from '../../colorfix/references.ts'
 import {
+  flushPending,
   lastSavedAssetColorFix,
   loadTaskColorFix,
   rememberSavedAssetColorFix,
   saveTaskColorFix,
 } from '../../colorfix/persist.ts'
 import { STUDIO_INTRO } from './intro.ts'
+import { parseStudioPayload } from '../../payload.ts'
 import StudioPromptCard from './StudioPromptCard.vue'
 import { batchColorFix, canRetryTask, compareBefore, retrySupported, unitPoints } from './compare.ts'
 
@@ -159,12 +148,8 @@ async function removeBatch(d: StudioBatchDetail) {
 }
 
 function reedit(d: StudioBatchDetail) {
-  let payload: Record<string, unknown>
-  try {
-    const parsed = JSON.parse(d.batch.payload || '{}')
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('bad payload')
-    payload = parsed as Record<string, unknown>
-  } catch {
+  const payload = parseStudioPayload(d.batch.payload)
+  if (!d.batch.payload || !Object.keys(payload).length) {
     message.error('该记录没有可回填的参数')
     return
   }
@@ -310,6 +295,10 @@ watch(
   () => {
     selectedTaskId.value = ''
     mode.value = 'result'
+    // 服务端补蒙版的等待记录按批次清（任务号不会复用，但别让三张表只增不减）
+    maskSeenPending.clear()
+    maskDeadline.clear()
+    maskSettled.clear()
   },
 )
 
@@ -337,10 +326,12 @@ const headerName = computed(() => {
   return !kind || caption.startsWith(kind) ? caption : `${kind} · ${caption}`
 })
 
-// ---------------- 校色 ----------------
-
-const cf = useColorFix()
-const { panelOpen, params: cfParams, touched: cfTouched } = cf
+// ---------------- 校色（分层引擎，components/ColorFix 套件，全站同一份） ----------------
+// 参数 / 选区 / 图层由 useResultColorFix 管：键 = `studio:<task_id>`（本机 `colorfix:` / `colorfix-region:` / `colorfix-layers:` 三组键，
+// 区域键与旧版 `colorfix-region:studio:<task_id>` 同名，老选区原样还原）。服务端那一份（五个滑杆，PATCH /studio/tasks/{id}/color-fix）
+// 走 saver：存 = 折回旧形状的五参数（只有整图底层，或底层全零 + 一个选区层时与旧版逐值相同；多层时只存整图底层的值），
+// 取 = persist.ts 的老顺序（内存 → 待同步的本机值 → 任务自带 color_fix_params → 老 localStorage）；提交时开了「默认校色」且没存过 = 默认参数。
+// 服务端从不烘像素 / 不参与交付：素材库版本 1 永远是原图，「校色后」只有「存为资产」追加的版本才有（params 带 colorFix + colorFixLayers）。
 
 /** 校色：商拍换装 / 姿态复刻（原型 COLORFIX_TOOLS）+ 图片生成 */
 const cfTool = computed(() => ['tryon', 'pose', 'imagegen'].includes(props.detail?.batch.kind ?? ''))
@@ -348,10 +339,11 @@ const cfTool = computed(() => ['tryon', 'pose', 'imagegen'].includes(props.detai
 const garmentKind = computed(() => props.detail?.batch.kind === 'tryon' || props.detail?.batch.kind === 'pose')
 const cfTitle = computed(() => (garmentKind.value ? '服装校色' : '图片校色'))
 
-// ---------------- 选区（局部调色） ----------------
+const STUDIO_KEY = 'studio:'
+/** 没有成功的成品（生成中 / 失败）= 没有键、没有图，校色不可用 */
+const cfKey = computed(() => (cfTool.value && selectedSuccess.value ? STUDIO_KEY + selectedSuccess.value.taskId : ''))
+const findTask = (id: string): StudioTask | null => tasks.value.find((t) => t.taskId === id) ?? null
 
-const region = ref<ColorFixRegion>({ ...COLORFIX_REGION_DEFAULT })
-const regionKey = (t: StudioTask) => `studio:${t.taskId}`
 /**
  * 商拍默认部位：任务已有蒙版时取它实际覆盖的部位（mask_parts；空 = 服务端按全部服装出的），
  * 还没有蒙版时取提交的单品；姿态 / 图片生成为空（全部服装）
@@ -365,291 +357,188 @@ function defaultParts(t: StudioTask | null) {
     )
   return tryonItemParts(props.detail?.batch.payload)
 }
-const regionDefault = (t: StudioTask | null = selectedTask.value): ColorFixRegion => {
-  const parts = defaultParts(t)
-  return {
-    ...COLORFIX_REGION_DEFAULT,
-    mode: garmentKind.value ? 'auto' : 'whole',
-    target: 'garment',
-    ...(parts.length ? { parts } : {}),
-  }
-}
-const presetMask = computed(() => selectedSuccess.value?.maskUrl || '')
-const presetParts = computed(() => selectedSuccess.value?.maskParts ?? null)
-// 任务带 mask_parts 字段（哪怕空数组）= 新服务端，支持服装细分部位
-watch(
-  () => Array.isArray(selectedTask.value?.maskParts),
-  (yes) => {
-    if (yes && !colorFixGarmentParts.value.length) noteColorFixGarmentParts([...COLORFIX_GARMENT_PARTS])
-  },
-  { immediate: true },
-)
-/** 「自动识别 · 服装」可细分的部位；空 = 不出部位选择 */
-const garmentParts = computed(() => (colorFixSegmentSupported.value ? colorFixGarmentParts.value : []))
-/** 当前选区实际生效的部位（服务端不支持 / 非服装为空 = 全部服装） */
-const activeParts = computed(() => colorFixRequestParts(region.value.target, region.value.parts))
-const autoTargets = computed<ColorFixAutoTarget[]>(() =>
-  colorFixSegmentSupported.value ? ['garment', 'product', 'person', 'background'] : presetMask.value ? ['garment'] : [],
-)
-const regionModes = computed<ColorFixRegionMode[]>(() =>
-  (['whole', 'auto', 'paint'] as ColorFixRegionMode[]).filter((m) => m !== 'auto' || autoTargets.value.length > 0),
-)
-const autoMask = ref('')
-const maskBusy = ref(false)
-const maskError = ref('')
-/** 「自动识别 · 服装」没拿到蒙版（没识别到 / 接口不可用）：退回整图校色 */
-const garmentMissing = ref(false)
-const paintedMask = ref('')
-const painterShow = ref(false)
-/**
- * 涂抹蒙版按「任务 + 成品图」存本机。键里不带查询串：短期签名地址（入库中 / 免费档）每次查询现签，
- * 带着签名进键，下一次轮询就找不回刚涂的选区，过期后还成了死键
- */
-const paintScope = computed(() =>
-  selectedSuccess.value ? `${regionKey(selectedSuccess.value)}::${urlIdentity(selectedSrc.value)}` : '',
-)
-const garmentFallback = computed(
-  () => region.value.mode === 'auto' && region.value.target === 'garment' && garmentMissing.value,
-)
-/** 当前生效的蒙版；整图 / 退回整图 / 未就绪为 '' */
-const effectiveMask = computed(() => {
-  if (region.value.mode === 'auto') return garmentFallback.value ? '' : autoMask.value
-  if (region.value.mode === 'paint') return paintedMask.value
-  return ''
-})
-/** 选了局部选区但蒙版还没就绪（识别中 / 没涂）：不校色 */
-const maskPending = computed(() => region.value.mode !== 'whole' && !garmentFallback.value && !effectiveMask.value)
-const maskOpts = computed(() => ({ invert: region.value.invert, feather: region.value.feather }))
-/** 这张结果是否处于校色态：提交时开了默认校色 / 保存过参数 / 本次打开过参数台或调过参数 */
-const resultOn = ref(false)
-let syncing = false
-
-watch(
-  () => `${props.detail?.batch.id ?? ''}|${selectedTask.value?.taskId ?? ''}`,
-  async () => {
-    syncing = true
-    const d = props.detail
-    const t = selectedTask.value
-    const saved = t ? loadTaskColorFix(t) : null
-    cfParams.value = saved ? { ...saved } : { ...COLORFIX_DEFAULT }
-    region.value = (t ? loadRegion(regionKey(t)) : null) ?? regionDefault(t)
-    // 参数台开着切到另一张成品：新任务直接进校色态（面板显示的就是舞台在用的参数），不必再点一次
-    const panelShowing = panelOpen.value && isTaskSuccess(t)
-    resultOn.value = !!d && !!t && cfTool.value && (!!saved || batchColorFix(d) || panelShowing)
-    await nextTick()
-    syncing = false
-  },
-  { immediate: true },
-)
-
-function persistCurrent() {
-  const t = selectedSuccess.value
-  if (!t || !cfTool.value) return
-  pinSelected()
-  resultOn.value = true
-  saveTaskColorFix(t, cfParams.value)
+function cfDefaultRegion(): Partial<ColorFixRegion> {
+  const parts = defaultParts(selectedTask.value)
+  return { mode: garmentKind.value ? 'auto' : 'whole', target: 'garment', ...(parts.length ? { parts } : {}) }
 }
 
-// 参数台调参 / 恢复默认：这张结果进入校色态并按任务保存
-watch(cfParams, () => {
-  if (!syncing) persistCurrent()
-})
-// 改选区：同样进入校色态，并按任务存选区
-watch(
-  region,
-  (r) => {
-    if (syncing) return
-    persistCurrent()
-    const t = selectedSuccess.value
-    if (t && cfTool.value) saveRegion(regionKey(t), r)
-  },
-  { deep: true },
-)
-// 打开参数台（胶囊或输入区「调整」）：等同开启这张结果的校色
-watch(panelOpen, (open) => {
-  if (open && !syncing) persistCurrent()
-})
-
-const cfOn = computed(() => cfTool.value && !!selectedSuccess.value && (resultOn.value || cfTouched.value))
-const showCfCompare = cfOn
-
-// 自动识别：只在校色开着时取蒙版（不为每张看过的图都发识别请求）
-let segTicket = 0
-/**
- * 入库刚完成、服务端补的服装蒙版（mask_url）还没带回来：最多等这么久（轮询每 2 秒一轮、补查 5 轮 ≈ 10 秒），
- * 到点还没有才自己识别——否则入库一完成就多打一次识别（多一次厂商调用）。
- */
+// 成品入库完成后服务端会补服装蒙版（mask_url）：等它到，别抢着自己识别（多一次厂商调用；入库中拿私有签名地址去识别还可能被拒）
+/** 入库刚完成、蒙版还没带回来：最多再等这么久（轮询每 2 秒一轮、补查 5 轮 ≈ 10 秒） */
 const MASK_SETTLE_MS = 10_000
-/** 见过「入库中」的任务（只有这些才会等服务端补蒙版）；taskId → 等待截止时刻（入库完成那一刻起算） */
-const maskAwaiting = new Map<string, number>()
-/** 等待已结束（到点 / 蒙版已到）的任务：不再重新进入等待，避免时钟偏差下反复起等 */
-const maskSettled = new Set<string>()
-/** 没亲眼见过「入库中」（页面晚开 / 轮询错过）但任务刚结束这么久内：同样等一轮服务端补蒙版 */
+/** 没亲眼见过「入库中」但任务刚结束这么久内：同样等一轮服务端补蒙版 */
 const MASK_RECENT_MS = 15_000
-/** 到点唤醒识别 watch 的计数（等待期满没等到蒙版：重跑一次走识别） */
-const maskWaitTick = ref(0)
-const maskWaitTimers = new Set<ReturnType<typeof setTimeout>>()
-onBeforeUnmount(() => {
-  maskWaitTimers.forEach(clearTimeout)
-  maskWaitTimers.clear()
-})
-watch(
-  () =>
-    [
-      cfOn.value,
-      region.value.mode,
-      region.value.target,
-      selectedSrc.value,
-      presetMask.value,
-      activeParts.value.join(','),
-      presetParts.value,
-      libraryState.value,
-      maskWaitTick.value,
-    ] as const,
-  async ([on, mode, target, image, preset]) => {
-    const my = ++segTicket
-    maskError.value = ''
-    garmentMissing.value = false
-    autoMask.value = ''
-    if (!on || mode !== 'auto' || !image) {
-      maskBusy.value = false
+const maskSeenPending = new Set<string>()
+const maskDeadline = new Map<string, number>()
+const maskSettled = new Set<string>()
+/** 「全部服装」没识别到、已退回整图校色的任务（舞台提示用） */
+const garmentFallbackIds = reactive(new Set<string>())
+
+function abortedError() {
+  return new DOMException('已取消', 'AbortError')
+}
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(abortedError())
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(abortedError())
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+async function waitServerMask(id: string, signal?: AbortSignal) {
+  if (maskSettled.has(id)) return
+  for (;;) {
+    if (signal?.aborted) throw abortedError()
+    const t = findTask(id)
+    if (!t || t.maskUrl) {
+      maskSettled.add(id)
       return
     }
-    const parts = activeParts.value
-    const presetHit = target === 'garment' ? colorFixPresetFor(parts, preset, presetParts.value) : ''
-    if (presetHit) {
-      const hitId = selectedSuccess.value?.taskId ?? ''
-      maskAwaiting.delete(hitId)
-      if (hitId) maskSettled.add(hitId)
-      autoMask.value = presetHit
-      maskBusy.value = false
-      return
-    }
-    // 成品还在入库（§4.6）：服务端入库完成后会补服装蒙版（mask_url），轮询带回来再用；
-    // 现在拿私有桶签名地址去识别，可能被拒（1003）而误退回整图
-    const waitId = selectedSuccess.value?.taskId ?? ''
-    if (target === 'garment' && garmentKind.value && libraryState.value === 'pending') {
-      if (waitId) maskAwaiting.set(waitId, 0)
-      maskBusy.value = true
-      return
-    }
-    // 没见过入库中、但任务刚结束且还没有蒙版：服务端多半还在补，同样等一轮，省掉这次多余的厂商识别调用
-    if (target === 'garment' && garmentKind.value && waitId && !maskAwaiting.has(waitId) && !maskSettled.has(waitId)) {
-      const fin = selectedSuccess.value?.finishedAt ?? 0
-      if (fin > 0 && !presetMask.value && Date.now() - fin < MASK_RECENT_MS) maskAwaiting.set(waitId, 0)
-    }
-    // 入库刚完成但 mask_url 还没到：有界地等轮询带回来（presetMask 一到本 watch 会重跑并直接用），到点才识别
-    if (target === 'garment' && garmentKind.value && waitId && maskAwaiting.has(waitId)) {
-      const now = Date.now()
-      let until = maskAwaiting.get(waitId) ?? 0
+    if (taskLibraryStatus(t) === 'pending') {
+      maskSeenPending.add(id)
+      maskDeadline.delete(id)
+    } else {
+      let until = maskDeadline.get(id)
       if (!until) {
-        until = now + MASK_SETTLE_MS
-        maskAwaiting.set(waitId, until)
-        const timer = setTimeout(() => {
-          maskWaitTimers.delete(timer)
-          maskWaitTick.value++
-        }, MASK_SETTLE_MS + 50)
-        maskWaitTimers.add(timer)
+        const fin = t.finishedAt ?? 0
+        if (!maskSeenPending.has(id) && !(fin > 0 && Date.now() - fin < MASK_RECENT_MS)) {
+          maskSettled.add(id)
+          return
+        }
+        until = Date.now() + MASK_SETTLE_MS
+        maskDeadline.set(id, until)
       }
-      if (now < until) {
-        maskBusy.value = true
+      if (Date.now() >= until) {
+        maskDeadline.delete(id)
+        maskSettled.add(id)
         return
       }
-      maskAwaiting.delete(waitId)
-      maskSettled.add(waitId)
     }
-    if (!colorFixSegmentSupported.value) {
-      maskBusy.value = false
-      if (target === 'garment') garmentMissing.value = true
-      else maskError.value = '当前环境不支持自动识别，请改用手动涂抹'
-      return
-    }
-    maskBusy.value = true
-    try {
-      // 带上任务号：结果是私有签名地址（免费档 / 入库中 / 入库失败）时服务端靠它按归属取原件识别
-      const source = waitId ? { taskId: waitId } : null
-      const url = await defaultColorFixSegmenter(image, target, parts, { source })
-      if (my === segTicket) autoMask.value = url
-    } catch (err) {
-      if (my !== segTicket) return
-      // 全部服装没识别到：退回整图；选了具体部位没识别到：就地提示（不拿整图冒充那几件）
-      const srcText = colorFixSegmentErrorText(err, waitId ? { taskId: waitId } : null)
-      const srcError = srcText === COLORFIX_SRC_NOT_FOUND || srcText === COLORFIX_SRC_NOT_READY
-      if (target === 'garment' && !parts.length && !srcError) garmentMissing.value = true
-      else maskError.value = srcText || '识别失败，可重试或改用手动涂抹'
-    } finally {
-      if (my === segTicket) maskBusy.value = false
-    }
-  },
-  { immediate: true },
-)
-
-let paintTicket = 0
-watch(
-  () => [paintScope.value, selectedSuccess.value?.taskId ?? '', libraryState.value] as const,
-  async ([scope, taskId], prev) => {
-    const my = ++paintTicket
-    paintedMask.value = ''
-    if (!scope) return
-    // 入库完成：同一张图从私有桶签名地址换成素材库公有地址，入库中涂的选区搬到新键下
-    const [prevScope, prevTaskId, prevState] = prev ?? []
-    if (prevScope && prevScope !== scope && prevTaskId === taskId && prevState === 'pending') {
-      if (!(await loadPaintedMask(scope))) await copyPaintedMask(prevScope, scope).catch(() => null)
-      if (my !== paintTicket) return
-    }
-    const url = await loadPaintedMask(scope)
-    if (my === paintTicket) paintedMask.value = url
-  },
-  { immediate: true },
-)
-
-/** 手动涂抹完成：存蒙版（IndexedDB / 内存）并切到「手动涂抹」 */
-async function applyPaintedMask(blob: Blob) {
-  const scope = paintScope.value
-  if (!scope) return
-  const { url } = await savePaintedMask(scope, blob)
-  if (scope !== paintScope.value) return
-  paintedMask.value = url
-  region.value = { ...region.value, mode: 'paint' }
-  painterShow.value = false
+    await pause(500, signal)
+  }
 }
 
-const bake = useColorFixBake({
-  src: selectedSrc,
-  params: cfParams,
-  on: cfOn,
-  mask: effectiveMask,
-  maskOpts,
-  pending: maskPending,
-})
+/** 全白蒙版 = 整图（「全部服装」没识别到时退回整图校色，与旧版一致；舞台给提示） */
+let wholeMask = ''
+function wholeMaskUrl(): string {
+  if (!wholeMask) {
+    const c = document.createElement('canvas')
+    c.width = c.height = 1
+    const g = c.getContext('2d')
+    if (g) {
+      g.fillStyle = '#fff'
+      g.fillRect(0, 0, 1, 1)
+    }
+    wholeMask = c.toDataURL('image/png')
+  }
+  return wholeMask
+}
 
-const maskHint = computed(() => {
-  const r = region.value
-  if (garmentFallback.value) return '未识别到服装区域，校色将作用于整张图'
-  if (r.mode === 'auto' && maskError.value) return maskError.value
-  if (r.mode === 'paint' && !paintedMask.value) return '还没有涂抹选区，点「涂抹选区」开始'
-  if (r.mode !== 'whole' && bake.failed.value)
-    return bake.maskLoadFailed.value ? COLORFIX_MASK_LOAD_FAILED : '选区校色未能生成，已显示原图'
-  return ''
+const studioSegmenter: ColorFixSegmenter = async (image, target, parts, o) => {
+  const id = o?.source?.taskId ?? ''
+  if (id && target === 'garment' && garmentKind.value) await waitServerMask(id, o?.signal)
+  try {
+    return await defaultColorFixSegmenter(image, target, parts, o)
+  } catch (err) {
+    if (o?.signal?.aborted || !id || target !== 'garment' || parts?.length) throw err
+    // 全部服装没识别到：退回整图；私有原图拿不到 / 没就绪这类来源错误照常报给用户
+    const text = colorFixSegmentErrorText(err, { taskId: id })
+    if (text === COLORFIX_SRC_NOT_FOUND || text === COLORFIX_SRC_NOT_READY) throw err
+    garmentFallbackIds.add(id)
+    return wholeMaskUrl()
+  }
+}
+
+const cfSaver: ColorFixRemoteSaver = {
+  authoritative: true,
+  load(key, ctx) {
+    const t = findTask(key.slice(STUDIO_KEY.length))
+    if (!t) return null
+    const saved = loadTaskColorFix(t)
+    if (saved) return saved
+    // 提交时开了「默认校色」：这批结果没存过参数就套默认参数
+    return !ctx?.hasLocal && props.detail && batchColorFix(props.detail) ? { ...COLORFIX_DEFAULT } : null
+  },
+  save(key, params, _region, layers) {
+    const id = key.slice(STUDIO_KEY.length)
+    if (!id) return
+    // 能折回旧形状（只有整图底层 / 底层全零 + 一个选区层）：与旧版逐值相同；多层时服务端只存整图底层的值，
+    // 完整图层只在本机与「存为资产」的版本里（服务端从不烘像素，不存在交付图与所见不一致）
+    const leg = layers ? legacyOf(layers) : null
+    const wire = leg && !leg.exact ? (layers!.find(isBaseLayer)?.params ?? leg.params) : params
+    saveTaskColorFix({ taskId: id, status: 2 }, wire)
+  },
+  flush: flushPending,
+}
+
+const cf = useResultColorFix({
+  key: cfKey,
+  // 免费档水印：校色来源 = 这张成品的 resultUrl（与「下载」同一个地址，带水印的交付图），绝不换成干净原件
+  src: computed(() => (cfKey.value ? selectedSrc.value : '')),
+  maskUrl: computed(() => selectedSuccess.value?.maskUrl),
+  maskParts: computed(() => selectedSuccess.value?.maskParts ?? null),
+  maskSource: computed(() => (selectedSuccess.value ? { taskId: selectedSuccess.value.taskId } : null)),
+  references: computed(() => tryonReferences(props.detail?.batch.payload)),
+  enabled: cfTool,
+  segmenter: studioSegmenter,
+  // 识别接口不可用：「全部服装」同样退回整图（与识别失败同口径，舞台给提示）
+  unsupportedMask: (target, parts) => {
+    const id = selectedSuccess.value?.taskId
+    if (!id || target !== 'garment' || !garmentKind.value || parts.length) return null
+    garmentFallbackIds.add(id)
+    return wholeMaskUrl()
+  },
+  scopeImage: computed(() => selectedSuccess.value?.taskId),
+  saver: cfSaver,
+  get defaultRegion() {
+    return cfDefaultRegion()
+  },
 })
-const displaySrc = bake.displaySrc
-const liveFilter = bake.liveFilter
+const panelOpen = cf.panelOpen
+const cfOn = cf.active
+const showCfCompare = cf.compareAvailable
+const displaySrc = cf.displaySrc
+const liveFilter = cf.liveFilter
+const garmentFallback = computed(
+  () => cfOn.value && !!selectedSuccess.value && garmentFallbackIds.has(selectedSuccess.value.taskId),
+)
+
+// 参数台开着切到另一张成品：新任务直接进校色态（引擎换键会收起参数台，这里接着打开）
+let carryPanel = false
+watch(cfKey, () => (carryPanel = cf.panelOpen.value), { flush: 'sync' })
+watch(cfKey, async (k) => {
+  const carry = carryPanel
+  carryPanel = false
+  if (!carry || !k) return
+  await nextTick()
+  cf.open()
+})
+// 打开参数台：钉住这张（轮询带来的新成品不把舞台切走）
+watch(panelOpen, (open) => {
+  if (open) pinSelected()
+})
 
 watch([canCompare, showCfCompare, selectedSuccess], () => {
   if (mode.value === 'compare' && !canCompare.value) mode.value = 'result'
   if (mode.value === 'colorfix' && !showCfCompare.value) mode.value = 'result'
 })
 
-const panelVisible = computed(() => panelOpen.value && cfTool.value && !!selectedSuccess.value)
-
-/** 舞台「校色调整」胶囊：只开参数台，不碰输入区「默认校色」开关 */
+/** 舞台「校色调整」胶囊：开 / 收参数台 */
 function openPanel() {
   pinSelected()
-  cf.openPanelOnly()
+  if (cf.panelOpen.value) cf.close()
+  else cf.open()
 }
 
-function closePanel() {
-  panelOpen.value = false
+const fsMode = ref<ColorFixViewMode>('result')
+function openFullscreen() {
+  pinSelected()
+  cf.openFullscreen()
 }
 
 /** 点候选：钉住这张 */
@@ -657,9 +546,16 @@ function selectTask(task: StudioTask) {
   selectedTaskId.value = task.taskId
 }
 
-onBeforeUnmount(() => {
-  panelOpen.value = false
-})
+/** 点舞台图：参数台开着且有单品参考图时 = 点衣服切到那一件；否则放大 */
+const pieces = useColorFixPieces(cf)
+function onStageClick(e: MouseEvent) {
+  if (panelOpen.value && pieces.pickable.value && !cf.painterOpen.value && !cf.pointOpen.value) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    if (r.width && r.height) void pieces.pickPiece((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height)
+    return
+  }
+  openLightbox()
+}
 
 const modes = computed(() =>
   (
@@ -677,7 +573,7 @@ async function downloadCorrected() {
   const t = selectedSuccess.value
   if (!t) return
   try {
-    downloadDataUrl(await bake.exportBaked(), `${fileTitle.value}-校色后.png`)
+    triggerDownload(await cf.bakeToBlob(), withPngExt(`${fileTitle.value}-校色后`))
   } catch {
     // 烘图要跨域读像素（依赖 OSS CORS），失败退回原图，别让用户拿不到图
     message.warning('校色效果未能写入，已下载原图')
@@ -747,25 +643,27 @@ async function saveAsAsset() {
       message.success('这张结果已在素材库，可到资产库查看')
       return
     }
-    const params = { ...cfParams.value }
-    const last = lastSavedAssetColorFix(t.taskId)
-    if (last && colorFixEquals(last, params)) {
+    // 图层口径与资产详情 / 工具页同一条路径：按（原图 + 各层参数 + 选区）签名去重，版本 params 带 colorFix（折回旧形状）+ colorFixLayers
+    const leg = legacyOf(cf.layers.value)
+    // 老版本存过同一组五参数（跨会话去重，只认能折回旧形状的）
+    if (leg.exact) {
+      const last = lastSavedAssetColorFix(t.taskId)
+      if (last && colorFixEquals(last, leg.params)) {
+        message.info('已存过这一版')
+        return
+      }
+    }
+    const r = await saveColorFixLayersVersion(assetId, cf.layers.value, (name, side) => cf.bakeToFile(name, side), {
+      // 短期签名地址（免费档水印视图）会过期，不写进版本参数
+      sourceImage: isTransientResult(t) ? '' : t.resultUrl,
+      fileName: `colorfix-${t.taskId}.png`,
+    })
+    if (r.status === 'duplicate') {
       message.info('已存过这一版')
       return
     }
-    // 长边 3072，超 9.5MB 降到 2048（goUpload 上限 10MB）
-    const file = await bakeForUpload(async (side) =>
-      colorFixDataUrlToFile(await bake.exportBaked(side), `colorfix-${t.taskId}.png`),
-    )
-    if (!file) throw new Error('烘图失败')
-    const url = await goUploadImage(file)
-    await assetLibAddVersion(assetId, {
-      imageUrl: url,
-      prompt: '校色后',
-      // 短期签名地址（免费档水印视图）会过期，不写进版本参数
-      params: JSON.stringify({ colorFix: params, ...(isTransientResult(t) ? {} : { sourceImage: t.resultUrl }) }),
-    })
-    rememberSavedAssetColorFix(t.taskId, params)
+    if (r.status !== 'saved') throw new Error('烘图失败')
+    if (leg.exact) rememberSavedAssetColorFix(t.taskId, leg.params)
     message.success('已存为资产（校色前 / 后两版）')
   } catch {
     message.error('存为资产失败')
@@ -817,12 +715,6 @@ const stageCls =
 /** 舞台空态（原型 .v3-preview__empty）：内边距 18、gap 5，说明 11/1.55 muted */
 const emptyCls =
   'absolute inset-0 flex flex-col items-center justify-center gap-5px p-18px text-center text-11px leading-[1.55] text-muted'
-/** 压在图上的毛玻璃胶囊（原型 .v3-cf-edit）：视觉 26 高 r13、84% 白 + 模糊 8，命中区外扩到 34；字号按 §10 交互下限 12（原型 10.5） */
-const pillCls =
-  'sx-hit inline-flex items-center gap-4px h-26px box-border px-10px rounded-13px border border-solid border-white/60 ' +
-  'bg-white/84 backdrop-blur-[8px] shadow-[0_2px_8px_rgba(31,35,41,0.14)] text-12px font-400 leading-none text-violet-ink ' +
-  'cursor-pointer whitespace-nowrap [transition:background_120ms] hover:bg-white motion-reduce:transition-none ' +
-  focusRing
 </script>
 
 <template>
@@ -983,49 +875,26 @@ const pillCls =
         <!-- 舞台 -->
         <div :class="stageCls">
           <template v-if="selectedSuccess">
-            <!-- 校色对比：校色前（原图）vs 校色后（烘好的图）；右下两个下载胶囊 -->
-            <template v-if="mode === 'colorfix' && showCfCompare">
-              <ToolImageCompare
-                :before="selectedSuccess.resultUrl"
-                :after="displaySrc"
-                :after-filter="liveFilter"
-                :labels="['校色前', '校色后']"
-                aria-label="校色前后对比"
-                cors
-              />
-              <span class="absolute right-10px bottom-10px z-6 flex items-center gap-6px">
-                <button type="button" :class="[pillCls, '!bg-white/72 !text-ink-2']" @click="downloadBefore">
-                  <svg
-                    class="w-13px h-13px"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />
-                  </svg>
-                  下载校色前
-                </button>
-                <button type="button" :class="pillCls" @click="downloadCorrected">
-                  <svg
-                    class="w-13px h-13px"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />
-                  </svg>
-                  下载校色后
-                </button>
-              </span>
-            </template>
+            <!-- 校色对比：校色前（原图）vs 校色后（烘好的图）；右下两个下载胶囊，右上「校色调整」「全屏调色」 -->
+            <ColorFixCompare
+              v-if="mode === 'colorfix' && showCfCompare"
+              :before="selectedSuccess.resultUrl"
+              :after="displaySrc"
+              :after-filter="liveFilter"
+              @download-before="downloadBefore"
+              @download-after="downloadCorrected"
+            >
+              <template #actions>
+                <ColorFixPill
+                  :icon="false"
+                  variant="muted"
+                  label="全屏调色"
+                  title="全屏调色：大图对比、缩放查看细节，参数台停靠右侧"
+                  @click="openFullscreen"
+                />
+                <ColorFixPill :pressed="panelOpen" @click.stop="openPanel" />
+              </template>
+            </ColorFixCompare>
 
             <!-- 前后对比：商拍 = 模特图、姿态 = 参考姿势图 vs 成品（校色态右侧为校色后） -->
             <ToolImageCompare
@@ -1043,14 +912,14 @@ const pillCls =
               :src="displaySrc"
               :crossorigin="cfTool ? corsAttr(displaySrc) : undefined"
               :alt="taskCaption(selectedSuccess, props.detail?.batch)"
-              class="absolute inset-0 block m-auto max-w-full max-h-full object-contain cursor-zoom-in"
-              :class="focusRing"
+              class="absolute inset-0 block m-auto max-w-full max-h-full object-contain"
+              :class="[focusRing, panelOpen && pieces.pickable.value ? 'cursor-pointer' : 'cursor-zoom-in']"
               :style="liveFilter ? { filter: liveFilter } : undefined"
               role="button"
               tabindex="0"
-              title="点击放大"
+              :title="panelOpen && pieces.pickable.value ? '点衣服切换到那一件' : '点击放大'"
               aria-label="放大查看生成结果"
-              @click="openLightbox"
+              @click="onStageClick"
               @keydown.enter.prevent="openLightbox"
               @keydown.space.prevent="openLightbox"
               @error="selectedSuccess && onResultError(selectedSuccess, displaySrc)"
@@ -1065,30 +934,21 @@ const pillCls =
               未识别到服装区域，校色将作用于整张图
             </span>
 
-            <!-- 校色调整（商拍 / 姿态 / 图片生成的成品，三档都在） -->
-            <button
-              v-if="cfTool"
-              type="button"
-              :class="[pillCls, 'absolute top-10px right-10px z-6']"
-              :aria-pressed="panelOpen"
-              aria-label="校色调整"
-              @click.stop="openPanel"
+            <!-- 校色调整 / 全屏调色（商拍 / 姿态 / 图片生成的成品，结果与前后对比档；校色对比档的两枚在 ColorFixCompare 里） -->
+            <span
+              v-if="cfTool && mode !== 'colorfix'"
+              class="absolute top-10px right-10px z-6 flex items-center gap-8px"
             >
-              <svg
-                class="w-13px h-13px"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.7"
-                stroke-linecap="round"
-                aria-hidden="true"
-              >
-                <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
-                <circle cx="15" cy="7" r="2" />
-                <circle cx="9" cy="17" r="2" />
-              </svg>
-              校色调整
-            </button>
+              <ColorFixPill
+                v-if="cfOn"
+                :icon="false"
+                variant="muted"
+                label="全屏调色"
+                title="全屏调色：大图对比、缩放查看细节，参数台停靠右侧"
+                @click.stop="openFullscreen"
+              />
+              <ColorFixPill :pressed="panelOpen" aria-label="校色调整" @click.stop="openPanel" />
+            </span>
           </template>
 
           <!-- 生成中（含批次还没拆出任务）：34 圆转圈 -->
@@ -1331,27 +1191,9 @@ const pillCls =
     </div>
 
     <!-- 校色参数台：悬浮在结果列里（相对本列定位，不随内容滚动），可拖动、夹在列内 -->
-    <ColorFixPanel
-      v-if="detail && cfTool"
-      v-model="cfParams"
-      v-model:region="region"
-      :open="panelVisible"
-      :title="cfTitle"
-      :region-modes="regionModes"
-      :auto-targets="autoTargets"
-      :garment-parts="garmentParts"
-      :mask-busy="maskBusy"
-      :mask-hint="maskHint"
-      :has-painted="!!paintedMask"
-      @done="closePanel"
-      @paint="painterShow = true"
-    />
-    <ColorFixMaskPainter
-      v-if="detail && cfTool && selectedSrc"
-      v-model:show="painterShow"
-      :src="selectedSrc"
-      @apply="applyPaintedMask"
-    />
+    <!-- 校色参数台（分层引擎）：悬浮在结果列里（相对本列定位，不随内容滚动）；含图层 / 选区 / 涂抹与智能选区弹窗 / 单品参考图浮卡 -->
+    <ColorFixResultPanel v-if="detail && cfTool" :cf="cf" :title="cfTitle" />
+    <ColorFixFullscreen v-if="detail && cfTool" v-model:mode="fsMode" :cf="cf" :title="cfTitle" />
 
     <MediaLightbox v-model:show="lbShow" v-model:index="lbIndex" :items="lbItems" />
   </div>

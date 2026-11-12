@@ -19,11 +19,16 @@ export interface StudioGarmentImage {
   angle?: string
 }
 
+/** 模特图拍摄面：正面 / 背面 / 侧面（提交时逐张必选） */
+export type StudioModelView = 'front' | 'back' | 'side'
+
 /** 商拍换装整批提交：模特数 × count_per_model 拆任务（最多 81） */
 export interface StudioTryonSubmitReq {
   workspaceId?: number
   /** 模特图 1–9 张，每张一位模特 */
   modelImageUrls: string[]
+  /** 每张模特图是哪一面，与 modelImageUrls 同序同长；老历史快照没有这个字段（回填后需用户逐张重选） */
+  modelViews?: StudioModelView[]
   /** 服装图 1–9 张，同一 role ≤6 张 */
   garmentImages: StudioGarmentImage[]
   /** 单品 1–3 件：top/bottom/dress/outer/shoes/accessory/bra/panties */
@@ -95,6 +100,8 @@ export interface StudioPoseSubmitReq {
   sourceImageUrl: string
   /** 姿势图 1–9 张，顺序即姿势序号（从 0 起） */
   poseImageUrls: string[]
+  /** 服装参考图 ≤6 张（选填，图3 起），仅单人姿态；多人配对时服务端拒收（「多人姿态暂不支持服装参考图」） */
+  garmentImageUrls?: string[]
   /** 全局补充说明 ≤3000 字 */
   globalPrompt?: string
   /** 单张补充说明，键为姿势下标字符串（从 0 起） */

@@ -12,7 +12,7 @@ import { computed, ref } from 'vue'
 import IconButton from '@/components/IconButton/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
-import { ColorFixCompare, ColorFixPill, corsAttr } from '@/components/ColorFix'
+import { ColorFixCompare, ColorFixPill, corsAttr, useColorFixPieces } from '@/components/ColorFix'
 import { useAssetDetail } from './context.ts'
 
 defineProps<{ hasPrev: boolean; hasNext: boolean }>()
@@ -69,6 +69,16 @@ function openFullscreen() {
   cf.openFullscreen()
 }
 
+// 点图上的衣服 = 切到那一件单品（商拍资产有参考图时；涂抹 / 智能选区弹窗开着时它们盖在上面，不抢）
+const pieces = useColorFixPieces(cf)
+const pickingPiece = computed(() => pieces.pickable.value && cf.panelOpen.value && d.showFixed.value)
+function onImgClick(e: MouseEvent) {
+  if (!pickingPiece.value || cf.painterOpen.value || cf.pointOpen.value) return
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  if (!r.width || !r.height) return
+  void pieces.pickPiece((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height)
+}
+
 // ---------------- 查看大图 ----------------
 const lightboxIndex = ref(0)
 const lightboxItems = computed(() => {
@@ -115,12 +125,15 @@ function openLightbox() {
       />
       <img
         v-else-if="d.asset.value.image && !d.previewFailed.value"
-        class="asset-stage-media cursor-zoom-in"
+        class="asset-stage-media"
+        :class="pickingPiece ? 'cursor-pointer' : 'cursor-zoom-in'"
+        :title="pickingPiece ? '点衣服切换到那一件' : undefined"
         :src="d.mediaSrc.value"
         :crossorigin="corsAttr(d.mediaSrc.value)"
         :style="d.showFixed.value ? cf.previewStyle.value : undefined"
         :alt="d.asset.value.title || '资产预览'"
         @error="d.onMediaError"
+        @click="onImgClick"
         @dblclick="openLightbox"
       />
       <MediaFallback v-else :type="d.asset.value.media === 'video' ? 'video' : 'image'" reason="loadFailed" />
