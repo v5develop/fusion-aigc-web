@@ -30,6 +30,7 @@ import { useUserInfoStore } from '@/stores/user-info'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import DirectoryPanel from '@/components/DirectoryPanel/index.vue'
+import { useDirCollapsedPref } from '@/utils/dirCollapsedPrefs'
 import type { DirectoryGroup } from '@/components/DirectoryPanel/types'
 import HistoryActionRow from '@/components/HistoryActionRow/index.vue'
 import { formatFullTime, formatShortTime } from '@/utils/time.ts'
@@ -42,6 +43,7 @@ import {
   useResultColorFix,
 } from '@/components/ColorFix'
 import {
+  AUTO_OPTION,
   findToolSchema,
   isFieldVisible,
   restoreToolForm,
@@ -57,6 +59,9 @@ import { isTerminal, useToolHistory } from './useToolHistory'
 import { takeRefill } from '@/utils/refill-handoff'
 import { downloadImage } from '@/utils/download'
 import ToolUploadSlot from './ToolUploadSlot.vue'
+import ResultDownloadAll from '@/components/ResultDownloadAll.vue'
+import type { BatchDownloadItem } from '@/utils/batchDownload'
+import PoseNotesList from '@/views/studio/pose/PoseNotesList.vue'
 import ToolTryonMaterials from './ToolTryonMaterials.vue'
 import MaskPainter from './MaskPainter.vue'
 import InpaintRegionPicker from './InpaintRegionPicker.vue'
@@ -128,7 +133,7 @@ const currentEntry = computed<{ icon?: string; tagline?: string } | undefined>((
 })
 // 目录：≥1440 展开 160 / 收起 44（用户切换）；<1440 固定收起 44，展开时以浮层盖在内容上（外点 / Esc / 换路由收起）
 const wideViewport = ref(typeof window === 'undefined' || window.matchMedia('(min-width: 1440px)').matches)
-const userCollapsed = ref(false)
+const userCollapsed = useDirCollapsedPref()
 const overlayOpen = ref(false)
 const catalogCollapsed = computed(() => (wideViewport.value ? userCollapsed.value : !overlayOpen.value))
 const catalogOverlay = computed(() => !wideViewport.value && overlayOpen.value)
@@ -357,6 +362,22 @@ onBeforeUnmount(() => hideRailTips(true))
 // ---------------- 表单状态 ----------------
 
 const uploads = reactive<Record<number, string[]>>({})
+/** 图片复刻逐张资产说明：按图片地址记，增删换序不串位（schema.assetNotes） */
+const assetNotes = reactive<Record<string, string>>({})
+const assetNotesSlot = computed(() =>
+  schema.value?.assetNotes ? schema.value.uploads.find((u) => u.javaKey === 'imageUrls') : undefined,
+)
+const assetNoteUrls = computed(() => (assetNotesSlot.value ? (uploads[assetNotesSlot.value.slot] ?? []) : []))
+function removeAssetImage(url: string) {
+  const slot = assetNotesSlot.value
+  if (!slot) return
+  // 同一地址选了两次是两件：只摘第一处
+  const list = [...(uploads[slot.slot] ?? [])]
+  const at = list.indexOf(url)
+  if (at >= 0) list.splice(at, 1)
+  uploads[slot.slot] = list
+  if (!list.includes(url)) delete assetNotes[url]
+}
 const values = reactive<Record<string, any>>({})
 const maskRef = ref<InstanceType<typeof MaskPainter> | null>(null)
 const maskHasStroke = ref(false)
@@ -476,7 +497,10 @@ const imageModelResolutions = computed<string[] | null>(() => {
 /** 所选图片模型在当前分辨率下的比例；没建模返回 null */
 const imageModelRatios = computed<string[] | null>(() => {
   if (!imageModelDriven.value) return null
-  const list = videoSizeOf(currentImageModel.value, values.resolution)?.aspectRatio
+  // 清晰度选「自适应」（商品精修 / 产品替换，不传档位）时没有当前档：比例清单取模型第一档的
+  const model = currentImageModel.value
+  const list = (videoSizeOf(model, values.resolution) ?? (values.resolution === AUTO_OPTION ? model?.size?.[0] : undefined))
+    ?.aspectRatio
   return list?.length ? list : null
 })
 
@@ -492,6 +516,8 @@ function fieldOptions(f: ToolField): CreationOption<string>[] {
     } else if (f.key === 'aspectRatio' && imageModelRatios.value) {
       opts = imageModelRatios.value.map((r) => (f.options ?? []).find((o) => o === r) ?? r)
     }
+    // 「自适应」（不传，按原图）不是模型的档位 / 比例，被模型清单换掉选项后要补回首位
+    if (f.options?.includes(AUTO_OPTION) && !opts.includes(AUTO_OPTION)) opts = [AUTO_OPTION, ...opts]
     return opts.map((o) => ({ label: o, value: o }))
   }
   const m = currentVideoModel.value
@@ -610,6 +636,20 @@ function setUploading(key: string, busy: boolean) {
   else delete uploadingSlots[key]
 }
 const anyUploading = computed(() => Object.keys(uploadingSlots).length > 0)
+/** 正在上传的是图片还是视频（按槽位类型；素材板 / 参考图条都是图片）：用于「图片 / 视频还在上传中」提示 */
+const uploadingNoun = computed(() => {
+  const s = schema.value
+  const videoBusy = Object.keys(uploadingSlots).some((key) => {
+    const slot = key.startsWith('slot-') ? Number(key.slice(5)) : NaN
+    return s?.uploads.find((u) => u.slot === slot)?.kind === 'video'
+  })
+  const imageBusy = Object.keys(uploadingSlots).some((key) => {
+    const slot = key.startsWith('slot-') ? Number(key.slice(5)) : NaN
+    const kind = s?.uploads.find((u) => u.slot === slot)?.kind
+    return kind !== 'video'
+  })
+  return videoBusy && imageBusy ? '素材' : videoBusy ? '视频' : '图片'
+})
 
 // ---------------- 视频复刻：解析、标注（/tools/ai-video-clone 主路径；「直接出片」退回原来的简单表单） ----------------
 
@@ -665,6 +705,7 @@ function resetForm(s: ToolSchema) {
   restoredImage = ''
   for (const key of Object.keys(uploads)) delete uploads[Number(key)]
   for (const key of Object.keys(values)) delete values[key]
+  for (const key of Object.keys(assetNotes)) delete assetNotes[key]
   for (const u of s.uploads) uploads[u.slot] = []
   for (const f of s.fields) if (f.default !== undefined) values[f.key] = f.default
   maskHasStroke.value = false
@@ -1159,14 +1200,26 @@ const EMPTY_UPLOAD_HINTS: Record<string, string> = {
   视频翻译: '请先上传一段视频',
 }
 
+/** 非主图槽未上传时的提示：标题 → 槽的 javaKey → 文案（原型 AiPosterReplicate / 产品替换） */
+const EMPTY_SLOT_HINTS: Record<string, Record<string, string>> = {
+  图片复刻: { imageUrls: '至少上传 1 张资产图', referenceImageUrl: '先放一张参考海报' },
+  产品替换: { productImageUrl: '请先上传替换素材' },
+}
+
 /** 前端本地能判的不可提交原因；后端报价给的原因（视频复刻页）见下方 disabledReason */
 const localDisabledReason = computed(() => {
   const s = schema.value
   if (!s) return ''
-  if (anyUploading.value) return '原图还在上传中，请稍候'
-  for (const u of s.uploads) {
+  if (anyUploading.value) return `${uploadingNoun.value}还在上传中，请稍候`
+  // 图片复刻：原型先提示参考海报、再提示资产图，与槽位排列相反
+  const ordered = s.homeId === 'ai-poster-replicate' ? [...s.uploads].reverse() : s.uploads
+  for (const u of ordered) {
     if (u.required && uploadEnabled(u) && !uploads[u.slot]?.length) {
-      return (u.slot === 0 && EMPTY_UPLOAD_HINTS[s.title]) || `还没上传${u.label.replace(/（.*）/, '')}`
+      return (
+        EMPTY_SLOT_HINTS[s.title]?.[u.javaKey] ||
+        (u.slot === 0 && EMPTY_UPLOAD_HINTS[s.title]) ||
+        `还没上传${u.label.replace(/（.*）/, '')}`
+      )
     }
   }
   // 图片复刻：模型清单到了、但没有任何模型能同时接收参考海报 + 资产图（refs.maxImages ≥ 2）
@@ -1373,7 +1426,12 @@ const modelEstimate = computed<{ points: number; unit: string } | null>(() => {
     const unit = videoSizeOf(currentImageModel.value, tier)?.points
     if (typeof unit !== 'number') return null
     // 图片复刻：一张资产图一个任务，总价 = 单价 × 资产图张数（每个任务只出 1 张）；其余 = 单价 × 生成张数
-    const count = s.pricePerUpload !== undefined ? (uploads[s.pricePerUpload]?.length ?? 0) : Number(values.count ?? 1)
+    const count =
+      s.pricePerUpload !== undefined
+        ? (uploads[s.pricePerUpload]?.length ?? 0)
+        : s.priceByFanOut
+          ? fanOutCount.value
+          : Number(values.count ?? 1)
     return { points: unit * (Number.isFinite(count) && count > 0 ? count : 1), unit: '' }
   }
   if (s?.price === 'video-model-configs') {
@@ -1481,7 +1539,15 @@ function formBase(s: ToolSchema): {
     if (!urls.length || !uploadEnabled(u)) continue
     if (u.javaKey === 'images') continue // 局部重绘：地址已随区域进了 images
     if (u.javaKey === 'imageUrls' && s.perItemSubmit && urls.length > 1) fan = { key: u.javaKey, urls, asArray: true }
-    else if (u.javaKey === 'imageUrls') base.imageUrls = urls.slice(0, slotMax(u))
+    else if (u.javaKey === 'imageUrls') {
+      base.imageUrls = urls.slice(0, slotMax(u))
+      // 逐张资产说明：与 imageUrls 下标对齐；一条都没写就不带，请求体与以前一致
+      if (s.assetNotes) {
+        const max = s.assetNotes.maxLength
+        const notes = (base.imageUrls as string[]).map((url) => (assetNotes[url] ?? '').trim().slice(0, max))
+        if (notes.some(Boolean)) base.assetNotes = notes
+      }
+    }
     else if (u.max > 1) fan = { key: u.javaKey, urls, asArray: false }
     else base[u.javaKey] = urls[0]
   }
@@ -1665,6 +1731,16 @@ async function restoreFrom(item: ToolHistoryItem) {
   resetForm(s)
   selectedId.value = item.aiToolHistoryId
   for (const [slot, urls] of Object.entries(r.uploads)) uploads[Number(slot)] = urls
+  // 逐张资产说明：按下标对回图片地址（同一地址多件时先出现的为准）
+  if (s.assetNotes && Array.isArray(params.assetNotes) && assetNotesSlot.value) {
+    const list = uploads[assetNotesSlot.value.slot] ?? []
+    params.assetNotes.forEach((note, i) => {
+      const url = list[i]
+      if (url && typeof note === 'string' && note.trim() && !assetNotes[url]) {
+        assetNotes[url] = note.slice(0, s.assetNotes!.maxLength)
+      }
+    })
+  }
   Object.assign(values, r.values)
   // 图片生成：回填当时选的模型（模型表里还有它才回填；没有就保持默认第一项）
   if (s.price === 'image-model-configs' && typeof params.model === 'string') {
@@ -2011,6 +2087,15 @@ const syncInputs = computed<CompareColumn[]>(() => {
     }
     const m = id ? metas[id] : undefined
     cols.forEach((c, i) => (c.meta = m?.[i]))
+    // 列脚注：被借用的那一列写清它只贡献什么（与列头副标不同，这里是对照时的一句提醒）
+    const notes: Record<string, string> = {
+      'ai-posture-fission': '姿势参考只贡献动作',
+      'ai-digital-model': '服装参考只贡献服装',
+      'ai-poster-replicate': '参考海报只贡献版式与风格',
+    }
+    const note = id ? notes[id] : undefined
+    const borrowed = id === 'ai-poster-replicate' ? cols.find((c) => c.label === '参考海报') : cols[1]
+    if (note && borrowed) borrowed.footnote = note
   }
   return cols
 })
@@ -2135,6 +2220,47 @@ async function downloadSelected() {
   if (product.type === 'video') window.open(product.src, '_blank', 'noopener')
   else void downloadImage(product.src, product.name)
 }
+
+/**
+ * 「下载全部」的清单：地址与单张下载同一个（免费档是接口下发的带水印副本）；
+ * 校色效果只在当前选中的那张上（图层 / 选区是针对这张图画的），烘图复用单张下载的 cf.downloadBaked
+ */
+const downloadAllItems = computed<BatchDownloadItem[]>(() =>
+  products.value.map((p, i) => ({
+    src: p.src,
+    name: p.name,
+    bake:
+      i === selectedIndex.value && p.type === 'image' && canColorCompare.value
+        ? async () => {
+            const ok = await cf.downloadBaked(`${p.name || 'result'}-校色后.png`)
+            if (!ok) message.warning('校色效果未能写入，已下载原图')
+            return ok
+          }
+        : undefined,
+  })),
+)
+
+// ---------------- 产物链接打不开（原型 ToolPreviewPanel 的 v3-preview__empty） ----------------
+/** 舞台图加载失败：显示「产物链接暂时打不开」+ 重试；换图 / 换记录自动复位 */
+const stageBroken = ref(false)
+/** 重试时换 key，强制 <img> 重新发起请求 */
+const stageReload = ref(0)
+function onStageImageError() {
+  const src = stageSrc.value || selectedProduct.value?.src
+  // 带 crossorigin 的加载失败先退回普通加载再试一次（可能只是 OSS 没开 CORS），还失败才算链接打不开
+  const withCors = colorFixEnabled.value && !!corsAttr(src)
+  if (colorFixEnabled.value) markCorsBlocked(src)
+  if (withCors) stageReload.value += 1
+  else stageBroken.value = true
+}
+function retryStageImage() {
+  stageBroken.value = false
+  stageReload.value += 1
+}
+watch(
+  () => [selectedProduct.value?.src, stageSrc.value],
+  () => (stageBroken.value = false),
+)
 
 /** 「下载校色前」：原图原地址 */
 function downloadBeforeColorFix() {
@@ -2315,7 +2441,7 @@ const plateBtnCls =
       <1440 单列堆叠、gap 12，整页滚动：行高按内容（auto-rows max-content），否则定高网格会把各卡压扁、表单在卡里只剩一截。
     -->
     <div
-      class="flex-1 min-w-0 min-h-0 grid grid-cols-1 max-[1439px]:auto-rows-max gap-12px p-16px overflow-y-auto border-l border-solid border-shell-line min-[1440px]:(grid-cols-[426px_249px_minmax(0,1fr)] gap-16px pl-15px overflow-hidden)"
+      class="tool-split flex-1 min-w-0 min-h-0 grid grid-cols-1 max-[1439px]:auto-rows-max gap-12px p-16px overflow-y-auto border-l border-solid border-shell-line min-[1440px]:(grid-cols-[426px_249px_minmax(0,1fr)] gap-16px pl-15px overflow-hidden)"
     >
       <!--
         操作区：功能卡固定在顶（≥1440 不随表单滚），中间上传 + 参数自己滚，底部固定设置行 + 提交栏
@@ -2849,6 +2975,18 @@ const plateBtnCls =
               </template>
             </CreationPromptInput>
           </template>
+          <!-- 图片复刻：各资产补充（按图片地址记，随资产图增删换序；提交带 assetNotes） -->
+          <PoseNotesList
+            v-if="schema.assetNotes"
+            v-model:notes="assetNotes"
+            :items="assetNoteUrls"
+            :disabled="submitting"
+            title="各资产补充"
+            item-label="资产"
+            placeholder="这张要突出什么（选填）"
+            :maxlength="schema.assetNotes.maxLength"
+            @remove="removeAssetImage"
+          />
         </form>
 
         <!--
@@ -3686,8 +3824,25 @@ const plateBtnCls =
             v-else-if="selectedProduct"
             :class="[stageCls, 'flex-1 min-h-320px max-[1439px]:(flex-none h-[min(52vh,480px)])']"
           >
+            <div
+              v-if="selectedProduct.type === 'image' && stageBroken"
+              :class="[resultEmptyCls, 'absolute inset-0']"
+              role="status"
+            >
+              <b class="text-13px font-600 leading-[1.4] text-ink-2">产物无法预览</b>
+              <span class="max-w-240px">这条记录的产物链接暂时打不开</span>
+              <button
+                type="button"
+                class="mt-4px inline-flex h-32px cursor-pointer items-center rounded-6px border border-solid border-line bg-white px-12px text-13px font-500 text-ink-2 hover:(border-violet-line text-violet-ink) motion-reduce:transition-none"
+                :class="focusRing"
+                @click="retryStageImage"
+              >
+                重试
+              </button>
+            </div>
             <img
-              v-if="selectedProduct.type === 'image'"
+              v-else-if="selectedProduct.type === 'image'"
+              :key="`${stageReload}-${stageSrc || selectedProduct.src}`"
               :src="stageSrc || selectedProduct.src"
               :crossorigin="colorFixEnabled ? corsAttr(stageSrc || selectedProduct.src) : undefined"
               :alt="selectedProduct.name"
@@ -3701,7 +3856,7 @@ const plateBtnCls =
               @click="openResult"
               @keydown.enter.prevent="openResult"
               @keydown.space.prevent="openResult"
-              @error="colorFixEnabled && markCorsBlocked(stageSrc || selectedProduct.src)"
+              @error="onStageImageError"
             />
             <video
               v-else
@@ -3775,6 +3930,9 @@ const plateBtnCls =
             <b class="text-13px font-600 leading-[1.4] text-ink-2">没有可预览的产物</b>
             <span class="max-w-240px">任务已完成，但没有返回产物地址</span>
           </div>
+
+          <!-- 多张结果：「N 张结果 · 下载全部」条（逐个下载，地址同单张下载） -->
+          <ResultDownloadAll v-if="products.length > 1" :items="downloadAllItems" />
 
           <!-- 候选 4 列、gap 6，方形 r4；选中 1px violet 描边 + 1px 光晕 -->
           <div v-if="products.length > 1" class="flex-none grid gap-6px grid-cols-4" role="group" aria-label="候选结果">

@@ -145,7 +145,7 @@ export interface ToolField {
   /** Java 请求体里的键；`voice` 一个界面字段落两个键 */
   javaKey: string | string[]
   /** 取值变换，见 toJavaValue */
-  transform?: 'lower' | 'omit-auto' | 'int'
+  transform?: 'lower' | 'omit-auto' | 'auto-lower' | 'int'
   /** 只用于界面分支，不进请求体（如比例转换的「尺寸方式」） */
   uiOnly?: boolean
   verified: boolean
@@ -190,6 +190,11 @@ export interface ToolSchema {
   helpBizType?: string
   /** 多张上传时逐张各提交一次（即使 javaKey 是数组键，每次只带一张） */
   perItemSubmit?: boolean
+  /**
+   * 逐张资产说明（图片复刻）：imageUrls 槽里每张图一行选填输入，按图片地址记（增删换序不串位），
+   * 提交带 assetNotes（与 imageUrls 下标对齐，空串 = 这张没有说明），回填时按下标放回
+   */
+  assetNotes?: { maxLength: number }
   /** 结果卡标题（原型给了才写；不写 = 「生成结果」） */
   resultTitle?: string
   media: UploadKind
@@ -220,6 +225,11 @@ export interface ToolSchema {
    * 写了它：前端仍只提交一次，任务数由服务端按这个槽的张数扇出；提交栏按这个张数写「将提交 N 个任务」
    */
   pricePerUpload?: number
+  /**
+   * 总价 = 单价 × 本次逐张提交的任务数（商品精修 / 产品替换：一张底图一个任务、各按所选清晰度计价）；
+   * 与 pricePerUpload 的区别：前端仍按张逐次提交，只是提交栏的预计消耗乘上任务数
+   */
+  priceByFanOut?: boolean
   /**
    * 每个任务要同时喂给模型的图片数（图片复刻 = 参考海报 + 资产图 = 2）：模型清单里 refs.maxImages 小于它的模型不给选；
    * 写了它，price 路由的 imageUrls 槽不再当「参考图槽」按模型 refs 限张数
@@ -294,6 +304,29 @@ const aspectRatioField = (): ToolField => ({
   optionsVerified: true,
 })
 
+/** 「自适应」选项：清晰度 / 画幅不指定，沿用服务端原有口径（按原图定规格与计价），出网时不带该键 */
+export const AUTO_OPTION = '自适应'
+
+/**
+ * 商品精修 / 产品替换的清晰度：默认「自适应」（= 不传 resolution，按原图档位出图与计价，与此前一致），
+ * 选了具体档位才传 1k/2k/4k；档位与单价取 image-model-configs?route=（所选模型的 size[]）
+ */
+const sourceSizedResolutionField = (): ToolField => ({
+  ...resolutionField('清晰度', AUTO_OPTION),
+  options: [AUTO_OPTION, ...RES_1K_4K],
+  transform: 'auto-lower',
+  description: '自适应 = 按原图清晰度出图并计价；选具体档位则按该档出图与计价',
+})
+
+/** 同上，画幅：默认「自适应」= 跟随原图比例（不传 aspectRatio）；所选模型不支持的比例服务端会忽略 */
+const sourceSizedRatioField = (): ToolField => ({
+  ...aspectRatioField(),
+  default: AUTO_OPTION,
+  options: [AUTO_OPTION, ...IMAGE_RATIOS],
+  transform: 'omit-auto',
+  description: '自适应 = 跟随原图比例',
+})
+
 /** 张数：契约 count → Java num（@Min(1) @Max(9)，直接乘进计费） */
 const countField = (): ToolField => ({
   key: 'count',
@@ -322,8 +355,18 @@ export const toolSchemas: ToolSchema[] = [
     hint: '按上传张数逐张提交，一张图一个任务',
     media: 'image',
     uploads: [{ ...imageSlot('图片', 20, 'imageUrl'), layout: 'batch' }],
-    fields: [],
-    submit: { label: '开始精修', costUnit: '张', costSource: '未显示（桌面 1.0.17 未给该工具报价）', countLabel: true },
+    // 2026-11-12（Java 加法参数 model / resolution / aspectRatio）：模型取 image-model-configs?route=/tools/ai-retouch（多于一个才出模型卡），
+    // 清晰度 / 画幅默认「自适应」= 不传、按原图（价格与出图规格同此前一致）
+    fields: [sourceSizedResolutionField(), sourceSizedRatioField()],
+    price: 'image-model-configs',
+    priceRoute: '/tools/ai-retouch',
+    priceByFanOut: true,
+    submit: {
+      label: '开始精修',
+      costUnit: '张',
+      costSource: 'image-model-configs.points[清晰度] × 张数（自适应时按原图档位计费）',
+      countLabel: true,
+    },
     actions: [],
   },
   {
@@ -642,6 +685,7 @@ export const toolSchemas: ToolSchema[] = [
     intro: '放一张参考海报，再传自己的商品或人物图；标题层级、色块、网格和印刷质感都照参考图来，参考图上的原句、品牌名和 logo 不会被照抄。',
     scenarios: ['照着喜欢的海报版式，换自己的商品', '一张参考图批量出多张同风格海报', '没有设计稿时，快速套出一版可用的主视觉'],
     hint: '每张资产图一个任务、各出一张；输出比例跟随参考海报',
+    assetNotes: { maxLength: 500 },
     compare: { index: 1, label: '参考海报' },
     colorFix: false,
     media: 'image',
@@ -689,8 +733,19 @@ export const toolSchemas: ToolSchema[] = [
       { ...imageSlot('底图', 20, 'originalImageUrl'), layout: 'pipe' },
       { ...imageSlot('替换素材', 1, 'productImageUrl', true, 1), layout: 'anchor' },
     ],
-    fields: [],
-    submit: { label: '开始替换', costUnit: '张', costSource: '未显示（桌面 1.0.17 未给该工具报价）', countLabel: true },
+    // 2026-11-12（Java 加法参数 model / resolution / aspectRatio）：同商品精修；每个任务喂 2 张图（底图 + 替换素材），
+    // 装不下 2 张的模型不进清单
+    fields: [sourceSizedResolutionField(), sourceSizedRatioField()],
+    price: 'image-model-configs',
+    priceRoute: '/tools/ai-product-replace',
+    priceByFanOut: true,
+    minModelImages: 2,
+    submit: {
+      label: '开始替换',
+      costUnit: '张',
+      costSource: 'image-model-configs.points[清晰度] × 张数（自适应时按原图档位计费）',
+      countLabel: true,
+    },
     actions: [],
   },
   {
@@ -1334,7 +1389,9 @@ export function isFieldVisible(field: ToolField, values: Record<string, unknown>
 export function toJavaValue(field: ToolField, value: unknown): unknown {
   if (value === undefined || value === null || value === '') return undefined
   if (field.transform === 'lower' && typeof value === 'string') return value.toLowerCase()
-  if (field.transform === 'omit-auto' && value === '自适应') return undefined
+  if (field.transform === 'omit-auto' && value === AUTO_OPTION) return undefined
+  if (field.transform === 'auto-lower' && typeof value === 'string')
+    return value === AUTO_OPTION ? undefined : value.toLowerCase()
   if (field.transform === 'int') {
     const n = Number(value)
     return Number.isFinite(n) ? Math.round(n) : undefined
@@ -1480,7 +1537,8 @@ export function restoreToolForm(s: ToolSchema, params: Record<string, unknown>):
       if (typeof raw === 'string' || typeof raw === 'number') value = String(raw)
     } else if (raw === undefined || raw === null) {
       // 「自适应」出网时不传 aspectRatio：当时那一档可见、提交体里又没有这个键，就是选了自适应
-      if (f.transform === 'omit-auto' && f.options?.includes('自适应') && visible(f)) value = '自适应'
+      if ((f.transform === 'omit-auto' || f.transform === 'auto-lower') && f.options?.includes(AUTO_OPTION) && visible(f))
+        value = AUTO_OPTION
     } else if (f.type === 'chips' || f.type === 'select') value = restoredOption(f.options, raw)
     else if (f.type === 'stepper' || f.type === 'number') value = restoredNumber(raw, f.min, f.max)
     else if (f.type === 'switch') value = typeof raw === 'boolean' ? raw : undefined
