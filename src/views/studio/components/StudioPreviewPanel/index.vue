@@ -62,6 +62,7 @@ import LibraryRetryButton from '@/components/LibraryRetryButton/index.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import type { LightboxItem } from '@/components/MediaLightbox/index.vue'
 import ToolImageCompare from '@/views/tools/ToolImageCompare.vue'
+import ImageCompareSync, { type CompareGroup } from '@/components/ImageCompareSync/index.vue'
 import { COLORFIX_DEFAULT, colorFixEquals, corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import { downloadImage } from '@/utils/download.ts'
 import type { useStudioHistory } from '../../hooks.ts'
@@ -93,7 +94,7 @@ import {
 import { STUDIO_INTRO } from './intro.ts'
 import { parseStudioPayload } from '../../payload.ts'
 import StudioPromptCard from './StudioPromptCard.vue'
-import { batchColorFix, canRetryTask, compareBefore, retrySupported, unitPoints } from './compare.ts'
+import { batchColorFix, canRetryTask, compareBefore, retrySupported, sourceItems, unitPoints } from './compare.ts'
 
 const props = defineProps<{
   /** useStudioHistory 实例（游标分页 + 在跑批次轮询） */
@@ -557,7 +558,7 @@ function onStageClick(e: MouseEvent) {
     if (r.width && r.height) void pieces.pickPiece((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height)
     return
   }
-  openLightbox()
+  openResult()
 }
 
 const modes = computed(() =>
@@ -697,6 +698,41 @@ function onResultError(task: StudioTask, url: string) {
     return
   }
   if (url === task.resultUrl && isTransientResult(task)) void ctl.refreshTask(task.taskId, url)
+}
+
+// 多图同步对照（components/ImageCompareSync）：输入图沿用 compare.ts 的解析（payload 快照），每张成功任务一组
+const syncOpen = ref(false)
+const syncIndex = ref(0)
+const syncGroups = computed<CompareGroup[]>(() => {
+  const d = props.detail
+  if (!d) return []
+  const out: CompareGroup[] = []
+  for (const t of tasks.value.filter(isTaskSuccess)) {
+    const inputs = sourceItems(d, t).filter((i) => i.type !== 'video')
+    if (!inputs.length) return []
+    const name = taskCaption(t, d.batch)
+    out.push({
+      name,
+      columns: [
+        ...inputs.map((i) => ({ url: i.url, label: i.name || '输入图' })),
+        {
+          url: t.taskId === selectedSuccess.value?.taskId && !liveFilter.value ? displaySrc.value : t.resultUrl,
+          label: '生成结果',
+          generated: true,
+          filename: `${fileTitle.value}-${name}`,
+        },
+      ],
+    })
+  }
+  return out
+})
+/** 点结果图：有输入图可对照 = 同步对照，否则单图灯箱 */
+function openResult() {
+  const t = selectedSuccess.value
+  const groups = syncGroups.value
+  if (!t || !groups.length) return openLightbox()
+  syncIndex.value = Math.max(0, tasks.value.filter(isTaskSuccess).findIndex((x) => x.taskId === t.taskId))
+  syncOpen.value = true
 }
 
 function openLightbox() {
@@ -920,11 +956,11 @@ const emptyCls =
               :style="liveFilter ? { filter: liveFilter } : undefined"
               role="button"
               tabindex="0"
-              :title="panelOpen && pieces.pickable.value ? '点衣服切换到那一件' : '点击放大'"
-              aria-label="放大查看生成结果"
+              :title="panelOpen && pieces.pickable.value ? '点衣服切换到那一件' : syncGroups.length ? '点击查看输入图与结果对照' : '点击放大'"
+              :aria-label="syncGroups.length ? '打开输入图与结果的同步对照' : '放大查看生成结果'"
               @click="onStageClick"
-              @keydown.enter.prevent="openLightbox"
-              @keydown.space.prevent="openLightbox"
+              @keydown.enter.prevent="openResult"
+              @keydown.space.prevent="openResult"
               @error="selectedSuccess && onResultError(selectedSuccess, displaySrc)"
             />
 
@@ -1199,6 +1235,7 @@ const emptyCls =
     <ColorFixFullscreen v-if="detail && cfTool" v-model:mode="fsMode" :cf="cf" :title="cfTitle" />
 
     <MediaLightbox v-model:show="lbShow" v-model:index="lbIndex" :items="lbItems" />
+    <ImageCompareSync v-model:show="syncOpen" v-model:index="syncIndex" :title="fileTitle" :groups="syncGroups" />
   </div>
 </template>
 

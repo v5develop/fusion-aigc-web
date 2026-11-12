@@ -61,6 +61,7 @@ import { inpaintImages, inpaintMissingReason, type InpaintBoxes } from './inpain
 import { DEFAULT_POSTER_RATIOS, nearestAspectRatio, readImageSize } from './posterRatio'
 import PollingOfflineBanner from './PollingOfflineBanner.vue'
 import ToolImageCompare from './ToolImageCompare.vue'
+import ImageCompareSync, { type CompareColumn, type CompareGroup } from '@/components/ImageCompareSync/index.vue'
 import ToolMediaPreview, { type PreviewItem } from './ToolMediaPreview.vue'
 import DotWave from '@/components/DotWave.vue'
 import CreationSettingsRow from '@/components/Creation/CreationSettingsRow.vue'
@@ -1978,6 +1979,61 @@ const lightboxItems = computed<PreviewItem[]>(() =>
       : p,
   ),
 )
+
+// ---------------- 多图同步对照（components/ImageCompareSync，原型「三图对照」） ----------------
+/** 对照的输入列：姿态 = 人物图 + 姿势图、商拍 = 模特图 + 服装图、图片复刻 = 资产图 + 参考海报，其它按上传槽名取前两张 */
+const syncInputs = computed<CompareColumn[]>(() => {
+  const item = current.value
+  const urls = (showSync.value ? [singleImage.value] : (item?.inputImageUrls?.length ? item.inputImageUrls : item?.payload?.imageUrls) ?? []).filter(
+    (u): u is string => !!u && !u.startsWith('placeholder://') && !isVideoUrl(u),
+  )
+  if (!urls.length) return []
+  const uploads = schema.value?.uploads ?? []
+  const cols = urls.slice(0, 2).map<CompareColumn>((url, i) => ({
+    url,
+    label: urls.length < 2 ? '输入图' : (uploads[i]?.label ?? (i ? '参考图' : '输入图')),
+  }))
+  const id = schema.value?.homeId
+  if (urls.length >= 2) {
+    // 商拍换装的上传顺序是 服装图、模特图；对照里模特在前（保留的主体在前、被借用的在后）
+    if (id === 'ai-digital-model') cols.reverse()
+    const metas: Record<string, [string, string]> = {
+      'ai-posture-fission': ['保留身份与场景', '只借动作与神态'],
+      'ai-digital-model': ['保留模特与姿态', '要换上的服装'],
+      'ai-poster-replicate': ['要放进海报的主体', '只借版式与字体气质'],
+    }
+    const m = id ? metas[id] : undefined
+    cols.forEach((c, i) => (c.meta = m?.[i]))
+  }
+  return cols
+})
+/** 一组对照 = 输入列 + 一张图片产物；多产物时顶栏可切换 */
+const syncGroups = computed<CompareGroup[]>(() => {
+  const inputs = syncInputs.value
+  if (!inputs.length) return []
+  const title = schema.value?.title ?? '生成结果'
+  const out: CompareGroup[] = []
+  products.value.forEach((p, i) => {
+    if (p.type !== 'image') return
+    const url = i === selectedIndex.value && canColorCompare.value && !stageFilter.value ? stageSrc.value : p.src
+    out.push({
+      name: products.value.length > 1 ? p.name : undefined,
+      columns: [...inputs, { url, label: '生成结果', generated: true, filename: `${title}-生成结果${products.value.length > 1 ? `-${i + 1}` : ''}` }],
+    })
+  })
+  return out
+})
+const syncOpen = ref(false)
+const syncIndex = ref(0)
+/** 结果图点击：有输入图可对照时开同步对照，否则回到单图灯箱 */
+function openResult() {
+  const groups = syncGroups.value
+  if (!groups.length) return openLightbox()
+  const at = products.value.slice(0, selectedIndex.value + 1).filter((p) => p.type === 'image').length - 1
+  syncIndex.value = Math.max(0, Math.min(at, groups.length - 1))
+  syncOpen.value = true
+}
+
 function openLightbox() {
   if (!products.value.length) return
   lightboxIndex.value = Math.min(selectedIndex.value, products.value.length - 1)
@@ -3762,11 +3818,11 @@ const plateBtnCls =
               :style="stageFilter ? { filter: stageFilter } : undefined"
               role="button"
               tabindex="0"
-              title="点击放大"
-              aria-label="放大查看生成结果"
-              @click="openLightbox"
-              @keydown.enter.prevent="openLightbox"
-              @keydown.space.prevent="openLightbox"
+              :title="syncGroups.length ? '点击查看输入图与结果对照' : '点击放大'"
+              :aria-label="syncGroups.length ? '打开输入图与结果的同步对照' : '放大查看生成结果'"
+              @click="openResult"
+              @keydown.enter.prevent="openResult"
+              @keydown.space.prevent="openResult"
               @error="colorFixEnabled && markCorsBlocked(stageSrc || selectedProduct.src)"
             />
             <video
@@ -3944,6 +4000,7 @@ const plateBtnCls =
     <ToolMediaPreview v-model:open="lightboxOpen" v-model:index="lightboxIndex" :items="lightboxItems" />
     <!-- 历史缩略图 / 抠图结果卡的放大：共用 MediaLightbox -->
     <MediaLightbox v-model:show="thumbLightbox.show" v-model:index="thumbLightbox.index" :items="thumbLightbox.items" />
+    <ImageCompareSync v-model:show="syncOpen" v-model:index="syncIndex" :title="schema?.title" :groups="syncGroups" />
   </div>
 </template>
 

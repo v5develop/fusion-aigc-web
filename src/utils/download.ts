@@ -26,7 +26,7 @@ export function getDownloadableUrls(item: any): string[] {
 }
 
 /** 从 URL 推断文件扩展名，无法识别时默认 jpg */
-function extFromUrl(url: string): string {
+export function extFromUrl(url: string): string {
   try {
     const { pathname } = new URL(url)
     const ext = pathname.match(/\.(png|jpe?g|webp|gif|bmp|svg|mp4|mov|webm|m4v)$/i)?.[1]
