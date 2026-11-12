@@ -81,8 +81,6 @@ const router = useRouter()
 const store = useCanvasEditor()
 const FLOW_ID = 'canvas-editor-flow'
 const {
-  fitView,
-  setCenter,
   setViewport,
   viewport,
   getSelectedNodes,
@@ -103,22 +101,107 @@ function resetZoom() {
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 2
 
-/** 左竖工具条占位：left 12 + 宽 72（按钮 52 + 内边距 10×2）+ 与节点留 16 的呼吸 */
-const LEFT_TOOLBAR_CLEAR = 100
+// ---------------- 安全区 ----------------
+// 安全区 = 舞台矩形 − 实际压在舞台上的浮层（左竖工具条、底横工具条、首启引导卡、叠放模式的停靠栏）。
+// 浮层在模板里标 data-safe-block="left|bottom|right"，用到时现量真实矩形（不写死常量），
+// 资产栏 / 在流内的停靠栏本来就不在舞台里，舞台矩形已经扣掉了。
+interface SafeArea {
+  /** 相对舞台左上角的像素 */
+  left: number
+  top: number
+  right: number
+  bottom: number
+  width: number
+  height: number
+}
+const SAFE_GAP = 16
+
+function measureSafeArea(): SafeArea | null {
+  const stage = stageRef.value
+  if (!stage) return null
+  const s = stage.getBoundingClientRect()
+  if (!s.width || !s.height) return null
+  let left = 0
+  const top = 0
+  let right = s.width
+  let bottom = s.height
+  stage.parentElement?.querySelectorAll<HTMLElement>('[data-safe-block]').forEach((el) => {
+    const r = el.getBoundingClientRect()
+    if (!r.width || !r.height) return
+    if (r.right <= s.left || r.left >= s.right || r.bottom <= s.top || r.top >= s.bottom) return
+    const side = el.dataset.safeBlock
+    if (side === 'left') left = Math.max(left, r.right - s.left + SAFE_GAP)
+    else if (side === 'bottom') bottom = Math.min(bottom, r.top - s.top - SAFE_GAP)
+    else if (side === 'right') right = Math.min(right, r.left - s.left - SAFE_GAP)
+  })
+  // 窄到放不下内容：退回整个舞台，别让安全区塌掉
+  if (right - left < 160 || bottom - top < 120)
+    return { left: 0, top: 0, right: s.width, bottom: s.height, width: s.width, height: s.height }
+  return { left, top, right, bottom, width: right - left, height: bottom - top }
+}
+
+function boundsOf(ids?: string[]) {
+  const list = getNodes.value.filter((n) => !ids || ids.includes(n.id))
+  if (!list.length) return null
+  let x0 = Infinity
+  let y0 = Infinity
+  let x1 = -Infinity
+  let y1 = -Infinity
+  for (const n of list) {
+    const pos = n.computedPosition ?? n.position
+    const w = n.dimensions?.width ?? 0
+    const h = n.dimensions?.height ?? 0
+    x0 = Math.min(x0, pos.x)
+    y0 = Math.min(y0, pos.y)
+    x1 = Math.max(x1, pos.x + w)
+    y1 = Math.max(y1, pos.y + h)
+  }
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+}
 
 /**
- * fitView 的内边距：四周按比例，左侧至少让出左竖工具条（按钮放大到 52 后条宽 72，窄舞台上比例内边距会小于它，
- * 节点贴左缘就被工具条盖住）。像素值按当前舞台尺寸现算。
+ * 把节点包围盒（缺省全部）放进安全区正中。zoom 给定就用它，否则按「刚好放进安全区（留 padding）」算并夹在 [minZoom, maxZoom]。
+ * ratio 是原 fitPad 的四周比例，换算成安全区内的像素内边距（至少 24）。
  */
-function fitPad(ratio: number) {
-  const rect = stageRef.value?.getBoundingClientRect()
-  if (!rect || !rect.width || !rect.height) return ratio
-  return {
-    top: Math.round(rect.height * ratio),
-    bottom: Math.round(rect.height * ratio),
-    right: Math.round(rect.width * ratio + (dockedNode.value && dockOverlay.value ? dockWidth.value : 0)),
-    left: Math.round(Math.max(rect.width * ratio, LEFT_TOOLBAR_CLEAR)),
+function placeInSafeArea(opts: {
+  ids?: string[]
+  ratio?: number
+  zoom?: number
+  minZoom?: number
+  maxZoom?: number
+  duration?: number
+}) {
+  const safe = measureSafeArea()
+  const box = boundsOf(opts.ids)
+  if (!safe || !box) return Promise.resolve(false)
+  const pad = Math.max(24, Math.round(Math.min(safe.width, safe.height) * (opts.ratio ?? 0.1)))
+  let zoom = opts.zoom
+  if (zoom === undefined) {
+    const fit = Math.min(
+      (safe.width - pad * 2) / Math.max(box.width, 1),
+      (safe.height - pad * 2) / Math.max(box.height, 1),
+    )
+    zoom = Math.min(opts.maxZoom ?? MAX_ZOOM, Math.max(opts.minZoom ?? MIN_ZOOM, fit))
   }
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  return setViewport(
+    {
+      x: (safe.left + safe.right) / 2 - cx * zoom,
+      y: (safe.top + safe.bottom) / 2 - cy * zoom,
+      zoom,
+    },
+    { duration: opts.duration ?? 0 },
+  )
+}
+
+/** 以画布点 (x, y) 为中心落在安全区正中；zoom 缺省保持当前缩放 */
+function centerInSafe(x: number, y: number, opts: { zoom?: number; duration?: number } = {}) {
+  const safe = measureSafeArea()
+  const zoom = opts.zoom ?? (viewport.value.zoom || 1)
+  const cx = safe ? (safe.left + safe.right) / 2 : (stageRef.value?.clientWidth ?? 0) / 2
+  const cy = safe ? (safe.top + safe.bottom) / 2 : (stageRef.value?.clientHeight ?? 0) / 2
+  return setViewport({ x: cx - x * zoom, y: cy - y * zoom, zoom }, { duration: opts.duration ?? 0 })
 }
 
 /** +/- 按钮：固定 10% 步长、对齐整 10 档，保持舞台中心对着的画布点不动 */
@@ -206,7 +289,7 @@ function importFromHandoff(id: string) {
     // 交接自己定位到新加的那一排，进页的整体居中让给它
     pendingFit = false
     const at = last.position
-    void nextTick(() => setCenter(at.x + 120, at.y + 100, { zoom: initialZoom(), duration: 220 }))
+    void nextTick(() => centerInSafe(at.x + 120, at.y + 100, { zoom: initialZoom(), duration: 220 }))
   }
 }
 
@@ -238,9 +321,13 @@ function initialZoom(): number {
 function fitOnce() {
   if (!pendingFit) return
   pendingFit = false
-  const zoom = initialZoom()
-  // min / max 缩放都钉成同一个值：fitView 只负责把包围盒居中
-  void fitView({ padding: 0, minZoom: zoom, maxZoom: zoom }).then(() => {
+  // 有记忆缩放就沿用，只把内容居中到安全区；没有则取 min(1, 放进安全区的缩放)，下限 0.5
+  const remembered = readCanvasZoom(canvasId.value, MIN_ZOOM, MAX_ZOOM)
+  const placed =
+    remembered !== undefined
+      ? placeInSafeArea({ zoom: remembered })
+      : placeInSafeArea({ ratio: 0.06, minZoom: 0.5, maxZoom: DEFAULT_CANVAS_ZOOM })
+  void placed.then(() => {
     zoomReady = true
   })
 }
@@ -253,9 +340,7 @@ watch(loading, async (value) => {
   if (!nodes.value.length) {
     // 空画布：原点居中
     pendingFit = false
-    const rect = stageRef.value?.getBoundingClientRect()
-    const zoom = initialZoom()
-    if (rect) void setViewport({ x: rect.width / 2, y: rect.height / 2, zoom })
+    void centerInSafe(0, 0, { zoom: initialZoom() })
     zoomReady = true
     return
   }
@@ -1107,7 +1192,7 @@ function onInsertTemplate(template: ICanvasTemplateDetail) {
   const ids = store.pasteClipboard(clip, 0)
   if (!ids.length) return
   editorMessage.success(`已插入模板「${template.title}」`)
-  void nextTick(() => fitView({ nodes: ids, padding: fitPad(0.2), duration: 220, minZoom: 0.2, maxZoom: 1 }))
+  void nextTick(() => placeInSafeArea({ ids, ratio: 0.1, duration: 220, minZoom: 0.2, maxZoom: 1 }))
 }
 
 // ---------------- 资产栏 / 素材库 ----------------
@@ -1117,7 +1202,7 @@ function locateNode(id: string) {
   if (!node) return
   selectedEdgeId.value = ''
   store.selectNode(id)
-  void setCenter(node.position.x + 160, node.position.y + 150, { zoom: 1, duration: 300 })
+  void centerInSafe(node.position.x + 160, node.position.y + 150, { zoom: 1, duration: 300 })
 }
 
 const showAssetPicker = ref(false)
@@ -1133,7 +1218,7 @@ function addLibraryImages(urls: string[]) {
   }
   if (last) {
     const at = last.position
-    void nextTick(() => setCenter(at.x + 120, at.y + 100, { zoom: initialZoom(), duration: 220 }))
+    void nextTick(() => centerInSafe(at.x + 120, at.y + 100, { zoom: initialZoom(), duration: 220 }))
   }
 }
 
@@ -1152,7 +1237,7 @@ function spawn(kind: AddPanelKind, tool?: CanvasToolKind, at?: { x: number; y: n
   if (!created) return undefined
   if (!at) {
     void nextTick(() => {
-      setCenter(created.position.x + 170, created.position.y + 160, { zoom: 0.86, duration: 220 })
+      centerInSafe(created.position.x + 170, created.position.y + 160, { zoom: 0.86, duration: 220 })
     })
   }
   return created
@@ -1504,7 +1589,7 @@ function ungroupSelection() {
 /** 缩放到选区（多选条「聚焦」/ 右键）：没有多选时用当前选中节点 */
 function zoomToSelection(ids = selectionIds()) {
   if (!ids.length) return
-  void fitView({ nodes: ids, padding: fitPad(0.2), duration: 220, minZoom: 0.2, maxZoom: 1.2 })
+  void placeInSafeArea({ ids, ratio: 0.1, duration: 220, minZoom: 0.2, maxZoom: 1.2 })
 }
 
 // ---------------- 模块拖动带成员（锁定成员也跟着走；node-drag 实时同步，落点即成员落点） ----------------
@@ -1725,7 +1810,7 @@ function ctxMenuPaste() {
 
 function ctxMenuFit() {
   closeCtxMenu()
-  void fitView({ padding: fitPad(0.18), duration: 200 })
+  void placeInSafeArea({ ratio: 0.09, duration: 200 })
 }
 
 function ctxMenuUndo() {
@@ -1954,7 +2039,7 @@ function spawnToolFrom(node: CanvasEditorNode, tool: CanvasToolKind) {
   const created = spawn('tool', tool, { x: node.position.x + width + 80, y: node.position.y })
   if (!created) return
   connectFrom(node.id, created.id)
-  void nextTick(() => setCenter(created.position.x + 170, created.position.y + 160, { duration: 220 }))
+  void nextTick(() => centerInSafe(created.position.x + 170, created.position.y + 160, { duration: 220 }))
 }
 
 // ---------- 图片类型（拖文件到空白画布用；大小上限与节点上传同一口径，见 useNodeUpload） ----------
@@ -2458,11 +2543,12 @@ function revealDockedNode(id: string) {
   if (!el) return
   const s = stage.getBoundingClientRect()
   const r = el.getBoundingClientRect()
-  const margin = 24
-  const visLeft = s.left + LEFT_TOOLBAR_CLEAR
-  const visRight = s.right - (dockOverlay.value ? dockWidth.value : 0) - margin
-  const visTop = s.top + margin
-  const visBottom = s.bottom - margin
+  const safe = measureSafeArea()
+  if (!safe) return
+  const visLeft = s.left + safe.left
+  const visRight = s.left + safe.right
+  const visTop = s.top + Math.max(safe.top, 24)
+  const visBottom = s.top + safe.bottom
   let dx = 0
   let dy = 0
   if (r.right > visRight) dx = visRight - r.right
@@ -2554,8 +2640,7 @@ function openHelp() {
         h(
           'div',
           {
-            class:
-              'grid grid-cols-[auto_1fr] items-center gap-x-20px gap-y-8px mt-4px mb-14px text-ink-2 text-13px',
+            class: 'grid grid-cols-[auto_1fr] items-center gap-x-20px gap-y-8px mt-4px mb-14px text-ink-2 text-13px',
           },
           rows.flatMap(([label, parts]) => [
             h('span', { class: 'text-muted text-12px' }, label),
@@ -2812,7 +2897,9 @@ useFileDropPaste(stageRef, {
                 <EditorIcon name="image" :size="14" /> {{ exportingPng ? '正在导出…' : '导出画布 PNG' }}
               </button>
               <!-- 导出的图是要发给别人的成品：不论当前浅色 / 深色，一律按浅色样式画（见 exportCanvasPng） -->
-              <p class="m-0 mt-2px px-10px pt-6px pb-4px border-t border-solid border-line-soft text-11px leading-16px text-muted">
+              <p
+                class="m-0 mt-2px px-10px pt-6px pb-4px border-t border-solid border-line-soft text-11px leading-16px text-muted"
+              >
                 导出的图片始终使用浅色样式，便于分享
               </p>
             </div>
@@ -3147,6 +3234,7 @@ useFileDropPaste(stageRef, {
             :class="TOOLBAR"
             class="left-12px top-50% -translate-y-50% flex-col !gap-8px !p-10px !rounded-12px"
             role="toolbar"
+            data-safe-block="left"
             aria-label="画布工具"
             data-tip-side="right"
           >
@@ -3204,7 +3292,7 @@ useFileDropPaste(stageRef, {
                 no-title
                 data-tip="提示词库（插入选中节点）"
                 variant="quiet"
-              class="!w-52px !h-52px !rounded-12px [&>span]:!text-23px"
+                class="!w-52px !h-52px !rounded-12px [&>span]:!text-23px"
                 :pressed="promptFlyoutOpen"
                 aria-haspopup="dialog"
                 :aria-expanded="promptFlyoutOpen"
@@ -3220,6 +3308,7 @@ useFileDropPaste(stageRef, {
             :class="TOOLBAR"
             class="bottom-16px left-50% -translate-x-50% items-center !gap-8px !p-8px"
             role="toolbar"
+            data-safe-block="bottom"
             aria-label="画布视图"
             @click.stop
           >
@@ -3253,8 +3342,14 @@ useFileDropPaste(stageRef, {
               <EditorIcon name="grid" :size="20" />
             </IconButton>
             <span class="w-1px h-24px mx-2px bg-line" aria-hidden="true" />
-            <IconButton label="缩小" no-title data-tip="缩小" variant="quiet"
-              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px" @click="stepZoom(-1)">
+            <IconButton
+              label="缩小"
+              no-title
+              data-tip="缩小"
+              variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
+              @click="stepZoom(-1)"
+            >
               <EditorIcon name="minus" :size="20" />
             </IconButton>
             <!-- 缩放读数（原型 .wf-zoom-value）：min-w 56、13px tabular，点击回 100%（保持视口中心不动） -->
@@ -3268,8 +3363,14 @@ useFileDropPaste(stageRef, {
             >
               {{ Math.round((viewport.zoom || 1) * 100) }}%
             </button>
-            <IconButton label="放大" no-title data-tip="放大" variant="quiet"
-              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px" @click="stepZoom(1)">
+            <IconButton
+              label="放大"
+              no-title
+              data-tip="放大"
+              variant="quiet"
+              class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
+              @click="stepZoom(1)"
+            >
               <EditorIcon name="plus" :size="20" />
             </IconButton>
             <IconButton
@@ -3278,7 +3379,7 @@ useFileDropPaste(stageRef, {
               data-tip="适应画布"
               variant="quiet"
               class="!w-40px !h-40px !rounded-12px [&>span]:!text-20px"
-              @click="fitView({ padding: fitPad(0.18), duration: 200 })"
+              @click="placeInSafeArea({ ratio: 0.09, duration: 200 })"
             >
               <EditorIcon name="fit" :size="20" />
             </IconButton>
@@ -3481,6 +3582,7 @@ useFileDropPaste(stageRef, {
           <!-- 首启引导（原型 .wf-onboard：底部 78 居中、max-w 560、#e2d6e9 描边 r14、白 96% 毛玻璃；知道了即退并记忆） -->
           <div
             v-if="showOnboard && !loading"
+            data-safe-block="bottom"
             class="sx-squircle absolute bottom-92px left-1/2 z-20 flex max-w-[min(560px,calc(100%-24px))] -translate-x-1/2 items-center gap-10px rounded-14px border border-solid border-violet-line bg-white/96 py-10px pl-16px pr-12px backdrop-blur-[10px] shadow-[0_12px_28px_rgba(31,35,41,0.10)]"
             :class="POP_FADE"
             role="status"
@@ -3506,6 +3608,7 @@ useFileDropPaste(stageRef, {
         <aside
           v-if="dockedNode"
           class="min-h-0 bg-overlay"
+          :data-safe-block="dockOverlay ? 'right' : undefined"
           :class="
             dockOverlay
               ? 'absolute right-0 top-0 bottom-76px z-15 shadow-[-12px_0_28px_rgba(58,38,72,0.16)]'

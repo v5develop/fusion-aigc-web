@@ -4,7 +4,8 @@
  * 列表直接取当前画布节点（分组框除外），不调新接口；点一行定位到画布。
  * 宽 248 / 头 44 / 搜索 32 / 行 44 / 缩略 32；可折叠到 48。
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { currentAccountId } from '@/utils/auth-session.ts'
 import { modelLabelOf } from '@/utils/model-label'
 import EditorIcon from './EditorIcon.vue'
 import { useCanvasEditor } from './useCanvasEditor.ts'
@@ -16,7 +17,28 @@ const emit = defineEmits<{ locate: [id: string]; addFromLibrary: [] }>()
 const store = useCanvasEditor()
 const { nodes, selectedNodeId } = store
 
-const collapsed = ref(false)
+// 折叠态按账号记在本机（个人便利；读写全部 try/catch）
+function collapsedKey() {
+  const who = currentAccountId()
+  return who ? `canvas-assets-collapsed:${who}` : ''
+}
+function readCollapsed(): boolean {
+  try {
+    const key = collapsedKey()
+    return key ? localStorage.getItem(key) === '1' : false
+  } catch {
+    return false
+  }
+}
+const collapsed = ref(readCollapsed())
+watch(collapsed, (value) => {
+  try {
+    const key = collapsedKey()
+    if (key) localStorage.setItem(key, value ? '1' : '0')
+  } catch {
+    /* 存储不可用：忽略 */
+  }
+})
 const query = ref('')
 const filter = ref<'all' | 'image' | 'video' | 'text' | 'model'>('all')
 
@@ -65,13 +87,13 @@ function thumbOf(node: CanvasEditorNode) {
 
 <template>
   <aside
-    class="flex shrink-0 min-h-0 flex-col border-r border-r-solid border-line bg-white transition-[width] duration-150"
+    class="flex shrink-0 min-h-0 flex-col overflow-hidden border-r border-r-solid border-line bg-white transition-[width] duration-200 motion-reduce:transition-none"
     :class="collapsed ? 'w-48px' : 'w-248px'"
     aria-label="画布资产"
   >
     <header
-      class="flex shrink-0 h-44px items-center gap-6px border-b border-b-solid border-line-soft text-ink-2"
-      :class="collapsed ? 'px-8px' : 'px-12px'"
+      class="flex shrink-0 items-center gap-6px border-b border-b-solid border-line-soft text-ink-2"
+      :class="collapsed ? 'flex-col py-8px px-8px' : 'h-44px px-12px'"
     >
       <template v-if="!collapsed">
         <EditorIcon name="layers" :size="15" />
@@ -81,10 +103,16 @@ function thumbOf(node: CanvasEditorNode) {
           >{{ allRows.length }}</span
         >
       </template>
+      <span
+        v-if="collapsed"
+        class="px-6px border border-solid border-line rounded-999px bg-surface2 text-muted text-11px leading-18px tabular-nums"
+        :title="`画布资产 ${allRows.length} 个`"
+        >{{ allRows.length }}</span
+      >
       <button
         type="button"
-        class="relative grid w-28px h-28px ml-auto p-0 after:content-empty after:absolute after:-inset-3px place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
-        :class="FOCUS_RING"
+        class="relative grid w-28px h-28px p-0 after:content-empty after:absolute after:-inset-3px place-items-center border border-solid border-transparent rounded-4px bg-transparent text-muted cursor-pointer hover:border-line hover:bg-surface2 hover:text-ink"
+        :class="[FOCUS_RING, !collapsed && 'ml-auto']"
         :title="collapsed ? '展开画布资产' : '折叠画布资产'"
         :aria-label="collapsed ? '展开画布资产' : '折叠画布资产'"
         :aria-expanded="!collapsed"
@@ -94,7 +122,35 @@ function thumbOf(node: CanvasEditorNode) {
       </button>
     </header>
 
-    <template v-if="!collapsed">
+    <!-- 折叠轨：每个资产一个 32×32 缩略 / 图标，点击 = 展开态点行（定位到画布） -->
+    <div v-if="collapsed" class="flex flex-1 min-h-0 flex-col items-center gap-6px overflow-y-auto py-8px" role="list">
+      <button
+        v-for="node in allRows"
+        :key="node.id"
+        type="button"
+        role="listitem"
+        class="grid shrink-0 w-32px h-32px place-items-center overflow-hidden border border-solid border-line rounded-4px bg-surface3 p-0 text-muted cursor-pointer hover:border-violet-line"
+        :class="[
+          FOCUS_RING,
+          { '!border-violet !shadow-[0_0_0_2px_rgba(135,95,154,0.25)]': selectedNodeId === node.id },
+        ]"
+        :data-tip="`${node.data.title} · ${typeLabel(node)}`"
+        data-tip-side="right"
+        :aria-label="`${node.data.title}，${typeLabel(node)}，在画布中定位`"
+        :aria-current="selectedNodeId === node.id ? 'true' : undefined"
+        @click="emit('locate', node.id)"
+      >
+        <img v-if="thumbOf(node)" :src="thumbOf(node)" alt="" class="w-full h-full object-cover" />
+        <span v-else-if="isVideoNode(node)" class="grid place-items-center gap-1px">
+          <EditorIcon name="video" :size="16" />
+          <em class="not-italic text-10px font-500 leading-[1.1]">视频</em>
+        </span>
+        <span v-else-if="node.type === 'text'" class="text-13px leading-none">Aa</span>
+        <EditorIcon v-else :name="node.type === 'tool' ? 'model' : 'image'" :size="15" />
+      </button>
+    </div>
+
+    <template v-else>
       <label
         class="flex shrink-0 h-32px items-center gap-6px mx-12px mt-10px px-8px border border-solid border-control rounded-4px bg-white text-placeholder shadow-[inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)] focus-within:border-violet focus-within:shadow-[0_0_0_3px_rgba(135,95,154,0.14),inset_0_1px_2px_rgba(31,35,41,0.055),inset_0_0_0_1px_rgba(255,255,255,0.7)]"
       >
