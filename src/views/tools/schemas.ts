@@ -230,6 +230,8 @@ export interface ToolSchema {
    * 图片复刻 = 参考海报槽）。只是提示，服务端按实测宽高再算
    */
   ratioFromUpload?: number
+  /** 上传区下方显示「参考图使用权」提示（链到用户协议对应条款；图片复刻） */
+  rightsNotice?: boolean
   /** 每次提交都带上的固定键（界面不出现），如姿态复刻固定 mode=reference */
   constants?: Record<string, unknown>
   /** 提示词框显示「我的提示词」入口与提示词库浮层（生成类工具：图片生成 / 视频生成 / 场景生成 / 首屏主图） */
@@ -666,6 +668,7 @@ export const toolSchemas: ToolSchema[] = [
     pricePerUpload: 0,
     minModelImages: 2,
     ratioFromUpload: 1,
+    rightsNotice: true,
     submit: { label: '开始复刻', costUnit: '张', costSource: 'image-model-configs.points[清晰度] × 资产图张数', countLabel: true },
     actions: [],
   },

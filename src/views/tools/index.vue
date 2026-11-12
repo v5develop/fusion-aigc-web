@@ -2201,6 +2201,8 @@ const stageCls =
 const resultEmptyCls =
   'flex-1 min-h-[220px] flex flex-col items-center justify-center gap-5px p-18px text-center text-11px leading-[1.55] text-muted'
 
+/** 用户协议文档地址（协议正文由运营在协议后台维护；条款文本见 Java 仓库 deploy/agreement-clause-poster-replicate.md） */
+const AGREEMENT_URL = 'https://aigc.pengqiwl.com/agreements/ai-generate-terms-of-use.pdf'
 const focusRing = 'outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)'
 /** 输入框（原型 `.sx-input` 材质对齐档）：高 34、1px #c9cfd6、r15、inset-input；hover #aeb6bf；焦点 violet 描边 + 3px 光晕 α.14 */
 const inputCls =
@@ -2771,6 +2773,18 @@ const plateBtnCls =
               <p class="m-0 ll-empty py-12px">{{ unsupportedUploadHint(u) }}</p>
             </div>
           </template>
+          <!-- 图片复刻：参考海报的使用权提示，条款见用户协议「参考素材与复刻」一节 -->
+          <p v-if="schema.rightsNotice" class="m-0 text-12px leading-18px text-muted" role="note">
+            请确保你拥有参考图的使用权，复刻仅借鉴版式与风格，不得复制他人文字、商标或标识。详见
+            <a
+              :href="AGREEMENT_URL"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-violet-ink underline"
+              :class="focusRing"
+              >《用户协议》参考素材与复刻条款</a
+            >。
+          </p>
 
           <!-- 智能抠图：同步结果卡（透明棋盘格底、最小高 220、右上下载、点图放大）；「换一张」清掉原图与上次结果 -->
           <section v-if="schema.sync && singleImage" class="flex flex-col gap-8px" aria-labelledby="tool-cutout-title">
