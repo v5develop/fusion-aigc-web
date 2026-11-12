@@ -35,3 +35,6 @@ interface ImportMeta {
 
 declare module 'ali-oss'
 declare module '@lhlyu/vue-virtual-waterfall'
+
+/** 本次构建的 id（build/version-plugin.ts 注入；dev 为 'dev'），与站点根 version.json 的 buildId 比对 */
+declare const __APP_BUILD_ID__: string

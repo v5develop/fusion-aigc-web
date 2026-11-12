@@ -409,10 +409,11 @@ function prevPage() {
               <HistoryActionRow
                 class="min-h-24px"
                 :more-items="[
+                  { key: 'zoom', label: '放大', disabled: !stackOf(d).length },
                   { key: 'delete', label: '删除', danger: true, confirm: '删除这条记录？' },
                   { key: 'reedit', label: '重新编辑' },
                 ]"
-                @more="(k) => (k === 'delete' ? removeBatch(d) : reedit(d))"
+                @more="(k) => (k === 'zoom' ? openLightbox(d) : k === 'delete' ? removeBatch(d) : reedit(d))"
                 @lead-click="emit('select', d)"
                 @click.stop
               >

@@ -7,9 +7,11 @@ import ECommerceTabs from '@/views/e-commerce/Tabs/index.vue'
 import { sessionKeyOf, useEcTabsStore } from '@/stores/e-commerce/tabs'
 import { useSessionIdStore } from '@/stores/e-commerce'
 import RouteErrorBoundary from '@/components/RouteErrorBoundary/index.vue'
+import { useAppVersion } from '@/composables/useAppVersion'
 import { useRouteStagger } from '@/utils/composables/useRouteStagger'
 
 const route = useRoute()
+const { updateNotice, snooze, reload } = useAppVersion()
 const router = useRouter()
 const tabsStore = useEcTabsStore()
 const { cachedNames, tabs } = storeToRefs(tabsStore)
@@ -74,7 +76,7 @@ watch(
 <template>
   <div class="flex">
     <div class="flex-shrink-0">
-      <Navigation />
+      <Navigation :update-notice="updateNotice" @update="reload" @snooze="snooze" />
     </div>
 
     <!-- min-w-0：flex 项默认 min-width:auto，会被内容的最小宽度顶住。标签开满时标签条会把容器

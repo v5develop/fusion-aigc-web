@@ -91,6 +91,7 @@ import TemplateBrowser from './TemplateBrowser.vue'
 import IconButton from '@/components/IconButton/index.vue'
 import PointsBalanceChip from '@/components/Points/PointsBalanceChip.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
+import ProductPagePreview from '@/views/agent/ProductPagePreview.vue'
 import {
   ColorFixDialog,
   bakeForUpload,
@@ -1685,6 +1686,18 @@ async function downloadPicked() {
   multiPicks.value = []
   message.success(`开始下载 ${urls.length} 张`)
   await downloadImagesAsZip(urls)
+}
+
+// 预览模板：多选态下有勾选就用勾选的图，否则用该卡全部结果图；标题取本轮用户提示词
+const tplShow = ref(false)
+const tplImages = ref<string[]>([])
+const tplTitle = ref('')
+
+function openTplPreview(turn: ChatItem[], card: { key: string; urls: string[] }) {
+  const picked = multiCard.value === card.key ? multiPicks.value : []
+  tplImages.value = picked.length ? [...picked] : [...card.urls]
+  tplTitle.value = turn.find((x) => x.role === 'user')?.text ?? ''
+  tplShow.value = true
 }
 
 /** 点格子：多选态切换选中，否则打开大图 */
@@ -3827,12 +3840,14 @@ onUnmounted(() => {
                             }}
                           </button>
                         </div>
-                        <div v-if="card.urls.length > 1" class="mt-10px flex items-center gap-8px">
-                          <span class="text-11px leading-16px text-placeholder tabular-nums"
+                        <div v-if="card.urls.length" class="mt-10px flex items-center gap-8px">
+                          <span
+                            v-if="card.urls.length > 1"
+                            class="text-11px leading-16px text-placeholder tabular-nums"
                             >{{ card.urls.length }} 张</span
                           >
                           <span class="flex-1" />
-                          <template v-if="multiCard === card.key">
+                          <template v-if="card.urls.length > 1 && multiCard === card.key">
                             <button type="button" :class="BTN" @click="toggleMulti(card.key)">取消</button>
                             <button
                               type="button"
@@ -3843,7 +3858,7 @@ onUnmounted(() => {
                               下载所选 {{ multiPicks.length }}
                             </button>
                           </template>
-                          <button v-else type="button" :class="BTN" @click="toggleMulti(card.key)">
+                          <button v-else-if="card.urls.length > 1" type="button" :class="BTN" @click="toggleMulti(card.key)">
                             <svg
                               class="h-12px w-12px"
                               viewBox="0 0 24 24"
@@ -3855,6 +3870,21 @@ onUnmounted(() => {
                               <path :d="ICON.download" />
                             </svg>
                             多选下载
+                          </button>
+                          <button type="button" :class="BTN" @click="openTplPreview(turn, card)">
+                            <svg
+                              class="h-12px w-12px"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path :d="ICON.layers" />
+                            </svg>
+                            预览模板
                           </button>
                         </div>
                       </div>
@@ -4681,6 +4711,7 @@ onUnmounted(() => {
     <AssetPickerModal v-model:show="assetPickerShow" :limit="Math.max(imageRoom, 1)" @select="onAssetSelect" />
 
     <MediaLightbox v-model:show="lightboxShow" v-model:index="lightboxIndex" :items="lightboxItems" />
+    <ProductPagePreview v-model:show="tplShow" :images="tplImages" :title="tplTitle" />
     <!-- 结果图校色：参数 + 局部选区 + 对比；引用编辑 / 在画布中打开 用烘好的图 -->
     <ColorFixDialog
       v-model:show="fixShow"

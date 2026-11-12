@@ -44,6 +44,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** 点了更新条「立即更新」 */
   update: []
+  /** 点了「稍后」：交给上层暂缓提示 */
+  snooze: []
 }>()
 
 const router = useRouter()
@@ -320,12 +322,11 @@ const ROW_BASE =
 const ACTIVE = '!border-line !text-ink sx-grad-sunk shadow-sunk hover:sx-grad-sunk'
 
 const collapsed = ref(false)
-const updateDismissed = ref(false)
 const panel = ref<PanelKey | null>(null)
 const panelRef = ref<HTMLElement>()
 let anchorEl: HTMLElement | null = null
 
-const showUpdateBar = computed(() => !!props.updateNotice && !updateDismissed.value && !collapsed.value)
+const showUpdateBar = computed(() => !!props.updateNotice && !collapsed.value)
 const homeActive = computed(() => route.path === '/tools')
 
 function subActive(sub: NavSub) {
@@ -886,14 +887,14 @@ onBeforeUnmount(() => hideRailTips(true))
             </svg>
             <span class="flex min-w-0 flex-col">
               <b class="font-600">{{ props.updateNotice }}</b>
-              <span class="font-400 opacity-82">需要升级客户端后使用</span>
+              <span class="font-400 opacity-82">刷新页面即可使用最新版</span>
             </span>
           </div>
           <div class="mt-2px flex justify-end gap-6px">
             <button
               type="button"
               class="h-22px rounded-sm border border-solid border-white/42 bg-transparent px-8px text-12px font-500 leading-20px text-white cursor-pointer transition-[background,border-color,box-shadow] duration-120 ease-[ease] hover:(border-white/64 bg-white/12) active:bg-white/20 focus-visible:(outline outline-2 outline-solid outline-white outline-offset-1)"
-              @click="updateDismissed = true"
+              @click="emit('snooze')"
             >
               稍后
             </button>

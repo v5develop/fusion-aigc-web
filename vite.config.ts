@@ -11,6 +11,7 @@ import Components from 'unplugin-vue-components/vite'
 import path from 'path'
 import { isShadowProp, rewriteShadow } from './src/theme/shadow-rewrite'
 import { themeBootScript } from './src/theme/theme-decide'
+import { versionPlugin } from './build/version-plugin'
 
 // 两套环境（test / production）各自直连后端，不再有 dev 代理层：
 // 后端已对任意 Origin 开放 CORS，dev 与构建产物因此走完全相同的链路，
@@ -102,6 +103,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       themeBootPlugin,
+      versionPlugin(),
       vue(),
       vueJsx(),
       UnoCSS(),

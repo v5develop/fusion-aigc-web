@@ -24,7 +24,6 @@ import {
   assetCategoryTree,
   assetLibCategories,
   assetLibList,
-  assetLibTagCreate,
   assetLibTags,
   assetLibUpdate,
 } from '@/api/asset-library.ts'
@@ -37,13 +36,12 @@ import type {
   IAssetLibTag,
 } from '@/api/asset-library.ts'
 import { useDebounce } from '@/utils/hooks'
-import IconButton from '@/components/IconButton/index.vue'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
 import AssetCard from './components/AssetCard.vue'
 import AssetPager from './components/AssetPager.vue'
 import DetailModal from './components/DetailModal.vue'
-import TagManagerModal from './components/TagManagerModal.vue'
+import AssetTagStrip from './components/AssetTagStrip.vue'
 import BatchTagModal from './components/BatchTagModal.vue'
 import BatchColorFixModal from './components/BatchColorFixModal.vue'
 import AssetTagPopover from './components/AssetTagPopover.vue'
@@ -596,45 +594,6 @@ function onDetailDelete() {
 
 // ---------------- 标签管理 / 单卡打标签 / 详情 ----------------
 
-const showTagManager = ref(false)
-
-// 标签带行内新建（原型 relay-strip-add）：点「＋」出输入框，回车建、Esc / 失焦空值收起
-const tagAdding = ref(false)
-const tagDraft = ref('')
-const tagCreating = ref(false)
-const tagDraftInput = ref<HTMLInputElement | null>(null)
-function startTagAdd() {
-  tagAdding.value = true
-  void nextTick(() => tagDraftInput.value?.focus())
-}
-function cancelTagAdd() {
-  tagAdding.value = false
-  tagDraft.value = ''
-}
-async function submitTagAdd() {
-  const name = tagDraft.value.trim()
-  if (!name) return cancelTagAdd()
-  if (tagCreating.value) return
-  if (tags.value.some((t) => t.name === name)) {
-    message.warning('已有同名标签')
-    return
-  }
-  tagCreating.value = true
-  try {
-    await assetLibTagCreate(name)
-    message.success('标签已新建')
-    cancelTagAdd()
-    await loadTags()
-  } catch {
-    // 失败 toast（重名 / 超限）已由请求层弹出，保留输入便于改名
-  } finally {
-    tagCreating.value = false
-  }
-}
-function onTagDraftBlur() {
-  if (!tagDraft.value.trim()) cancelTagAdd()
-}
-
 // 卡片入场：首屏 420ms 自下 8px 淡入，之后翻页 / 追加只位移 4px；reduced-motion 关掉
 const firstEntering = ref(true)
 let firstEnterTimer: ReturnType<typeof setTimeout> | undefined
@@ -760,7 +719,16 @@ const emptyCopy = computed(() => {
           </button>
         </nav>
 
-        <div v-if="isAssetDomain" class="flex items-center gap-8px ml-auto min-w-0">
+        <AssetTagStrip
+          v-if="isAssetDomain"
+          v-model:active="filters.tag"
+          :tags="tags"
+          :untagged-count="untaggedCount"
+          class="min-w-0 flex-1"
+          @changed="onTagsChanged"
+        />
+
+        <div v-if="isAssetDomain" class="flex items-center gap-8px ml-auto shrink-0">
           <template v-if="!selecting">
             <button type="button" :class="TOOL_CLS" @click="selectMode = true">选择</button>
             <button
@@ -771,7 +739,6 @@ const emptyCopy = computed(() => {
             >
               筛选<span v-if="activeFilterCount" class="text-11px tabular-nums">{{ activeFilterCount }}</span>
             </button>
-            <button type="button" :class="TOOL_CLS" @click="showTagManager = true">标签管理</button>
           </template>
           <template v-else>
             <span class="text-12px font-600 text-violet-ink whitespace-nowrap" aria-live="polite"
@@ -861,71 +828,6 @@ const emptyCopy = computed(() => {
             </button>
           </div>
         </template>
-
-        <span class="shrink-0 w-1px h-20px mx-2px bg-line" aria-hidden="true" />
-        <IconButton label="全部标签" size="md" variant="plate" @click="showTagManager = true">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.9"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path
-              d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7a1 1 0 0 1 .7.3l7.3 7.3a1 1 0 0 1 0 1.4l-7.7 7.7a1 1 0 0 1-1.4 0l-7.3-7.3a1 1 0 0 1-.3-.7Z"
-            />
-            <circle cx="8.2" cy="8.2" r="1.2" />
-          </svg>
-        </IconButton>
-        <div
-          class="flex items-center gap-6px min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          role="group"
-          aria-label="按标签筛选"
-        >
-          <!-- 「未分类」= 没挂任何标签（useAssetDelete.ts 的 UNTAGGED_TAG → 列表 untagged=true） -->
-          <button
-            type="button"
-            :aria-pressed="filters.tag === UNTAGGED_TAG"
-            :class="[PILL_CLS, filters.tag === UNTAGGED_TAG ? PILL_ON : PILL_OFF]"
-            @click="toggleTag(UNTAGGED_TAG)"
-          >
-            未分类<em v-if="untaggedCount != null" :class="PILL_COUNT_CLS" class="not-italic">{{ untaggedCount }}</em>
-          </button>
-          <button
-            v-for="t in tags"
-            :key="t.id"
-            type="button"
-            :aria-pressed="filters.tag === t.name"
-            :class="[PILL_CLS, filters.tag === t.name ? PILL_ON : PILL_OFF]"
-            @click="toggleTag(t.name)"
-          >
-            {{ t.name }}<em :class="PILL_COUNT_CLS" class="not-italic">{{ t.assetCount }}</em>
-          </button>
-          <input
-            v-if="tagAdding"
-            ref="tagDraftInput"
-            v-model="tagDraft"
-            maxlength="12"
-            placeholder="标签名"
-            aria-label="新标签名"
-            :disabled="tagCreating"
-            class="shrink-0 w-96px h-30px box-border px-10px rounded-15px border border-solid border-violet-line bg-white outline-none text-12px text-ink placeholder:text-placeholder"
-            @keydown.enter.prevent="submitTagAdd"
-            @keydown.esc="cancelTagAdd"
-            @blur="onTagDraftBlur"
-          />
-          <button
-            v-else
-            type="button"
-            aria-label="新建标签"
-            title="新建标签"
-            :class="[PILL_CLS, PILL_OFF]"
-            @click="startTagAdd"
-          >
-            ＋
-          </button>
-        </div>
 
         <label :class="SEARCH_CLS">
           <svg
@@ -1102,7 +1004,6 @@ const emptyCopy = computed(() => {
       @prev="openSibling(-1)"
       @next="openSibling(1)"
     />
-    <TagManagerModal v-model:show="showTagManager" @changed="onTagsChanged" />
     <BatchTagModal v-model:show="showBatchTag" :asset-ids="selectedIds" @success="onBatchTagged" />
     <BatchColorFixModal v-model:show="showBatchColorFix" :assets="batchColorFixAssets" @changed="onBatchColorFixed" />
     <AssetTagPopover ref="tagPopover" @changed="onPopoverChanged" />
