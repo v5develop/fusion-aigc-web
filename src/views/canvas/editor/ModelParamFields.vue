@@ -62,7 +62,7 @@ const LABEL = 'block mb-2px text-muted text-11px leading-16px'
     role="group"
     aria-label="生成参数"
     data-node-params
-    @pointerdown.stop
+    @pointerdown.stop="store.selectNode(nodeId)"
     @dblclick.stop
   >
     <div class="min-w-0">

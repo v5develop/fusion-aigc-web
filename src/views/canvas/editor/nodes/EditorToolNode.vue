@@ -2,12 +2,13 @@
 /**
  * 工具节点：crop / upscale / outpaint / i2p / mask / tryon。
  * 输入：image 口（tryon 为 garment / models 口）；输出：i2p 是 text（反推文本），
- * 其余是 image-out。工具参数在控制台维护，这里显示摘要与运行结果；另有两处节点内编辑（2026-11-07 审计 33）：
+ * 其余是 image-out。2026-11-12 起（原型「表单上卡」）参数表单直接在卡片里（ToolParamFields / TryonSlots，写回原有 data 字段），
+ * 不再有浮动控制台；执行钮在卡片底部（执行中变「取消」）。另有两处节点内编辑（2026-11-07 审计 33）：
  * - 反推（i2p）结果可直接改、「复制」、「插入画布」（右侧新建一个带这段文本的文字节点）；
  * - 裁剪（crop）在输入图上拖拽框选：空白处拖出新框、框内拖动平移、四角把手缩放，
  *   松手写回 data.crop（与控制台 X / Y / 宽 / 高 同一对象，两边自动同步）。
  */
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUpdated, reactive, ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import EditorIcon from '../EditorIcon.vue'
 import RunErrorNotice from '../RunErrorNotice.vue'
@@ -22,7 +23,6 @@ import {
   NODE_CARD_SELECTED,
   NODE_HEAD_PLAIN,
   NODE_NOTICE,
-  NODE_RUN_BTN,
   NODE_TITLE,
   type IQuickAddRequest,
 } from '../ui.ts'
@@ -32,6 +32,8 @@ import NodeResize from '../NodeResize.vue'
 import { ColorFixPill } from '@/components/ColorFix'
 import { openColorFix } from '../color-fix-action.ts'
 import LibraryStatusHint from '../LibraryStatusHint.vue'
+import ToolParamFields from '../ToolParamFields.vue'
+import TryonSlots from './TryonSlots.vue'
 
 const props = defineProps<{
   id: string
@@ -51,8 +53,25 @@ const isI2p = computed(() => props.data.tool === 'i2p')
 const isTryon = computed(() => props.data.tool === 'tryon')
 /** catalog 里 ready=false 的工具：灰显并禁止执行（目录未加载时不拦） */
 const notReady = computed(() => store.catalog.value?.tools?.find((t) => t.tool === props.data.tool)?.ready === false)
-/** 原型 useNodeResize 默认 340 宽 */
-const width = computed(() => props.data.width ?? 340)
+/** 原型 useNodeResize 默认 340 宽；试穿卡原型固定 380 宽 */
+const width = computed(() => props.data.width ?? (isTryon.value ? 380 : 340))
+
+/** 头部圆点按工具区分（只用主题令牌色，深浅色自动跟随） */
+const DOT_CLASS: Record<string, string> = {
+  crop: 'bg-violet',
+  upscale: 'bg-success',
+  outpaint: 'bg-warning',
+  i2p: 'bg-muted',
+  mask: 'bg-danger',
+  tryon: 'bg-violet-solid',
+}
+const RUN_LABEL: Record<string, string> = {
+  crop: '完成裁剪',
+  upscale: '开始放大',
+  outpaint: '开始扩图',
+  i2p: '反推提示词',
+  mask: '开始重绘',
+}
 
 const resultImage = computed(() => props.data.resultImage ?? props.data.image)
 
@@ -68,31 +87,14 @@ function onColorFix(e: MouseEvent) {
 }
 const resultText = computed(() => props.data.resultText ?? '')
 
-const summary = computed(() => {
-  const tool = props.data.tool
-  if (tool === 'crop') {
-    const crop = props.data.crop
-    return crop ? `裁剪 ${Math.round(crop.w * 100)}×${Math.round(crop.h * 100)}%` : '未设置裁剪区域'
-  }
-  if (tool === 'upscale') return `${props.data.scale ?? 2}x 放大`
-  if (tool === 'outpaint') return `扩图 ${props.data.ratio ?? ''}`
-  if (tool === 'i2p') return `反推（${props.data.language === 'en' ? '英' : '中'}）`
-  if (tool === 'mask')
-    return (props.data.maskPrompt ?? '').trim()
-      ? props.data.maskBox
-        ? '已框选区域并填写要求'
-        : '待框选重绘区域'
-      : '待填重绘要求'
-  if (tool === 'tryon') return `模特试穿 · 模特 ${modelCount.value}/9`
-  return ''
-})
-
 /** 试穿：连到模特口的线数（上限 9，validateConnection 同口径） */
 const modelCount = computed(
   () =>
     store.edges.value.filter((edge) => edge.target === props.id && normalizeHandle(edge.targetHandle) === 'models')
       .length,
 )
+
+const runLabel = computed(() => (isTryon.value ? `开始生成（${modelCount.value} 张）` : (RUN_LABEL[props.data.tool ?? ''] ?? '执行')))
 
 // ---- 反推结果：可编辑 / 复制 / 插入画布 ----
 /** 节点内修改直接写回 resultText（下游引用即时生效）；它是运行态成品，刷新后以服务端结果为准 */
@@ -151,7 +153,8 @@ function cropPoint(event: PointerEvent) {
   return { x: clamp01((event.clientX - rect.left) / rect.width), y: clamp01((event.clientY - rect.top) / rect.height) }
 }
 function onCropDown(event: PointerEvent) {
-  if (event.button !== 0) return
+  if (event.button !== 0 || isRunning.value) return
+  store.selectNode(props.id)
   const el = event.target as HTMLElement
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   const p = cropPoint(event)
@@ -223,27 +226,67 @@ function onCropUp() {
     },
   })
 }
+
+// ---- 卡片高度：内容最小高度（给 NodeResize 夹紧用，规则同 EditorModelNode） ----
+// 表单在卡上，内容高度由表单决定：拖过高度（heightFixed）后外框 min-height = max(data.height, 内容最小高度)，
+// 结果区 / 占位区 flex 撑满剩余空间；未拖过则自动按内容撑高。
+const MEDIA_MIN = 80
+const headRef = ref<HTMLElement | null>(null)
+const bodyRef = ref<HTMLElement | null>(null)
+const mediaRef = ref<HTMLElement | null>(null)
+const contentMin = ref(0)
+let contentObserver: ResizeObserver | null = null
+function measureContentMin() {
+  const head = headRef.value
+  const body = bodyRef.value
+  if (!head || !body) return
+  const cs = getComputedStyle(body)
+  const gap = parseFloat(cs.rowGap) || 0
+  const kids = Array.from(body.children) as HTMLElement[]
+  let others = 0
+  for (const child of kids) {
+    if (child === mediaRef.value) continue
+    others += child.offsetHeight
+  }
+  const gaps = Math.max(0, kids.length - 1) * gap
+  contentMin.value = Math.ceil(
+    head.offsetHeight +
+      (parseFloat(cs.paddingTop) || 0) +
+      (parseFloat(cs.paddingBottom) || 0) +
+      others +
+      gaps +
+      (mediaRef.value ? MEDIA_MIN : 0) +
+      2,
+  )
+}
+function observeContent() {
+  contentObserver?.disconnect()
+  measureContentMin()
+  if (typeof ResizeObserver === 'undefined' || !bodyRef.value) return
+  contentObserver = new ResizeObserver(measureContentMin)
+  for (const child of Array.from(bodyRef.value.children)) {
+    if (child !== mediaRef.value) contentObserver.observe(child)
+  }
+}
+onMounted(observeContent)
+onUpdated(observeContent)
+onBeforeUnmount(() => contentObserver?.disconnect())
+const fixedHeight = computed(() => Boolean(props.data.heightFixed && props.data.height))
 </script>
 
 <template>
   <div
-    :class="[NODE_CARD, { 'is-selected': selected, 'opacity-55': notReady, [NODE_CARD_SELECTED]: selected }]"
-    :style="{ width: `${width}px`, minHeight: data.height ? `${data.height}px` : undefined }"
+    :class="[
+      NODE_CARD,
+      'flex flex-col',
+      { 'is-selected': selected, 'opacity-55': notReady, [NODE_CARD_SELECTED]: selected },
+    ]"
+    :style="{ width: `${width}px`, minHeight: fixedHeight ? `${Math.max(data.height ?? 0, contentMin)}px` : undefined }"
   >
-    <header :class="NODE_HEAD_PLAIN">
-      <span class="shrink-0 w-9px h-9px rounded-full bg-violet" />
+    <header ref="headRef" :class="NODE_HEAD_PLAIN">
+      <span class="shrink-0 w-9px h-9px rounded-full" :class="DOT_CLASS[data.tool ?? ''] ?? 'bg-violet'" />
       <span class="flex-1" :class="NODE_TITLE">{{ data.title || toolLabel(data.tool) }}</span>
       <div class="flex shrink-0 items-center gap-2px">
-        <button
-          type="button"
-          :class="NODE_RUN_BTN"
-          :disabled="notReady && !isRunning"
-          :title="notReady && !isRunning ? '该功能暂未开放' : isRunning ? '取消执行' : '执行此工具'"
-          :aria-label="isRunning ? `取消执行 ${data.title}` : `执行 ${data.title}`"
-          @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
-        >
-          <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
-        </button>
         <NodeMenu
           :title="data.title || toolLabel(data.tool)"
           :image-actions-for="isI2p ? undefined : id"
@@ -252,9 +295,68 @@ function onCropUp() {
       </div>
     </header>
 
-    <!-- 原型 .wf-tool-node__body：内边距 0 12 12、gap 8 -->
-    <div class="flex flex-col gap-8px px-12px pb-12px">
-      <div class="m-0 text-muted text-12px">{{ summary }}</div>
+    <!-- 原型 .wf-tool-node__body：内边距 0 12 12、gap 8；表单在卡上 -->
+    <div ref="bodyRef" class="flex flex-1 min-h-0 flex-col gap-8px px-12px pb-12px">
+      <TryonSlots v-if="isTryon" :node-id="id" :disabled="isRunning" />
+      <ToolParamFields :node-id="id" :data="data">
+        <template #preview>
+          <!-- 裁剪：在输入图上拖拽框选（比例坐标写回 data.crop） -->
+          <div v-if="isCrop && cropSource" class="flex flex-col gap-4px">
+            <span class="text-muted text-11px">在图上拖拽框选裁剪区域，拖四角调整</span>
+            <div class="flex justify-center px-6px py-6px rounded-6px bg-[#f4f6fa] [[data-theme=dark]_&]:bg-surface2">
+              <div
+                ref="cropBox"
+                class="relative inline-block max-w-full select-none touch-none cursor-crosshair nodrag nowheel"
+                @pointerdown.stop="onCropDown"
+                @pointermove="onCropMove"
+                @pointerup="onCropUp"
+                @pointercancel="onCropUp"
+              >
+                <img
+                  :src="cropSource"
+                  alt="裁剪输入图"
+                  draggable="false"
+                  class="block max-w-full max-h-220px pointer-events-none"
+                  @error="onCropSourceError"
+                />
+                <!-- 框外压暗：单独一层裁在图片范围内（交互层不裁，四角把手的命中区才不会被切掉） -->
+                <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+                  <div
+                    class="absolute shadow-[0_0_0_9999px_rgba(31,35,41,0.38)]"
+                    :class="data.crop?.shape === 'circle' ? 'rounded-full' : ''"
+                    :style="{
+                      left: `${cropShown.x * 100}%`,
+                      top: `${cropShown.y * 100}%`,
+                      width: `${cropShown.w * 100}%`,
+                      height: `${cropShown.h * 100}%`,
+                    }"
+                  />
+                </div>
+                <div
+                  data-crop-rect
+                  class="absolute border-2 border-solid border-violet bg-violet/12 cursor-move"
+                  :class="data.crop?.shape === 'circle' ? 'rounded-full' : ''"
+                  :style="{
+                    left: `${cropShown.x * 100}%`,
+                    top: `${cropShown.y * 100}%`,
+                    width: `${cropShown.w * 100}%`,
+                    height: `${cropShown.h * 100}%`,
+                  }"
+                >
+                  <span
+                    v-for="corner in cropHandles"
+                    :key="corner.key"
+                    :data-crop-handle="corner.key"
+                    class="absolute w-10px h-10px border-2 border-solid border-#fff rounded-2px bg-violet -translate-x-50% -translate-y-50% after:content-empty after:absolute after:-inset-11px"
+                    :class="corner.cls"
+                    :aria-label="`拖动${corner.label}调整裁剪框`"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </ToolParamFields>
 
       <!-- 反推结果：可编辑文本 + 复制 / 插入画布 -->
       <template v-if="isI2p && (resultText || data.status === 'done')">
@@ -264,7 +366,7 @@ function onCropUp() {
           :maxlength="3000"
           aria-label="反推结果（可编辑）"
         />
-        <div class="flex items-center gap-8px">
+        <div class="flex items-center gap-8px" data-node-params>
           <span class="flex-1 min-w-0 text-muted text-11px">改动仅本次有效；插入画布可长期保存</span>
           <button type="button" :class="TEXT_BTN" @click.stop="copyText">
             <EditorIcon name="copy" :size="13" />复制
@@ -275,70 +377,18 @@ function onCropUp() {
         </div>
       </template>
       <template v-else>
-        <!-- 裁剪：在输入图上拖拽框选（比例坐标写回 data.crop） -->
-        <div v-if="isCrop && cropSource" class="flex flex-col gap-4px">
-          <span class="text-muted text-11px">在图上拖拽框选裁剪区域，拖四角调整</span>
-          <div class="flex justify-center px-6px py-6px rounded-6px bg-[#f4f6fa] [[data-theme=dark]_&]:bg-surface2">
-            <div
-              ref="cropBox"
-              class="relative inline-block max-w-full select-none touch-none cursor-crosshair nodrag nowheel"
-              @pointerdown.stop="onCropDown"
-              @pointermove="onCropMove"
-              @pointerup="onCropUp"
-              @pointercancel="onCropUp"
-            >
-              <img
-                :src="cropSource"
-                alt="裁剪输入图"
-                draggable="false"
-                class="block max-w-full max-h-220px pointer-events-none"
-                @error="onCropSourceError"
-              />
-              <!-- 框外压暗：单独一层裁在图片范围内（交互层不裁，四角把手的命中区才不会被切掉） -->
-              <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-                <div
-                  class="absolute shadow-[0_0_0_9999px_rgba(31,35,41,0.38)]"
-                  :class="data.crop?.shape === 'circle' ? 'rounded-full' : ''"
-                  :style="{
-                    left: `${cropShown.x * 100}%`,
-                    top: `${cropShown.y * 100}%`,
-                    width: `${cropShown.w * 100}%`,
-                    height: `${cropShown.h * 100}%`,
-                  }"
-                />
-              </div>
-              <div
-                data-crop-rect
-                class="absolute border-2 border-solid border-violet bg-violet/12 cursor-move"
-                :class="data.crop?.shape === 'circle' ? 'rounded-full' : ''"
-                :style="{
-                  left: `${cropShown.x * 100}%`,
-                  top: `${cropShown.y * 100}%`,
-                  width: `${cropShown.w * 100}%`,
-                  height: `${cropShown.h * 100}%`,
-                }"
-              >
-                <span
-                  v-for="corner in cropHandles"
-                  :key="corner.key"
-                  :data-crop-handle="corner.key"
-                  class="absolute w-10px h-10px border-2 border-solid border-#fff rounded-2px bg-violet -translate-x-50% -translate-y-50% after:content-empty after:absolute after:-inset-11px"
-                  :class="corner.cls"
-                  :aria-label="`拖动${corner.label}调整裁剪框`"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
         <div
           v-if="resultImage"
+          ref="mediaRef"
           class="canvas-media relative grid w-full place-items-center overflow-hidden min-h-110px border border-solid border-line rounded-6px bg-[#f4f6fa] [[data-theme=dark]_&]:bg-surface2"
+          :class="fixedHeight ? 'flex-1' : ''"
         >
           <img
             :src="resultImage"
             :alt="data.title"
             draggable="false"
-            class="block w-full max-h-240px object-contain"
+            class="block w-full object-contain"
+            :class="fixedHeight ? 'h-full' : 'max-h-240px'"
             @error="store.refreshNodeMedia(id)"
           />
           <ColorFixPill
@@ -353,11 +403,13 @@ function onCropUp() {
           />
         </div>
         <div
-          v-else-if="!(isCrop && cropSource)"
-          class="flex flex-col items-center gap-6px justify-center min-h-80px border border-dashed border-line-strong rounded-6px text-placeholder text-12px"
+          v-else-if="!(isCrop && cropSource) && !isTryon"
+          ref="mediaRef"
+          class="flex flex-col items-center gap-6px justify-center min-h-60px border border-dashed border-line-strong rounded-6px text-placeholder text-12px"
+          :class="fixedHeight ? 'flex-1' : ''"
         >
           <EditorIcon name="tool" :size="20" />
-          <span>{{ isRunning ? '处理中…' : isTryon ? '连服装与模特图后执行' : '连一条图片输入后执行' }}</span>
+          <span>{{ isRunning ? '处理中…' : '连一条图片输入后执行' }}</span>
         </div>
         <LibraryStatusHint
           v-if="resultImage && !isRunning"
@@ -383,6 +435,27 @@ function onCropUp() {
       <div v-else-if="data.status === 'done'" :class="[NODE_NOTICE, CANVAS_OK]" class="!mt-0 border border-solid">
         已完成
       </div>
+
+      <!-- 执行钮（原型 .wf-tool-node__run）：整行；执行中变「取消」；未开放的工具禁用并说明 -->
+      <button
+        type="button"
+        data-node-params
+        class="shrink-0 flex w-full h-32px items-center justify-center gap-6px border border-solid rounded-6px text-13px font-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed nodrag"
+        :class="[
+          FOCUS_RING,
+          isRunning
+            ? 'border-control bg-white text-ink-2 hover:border-control-hover hover:text-ink'
+            : 'border-transparent bg-violet-solid text-white hover:opacity-90',
+        ]"
+        :disabled="notReady && !isRunning"
+        :title="notReady && !isRunning ? '该功能暂未开放' : undefined"
+        :aria-label="isRunning ? `取消执行 ${data.title}` : `${runLabel}：${data.title}`"
+        @pointerdown.stop="store.selectNode(id)"
+        @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
+      >
+        <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
+        {{ isRunning ? '取消' : runLabel }}
+      </button>
     </div>
 
     <template v-if="isTryon">
@@ -421,6 +494,6 @@ function onCropUp() {
       :kinds="isI2p ? ['image-model', 'video-model'] : ['image-model', 'video-model', 'tool']"
       @open="emit('quickAdd', $event)"
     />
-    <NodeResize :id="id" kind="tool" :title="data.title || toolLabel(data.tool)" />
+    <NodeResize :id="id" kind="tool" :min-content-height="contentMin" :title="data.title || toolLabel(data.tool)" />
   </div>
 </template>

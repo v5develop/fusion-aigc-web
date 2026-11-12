@@ -223,6 +223,11 @@ const lightboxItems = computed(() => {
   }
   return props.data.image ? [{ url: props.data.image, type: 'image' as const, name }] : []
 })
+/** 结果图盖满卡面：点它放大的同时也要选中卡片（click.stop 会吞掉画布的 node-click），控制台才会跟着出来 */
+function selectThenZoom() {
+  store.selectNode(props.id)
+  openLightbox()
+}
 function openLightbox(candidateIndex?: number) {
   const target = candidateIndex ?? selectedIdx.value
   const at = visibleCandidates.value.findIndex((item) => item.index === target)
@@ -324,7 +329,7 @@ function onColorFix(e: MouseEvent) {
           :class="FOCUS_RING"
           title="点击放大查看"
           :aria-label="`放大查看 ${data.title || '生成结果'}`"
-          @click.stop="openLightbox()"
+          @click.stop="selectThenZoom()"
         >
           <img
             :src="data.image"

@@ -3,7 +3,7 @@ import { modelLabelOf } from '@/utils/model-label'
 /**
  * 画布节点编辑器（对齐原型 CanvasView + canvas-v31 皮肤）：
  * 顶栏（返回 / 标题✎ / 保存状态 / 运行数 / 模板 · 保存 · 另存为 · 执行模型）
- * + 左侧「画布资产」栏 + Vue Flow 画布（左竖工具条 / 底横工具条）+ 浮动控制台（选中节点时出现在节点下方）
+ * + 左侧「画布资产」栏 + Vue Flow 画布（左竖工具条 / 底横工具条）+ 生成卡右侧停靠控制台
  * + 添加节点面板（工具条「+」/ 双击空白画布 / 端口「+」）+ 多选操作条 + 节点缩放 + 模块删除。
  * 接口契约见 fusion_aigc_go/docs/api/api-canvas.md；快照 {nodes, edges} 整段存取 + 乐观锁保存。
  */
@@ -54,6 +54,7 @@ import {
 } from '@/api/canvas-home.ts'
 import { downloadImage } from '@/utils/download.ts'
 import { takeCanvasImport } from '@/utils/canvas-import-handoff.ts'
+import { joinPrompt, PROMPT_MAX_LEN } from '@/utils/prompt-library'
 import { isGroupPlate, normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
 import { DEFAULT_CANVAS_ZOOM, readCanvasZoom, writeCanvasZoom } from './canvas-zoom-prefs.ts'
 import { stepZoomLevel, viewportKeepingCenter, type ICanvasClipboard } from './clipboard.ts'
@@ -832,8 +833,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('paste', onWindowPaste)
   window.removeEventListener('copy', onWindowCopy)
   window.removeEventListener('cut', onWindowCopy)
-  consoleObserver?.disconnect()
-  cancelAnimationFrame(consoleFrame)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('beforeunload', onBeforeUnload)
   store.dispose()
@@ -2390,26 +2389,46 @@ function dismissOnboard() {
 const promptFlyoutOpen = ref(false)
 const promptAnchorEl = ref<HTMLElement | null>(null)
 
+/**
+ * 插入目标（对齐原型 insertPromptFromLibrary）：
+ * 只有「选中的文字节点」（接在原文后面）或「选中的、提示词口没有连线的生成卡」（写入它的提示词）才接收；
+ * 其余选中（图片 / 视频 / 工具 / 模块、提示词口已连了文字节点或反推结果的生成卡）都在安全区中心新建「提示词」文字节点。
+ * 全程同一个同步 tick 内改 store：撤销栈按内容签名静默合并，Ctrl+Z 一步还原。
+ */
 function insertPrompt(text: string) {
   const node = selectedNode.value
-  if (!node) {
-    // 没选中节点：在视口中心新建一个「提示词」文字节点并填入
-    const rect = stageRef.value?.getBoundingClientRect()
-    const at = rect
-      ? screenToFlowCoordinate({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
-      : undefined
-    const created = store.addNode('text', undefined, at)
-    if (!created) return
-    store.updateNodeData(created.id, { title: '提示词', text: text.slice(0, 3000) })
-    store.selectNode(created.id)
-    editorMessage.success('已新建文字节点并插入提示词')
+  const writable = node && !node.data.locked
+  if (writable && node.type === 'text') {
+    const r = joinPrompt(String(node.data.text ?? ''), text)
+    store.updateNodeData(node.id, { text: r.text })
+    editorMessage.success('已插入选中的文字节点')
+    if (r.truncated) editorMessage.warning(`超出 ${PROMPT_MAX_LEN} 字，已截断`)
     return
   }
-  const key = node.type === 'text' ? 'text' : 'prompt'
-  const base = String(node.data[key] ?? '')
-  const merged = (base ? `${base}${base.endsWith('\n') ? '' : '\n'}` : '') + text
-  store.updateNodeData(node.id, { [key]: merged.slice(0, 3000) })
-  editorMessage.success('提示词已填入选中节点')
+  if (writable && node.type === 'model') {
+    const connected = edges.value.some((edge) => edge.target === node.id && normalizeHandle(edge.targetHandle) === 'prompt')
+    if (!connected) {
+      const r = joinPrompt(String(node.data.prompt ?? ''), text)
+      store.updateNodeData(node.id, { prompt: r.text })
+      editorMessage.success('已填入选中的生成卡')
+      if (r.truncated) editorMessage.warning(`超出 ${PROMPT_MAX_LEN} 字，已截断`)
+      return
+    }
+  }
+  // 新建文字节点：落在安全区（舞台 − 浮层）中心；量不到舞台时交给 addNode 自动排布
+  const safe = measureSafeArea()
+  const rect = stageRef.value?.getBoundingClientRect()
+  const at =
+    safe && rect
+      ? screenToFlowCoordinate({ x: rect.left + safe.left + safe.width / 2, y: rect.top + safe.top + safe.height / 2 })
+      : undefined
+  const created = store.addNode('text', undefined, at)
+  if (!created) return
+  const cut = text.length > PROMPT_MAX_LEN
+  store.updateNodeData(created.id, { title: '提示词', text: cut ? text.slice(0, PROMPT_MAX_LEN) : text })
+  store.selectNode(created.id)
+  editorMessage.success('已新建文字节点并插入提示词')
+  if (cut) editorMessage.warning(`超出 ${PROMPT_MAX_LEN} 字，已截断`)
 }
 
 // ---------------- 模块删除（底板 + 模块内节点） ----------------
@@ -2433,71 +2452,16 @@ function confirmRemoveModule(id: string) {
   })
 }
 
-/** 生成卡（不含参考素材、多选时不算）→ 控制台停靠右侧；其余节点用浮动控制台 */
+/** 生成卡（不含参考素材、多选时不算）→ 控制台停靠右侧；其余节点（含工具）表单都在卡上，没有控制台 */
 const dockedNode = computed(() => {
   const node = selectedNode.value
   if (!node || node.type !== 'model' || node.data.inputOnly) return null
   if (selectedFlowNodes.value.length > 1) return null
   return node
 })
-const floatingConsoleNode = computed(() => {
-  const node = selectedNode.value
-  if (!node || node.type === 'module' || dockedNode.value || selectedFlowNodes.value.length > 1) return null
-  return node
-})
-// ---------------- 浮动控制台定位（原型 consoleFlowStyle：节点下方 12px、放不下翻到上方、左右夹在舞台内） ----------------
-
-const CONSOLE_W = 520
-const CONSOLE_H = 360
-const consoleBox = ref<{ left: number; top: number; width: number; height: number } | null>(null)
-
-function placeConsole() {
-  const node = floatingConsoleNode.value
-  const stage = stageRef.value
-  if (!node || !stage) {
-    consoleBox.value = null
-    return
-  }
-  const s = stage.getBoundingClientRect()
-  const width = Math.max(280, Math.min(CONSOLE_W, s.width - 16))
-  const height = Math.max(220, Math.min(CONSOLE_H, s.height - 16))
-  // 底部留出底横工具条（bottom 16 + 40 高）
-  const bottomLimit = s.height - 64
-  const el = stage.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(node.id)}"]`)
-  let top = bottomLimit - height
-  let left = (s.width - width) / 2
-  if (el) {
-    const r = el.getBoundingClientRect()
-    top = r.bottom - s.top + 12
-    if (top + height > bottomLimit) {
-      const above = r.top - s.top - 12 - height
-      top = above >= 8 ? above : Math.max(8, bottomLimit - height)
-    }
-    left = r.left - s.left + r.width / 2 - width / 2
-  }
-  left = Math.max(8, Math.min(s.width - 8 - width, left))
-  consoleBox.value = { left: Math.round(left), top: Math.round(Math.max(8, top)), width, height }
-}
-
-let consoleFrame = 0
-function schedulePlaceConsole() {
-  cancelAnimationFrame(consoleFrame)
-  consoleFrame = requestAnimationFrame(placeConsole)
-}
-
-watch(
-  () => {
-    const node = floatingConsoleNode.value
-    const vp = viewport.value
-    return [node?.id, node?.position.x, node?.position.y, node?.data.width, node?.data.height, vp.x, vp.y, vp.zoom]
-  },
-  () => void nextTick(schedulePlaceConsole),
-  { flush: 'post' },
-)
-
 // ---------------- 生成卡控制台右侧停靠（2026-11-12 原型） ----------------
 // 生成卡（图片 / 视频生成，不含参考素材）的控制台停靠在画布区右侧：宽 300（工作区容器 ≤ 1280 时 280），画布区随之变窄；
-// 其他节点（文字 / 图片 / 工具 / 视频素材）的表单放不进 300，仍用上面的浮动控制台。
+// 其他节点（文字 / 图片 / 工具 / 视频素材）没有控制台：工具表单在工具卡上，其余在卡内编辑。
 // 窄工作区（容器宽 < 1100）：停靠栏改成叠在画布右缘上的浮层（带投影），画布不再缩——否则舞台会被压到 ~500 以下，
 // 连底部工具条都放不下。叠放时「被遮挡」的判定把停靠栏宽度扣掉，选中卡片照样会被平移到可见区。
 const DOCK_NARROW_BELOW = 1100
@@ -2616,21 +2580,6 @@ watch(
     requestAnimationFrame(() => revealWhenIdle(id))
   },
   { flush: 'post' },
-)
-
-/** 节点自身高度会变（图片加载后按比例撑开、缩放）、舞台也会随窗口变：都要重新定位 */
-let consoleObserver: ResizeObserver | null = null
-watch(
-  () => floatingConsoleNode.value?.id,
-  async (id) => {
-    consoleObserver?.disconnect()
-    if (!id || typeof ResizeObserver === 'undefined') return
-    await nextTick()
-    consoleObserver = new ResizeObserver(schedulePlaceConsole)
-    if (stageRef.value) consoleObserver.observe(stageRef.value)
-    const el = stageRef.value?.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"]`)
-    if (el) consoleObserver.observe(el)
-  },
 )
 
 /**
@@ -3467,20 +3416,6 @@ useFileDropPaste(stageRef, {
             </IconButton>
           </div>
 
-          <!-- 浮动控制台（原型 CanvasConsolePanel：约 520×360，节点下方，放不下翻到上方） -->
-          <div
-            v-if="floatingConsoleNode && consoleBox"
-            class="absolute z-15"
-            :style="{
-              left: `${consoleBox.left}px`,
-              top: `${consoleBox.top}px`,
-              width: `${consoleBox.width}px`,
-              height: `${consoleBox.height}px`,
-            }"
-          >
-            <NodeParamsPanel :key="floatingConsoleNode.id" :node="floatingConsoleNode" @locate="locateNode" />
-          </div>
-
           <NodeAddPanel
             v-if="addPanel"
             :x="addPanel.x"
@@ -3665,7 +3600,6 @@ useFileDropPaste(stageRef, {
             dock
             :anchor="promptAnchorEl"
             heading="提示词库"
-            show-counts
             keep-open
             @select="(item) => insertPrompt(item.prompt)"
           />
