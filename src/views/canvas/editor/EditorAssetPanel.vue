@@ -4,8 +4,7 @@
  * 列表直接取当前画布节点（分组框除外），不调新接口；点一行定位到画布。
  * 宽 248 / 头 44 / 搜索 32 / 行 44 / 缩略 32；可折叠到 48。
  */
-import { computed, ref, watch } from 'vue'
-import { currentAccountId } from '@/utils/auth-session.ts'
+import { computed, ref } from 'vue'
 import { modelLabelOf } from '@/utils/model-label'
 import EditorIcon from './EditorIcon.vue'
 import { useCanvasEditor } from './useCanvasEditor.ts'
@@ -17,28 +16,8 @@ const emit = defineEmits<{ locate: [id: string]; addFromLibrary: [] }>()
 const store = useCanvasEditor()
 const { nodes, selectedNodeId } = store
 
-// 折叠态按账号记在本机（个人便利；读写全部 try/catch）
-function collapsedKey() {
-  const who = currentAccountId()
-  return who ? `canvas-assets-collapsed:${who}` : ''
-}
-function readCollapsed(): boolean {
-  try {
-    const key = collapsedKey()
-    return key ? localStorage.getItem(key) === '1' : false
-  } catch {
-    return false
-  }
-}
-const collapsed = ref(readCollapsed())
-watch(collapsed, (value) => {
-  try {
-    const key = collapsedKey()
-    if (key) localStorage.setItem(key, value ? '1' : '0')
-  } catch {
-    /* 存储不可用：忽略 */
-  }
-})
+// 进入画布默认折叠（把空间让给画布）；用户主动展开后本次编辑内保持，下次进入仍是折叠，不跨次记忆
+const collapsed = ref(true)
 const query = ref('')
 const filter = ref<'all' | 'image' | 'video' | 'text' | 'model'>('all')
 
