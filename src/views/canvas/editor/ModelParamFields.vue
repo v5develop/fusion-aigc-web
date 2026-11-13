@@ -9,6 +9,7 @@
 import { computed } from 'vue'
 import { useCanvasEditor } from './useCanvasEditor.ts'
 import type { CanvasNodeData } from './types.ts'
+import ModelPickerRow from './ModelPickerRow.vue'
 
 const props = defineProps<{ nodeId: string; data: CanvasNodeData }>()
 
@@ -65,6 +66,10 @@ const LABEL = 'block mb-2px text-muted text-11px leading-16px'
     @pointerdown.stop="store.selectNode(nodeId)"
     @dblclick.stop
   >
+    <!-- 模型行：整行宽，排在比例 / 分辨率之上（选择逻辑与控制台共用 store.changeModel） -->
+    <div class="col-span-3 min-w-0">
+      <ModelPickerRow :node-id="nodeId" :data="data" :disabled="disabled" />
+    </div>
     <div class="min-w-0">
       <span :class="LABEL">比例</span>
       <n-select
