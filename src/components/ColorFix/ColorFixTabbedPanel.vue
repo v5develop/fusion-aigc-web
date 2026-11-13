@@ -648,22 +648,8 @@ const sourceShown = computed(() => recolor.value?.source ?? props.recolorAutoSou
             <p v-if="pixelNote" class="cft__pixel-warn">{{ pixelNote }}</p>
           </div>
           <template v-else>
-            <p v-if="slidersTitle" class="cft__subtitle">{{ slidersTitle }}</p>
-            <div class="cft__sliders">
-              <ColorFixSlider
-                v-for="s in SLIDERS"
-                :key="s.key"
-                :model-value="params[s.key]"
-                :label="s.label"
-                :tone="s.key"
-                editable
-                :min="R[s.key].min"
-                :max="R[s.key].max"
-                @update:model-value="setParam(s.key, $event)"
-              />
-            </div>
-            <slot name="adjust" />
-            <div class="cft__sec" role="group" aria-label="替换为目标颜色">
+            <!-- 顺序（与全屏面板一致）：替换颜色 → 五个基础滑杆 → 更多调整 -->
+            <div class="cft__sec cft__sec--recolor" role="group" aria-label="替换为目标颜色">
               <div class="cft__row">
                 <span class="cft__label cft__label--wide">替换颜色</span>
                 <button
@@ -766,6 +752,21 @@ const sourceShown = computed(() => recolor.value?.source ?? props.recolorAutoSou
                 </div>
               </template>
             </div>
+            <p v-if="slidersTitle" class="cft__subtitle">{{ slidersTitle }}</p>
+            <div class="cft__sliders">
+              <ColorFixSlider
+                v-for="s in SLIDERS"
+                :key="s.key"
+                :model-value="params[s.key]"
+                :label="s.label"
+                :tone="s.key"
+                editable
+                :min="R[s.key].min"
+                :max="R[s.key].max"
+                @update:model-value="setParam(s.key, $event)"
+              />
+            </div>
+            <slot name="adjust" />
           </template>
           <div class="cft__foot">
             <span class="cft__hint">参数只作用于当前结果 · 方向键微调 · Shift 加速 · 点数值可输入</span>
@@ -1057,6 +1058,10 @@ const sourceShown = computed(() => recolor.value?.source ?? props.recolorAutoSou
 .cft__pane :deep(.cfl),
 .cft__pane :deep(.cfa) {
   border-bottom: 0;
+}
+/* 替换颜色排在五个滑杆之上：与下面的滑杆组用虚线分开 */
+.cft__sec--recolor {
+  border-bottom: 1px dashed var(--xq-line);
 }
 .cft__sec {
   display: flex;
