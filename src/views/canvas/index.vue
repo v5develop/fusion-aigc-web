@@ -21,6 +21,7 @@ import {
 import type { ICanvasSummary, ICanvasTemplate } from '@/api/canvas-home.ts'
 import IconButton from '@/components/IconButton/index.vue'
 import { toApiError } from '@/api/index.ts'
+import { ossResize, thumbFallback } from '@/utils/oss.ts'
 import TitleModal from './TitleModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import CanvasDetail from './CanvasDetail.vue'
@@ -106,8 +107,7 @@ const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
 const loadError = ref('')
-const loadingMore = ref(false)
-const hasMore = computed(() => items.value.length < total.value)
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
 
 function formatTime(ms?: number) {
   if (!ms) return '尚未保存'
@@ -134,15 +134,23 @@ async function loadPage(p: number): Promise<ICanvasSummary[]> {
   return res.data?.items ?? []
 }
 
-async function reload() {
+/** 加载第 p 页并整页替换（真分页：DOM 里始终只有一页卡片，不随翻页累积） */
+async function goPage(p: number) {
   const cur = ++seq
   loading.value = true
   try {
-    const list = await loadPage(1)
+    let list = await loadPage(p)
     if (cur !== seq) return
+    // 当前页被删空（或总数变少）且不是第一页：退到最后一页
+    if (!list.length && p > 1 && total.value > 0) {
+      p = Math.max(1, Math.ceil(total.value / PAGE_SIZE))
+      list = await loadPage(p)
+      if (cur !== seq) return
+    }
     items.value = list
-    page.value = 1
+    page.value = p
     loadError.value = ''
+    listTop.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   } catch (err) {
     if (cur === seq) {
       notifyNetworkError(err, '画布列表加载失败，请稍后重试')
@@ -153,23 +161,15 @@ async function reload() {
   }
 }
 
-async function loadMore() {
-  if (loading.value || loadingMore.value || !hasMore.value) return
-  const cur = seq
-  loadingMore.value = true
-  try {
-    const list = await loadPage(page.value + 1)
-    if (cur !== seq) return
-    items.value.push(...list)
-    page.value++
-  } catch (err) {
-    notifyNetworkError(err, '加载更多失败，请稍后重试')
-  } finally {
-    loadingMore.value = false
-  }
+/** 重新加载当前页（删除后补位、出错重试） */
+function reload() {
+  return goPage(page.value)
 }
 
-onMounted(reload)
+/** 「已保存的画布」标题处：翻页后滚回列表顶部 */
+const listTop = ref<HTMLElement | null>(null)
+
+onMounted(() => void goPage(1))
 
 // ---------------- 卡片操作 ----------------
 
@@ -179,8 +179,8 @@ async function removeItem(item: ICanvasSummary) {
     message.success('已删除')
     items.value = items.value.filter((i) => i.id !== item.id)
     total.value = Math.max(0, total.value - 1)
-    // 删空了当前已加载的列表但服务端还有：重新拉第一页（本地删除后页码偏移，接着翻下一页会漏一条）
-    if (!items.value.length && total.value > 0) void reload()
+    // 重新拉当前页：下一页的第一条补上来；删空了最后一页会自动退到上一页
+    void reload()
   } catch (err) {
     notifyNetworkError(err, '删除失败，请稍后重试')
   }
@@ -349,22 +349,11 @@ async function doSaveAs(title: string) {
   if (savingAs.value || !saveAsTarget.value) return
   savingAs.value = true
   try {
-    const res = await canvasSaveAs(saveAsTarget.value.id, title || undefined)
+    await canvasSaveAs(saveAsTarget.value.id, title || undefined)
     message.success('已创建副本')
     showSaveAs.value = false
-    const d = res.data
-    if (d?.id) {
-      items.value.unshift({
-        id: d.id,
-        title: d.title,
-        revision: d.revision,
-        nodeCount: d.nodeCount,
-        coverUrl: d.coverUrl,
-        createdAt: d.createdAt,
-        updatedAt: d.updatedAt,
-      })
-      total.value++
-    } else void reload()
+    // 副本按更新时间排在最前：回到第一页即可看到
+    void goPage(1)
   } catch (err) {
     notifyNetworkError(err, '创建副本失败，请稍后重试')
   } finally {
@@ -565,7 +554,7 @@ async function doSaveAs(title: string) {
           </section>
 
           <section class="mt-24px">
-            <header class="flex items-end gap-14px mb-10px">
+            <header ref="listTop" class="flex items-end gap-14px mb-10px scroll-mt-16px">
               <div>
                 <h2 class="m-0 text-16px font-600 text-ink">已保存的画布</h2>
                 <p class="mt-3px mb-0 text-13px text-muted">
@@ -605,14 +594,15 @@ async function doSaveAs(title: string) {
                   @click="openCanvas(item)"
                 >
                   <span class="grid place-items-center shrink-0 w-88px h-58px rounded-6px overflow-hidden bg-surface3">
+                    <!-- 列表格只有 88×58：按显示尺寸取缩略图，不拉原图；处理参数不被支持时退回原图 -->
                     <img
                       v-if="item.coverUrl && !failedCovers.has(item.coverUrl)"
-                      :src="item.coverUrl"
+                      :src="ossResize(item.coverUrl, 88, 58)"
                       alt=""
                       loading="lazy"
                       decoding="async"
                       class="block w-full h-full object-cover"
-                      @error="markCoverFailed(item.coverUrl)"
+                      @error="(e: Event) => thumbFallback(e, item.coverUrl) || markCoverFailed(item.coverUrl!)"
                     />
                     <span
                       v-else
@@ -685,14 +675,14 @@ async function doSaveAs(title: string) {
               </div>
             </div>
 
-            <div v-if="hasMore && !loading" class="text-center pt-16px pb-4px">
-              <button
-                type="button"
-                class="p-0 border-none bg-transparent text-13px text-violet cursor-pointer hover:text-violet-press focus-visible:(outline outline-2 outline-violet outline-offset-2)"
-                @click="loadMore()"
-              >
-                {{ loadingMore ? '加载中…' : '加载更多' }}
-              </button>
+            <!-- 真分页：每页 PAGE_SIZE 个，翻页整页替换，卡片数量不随浏览累积 -->
+            <div v-if="total > PAGE_SIZE" class="flex justify-center pt-16px pb-4px">
+              <n-pagination
+                :page="page"
+                :page-count="pageCount"
+                :disabled="loading"
+                @update:page="(p: number) => void goPage(p)"
+              />
             </div>
           </section>
         </div>
