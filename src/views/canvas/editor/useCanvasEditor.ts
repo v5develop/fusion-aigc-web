@@ -47,6 +47,18 @@ import {
 } from './graph.ts'
 import { remapClipboard, type ICanvasClipboard } from './clipboard.ts'
 import {
+  findFreeBlockShift,
+  findFreeSpot,
+  measuredSizeOf,
+  NODE_GAP,
+  obstacleRects,
+  rectOfNode,
+  resettleSpot,
+  rightOf,
+  sizeOfNode,
+  type IPlacementOptions,
+} from './placement.ts'
+import {
   LIBRARY_PENDING_TIP,
   hasTransientMedia,
   isLibraryPending,
@@ -653,12 +665,68 @@ function selectNode(id: string): void {
 const selectedNode = computed(() => (selectedNodeId.value ? findNode(selectedNodeId.value) : undefined))
 
 /**
- * @param position 指定落点（添加面板：双击画布 / 端口「+」的位置）；不传沿用 spawnPosition 自动排布
+ * 新节点落点登记：节点按估计尺寸落点，首次渲染量出真实尺寸后（常比估计高）复核一次，
+ * 仍与别的节点重叠就只挪这一个节点；用户拖过 / 位置被改过就不再动。
+ */
+const settling = new Map<string, { x: number; y: number; flow: IPlacementOptions; tries: number }>()
+let settleTimer: ReturnType<typeof setTimeout> | null = null
+const SETTLE_INTERVAL_MS = 120
+const SETTLE_MAX_TRIES = 25
+
+/** 用户拖动 / 手动改了位置：放弃自动复核 */
+function releasePlacement(id: string): void {
+  settling.delete(id)
+}
+
+function scheduleSettle(): void {
+  if (settleTimer || !settling.size) return
+  settleTimer = setTimeout(() => {
+    settleTimer = null
+    runSettle()
+  }, SETTLE_INTERVAL_MS)
+}
+
+function runSettle(): void {
+  for (const [id, entry] of [...settling]) {
+    const node = findNode(id)
+    if (!node || node.position.x !== entry.x || node.position.y !== entry.y) {
+      settling.delete(id)
+      continue
+    }
+    const measured = measuredSizeOf(node)
+    if (!measured) {
+      entry.tries += 1
+      if (entry.tries > SETTLE_MAX_TRIES) settling.delete(id)
+      continue
+    }
+    settling.delete(id)
+    const others = obstacleRects(nodes.value, new Set([id]))
+    const spot = resettleSpot(node.position, measured, others, entry.flow)
+    if (!spot) continue
+    node.position = spot
+    // 位置修正并入「创建」这一步：基线已落定时直接吸收，避免多出一个撤销步
+    if (!historyPending.value && historyBase && !historyRestoring) historyBase = captureHistory()
+  }
+  scheduleSettle()
+}
+
+/** 登记并启动复核 */
+function trackPlacement(node: CanvasEditorNode, flow: IPlacementOptions): void {
+  if (node.type === 'module') return
+  settling.set(node.id, { x: node.position.x, y: node.position.y, flow, tries: 0 })
+  scheduleSettle()
+}
+
+/**
+ * 新建节点（所有入口的唯一落点：按期望点找空位，不与已有节点重叠且间距 ≥ NODE_GAP）
+ * @param position 期望落点（添加面板：双击画布 / 端口「+」的位置 / 拖放点 / 来源节点右侧）；不传沿用 spawnPosition 再找空位
+ * @param placement 搜索策略：指定落点默认 spiral（取最近空位），不指定落点默认 right-first
  */
 function addNode(
   kind: 'text' | 'image' | 'video' | 'image-model' | 'video-model' | 'tool',
   tool?: CanvasToolKind,
   position?: { x: number; y: number },
+  placement?: IPlacementOptions,
 ): CanvasEditorNode | undefined {
   if (!ready.value) return undefined
   const at = position ? { x: Math.round(position.x), y: Math.round(position.y) } : spawnPosition(nodes.value)
@@ -669,9 +737,12 @@ function addNode(
   else if (kind === 'tool') created = makeToolNode(tool ?? 'crop', at)
   else created = makeModelNode(kind === 'video-model' ? 'video' : 'image', at)
   if (created.type === 'model') applyCatalogDefaults(created)
+  const flow: IPlacementOptions = { flow: position ? 'spiral' : 'right-first', ...placement }
+  created.position = findFreeSpot(at, sizeOfNode(created), obstacleRects(nodes.value), flow)
   nodes.value.push(created)
   renumberDefaultTitles(nodes.value)
   selectedNodeId.value = created.id
+  trackPlacement(created, flow)
   return created
 }
 
@@ -868,25 +939,11 @@ function deleteGroupWithMembers(moduleId: string): number {
   return removeModule(moduleId)
 }
 
-/** 节点在画布上的宽度（Vue Flow 运行时 dimensions 优先，读不到按 data.width / 常见宽度兜底） */
-function nodeWidthOf(node: CanvasEditorNode): number {
-  const dims = (node as unknown as { dimensions?: { width?: number } }).dimensions
-  return dims?.width ?? node.data.width ?? 320
+/** 来源节点右侧的期望落点；addNode 配 down-first：同一来源连续加时在右侧一列往下排开，列满换右边一列 */
+function spotRightOf(source: CanvasEditorNode): { x: number; y: number } {
+  return rightOf(source, NODE_GAP)
 }
-
-/** 来源节点右侧找一块空位：从同一节点连续加时向下错开，避免新节点完全盖住上一个（原型 nearbyFreeSpot） */
-function spotRightOf(source: CanvasEditorNode, gap = 80): { x: number; y: number } {
-  const x = Math.round(source.position.x + nodeWidthOf(source) + gap)
-  let y = Math.round(source.position.y)
-  for (let i = 0; i < 12; i += 1) {
-    const occupied = nodes.value.some(
-      (node) => node.type !== 'module' && Math.abs(node.position.x - x) < 300 && Math.abs(node.position.y - y) < 220,
-    )
-    if (!occupied) break
-    y += 240
-  }
-  return { x, y }
-}
+const DOWNSTREAM_FLOW: IPlacementOptions = { flow: 'down-first' }
 
 /** 节点的输出口 id（与各节点组件里 source Handle 的 id 一致） */
 function outputHandleOf(node: CanvasEditorNode): string {
@@ -904,7 +961,7 @@ function outputHandleOf(node: CanvasEditorNode): string {
 function addConnectedToolNode(sourceId: string, tool: CanvasToolKind): CanvasEditorNode | undefined {
   const source = findNode(sourceId)
   if (!source || !ready.value) return undefined
-  const created = addNode('tool', tool, spotRightOf(source))
+  const created = addNode('tool', tool, spotRightOf(source), DOWNSTREAM_FLOW)
   if (!created) return undefined
   connect({
     source: source.id,
@@ -922,7 +979,7 @@ function addConnectedToolNode(sourceId: string, tool: CanvasToolKind): CanvasEdi
 function addTextNodeNear(sourceId: string, text = ''): CanvasEditorNode | undefined {
   const source = findNode(sourceId)
   if (!source || !ready.value) return undefined
-  const created = addNode('text', undefined, spotRightOf(source))
+  const created = addNode('text', undefined, spotRightOf(source), DOWNSTREAM_FLOW)
   if (created && text) created.data.text = text.slice(0, 3000)
   return created
 }
@@ -1088,10 +1145,19 @@ function snapshotForClipboard(ids: string[]): ICanvasClipboard | null {
   }
 }
 
-/** 按剪贴板快照粘贴：新 id、整体偏移 offset、组内连线重映射；返回新节点 id（底板在前） */
-function pasteClipboard(clip: ICanvasClipboard, offset = 48): string[] {
+/**
+ * 按剪贴板快照粘贴：新 id、组内连线重映射；整组当作一个整体，保持组内相对布局，
+ * 落在原位置右侧第一块不与现有节点重叠（间距 ≥ NODE_GAP）的空位。返回新节点 id（底板在前）
+ */
+function pasteClipboard(clip: ICanvasClipboard): string[] {
   if (!ready.value || !clip.nodes.length) return []
-  const out = remapClipboard(clip, offset, (node) => nextNodeId(ID_PREFIX[node.type]), nextEdgeId)
+  const out = remapClipboard(clip, 0, (node) => nextNodeId(ID_PREFIX[node.type]), nextEdgeId)
+  const members = out.nodes.filter((node) => node.type !== 'module')
+  const rects = (members.length ? members : out.nodes).map(rectOfNode)
+  const shift = findFreeBlockShift(rects, { dx: 0, dy: 0 }, obstacleRects(nodes.value), { flow: 'right-first' })
+  if (shift.dx || shift.dy) {
+    for (const node of out.nodes) node.position = { x: node.position.x + shift.dx, y: node.position.y + shift.dy }
+  }
   const plates = out.nodes.filter((node) => node.type === 'module')
   const others = out.nodes.filter((node) => node.type !== 'module')
   nodes.value = [...plates, ...nodes.value, ...others]
@@ -1106,9 +1172,9 @@ function pasteClipboard(clip: ICanvasClipboard, offset = 48): string[] {
 }
 
 /** 再制 / 复制（多选操作条、右键、Ctrl+D）：取快照立即粘贴 */
-function duplicateNodes(ids: string[], offset = 48): string[] {
+function duplicateNodes(ids: string[]): string[] {
   const clip = snapshotForClipboard(ids)
-  return clip ? pasteClipboard(clip, offset) : []
+  return clip ? pasteClipboard(clip) : []
 }
 
 // ---------------- 执行节点（幂等提交 + 轮询 + 取消） ----------------
@@ -2028,6 +2094,7 @@ export function useCanvasEditor() {
       }
       stopAllPollers()
       stopAllLibraryWatches()
+      settling.clear()
       ready.value = false
       selectedNodeId.value = ''
       resetHistory()
@@ -2037,6 +2104,7 @@ export function useCanvasEditor() {
     findNode,
     updateNodeData,
     addNode,
+    releasePlacement,
     changeModel,
     connect,
     removeEdgeById,

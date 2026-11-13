@@ -11,6 +11,7 @@ import { canvasUploadMedia } from '@/api/canvas-home.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import EditorIcon from '../EditorIcon.vue'
 import { normalizeHandle } from '../graph.ts'
+import { NODE_GAP } from '../placement.ts'
 import { editorMessage, useCanvasEditor } from '../useCanvasEditor.ts'
 import { uploadSizeError } from './useNodeUpload.ts'
 import { FOCUS_RING } from '../ui.ts'
@@ -87,14 +88,8 @@ function link(slot: Slot, sourceId: string): boolean {
   })
 }
 
-/** 工具左侧第一个不压住既有节点的纵向位置（从 startY 起每 200px 试一格） */
-function freeSpot(x: number, startY: number): { x: number; y: number } {
-  let y = startY
-  const taken = (cy: number) =>
-    store.nodes.value.some((n) => Math.abs(n.position.x - x) < 260 && Math.abs(n.position.y - cy) < 190)
-  for (let i = 0; i < 40 && taken(y); i += 1) y += 200
-  return { x, y }
-}
+/** 图片输入节点的默认宽度（与 EditorImageNode 一致），用来在工具左侧留出落点 */
+const IMAGE_W = 240
 
 /** 资产 / 上传得到的地址：在工具左侧新建图片输入节点并连线；连线失败则回滚新节点 */
 function addImageFor(slot: Slot, urls: string[]) {
@@ -103,7 +98,10 @@ function addImageFor(slot: Slot, urls: string[]) {
   const label = slot === 'garment' ? '服装' : '模特'
   const startY = tool.position.y + (slot === 'garment' ? 0 : modelLinks.value.length * 200)
   for (const url of urls) {
-    const created = store.addNode('image', undefined, freeSpot(tool.position.x - 300, startY))
+    const created = store.addNode('image', undefined, { x: tool.position.x - IMAGE_W - NODE_GAP, y: startY }, {
+      flow: 'down-first',
+      hDir: -1,
+    })
     if (!created) continue
     store.updateNodeData(created.id, { image: url, title: label })
     if (!link(slot, created.id)) store.removeNode(created.id)

@@ -276,16 +276,15 @@ function importFromHandoff(id: string) {
   if (!handoff) return
   const base = spawnPosition(nodes.value)
   let last: CanvasEditorNode | undefined
-  handoff.urls.forEach((url, i) => {
-    const created = store.addNode('image', undefined, { x: base.x + i * 300, y: base.y })
+  handoff.urls.forEach((url) => {
+    const created = store.addNode('image', undefined, base, { flow: 'right-first' })
     if (!created) return
     store.updateNodeData(created.id, { image: url })
     last = created
   })
   // 视频接在图片后面同一行（资产库「用于画布」可带视频）
-  const offset = handoff.urls.length
-  ;(handoff.videos ?? []).forEach((url, i) => {
-    const created = store.addNode('video', undefined, { x: base.x + (offset + i) * 300, y: base.y })
+  ;(handoff.videos ?? []).forEach((url) => {
+    const created = store.addNode('video', undefined, base, { flow: 'right-first' })
     if (!created) return
     store.updateNodeData(created.id, { video: url })
     last = created
@@ -1243,7 +1242,7 @@ function onInsertTemplate(template: ICanvasTemplateDetail) {
     editorMessage.warning('这个模板没有可插入的节点')
     return
   }
-  const ids = store.pasteClipboard(clip, 0)
+  const ids = store.pasteClipboard(clip)
   if (!ids.length) return
   editorMessage.success(`已插入模板「${template.title}」`)
   void nextTick(() => placeInSafeArea({ ids, ratio: 0.1, duration: 220, minZoom: 0.2, maxZoom: 1 }))
@@ -1508,10 +1507,9 @@ function confirmDeleteNodes() {
 
 /**
  * 剪贴板：复制 / 剪切那一刻的深拷贝（节点 + 组内连线，选中分组底板时连成员一起），粘贴从快照生成新 id，
- * 剪切后原节点已删也能粘贴；同一份快照每粘一次多错开 48px，连粘不叠在一起。
+ * 剪切后原节点已删也能粘贴；粘贴整组落在原位置右侧第一块不重叠的空位（placement.ts），连粘也不叠。
  */
 const clipboard = ref<ICanvasClipboard | null>(null)
-let pasteTimes = 0
 
 function selectionIds(): string[] {
   if (selectedFlowNodes.value.length) return selectedFlowNodes.value.map((node) => node.id)
@@ -1530,7 +1528,6 @@ function copySelection(): boolean {
     return false
   }
   clipboard.value = snap
-  pasteTimes = 0
   editorMessage.success(`已复制 ${countMembers(snap.nodes.map((node) => node.id))} 个节点，Ctrl+V 粘贴`)
   return true
 }
@@ -1540,8 +1537,6 @@ function cutSelection() {
   const snap = store.snapshotForClipboard(ids)
   if (!snap) return
   clipboard.value = snap
-  // 剪切后第一次粘贴落回原位附近（偏移 0 起算），之后照常错开
-  pasteTimes = -1
   const removed = store.removeNodes(snap.nodes.map((node) => node.id))
   clearFlowSelection()
   if (removed)
@@ -1554,8 +1549,7 @@ function pasteClipboard() {
     editorMessage.warning('剪贴板里还没有节点')
     return
   }
-  pasteTimes += 1
-  const created = store.pasteClipboard(snap, 48 * pasteTimes)
+  const created = store.pasteClipboard(snap)
   if (!created.length) return
   clearFlowSelection()
   const first = created.find((id) => store.findNode(id)?.type !== 'module') ?? created[0]
@@ -1566,7 +1560,7 @@ function pasteClipboard() {
 /** 再制（Ctrl+D / 多选条「复制」/ 右键「复制」）：不占剪贴板，原地偏移 48 生成一份 */
 function duplicateSelection(ids = selectionIds()) {
   if (!ids.length) return
-  const created = store.duplicateNodes(ids, 48)
+  const created = store.duplicateNodes(ids)
   if (!created.length) return
   clearFlowSelection()
   const first = created.find((id) => store.findNode(id)?.type !== 'module') ?? created[0]
@@ -1701,6 +1695,7 @@ function onMoveStart(payload: { event?: { sourceEvent?: unknown } }) {
 
 function onNodeDragStart(payload: { node: { id: string; position: { x: number; y: number } } }) {
   userEngaged = true
+  store.releasePlacement(payload.node.id)
   const full = store.findNode(payload.node.id)
   if (!full || !isGroupPlate(full)) return
   moduleDrag = {
@@ -2831,7 +2826,8 @@ async function onStageDrop(event: DragEvent) {
   // 落点不是空白画布（如节点里的上传块，它自己会接管）：不再重复建节点
   if (!isEmptyStageTarget(event.target) || !store.ready.value || loading.value) return
   const base = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-  const at = (i: number) => ({ x: base.x + i * 24, y: base.y + i * 24 })
+  // 多张同一落点：落点处有节点就依次往右排开（placement.right-first），间距统一 NODE_GAP
+  const at = () => base
 
   const assetRaw = event.dataTransfer?.getData(ASSET_DRAG_TYPE)
   if (assetRaw) {
@@ -2844,8 +2840,8 @@ async function onStageDrop(event: DragEvent) {
     }
     urls
       .filter((url) => /^https?:\/\//i.test(url))
-      .forEach((url, i) => {
-        const created = store.addNode('image', undefined, at(i))
+      .forEach((url) => {
+        const created = store.addNode('image', undefined, at(), { flow: 'right-first' })
         if (created) store.updateNodeData(created.id, { image: url })
       })
     return
@@ -2854,8 +2850,8 @@ async function onStageDrop(event: DragEvent) {
   await placeImageFiles(Array.from(event.dataTransfer?.files ?? []), at)
 }
 
-/** 拖入 / 粘贴共用：逐张校验、上传，在 at(i) 建图片节点 */
-async function placeImageFiles(files: File[], at: (i: number) => { x: number; y: number }) {
+/** 拖入 / 粘贴共用：逐张校验、上传，在 at() 建图片节点 */
+async function placeImageFiles(files: File[], at: () => { x: number; y: number }) {
   const images = files.filter((file) => IMAGE_ACCEPT.includes(file.type))
   const tooBig = images.filter((file) => uploadSizeError(file))
   const usable = images.filter((file) => !uploadSizeError(file))
@@ -2867,10 +2863,10 @@ async function placeImageFiles(files: File[], at: (i: number) => { x: number; y:
   let failed = 0
   try {
     await Promise.all(
-      usable.map(async (file, i) => {
+      usable.map(async (file) => {
         try {
           const url = await canvasUploadMedia(file)
-          const created = store.addNode('image', undefined, at(i))
+          const created = store.addNode('image', undefined, at(), { flow: 'right-first' })
           if (created) store.updateNodeData(created.id, { image: url })
           done += 1
         } catch {
@@ -2908,7 +2904,7 @@ useFileDropPaste(stageRef, {
     const point =
       stagePointer ?? (rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: 0, y: 0 })
     const base = screenToFlowCoordinate(point)
-    void placeImageFiles(files, (i) => ({ x: base.x + i * 24, y: base.y + i * 24 }))
+    void placeImageFiles(files, () => base)
   },
 })
 </script>

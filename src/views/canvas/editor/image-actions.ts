@@ -12,6 +12,7 @@ import { reactive, ref } from 'vue'
 import { get, toApiError } from '@/api/index.ts'
 import { canvasIdentify, type CanvasPoint, type ICanvasIdentifyReq } from '@/api/agent.ts'
 import { isLibraryPending } from './library-status.ts'
+import { rightOf } from './placement.ts'
 import { useCanvasEditor } from './useCanvasEditor.ts'
 import type { CanvasEditorNode, CanvasNodeData } from './types.ts'
 
@@ -127,17 +128,11 @@ export function addResultNodes(
   const owner = store.findNode(source.nodeId)
   if (!owner || !urls.length) return []
   const previous = store.selectedNodeId.value
-  const existing = store.edges.value.filter(
-    (edge) => edge.source === owner.id && store.findNode(edge.target)?.data.actionOrigin,
-  ).length
-  const baseX = owner.position.x + (owner.data.width ?? 280) + 80
+  // 结果节点落在来源节点右侧一列，往下排开，列满换右边一列；间距统一 NODE_GAP，不压任何已有节点
+  const anchor = rightOf(owner)
   const created: string[] = []
   urls.forEach((url, index) => {
-    const slot = existing + index
-    const node = store.addNode('image', undefined, {
-      x: baseX + Math.floor(slot / 4) * 280,
-      y: owner.position.y + (slot % 4) * 260,
-    })
+    const node = store.addNode('image', undefined, anchor, { flow: 'down-first' })
     if (!node) return
     store.updateNodeData(node.id, {
       kind: 'result',
