@@ -4,7 +4,8 @@
  * 列表直接取当前画布节点（分组框除外），不调新接口；点一行定位到画布。
  * 宽 248 / 头 44 / 搜索 32 / 行 44 / 缩略 32；可折叠到 48。
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { currentAccountId } from '@/utils/auth-session.ts'
 import { modelLabelOf } from '@/utils/model-label'
 import EditorIcon from './EditorIcon.vue'
 import { useCanvasEditor } from './useCanvasEditor.ts'
@@ -16,8 +17,31 @@ const emit = defineEmits<{ locate: [id: string]; addFromLibrary: [] }>()
 const store = useCanvasEditor()
 const { nodes, selectedNodeId } = store
 
-// 进入画布默认折叠（把空间让给画布）；用户主动展开后本次编辑内保持，下次进入仍是折叠，不跨次记忆
-const collapsed = ref(true)
+/** 折叠态存储键前缀（已登记在 auth-session 的 ACCOUNT_KEYED_PREFIXES，换号清缓存时保留） */
+const ASSET_RAIL_KEY_PREFIX = 'xq-canvas-assets-collapsed:'
+// 进入画布默认折叠（把空间让给画布）；用户展开 / 折叠过就按账号记住，下次进入沿用（读写全部 try/catch）
+function collapsedKey() {
+  const who = currentAccountId()
+  return who ? `${ASSET_RAIL_KEY_PREFIX}${who}` : ''
+}
+function readCollapsed(): boolean {
+  try {
+    const key = collapsedKey()
+    // 没有记录 = 默认折叠；只有用户明确展开过（存 '0'）才展开
+    return key ? localStorage.getItem(key) !== '0' : true
+  } catch {
+    return true
+  }
+}
+const collapsed = ref(readCollapsed())
+watch(collapsed, (value) => {
+  try {
+    const key = collapsedKey()
+    if (key) localStorage.setItem(key, value ? '1' : '0')
+  } catch {
+    /* 存储不可用：本次生效，下次回到默认折叠 */
+  }
+})
 const query = ref('')
 const filter = ref<'all' | 'image' | 'video' | 'text' | 'model'>('all')
 

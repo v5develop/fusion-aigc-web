@@ -26,7 +26,7 @@ const DEVICE_SCOPED_KEYS = new Set(['union_deviceId', 'xq-theme-device'])
  * src/utils/themePrefs.ts 的 THEME_PREFS_KEY_PREFIX，这里写字面量避免依赖），
  * 以及工具页目录的收起记忆（src/utils/dirCollapsedPrefs.ts）。
  */
-const ACCOUNT_KEYED_PREFIXES = ['xq-text-prefs:', 'xq-theme-prefs:', 'xq-dir-collapsed:', 'xq-colorfix-panel-h:', 'xq-canvas-model-recent:']
+const ACCOUNT_KEYED_PREFIXES = ['xq-text-prefs:', 'xq-theme-prefs:', 'xq-dir-collapsed:', 'xq-colorfix-panel-h:', 'xq-canvas-model-recent:', 'xq-canvas-assets-collapsed:']
 
 /**
  * 当前账号的身份：后端用户 id（登录响应的 `userId`、`/auth/user-info` 的 `id`）。
