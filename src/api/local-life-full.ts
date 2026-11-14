@@ -102,6 +102,9 @@ export interface BrandProfileView {
   /** 以下只用于手机预览，档案没填就是空（预览显示中性占位，不编造） */
   address?: string
   avgPrice?: string
+  /** 档案表单里若有这些字段才有（现有表单没有，对不上就不填） */
+  phone?: string
+  color?: string
   /** 特色项标签（去重） */
   tags?: string[]
   /** 特色项名（推荐菜位） */
@@ -233,6 +236,8 @@ export function toBrandProfileView(d: BrandProfileDetail): BrandProfileView {
     images,
     address: text(profileValue(data, 'address')),
     avgPrice: text(profileValue(data, 'avgPrice', 'avg_price')),
+    phone: text(profileValue(data, 'phone', 'tel', 'contactPhone', 'contact_phone')),
+    color: text(profileValue(data, 'brandColor', 'brand_color', 'primaryColor', 'primary_color', 'mainColor', 'main_color')),
     tags,
     featureNames,
     meals,

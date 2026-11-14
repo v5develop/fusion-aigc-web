@@ -109,8 +109,37 @@ import { colorFixFailureText } from '@/utils/colorfix.ts'
 import { downloadImage, downloadImagesAsZip } from '@/utils/download.ts'
 import { getPointsBalance } from '@/api/points.ts'
 import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billing-guide'
-import { findPlazaTemplate } from '@/api/plaza.ts'
-import type { IPlazaTemplate } from '@/api/plaza.ts'
+import {
+  findPlazaTemplate,
+  plazaCreateMyTemplate,
+  plazaErrorText,
+  plazaPrepare,
+  prepareFieldErrors,
+  quoteMaxVariants,
+  registerOverlayIntent,
+  type PlazaResolution,
+  streamFieldErrors,
+} from '@/api/plaza.ts'
+import { coverOf, isVideoTemplate } from './templateMedia.ts'
+import { VIDEO_PAGE_HINT, stashVideoPrefill, videoPrefillOf } from './industry/videoHandoff.ts'
+import QuoteChip from './QuoteChip.vue'
+import VariantsSetting from './VariantsSetting.vue'
+import AgainButtons from './AgainButtons.vue'
+import LoginSheet from './LoginSheet.vue'
+import SaveMineDialog from './SaveMineDialog.vue'
+import { clearScene, hasScene, isLoggedIn, loginVersion, requireLogin, saveScene, takeScene } from './industry/useLoginGate.ts'
+import SamplePanel from './SamplePanel.vue'
+import { useSamples } from './industry/useSamples.ts'
+import { useTemplateQuote } from './industry/useTemplateQuote.ts'
+import OverlayBar from './overlay/OverlayBar.vue'
+import { buildOverlayCtx, type IOverlayCtx } from './overlay/overlayLayout.ts'
+import { overlayEnabled, useTextOverlay } from './overlay/useTextOverlay.ts'
+import SlotForm from './slots/SlotForm.vue'
+import { buildInputs, imageUrlsOf } from './slots/slotTypes.ts'
+import { useTemplateSlots } from './slots/useTemplateSlots.ts'
+import { useBrandPrefill } from './slots/useBrandPrefill.ts'
+import BrandPrefillBar from './slots/BrandPrefillBar.vue'
+import type { IPlazaMyTemplate, IPlazaTemplate } from '@/api/plaza.ts'
 
 defineOptions({ name: 'agent-chat' })
 
@@ -263,9 +292,16 @@ const selectedSkillId = ref('')
 
 /** 服务端每轮都要求 agentSkillId（> 0）：没有可用技能（未选、目录为空或拉取失败）就不发 */
 const SKILL_REQUIRED = '请先选择技能'
-const skillMissing = computed(() => !selectedSkillId.value)
+const skillMissing = computed(() => !guest.value && !selectedSkillId.value) // 匿名没有技能目录：不当作「缺技能」，发送时走登录半屏
+
+/** 匿名（未登录）：只浏览，不调需登录的接口；登录半屏登录成功后 loginVersion 变化 */
+const guest = computed(() => {
+  void loginVersion.value
+  return !isLoggedIn()
+})
 
 async function loadSkills() {
+  if (!isLoggedIn()) return // 匿名只浏览：技能目录要登录，不调用（登录后由 onPlazaLoginSuccess 重取）
   try {
     const res = await agentSkills()
     skillGroups.value = chatSkillGroups(res.data)
@@ -482,7 +518,7 @@ const activeConversation = computed(() => conversations.value.find((c) => c.agen
 const recentConversation = computed(() => (activeId.value ? undefined : conversations.value[0]))
 
 async function loadConversations(reset = false) {
-  if (listLoading.value) return
+  if (listLoading.value || !isLoggedIn()) return // 匿名不取会话列表
   listLoading.value = true
   const page = reset ? 1 : listPage.value + 1
   try {
@@ -583,6 +619,25 @@ interface ChatItem {
   retryImages?: string[]
   /** 重试时随同发送的广场模板（做同款） */
   retryTemplate?: IPlazaTemplate | null
+  retryInputs?: Record<string, unknown>
+  /** 模板文字叠加：本轮模板 id 与文字值（本地状态，刷新后靠 GET 恢复结果） */
+  overlayCtx?: IOverlayCtx
+  /** 模板轮受理后记下的发送设置：结果区「再来一版 / 一次出 2–4 版」据此把设置填回输入框（只填不发） */
+  again?: {
+    template: IPlazaTemplate
+    scope: { industry: string; subIndustry?: string } | null
+    content: string
+    values?: Record<string, unknown>
+    /** 这一轮实际发出的参考图张数（再来一版的报价沿用） */
+    refImageCount?: number
+    /** 这一轮所选清晰度（再来一版沿用） */
+    resolution?: PlazaResolution
+    /** 这一轮发出的版数与规整后的入参（wire 形状）：「存为我的模板」用 */
+    variants?: number
+    inputs?: Record<string, unknown>
+    /** 已存为我的模板 */
+    savedMine?: boolean
+  }
   /** 本轮结果未知（断网 / 超时 / 5xx）时它用过的 X-Request-Id：重试原样沿用；确定失败为空（重试换新 key） */
   retryKey?: string
   /** 会话里的轮次号（从 1 起，按服务端消息顺序两条一轮，分享按它选）；本地新发、尚未回读的为空 */
@@ -1078,6 +1133,13 @@ const homeDockEl = ref<HTMLElement | null>(null)
  * 本轮受理后清掉，模板只作用于这一轮。
  */
 const selectedTemplate = ref<IPlazaTemplate | null>(null)
+/** 模板入参（slots）：有则输入区按它动态渲染，提交带 inputs；没有 = 旧模板，保持单图位 */
+const tslots = useTemplateSlots()
+/** 做同款自动带入品牌档案（可改、可关；我的模板恢复时不覆盖） */
+const brandPrefill = useBrandPrefill(tslots)
+/** 正在做「做同款准备」（发送前校验并规整入参） */
+const preparing = ref(false)
+const slotMode = computed(() => !!selectedTemplate.value && tslots.status.value === 'ok')
 /** 上次预填进输入框的文字：用户没改过才允许换模板时覆盖 */
 let templateFill = ''
 
@@ -1087,9 +1149,94 @@ function templatePrefill(t: IPlazaTemplate): string {
   return desc ? `参考「${t.title}」模板做同款：${desc}` : `参考「${t.title}」模板做同款`
 }
 
-function pickTemplate(t: IPlazaTemplate) {
+/** 模板 chip 的缩略图（视频模板用封面，缺则效果图首张）与引导语：guidance → 默认「放一张照片后发送」 */
+const templateThumb = computed(() => (selectedTemplate.value ? coverOf(selectedTemplate.value) : ''))
+const templateGuidance = computed(() => {
+  const g = selectedTemplate.value?.payload?.guidance
+  return typeof g === 'string' && g.trim() ? g.trim() : '放一张照片后发送'
+})
+
+/** 选中时所在的行业范围：报价 / 示例都要带 industry；深链等没带范围的入口取模板自己的首个行业 */
+const selectedScope = ref<{ industry: string; subIndustry?: string } | null>(null)
+function scopeOfTemplate(t: IPlazaTemplate): { industry: string; subIndustry?: string } | null {
+  const i = t.industries?.[0]
+  if (!i) return null
+  return i.parentCode ? { industry: i.parentCode, subIndustry: i.code } : { industry: i.code }
+}
+/** 发送钮旁唯一价格（只做图片模板：视频模板不经智能体对话出片，去「生成视频」页，那里自己报价） */
+const quoteScope = computed(() => {
+  const t = selectedTemplate.value
+  const sc = selectedScope.value
+  return t && sc && !isVideoTemplate(t) ? { ...sc, templateId: t.plazaTemplateId } : null
+})
+const quoteVariants = ref(1)
+const quoteInputsSig = computed(() => JSON.stringify(tslots.values.value))
+/** 请求里实际放了几张参考图：按 slots 的 image 位已填数量；老模板（无 slots）按输入区附图。还没放图且模板要产品图时不传（后端按 1 张口径估） */
+const quoteRefImageCount = computed<number | undefined>(() => {
+  const t = selectedTemplate.value
+  if (!t) return undefined
+  const n =
+    tslots.status.value === 'ok'
+      ? imageUrlsOf(tslots.items.value, buildInputs(tslots.items.value, tslots.values.value)).length
+      : attachments.value.length
+  return n === 0 && t.needsProductImage !== false ? undefined : n
+})
+/** 清晰度：默认 1k（标准），换模板回到 1k，不按用户 × 模板记忆 */
+const quoteResolution = ref<PlazaResolution>('1k')
+const tplQuote = useTemplateQuote(quoteScope, quoteVariants, quoteInputsSig, quoteRefImageCount, quoteResolution)
+/** 视频模板：智能体里没有生视频能力，输入区只给一句说明和跳转（不报价、不发送） */
+const selectedIsVideo = computed(() => !!selectedTemplate.value && isVideoTemplate(selectedTemplate.value))
+/** 一次最多几版：后端报价给；还没回来时 4 */
+const variantsMax = computed(() => quoteMaxVariants(tplQuote.quote.value))
+
+/** 去「生成视频」页并预填（提示词 / 比例 / 已放的图；模板没有的字段不填） */
+function goVideoGenerate(t: IPlazaTemplate) {
+  const images =
+    tslots.status.value === 'ok'
+      ? imageUrlsOf(tslots.items.value, buildInputs(tslots.items.value, tslots.values.value))
+      : [...attachments.value]
+  stashVideoPrefill(videoPrefillOf(t, images))
+  void router.push({ name: 'video-generate' })
+}
+// 默认 1 版：换模板回到 1；后端说最多 N 版就夹到 N
+watch(selectedTemplate, () => {
+  quoteVariants.value = 1
+  quoteResolution.value = '1k'
+})
+watch(variantsMax, (m) => {
+  if (quoteVariants.value > m) quoteVariants.value = m
+})
+/** 示例效果（「用示例素材先试试」）：同一份 /samples 数据；没有示例就不出现入口 */
+const sampleScope = computed(() => {
+  const t = selectedTemplate.value
+  const sc = selectedScope.value
+  return t && sc ? { ...sc, templateId: t.plazaTemplateId } : null
+})
+const tplSamples = useSamples(sampleScope)
+const showSamples = ref(false)
+const canTrySamples = computed(
+  () => !!selectedTemplate.value && selectedTemplate.value.needsProductImage !== false && tplSamples.samples.value.length > 0,
+)
+watch(selectedTemplate, () => (showSamples.value = false))
+/** 「换成我的照片」：收起示例，回到放图位 */
+function samplesToPhoto() {
+  showSamples.value = false
+  void nextTick(() => {
+    const el = composerEl.value?.querySelector<HTMLElement>('button, input, [tabindex]')
+    ;(el ?? textareaEl.value)?.focus?.({ preventScroll: false })
+  })
+}
+
+function pickTemplate(t: IPlazaTemplate, scope?: { industry: string; subIndustry?: string }) {
   if (streaming.value) return
+  // 视频模板：智能体对话没有生视频工具，直接去「生成视频」页预填，不选进输入区
+  if (isVideoTemplate(t)) {
+    goVideoGenerate(t)
+    return
+  }
   selectedTemplate.value = t
+  selectedScope.value = scope ?? scopeOfTemplate(t)
+  void tslots.load(t)
   // 与「选择技能」弹窗同一条路径：模板关联的技能在对话目录里才切换，否则沿用当前技能
   const sid = t.agentSkillId
   if (sid) {
@@ -1104,6 +1251,166 @@ function pickTemplate(t: IPlazaTemplate) {
     homeDockEl.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     textareaEl.value?.focus({ preventScroll: true })
   })
+}
+
+/**
+ * 把一份「设置」（模板、槽位值、文字、版数）填回输入框，价格随之显示；**不发送**，由用户点发送。
+ * 结果区「再来一版 / 一次出 2–4 版」与「我的模板」恢复、登录后还原现场都走这里。
+ */
+async function fillSettings(
+  a: {
+    template: IPlazaTemplate
+    scope: { industry: string; subIndustry?: string } | null
+    values?: Record<string, unknown>
+    content?: string
+    variants?: number
+    resolution?: PlazaResolution
+  },
+  notice: (variants: number) => string,
+) {
+  if (streaming.value) return
+  await brandPrefill.holdOff(async () => {
+    pickTemplate(a.template, a.scope ?? undefined)
+    await tslots.load(a.template)
+    if (selectedTemplate.value?.plazaTemplateId !== a.template.plazaTemplateId) return
+    if (a.values) tslots.values.value = { ...tslots.values.value, ...a.values } as typeof tslots.values.value
+  })
+  if (selectedTemplate.value?.plazaTemplateId !== a.template.plazaTemplateId) return
+  if (a.content && (!draft.value.trim() || draft.value === templateFill)) {
+    templateFill = a.content
+    onDraftInput(a.content)
+  }
+  // selectedTemplate 的 watch 会把版数回 1：等它跑完再设
+  await nextTick()
+  quoteVariants.value = Math.min(Math.max(a.variants ?? 1, 1), variantsMax.value)
+  quoteResolution.value = a.resolution ?? '1k'
+  const text = notice(quoteVariants.value)
+  if (text) message.info(text)
+}
+
+/**
+ * 结果区「再来一版 / 一次出 2–4 版」：把这一轮的模板、槽位值、文字和版数填回输入框，价格随之显示；
+ * **不发送**，由用户点发送。
+ */
+async function againFill(item: ChatItem, variants: number) {
+  const a = item.again
+  if (!a || streaming.value) return
+  await fillSettings({ ...a, variants }, (n) => `已填好设置（${n} 版），点发送才会开始`)
+}
+
+// ---------------- 登录半屏与现场 / 我的模板 ----------------
+
+/**
+ * 首页模板浏览里点「做同款」：已登录直接放进输入框；未登录先存现场再弹登录半屏（M-16），
+ * 登录后还原（见 restorePlazaScene），点「先看看」则不登录也照常放进输入框。
+ */
+function onPlazaPick(t: IPlazaTemplate, scope?: { industry: string; subIndustry?: string }) {
+  if (isLoggedIn()) {
+    pickTemplate(t, scope)
+    return
+  }
+  saveScene({
+    templateId: t.plazaTemplateId,
+    scope: scope ?? null,
+    draft: draft.value.trim() && draft.value !== templateFill ? draft.value : undefined,
+  })
+  requireLogin('pick', () => {
+    clearScene()
+    pickTemplate(t, scope)
+  })
+}
+
+/** 登录半屏登录成功（未换号）：补取登录后才有的技能目录与会话列表，再还原现场 */
+async function onPlazaLoginSuccess() {
+  skillsReady = loadSkills()
+  void loadConversations(true)
+  try {
+    await restorePlazaScene()
+  } finally {
+    clearScene() // 恢复后（成功、失败、被丢弃）一律清掉匿名现场，不留给下一次
+  }
+}
+
+/** 登录后（或换号重载后）还原登录前的现场：模板、已填入参、草稿、版数；不自动发送 */
+async function restorePlazaScene() {
+  if (!isLoggedIn() || !hasScene()) return
+  const scene = takeScene()
+  if (!scene) return
+  try {
+    await skillsReady
+    const template = await findPlazaTemplate(scene.templateId)
+    if (disposed) return
+    if (!template) {
+      message.warning('刚才选的模板已下架或不可用')
+      return
+    }
+    await fillSettings(
+      { template, scope: scene.scope, values: scene.values, content: scene.draft, variants: scene.variants },
+      () => '已为你放好刚才选的模板，放图后点发送才会开始',
+    )
+  } catch {
+    message.error('没能还原刚才选的模板，请再点一次做同款')
+  }
+}
+
+/** 「我的模板」被点：恢复模板 + 入参 + 版数 + 文字（不自动发送）；模板已下线不能恢复 */
+async function restoreMine(m: IPlazaMyTemplate, scope: { industry: string; subIndustry?: string }) {
+  if (!m.template || !m.templateAvailable) {
+    message.warning('这个模板已下线，不能再用了')
+    return
+  }
+  await fillSettings(
+    { template: m.template, scope, values: m.inputs, content: m.text, variants: m.variants, resolution: m.resolution },
+    (n) => (m.stale ? `已填好设置（${n} 版），${m.staleHint || '部分设置已失效'}，请检查后再发送` : `已填好「${m.name}」（${n} 版），点发送才会开始`),
+  )
+}
+
+const saveMineTarget = ref<ChatItem | null>(null)
+const saveMineBusy = ref(false)
+const saveMineError = ref('')
+/** 默认名「足浴 · 蓝V号 · 11-13」：行业 · 二级 · 月-日（取不到行业名退回模板标题） */
+const saveMineDefaultName = computed(() => {
+  const a = saveMineTarget.value?.again
+  if (!a) return ''
+  const d = new Date()
+  const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const inds = a.template.industries ?? []
+  const root = inds.find((i) => i.code === a.scope?.industry) ?? inds.find((i) => i.parentCode === a.scope?.industry)
+  const rootName = root ? (root.parentCode ? '' : root.name) : ''
+  const sub = a.scope?.subIndustry ? inds.find((i) => i.code === a.scope?.subIndustry)?.name : ''
+  const head = [rootName, sub].filter(Boolean).join(' · ') || a.template.title
+  return `${head} · ${md}`.slice(0, 40)
+})
+function openSaveMine(item: ChatItem) {
+  if (!item.again || item.again.savedMine) return
+  saveMineError.value = ''
+  saveMineTarget.value = item
+}
+async function confirmSaveMine(name: string) {
+  const item = saveMineTarget.value
+  const a = item?.again
+  if (!item || !a || saveMineBusy.value) return
+  saveMineBusy.value = true
+  saveMineError.value = ''
+  try {
+    await plazaCreateMyTemplate({
+      name,
+      templateId: a.template.plazaTemplateId,
+      industry: a.scope?.industry,
+      subIndustry: a.scope?.subIndustry,
+      inputs: a.inputs ?? {},
+      variants: a.variants ?? 1,
+      resolution: a.resolution ?? '1k',
+      text: a.content.slice(0, 500),
+    })
+    a.savedMine = true
+    saveMineTarget.value = null
+    message.success('已存为我的模板')
+  } catch (err) {
+    saveMineError.value = prepareFieldErrors(err)?.first || plazaErrorText(err, '没能保存，再试一次')
+  } finally {
+    saveMineBusy.value = false
+  }
 }
 
 /** 技能目录首次加载：深链选模板要等它，否则 pickTemplate 判不出模板关联的技能是否可用 */
@@ -1178,7 +1485,9 @@ watch(
 function clearTemplate() {
   if (!selectedTemplate.value) return
   selectedTemplate.value = null
+  selectedScope.value = null
   templateFill = ''
+  tslots.reset()
 }
 
 /** 语言胶囊照原型写「代码 名称」，「无语言」不带代码 */
@@ -1230,6 +1539,8 @@ interface SendOptions {
   fromDraft?: boolean
   /** 重试结果未知的那一轮：原样沿用它的 X-Request-Id；缺省 = 新的一轮，换新 key */
   retryKey?: string
+  /** 重试：沿用上一轮的模板入参（输入框里的已被清掉） */
+  inputs?: Record<string, unknown>
 }
 
 /** 服务端要求 content 非空（只有表单续答可空），所以有图也得有文字 */
@@ -1241,6 +1552,21 @@ async function send(
 ) {
   const content = raw.trim()
   if (!content || streaming.value || disposed) return
+  if (template && isVideoTemplate(template)) return // 视频模板不经智能体对话出片（输入区已改成跳转）
+  if (!isLoggedIn()) {
+    // 匿名发送：先存现场（模板与已填入参）再弹登录半屏，登录后还原、不自动发送
+    if (template) {
+      saveScene({
+        templateId: template.plazaTemplateId,
+        scope: selectedScope.value,
+        values: { ...tslots.values.value },
+        draft: draft.value,
+        variants: quoteVariants.value,
+      })
+    }
+    requireLogin('pick')
+    return
+  }
   if (uploading.value) {
     message.info(UPLOAD_BUSY)
     return
@@ -1248,6 +1574,36 @@ async function send(
   if (skillMissing.value) {
     message.warning(SKILL_REQUIRED)
     return
+  }
+  // 模板入参没填全（或模板需要新版本）：不发，原因在输入框旁已写明
+  const useSlots = !!template && template === selectedTemplate.value && tslots.status.value !== 'none'
+  if (useSlots && tslots.blocker.value) {
+    message.warning(tslots.blocker.value)
+    return
+  }
+  // 发送前先让 Go 校验并规整入参（prepare）：校验不过就地提示在对应字段；网络 / 5xx 不发送，提示重试
+  let prepared: Record<string, unknown> | undefined
+  if (useSlots && template && tslots.status.value === 'ok') {
+    if (preparing.value) return
+    preparing.value = true
+    try {
+      const res = await plazaPrepare(template.plazaTemplateId, tslots.inputs() ?? {})
+      prepared = res.data?.inputs ?? {}
+    } catch (err) {
+      const fe = prepareFieldErrors(err)
+      if (fe) {
+        tslots.serverErrors.value = fe.byKey
+        message.warning(fe.first)
+      } else if (toApiError(err)?.reason === 'RESOURCE_NOT_FOUND') {
+        // 模板在发送前下架（4001）：E-13，不是网络问题
+        message.warning(plazaErrorText(err))
+      } else {
+        message.error('没准备好，检查一下网络后再点一次发送')
+      }
+      return
+    } finally {
+      preparing.value = false
+    }
   }
   streaming.value = true
 
@@ -1261,13 +1617,26 @@ async function send(
   }
 
   const requestId = opts.retryKey || createSafeUuid()
-  const imageUrls = [...images]
+  // 模板入参：用 prepare 规整后的 inputs；所有 image 位的 URL 按 slots 的 order 展开进 imageUrls（Java 原图片链路要用），video 位不进
+  const slotInputs = prepared ?? opts.inputs
+  // 这一轮的版数与槽位值：受理后供「再来一版」填回（版数 >1 才随请求带 variants，默认 1 版不带）
+  const sentVariants = template && template === selectedTemplate.value ? quoteVariants.value : 1
+  const sentResolution: PlazaResolution = template && template === selectedTemplate.value ? quoteResolution.value : '1k'
+  const sentScope = template ? (selectedScope.value ?? scopeOfTemplate(template)) : null
+  const sentValues = useSlots ? { ...tslots.values.value } : undefined
+  // 模板文字叠加：模板开了 textOverlay、有带版式的文字位且用户填了值、开关为开，才记下本轮上下文（出图后逐张叠字）
+  const overlayCtx =
+    useSlots && template && tslots.textOverlay.value && overlayEnabled.value
+      ? (buildOverlayCtx(template.plazaTemplateId, true, tslots.items.value, slotInputs, tslots.values.value) ?? undefined)
+      : undefined
+  const imageUrls = prepared ? imageUrlsOf(tslots.items.value, prepared) : [...images]
   const req: IAgentStreamReq = {
     conversationId,
     content,
     agentSkillId: selectedSkillId.value,
     ...(imageUrls.length ? { imageUrls } : {}),
     ...(template ? { plazaTemplateId: template.plazaTemplateId } : {}),
+    ...(slotInputs ? { inputs: slotInputs } : {}),
   }
   const language = selectedLanguage.value.value
   if (opts.fromDraft) draft.value = ''
@@ -1292,11 +1661,21 @@ async function send(
     text: '',
     reply: emptyReply(),
     live: true,
+    ...(overlayCtx ? { overlayCtx } : {}),
   })
   items.value.push(user, bot)
   scrollToBottom()
   // 首页首发：输入框经 Teleport 挪回底栏会丢焦点，渲染后还给它
   if (wasHome) void nextTick(() => textareaEl.value?.focus({ preventScroll: true }))
+
+  // 自动叠字登记：须在发 /agent/stream 之前；失败不阻断（registerOverlayIntent 内部静默 warn）
+  if (useSlots && template && tslots.textOverlay.value) {
+    if (!overlayEnabled.value) {
+      await registerOverlayIntent({ requestId, templateId: template.plazaTemplateId, enabled: false })
+    } else if (overlayCtx) {
+      await registerOverlayIntent({ requestId, templateId: template.plazaTemplateId, enabled: true, values: overlayCtx.values })
+    }
+  }
 
   streamConvId = conversationId
   const ctrl = newController()
@@ -1304,19 +1683,31 @@ async function send(
   let dropped = false
   try {
     await agentStream(
-      { ...req, ...(language ? { language } : {}) },
+      { ...req, ...(language ? { language } : {}), ...(sentVariants > 1 ? { variants: sentVariants } : {}), ...(sentResolution !== '1k' ? { resolution: sentResolution } : {}) },
       {
         requestId,
         signal: ctrl.signal,
         onFrame: (frame) => {
           if (frame.event === 'START') {
             accepted = true
+            if (template) bot.again = { template, scope: sentScope, content, values: sentValues, refImageCount: imageUrls.length, resolution: sentResolution, variants: sentVariants, inputs: slotInputs }
             // 受理才移除本轮真正发出的图片与模板；失败时留着，便于改后重发。
             // 只摘掉发出的那几张：重试 / 生成中新加的附图不能被一并清掉
             attachments.value = attachments.value.filter((u) => !imageUrls.includes(u))
             if (opts.fromDraft && template && selectedTemplate.value?.plazaTemplateId === template.plazaTemplateId) {
               selectedTemplate.value = null
               templateFill = ''
+              tslots.reset()
+              quoteVariants.value = 1
+              quoteResolution.value = '1k'
+            }
+          }
+          if (!accepted) {
+            // 入参被拒（ERROR 帧 PARAM_INVALID + field=inputs.<key>）：就地定位到字段，和 prepare 失败同一套展示
+            const fe = streamFieldErrors(frame)
+            if (fe) {
+              tslots.serverErrors.value = fe.byKey
+              message.warning(fe.first)
             }
           }
           trackFrame(bot, frame)
@@ -1330,6 +1721,7 @@ async function send(
       bot.retryContent = content
       bot.retryImages = imageUrls
       bot.retryTemplate = template
+      bot.retryInputs = slotInputs
     }
   } catch (err) {
     if ((err as any)?.name !== 'AbortError') {
@@ -1337,11 +1729,19 @@ async function send(
         // 受理后断流：这一轮仍在服务端运行，改走续流接上，不报错、不重发
         dropped = true
       } else {
+        // 兼容旧形状：HTTP 400 + data.errors（同 prepare）
+        const fe = !accepted ? prepareFieldErrors(err) : null
+        if (fe && Object.keys(fe.byKey).length) {
+          tslots.serverErrors.value = fe.byKey
+          message.warning(fe.first)
+        }
         bot.reply.error = errorText(err)
         if (!accepted) {
           bot.retryContent = content
           bot.retryImages = imageUrls
           bot.retryTemplate = template
+          bot.retryInputs = slotInputs
+      bot.retryInputs = slotInputs
           // 结果未知：key 绑在这一轮上，重试原样沿用；确定失败不留 key
           if (outcomeUnknown(err)) bot.retryKey = requestId
         }
@@ -1557,6 +1957,24 @@ const conversationImages = computed(() => [
 ])
 const openingCanvas = ref(false)
 
+// 出图后触发叠字（本轮有 overlayCtx 的消息）/ 恢复历史图已有的叠字结果；ensure / restore 幂等
+watch(
+  () => items.value.map((it) => (it.role === 'assistant' ? [it.overlayCtx ?? null, replyImages(it.reply)] : null)),
+  (rows) => {
+    if (!isLoggedIn()) return
+    const hist: string[] = []
+    for (const row of rows) {
+      if (!row) continue
+      const [ctx, urls] = row as [IOverlayCtx | null, string[]]
+      if (!urls.length) continue
+      if (ctx) void overlay.ensure(ctx, urls)
+      else hist.push(...urls)
+    }
+    if (hist.length) void overlay.restore(hist)
+  },
+  { flush: 'post' },
+)
+
 /**
  * 新建画布只收 title、带不了初始快照：先建空画布，把图片地址交给编辑器，编辑器首次加载完逐张建图片节点并自动保存。
  * 建画布失败不跳转（业务失败请求层已 toast，这里只补传输层失败）。
@@ -1583,15 +2001,22 @@ async function openInCanvas(urls: string[]) {
 /** 结果卡的一格：已出的图逐张一格；排队 / 生成中、失败的任务各占一格 */
 interface IResultTile {
   key: string
+  /** 当前展示版本（有叠字且未切无字版时是叠字图）；预览 / 下载 / 存素材等动作都跟它走 */
   url?: string
+  /** 无字原图（叠字状态以它为键） */
+  srcUrl?: string
   state: 'image' | 'pending' | 'failed'
   /** 失败格：服务端给的用户可读原因 */
   reason?: string
 }
 
+// 模板文字叠加：每张成品图的叠字状态
+const overlay = useTextOverlay()
+
 function resultTiles(tasks: IAgentGenTask[]): IResultTile[] {
   return tasks.flatMap((t): IResultTile[] => {
-    if (t.imageUrls.length) return t.imageUrls.map((url, i) => ({ key: `${t.taskId}:${i}`, url, state: 'image' }))
+    if (t.imageUrls.length)
+      return t.imageUrls.map((src, i) => ({ key: `${t.taskId}:${i}`, url: overlay.displayUrl(src), srcUrl: src, state: 'image' }))
     if (genTaskPending(t)) return [{ key: t.taskId, state: 'pending' }]
     return [{ key: t.taskId, state: 'failed', ...(t.failReason ? { reason: t.failReason } : {}) }]
   })
@@ -2422,7 +2847,7 @@ function retry(item: ChatItem) {
   const idx = items.value.indexOf(item)
   if (idx > 0) items.value.splice(idx - 1, 2)
   // 每个失败轮次带自己的 key：两轮都失败时各自重试互不串号；不碰用户当前的草稿与附图
-  void send(content, item.retryImages ?? [], item.retryTemplate ?? null, { retryKey: item.retryKey })
+  void send(content, item.retryImages ?? [], item.retryTemplate ?? null, { retryKey: item.retryKey, inputs: item.retryInputs })
 }
 
 async function stop() {
@@ -2542,6 +2967,7 @@ onMounted(() => {
   skillsReady = loadSkills()
   void loadConversations(true)
   void applyPlazaTemplateQuery()
+  void restorePlazaScene() // 换号登录整页重载后：还原登录前选的模板与已填入参（不自动发送）
   narrowMql = window.matchMedia(NARROW_QUERY)
   narrow.value = narrowMql.matches
   narrowMql.addEventListener('change', onNarrowChange)
@@ -2658,7 +3084,11 @@ onUnmounted(() => {
                 class="sx-soft-input w-full !pl-28px"
               />
             </div>
-            <ul class="m-0 flex min-h-0 flex-1 list-none flex-col gap-8px overflow-y-auto p-0 pt-10px pb-2px">
+            <div v-if="guest" class="flex flex-1 flex-col items-center justify-center gap-10px px-8px text-center" data-testid="agent-guest-dir">
+              <p class="m-0 text-12px leading-18px text-muted">登录后保存你的对话</p>
+              <button type="button" :class="BTN_TINT" @click="requireLogin('mine')">登录</button>
+            </div>
+            <ul v-else class="m-0 flex min-h-0 flex-1 list-none flex-col gap-8px overflow-y-auto p-0 pt-10px pb-2px">
               <!-- 未开会话：一张选中态「新的对话」占位卡 -->
               <li v-if="!activeId && !keyword.trim()">
                 <div :class="[CONV_CARD, CONV_ON]" aria-current="true">
@@ -2976,7 +3406,7 @@ onUnmounted(() => {
                   挑选一个爆款模板
                 </h2>
                 <p class="relative z-1 m-0 mt-8px text-12px leading-18px text-muted">
-                  别人卖爆的那张图，照着复刻一版，打爆你的店铺
+                  选一张同行爆款，换成你自己的照片，一键做同款
                 </p>
               </section>
               <!-- 输入框槽位：滚动时吸顶（原型 home-dock 停靠） -->
@@ -3101,7 +3531,8 @@ onUnmounted(() => {
                 class="mt-28px"
                 :picked-id="selectedTemplate?.plazaTemplateId ?? null"
                 :disabled="streaming"
-                @pick="pickTemplate"
+                @pick="onPlazaPick"
+                @restore="restoreMine"
               />
             </div>
           </div>
@@ -3540,7 +3971,7 @@ onUnmounted(() => {
                                   aria-hidden="true"
                                 />
                                 <span class="min-w-0">
-                                  <span class="block truncate">{{ o.label }}</span>
+                                  <span class="block break-words">{{ o.label }}</span>
                                   <span
                                     v-if="o.description && o.description !== o.label"
                                     class="block text-11px leading-16px text-placeholder"
@@ -3725,6 +4156,14 @@ onUnmounted(() => {
                                 class="pointer-events-none absolute left-8px top-8px z-2 rounded-9px bg-white/84 px-6px py-2px text-11px leading-14px text-violet-ink shadow-[0_1px_3px_rgba(0,0,0,0.14)] backdrop-blur-4px"
                                 >已校色</span
                               >
+                              <OverlayBar
+                                v-if="tile.srcUrl && overlay.entryOf(tile.srcUrl) && multiCard !== card.key"
+                                :entry="overlay.entryOf(tile.srcUrl)!"
+                                :fields="overlay.fieldsOf(tile.srcUrl)"
+                                @original="(v) => overlay.setShowOriginal(tile.srcUrl!, v)"
+                                @retry="overlay.retry(tile.srcUrl!)"
+                                @edit="(vals, done) => overlay.edit(tile.srcUrl!, vals).then(done)"
+                              />
                               <template v-if="multiCard === card.key">
                                 <span
                                   v-if="multiPicks.includes(tile.url)"
@@ -3912,6 +4351,16 @@ onUnmounted(() => {
                         </div>
                       </div>
                       <div v-if="item.stopped" class="text-12px leading-18px text-placeholder">已停止</div>
+                      <AgainButtons
+                        v-if="item.again && !item.live && !item.reply.error && !item.stopped && !streaming"
+                        :template="item.again.template"
+                        :scope="item.again.scope"
+                        :ref-image-count="item.again.refImageCount"
+                        :resolution="item.again.resolution"
+                        :saved="item.again.savedMine"
+                        @fill="(n) => againFill(item, n)"
+                        @save="openSaveMine(item)"
+                      />
                       <div v-if="item.reply.error" role="alert" class="flex flex-wrap items-center gap-8px">
                         <span
                           class="sx-squircle inline-flex items-center rounded-10px border border-solid border-danger-line bg-danger-soft px-10px py-6px text-12px leading-18px text-alert-danger"
@@ -4048,7 +4497,14 @@ onUnmounted(() => {
                       >
                         <path :d="ICON.layers" />
                       </svg>
-                      <span class="max-w-240px truncate">模板：{{ selectedTemplate.title }}</span>
+                      <img
+                        v-if="templateThumb"
+                        :src="templateThumb"
+                        alt=""
+                        class="h-18px w-18px flex-none rounded-3px object-cover"
+                        aria-hidden="true"
+                      />
+                      <span class="max-w-240px truncate">做同款：{{ selectedTemplate.title }}</span>
                       <button
                         type="button"
                         title="移除模板"
@@ -4069,9 +4525,42 @@ onUnmounted(() => {
                         </svg>
                       </button>
                     </span>
+                    <p v-if="!slotMode && tslots.status.value !== 'unsupported'" class="m-0 mt-4px text-11px leading-16px text-muted">{{ templateGuidance }}</p>
                   </div>
+                  <p v-if="tslots.status.value === 'unsupported'" class="m-0 mb-8px text-12px leading-18px text-warning" role="status">
+                    这个模板需要新版本才能使用
+                  </p>
+                  <div v-if="canTrySamples" class="mb-8px flex flex-col gap-8px self-start max-w-full">
+                    <button
+                      type="button"
+                      class="self-start rounded-full border border-solid border-soft-line bg-surface px-12px py-4px text-12px leading-18px text-violet-ink cursor-pointer hover:(border-violet-line bg-violet-tint) sx-focus"
+                      :aria-expanded="showSamples"
+                      data-testid="try-samples"
+                      @click="showSamples = !showSamples"
+                    >
+                      {{ showSamples ? '收起示例效果' : '用示例素材先试试' }}
+                    </button>
+                    <SamplePanel
+                      v-if="showSamples"
+                      :samples="tplSamples.samples.value"
+                      compact
+                      action-label="换成我的照片"
+                      class="max-w-420px rounded-14px bg-surface2 p-12px"
+                      @action="samplesToPhoto"
+                    />
+                  </div>
+                  <BrandPrefillBar v-if="slotMode" :brand="brandPrefill" :disabled="streaming || preparing" class="mb-8px" />
+                  <SlotForm
+                    v-if="slotMode"
+                    v-model="tslots.values.value"
+                    :items="tslots.items.value"
+                    :server-errors="tslots.serverErrors.value"
+                    :text-overlay="tslots.textOverlay.value"
+                    :disabled="streaming || preparing"
+                    class="mb-10px rounded-14px bg-surface2 p-12px"
+                  />
                   <ul
-                    v-if="attachments.length"
+                    v-if="attachments.length && !slotMode"
                     class="m-0 mb-8px flex list-none gap-8px self-start p-0"
                     aria-label="已添加的图片"
                   >
@@ -4099,7 +4588,9 @@ onUnmounted(() => {
                     rows="1"
                     :maxlength="12000"
                     :placeholder="
-                      isHome
+                      selectedTemplate
+                        ? '想补充什么？不填也可以'
+                        : isHome
                         ? '也可以直接描述你要做什么，智能体会先拆步骤、再跟你确认设置'
                         : '描述你的创作目标、风格方向或产品卖点'
                     "
@@ -4111,6 +4602,7 @@ onUnmounted(() => {
                   />
                   <div class="mt-8px flex flex-wrap items-center gap-6px">
                     <button
+                      v-if="!slotMode"
                       ref="imagePillEl"
                       type="button"
                       aria-haspopup="dialog"
@@ -4244,13 +4736,49 @@ onUnmounted(() => {
                       </div>
                     </n-popover>
                     <span class="flex-1" />
-                    <PointsBalanceChip recharge class="mr-6px" />
+                    <button v-if="guest" type="button" :class="[BTN, 'mr-6px']" data-testid="agent-guest-login" @click="requireLogin('mine')">登录</button>
+                    <PointsBalanceChip v-else recharge class="mr-6px" />
                     <span
                       v-if="skillMissing && !streaming"
                       id="agent-skill-required"
                       class="mr-4px flex-none text-12px text-warning"
                       >{{ SKILL_REQUIRED }}</span
                     >
+                    <span
+                      v-if="tslots.blocker.value && !streaming && tslots.status.value !== 'unsupported'"
+                      id="agent-slot-blocker"
+                      class="mr-4px min-w-0 max-w-220px truncate text-12px text-warning max-sm:max-w-140px"
+                      role="status"
+                      >{{ tslots.blocker.value }}</span
+                    >
+                    <span
+                      v-if="!streaming && selectedTemplate && selectedIsVideo"
+                      class="mr-6px flex min-w-0 flex-none items-center gap-6px text-12px leading-18px text-ink-2"
+                      role="status"
+                      data-testid="plaza-video-hint"
+                    >
+                      {{ VIDEO_PAGE_HINT }}
+                      <button type="button" :class="BTN" @click="goVideoGenerate(selectedTemplate)">去生成视频</button>
+                    </span>
+                    <span v-if="!streaming && selectedTemplate && !selectedIsVideo" class="mr-6px flex-none">
+                      <VariantsSetting
+                        v-model="quoteVariants"
+                        v-model:resolution="quoteResolution"
+                        :max-variants="variantsMax"
+                        :quote="tplQuote.quote.value"
+                        :scope="quoteScope"
+                        :ref-image-count="quoteRefImageCount"
+                      />
+                    </span>
+                    <QuoteChip
+                      v-if="!streaming && selectedTemplate && !selectedIsVideo"
+                      :state="tplQuote.state.value"
+                      :points="tplQuote.points.value"
+                      :eta="tplQuote.eta.value"
+                      :quote="tplQuote.quote.value"
+                      :insufficient="tplQuote.insufficient.value"
+                      @retry="tplQuote.retry"
+                    />
                     <button
                       v-if="streaming"
                       type="button"
@@ -4270,8 +4798,8 @@ onUnmounted(() => {
                       type="button"
                       title="发送"
                       aria-label="发送"
-                      :disabled="!draft.trim() || skillMissing"
-                      :aria-describedby="skillMissing ? 'agent-skill-required' : undefined"
+                      :disabled="!draft.trim() || skillMissing || !!tslots.blocker.value || preparing || selectedIsVideo"
+                      :aria-describedby="skillMissing ? 'agent-skill-required' : tslots.blocker.value ? 'agent-slot-blocker' : undefined"
                       class="ml-2px grid h-36px w-36px flex-none place-items-center rounded-full border border-solid border-violet-border bg-[linear-gradient(var(--xq-violet-top),var(--xq-violet-bottom))] p-0 text-white shadow-btn cursor-pointer [transition:background_.12s,box-shadow_.12s] enabled:hover:bg-[linear-gradient(var(--xq-violet-hover-top),var(--xq-violet-hover-bottom))] disabled:(border-violet-line bg-none bg-violet-disabled shadow-none cursor-not-allowed) sx-focus"
                       @click="send(draft, attachments, selectedTemplate, { fromDraft: true })"
                     >
@@ -4759,6 +5287,17 @@ onUnmounted(() => {
         </button>
       </template>
     </ColorFixDialog>
+
+    <!-- 登录半屏（全页唯一一个）：未登录点「做同款」/ 收藏 / 我的时弹出；登录后就地还原现场（换号则整页重载后还原） -->
+    <LoginSheet @success="onPlazaLoginSuccess" />
+    <SaveMineDialog
+      :show="!!saveMineTarget"
+      :default-name="saveMineDefaultName"
+      :busy="saveMineBusy"
+      :error="saveMineError"
+      @close="saveMineTarget = null"
+      @confirm="confirmSaveMine"
+    />
   </n-config-provider>
 </template>
 

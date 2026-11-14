@@ -1,302 +1,445 @@
 <script setup lang="ts">
 /**
- * 智能体首页 · 模板浏览（原型 5185 AgentView .ref-filters / .ref-grid）：
- * 分类 chip 来自 GET /api/v1/plaza-templates/tags（「全部」+ 标签，后端多标签取并集，这里只传单个），
- * 列表 GET /api/v1/plaza-templates/list 分页（v1 信封 current / pages），点「加载更多」续页。
+ * 智能体首页 · 行业版模板浏览（agent-template-industry DESIGN §7，原型 5185 .ref-tabs / .ref-grid）：
+ * 先选行业（首次门 / 点「行业」chip 重开门），再看该行业的三个 Tab：本周头条（默认）/ 图片 / 视频；
+ * 有二级的行业在 Tab 下出现细分 chip，选了二级三个 Tab 一起收窄。
  *
- * <p>搜索：接口没有关键词参数，只在<b>已加载</b>的模板里按标题 / 说明 / 标签过滤；还有下一页时给出提示。
- * 原型的二级细分 chip 依赖行业 → 细分的两级结构，广场标签是平铺的，故不做。
- *
- * <p>「模板 / 本周头条」两个 Tab 共用分类 chip 与搜索框；本周头条见 TemplateHeadlines（服务端过滤，搜的是全部头条），
- * 首次切过去才挂载，之后切回来保留状态。两边选中都走同一个 pick 事件。
+ * <p>门通过前不发任何头条 / 列表请求（只请求行业目录与偏好）；没有任何跨行业的「全部」视角。
+ * 点卡片 / 头条条目先开预览（桌面对话框、手机底部抽屉），在预览里点「做同款」才 emit pick。
+ * 编排只在这里：行业状态见 industry/useIndustry、列表见 TemplateList、头条见 TemplateHeadlines。
  */
 import { computed, onMounted, ref, watch } from 'vue'
-import { plazaTemplateList, plazaTemplateTags } from '@/api/plaza.ts'
-import type { IPlazaTemplate } from '@/api/plaza.ts'
+import { NModal } from 'naive-ui'
+import { parsePlazaTime, plazaCounts } from '@/api/plaza.ts'
+import type { IPlazaCounts, IPlazaMyTemplate, IPlazaTemplate } from '@/api/plaza.ts'
 import PageEmpty from '@/components/PageEmpty/index.vue'
-import PageLoadError from '@/components/PageLoadError/index.vue'
-import TemplateCard from './TemplateCard.vue'
+import IndustryBar from './industry/IndustryBar.vue'
+import IndustryGate from './industry/IndustryGate.vue'
+import { loadFavorites } from './industry/useFavorites.ts'
+import { loginVersion, requireLogin } from './industry/useLoginGate.ts'
+import { useIndustry } from './industry/useIndustry.ts'
+import MyLibraryDrawer from './MyLibraryDrawer.vue'
+import NodeStrip from './NodeStrip.vue'
+import RecentStrip from './RecentStrip.vue'
 import TemplateHeadlines from './TemplateHeadlines.vue'
+import TemplateList from './TemplateList.vue'
+import TemplatePreviewModal from './TemplatePreviewModal.vue'
 
 defineProps<{ pickedId?: number | null; disabled?: boolean }>()
-const emit = defineEmits<{ pick: [item: IPlazaTemplate] }>()
+/** pick 的第二个参数是选中时所在的行业范围（报价 / 示例都要带 industry） */
+const emit = defineEmits<{
+  pick: [item: IPlazaTemplate, scope: { industry: string; subIndustry?: string }]
+  /** 「我的模板」被点：把模板 + 入参 + 版数 + 文字恢复到输入区（不自动发送） */
+  restore: [item: IPlazaMyTemplate, scope: { industry: string; subIndustry?: string }]
+}>()
 
-const PAGE_SIZE = 24
 const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)'
 
-type HomeTab = 'templates' | 'headlines'
-const tab = ref<HomeTab>('templates')
-const headlinesMounted = ref(false)
+const ind = useIndustry()
+onMounted(() => void ind.load())
+
+type Tab = 'headline' | 'image' | 'video'
+const TAB_KEY = 'fusion_agent_tab'
+function readTab(): Tab {
+  try {
+    const v = sessionStorage.getItem(TAB_KEY)
+    return v === 'image' || v === 'video' ? v : 'headline'
+  } catch {
+    return 'headline'
+  }
+}
+const tab = ref<Tab>(readTab())
 watch(tab, (t) => {
-  if (t === 'headlines') headlinesMounted.value = true
+  try {
+    sessionStorage.setItem(TAB_KEY, t)
+  } catch {
+    // ignore
+  }
+  query.value = ''
+})
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'headline', label: '本周头条' },
+  { key: 'image', label: '图片' },
+  { key: 'video', label: '视频' },
+]
+
+const query = ref('')
+const industryName = computed(() => ind.current.value?.name ?? '')
+const subName = computed(() => ind.children.value.find((c) => c.code === ind.sub.value)?.name ?? '')
+
+// 换行业：清二级与搜索词，保持当前 Tab（二级在 select 里已清）
+watch(
+  () => ind.current.value?.code,
+  () => {
+    query.value = ''
+    void loadCounts()
+  },
+)
+watch(
+  () => ind.sub.value,
+  () => void loadCounts(),
+)
+// 收藏状态（卡片 ♡）：按当前行业取，登录后重取；未登录清空
+watch(
+  () => [ind.current.value?.code ?? '', loginVersion.value] as const,
+  ([code]) => void loadFavorites(code, true),
+  { immediate: true },
+)
+
+const counts = ref<IPlazaCounts | null>(null)
+let countSeq = 0
+async function loadCounts() {
+  const cur = ind.current.value
+  if (!cur) {
+    counts.value = null
+    return
+  }
+  const s = ++countSeq
+  try {
+    const res = await plazaCounts({ industry: cur.code, subIndustry: ind.sub.value || undefined })
+    if (s === countSeq) counts.value = res.data ?? null
+  } catch {
+    if (s === countSeq) counts.value = null
+  }
+}
+
+function tabCount(t: Tab): number | null {
+  if (!counts.value || t === 'headline') return null
+  return t === 'image' ? counts.value.image : counts.value.video
+}
+const otherCount = computed(() =>
+  tab.value === 'image' ? (counts.value?.video ?? 0) : tab.value === 'video' ? (counts.value?.image ?? 0) : 0,
+)
+
+function onTabKey(e: KeyboardEvent) {
+  const i = TABS.findIndex((t) => t.key === tab.value)
+  let n = i
+  if (e.key === 'ArrowRight') n = (i + 1) % TABS.length
+  else if (e.key === 'ArrowLeft') n = (i - 1 + TABS.length) % TABS.length
+  else return
+  e.preventDefault()
+  tab.value = TABS[n]!.key
+  document.getElementById(`agent-home-tab-${tab.value}`)?.focus()
+}
+
+// ---- 头条周期说明（T-05） ----
+const computedAt = ref<string | null>(null)
+const headlineItems = ref<IPlazaTemplate[]>([])
+const listItems = ref<IPlazaTemplate[]>([])
+const listTotal = ref(0)
+const headlineMounted = ref(false)
+watch(
+  () => tab.value,
+  (t) => {
+    if (t === 'headline') headlineMounted.value = true
+  },
+  { immediate: true },
+)
+const updatedText = computed(() => {
+  if (!computedAt.value) return ''
+  const mins = Math.round((Date.now() - parsePlazaTime(computedAt.value).getTime()) / 60000)
+  return mins <= 0 || Number.isNaN(mins) ? '刚刚更新' : `更新于 ${mins} 分钟前`
 })
 
-/** 头条统计窗口 → 「第 N 周 · MM.DD – MM.DD」 */
-const period = ref<{ statsFrom: string; statsTo: string } | null>(null)
-function isoWeek(d: Date): number {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
-  const day = t.getUTCDay() || 7
-  t.setUTCDate(t.getUTCDate() + 4 - day)
-  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1))
-  return Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+// ---- 预览 ----
+const previewItem = ref<IPlazaTemplate | null>(null)
+/** 节点条里的模板（从节点条打开预览时，上一个 / 下一个只在它们之间切） */
+const nodeItems = ref<IPlazaTemplate[]>([])
+const previewFromNode = ref(false)
+const previewSource = computed(() =>
+  previewFromNode.value ? nodeItems.value : tab.value === 'headline' ? headlineItems.value : listItems.value,
+)
+function openPreview(t: IPlazaTemplate) {
+  previewFromNode.value = false
+  previewItem.value = t
 }
-const periodHint = computed(() => {
-  const p = period.value
-  if (!p?.statsFrom || !p?.statsTo) return ''
-  const [fy, fm, fd] = p.statsFrom.split('-').map(Number)
-  const [ty, tm, td] = p.statsTo.split('-').map(Number)
-  if (!fy || !fm || !fd || !ty || !tm || !td) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `第 ${isoWeek(new Date(ty, tm - 1, td))} 周 · ${pad(fm)}.${pad(fd)} – ${pad(tm)}.${pad(td)}`
+function openFromNode(t: IPlazaTemplate) {
+  previewFromNode.value = true
+  previewItem.value = t
+}
+// ---- 我的（收藏 / 我的模板）抽屉 ----
+const libOpen = ref(false)
+function openLibrary() {
+  if (!requireLogin('mine')) return
+  libOpen.value = true
+}
+function openFromLibrary(t: IPlazaTemplate) {
+  libOpen.value = false
+  openPreview(t)
+}
+function restoreMine(m: IPlazaMyTemplate) {
+  libOpen.value = false
+  if (curScope.value) emit('restore', m, curScope.value)
+}
+const previewIndex = computed(() => {
+  const id = previewItem.value?.plazaTemplateId
+  return previewSource.value.findIndex((t) => t.plazaTemplateId === id)
+})
+function navPreview(delta: number) {
+  const n = previewSource.value[previewIndex.value + delta]
+  if (n) previewItem.value = n
+}
+const curScope = computed(() =>
+  ind.current.value ? { industry: ind.current.value.code, subIndustry: ind.sub.value || undefined } : null,
+)
+function pickFromPreview(t: IPlazaTemplate) {
+  previewItem.value = null
+  if (curScope.value) emit('pick', t, curScope.value)
+}
+function pickFromRecent(t: IPlazaTemplate) {
+  if (curScope.value) emit('pick', t, curScope.value)
+}
+
+function gone() {
+  previewItem.value = null
+  ind.handleGone()
+}
+
+function onSelectIndustry(code: string) {
+  ind.select(code)
+}
+
+const searchPlaceholder = computed(() =>
+  tab.value === 'headline'
+    ? '搜索头条'
+    : tab.value === 'image'
+      ? `搜索${industryName.value}图片模板`
+      : `搜索${industryName.value}视频模板`,
+)
+const resultLabel = computed(() => {
+  if (!query.value.trim()) return ''
+  if (tab.value === 'headline') return `共 ${headlineItems.value.length} 个模板`
+  return `共 ${listTotal.value} 个模板`
 })
 
 function tabClass(on: boolean) {
   return [
-    // 文字高 22，上下各 5 补到 32（可点区域 ≥32）
-    'm-0 border-0 bg-transparent px-0 py-5px text-15px leading-22px cursor-pointer select-none',
+    'm-0 border-0 bg-transparent px-0 py-5px text-15px leading-22px cursor-pointer select-none whitespace-nowrap',
     '[transition:color_0.12s] motion-reduce:transition-none',
     on ? 'font-600 text-ink' : 'font-500 text-placeholder hover:text-ink-2',
-    FOCUS,
-  ]
-}
-
-const tags = ref<string[]>([])
-/** 空串 = 全部 */
-const activeTag = ref('')
-const query = ref('')
-
-async function loadTags() {
-  try {
-    const res = await plazaTemplateTags()
-    tags.value = res.data ?? []
-  } catch {
-    // 标签拉失败不挡列表：只剩「全部」
-    tags.value = []
-  }
-}
-
-const items = ref<IPlazaTemplate[]>([])
-const page = ref(0)
-const hasMore = ref(false)
-const loading = ref(false)
-const loadingMore = ref(false)
-const failed = ref(false)
-const failMsg = ref('')
-const moreFailed = ref(false)
-let seq = 0
-
-async function fetchPage(next: number) {
-  const s = seq
-  const res = await plazaTemplateList({ page: next, size: PAGE_SIZE, tags: activeTag.value || undefined })
-  if (s !== seq) return
-  const d = res.data
-  const rows = d?.data ?? []
-  if (next === 1) {
-    items.value = rows
-  } else {
-    const seen = new Set(items.value.map((t) => t.plazaTemplateId))
-    items.value.push(...rows.filter((t) => !seen.has(t.plazaTemplateId)))
-  }
-  page.value = next
-  hasMore.value = (d?.current ?? next) < (d?.pages ?? 0)
-}
-
-async function reload() {
-  seq++
-  loading.value = true
-  loadingMore.value = false
-  failed.value = false
-  failMsg.value = ''
-  moreFailed.value = false
-  const s = seq
-  try {
-    await fetchPage(1)
-  } catch (err) {
-    if (s === seq) {
-      failed.value = true
-      failMsg.value = err instanceof Error ? err.message : ''
-      items.value = []
-      hasMore.value = false
-    }
-  } finally {
-    if (s === seq) loading.value = false
-  }
-}
-
-async function loadMore() {
-  if (loading.value || loadingMore.value || !hasMore.value) return
-  loadingMore.value = true
-  moreFailed.value = false
-  const s = seq
-  try {
-    await fetchPage(page.value + 1)
-  } catch {
-    if (s === seq) moreFailed.value = true
-  } finally {
-    if (s === seq) loadingMore.value = false
-  }
-}
-
-watch(activeTag, () => void reload())
-
-onMounted(() => {
-  void loadTags()
-  void reload()
-})
-
-function textOf(t: IPlazaTemplate): string {
-  const d = t.payload?.description
-  return [t.title, typeof d === 'string' ? d : '', ...(t.tags ?? [])].join(' ').toLowerCase()
-}
-
-const keyword = computed(() => query.value.trim().toLowerCase())
-const shown = computed(() =>
-  keyword.value ? items.value.filter((t) => textOf(t).includes(keyword.value)) : items.value,
-)
-
-function chipClass(on: boolean) {
-  return [
-    'flex-none h-32px px-15px rounded-6px border border-solid text-12px whitespace-nowrap cursor-pointer select-none',
-    '[transition:border-color_0.12s,background_0.12s,color_0.12s] motion-reduce:transition-none',
-    on
-      ? 'border-violet-line bg-[linear-gradient(var(--xq-surface),var(--xq-violet-tint))] shadow-[0_1px_2px_rgba(31,35,41,0.05)] font-600 text-violet-ink'
-      : 'border-white/90 bg-[linear-gradient(rgb(var(--xq-surface-rgb)/0.82),rgb(var(--xq-page-rgb)/0.64))] text-muted hover:(border-control-hover text-ink)',
     FOCUS,
   ]
 }
 </script>
 
 <template>
-  <section aria-label="爆款模板" class="flex flex-col">
-    <div class="mb-12px flex items-baseline gap-20px" role="tablist" aria-label="内容来源">
-      <button
-        id="agent-home-tab-templates"
-        type="button"
-        role="tab"
-        aria-controls="agent-home-panel-templates"
-        :aria-selected="tab === 'templates'"
-        :class="tabClass(tab === 'templates')"
-        @click="tab = 'templates'"
-      >
-        模板
-      </button>
-      <button
-        id="agent-home-tab-headlines"
-        type="button"
-        role="tab"
-        aria-controls="agent-home-panel-headlines"
-        :aria-selected="tab === 'headlines'"
-        :class="tabClass(tab === 'headlines')"
-        @click="tab = 'headlines'"
-      >
-        本周头条
-      </button>
-      <span v-if="tab === 'headlines' && periodHint" class="text-12px leading-18px text-placeholder">{{
-        periodHint
-      }}</span>
-    </div>
-    <div class="mb-16px flex items-center gap-12px">
-      <div
-        class="flex min-w-0 flex-1 gap-8px overflow-x-auto py-2px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        role="group"
-        aria-label="模板分类"
-      >
-        <button type="button" :aria-pressed="!activeTag" :class="chipClass(!activeTag)" @click="activeTag = ''">
-          全部
-        </button>
+  <section aria-label="爆款模板" class="relative flex flex-col">
+    <!-- 目录加载失败 / 行业整理中 / 首次门：都不发模板请求 -->
+    <template v-if="ind.loading.value || ind.failed.value || ind.gateOff.value">
+      <IndustryGate
+        v-if="ind.loading.value || ind.failed.value"
+        :industries="[]"
+        :loading="ind.loading.value"
+        :error="ind.failed.value"
+        @retry="ind.load()"
+      />
+      <PageEmpty v-else compact text="模板正在准备中" description="你的行业模板很快会上线，也可以告诉我们你做什么生意" />
+    </template>
+
+    <template v-else>
+      <div class="mb-12px flex flex-wrap items-center gap-x-20px gap-y-8px">
         <button
-          v-for="t in tags"
-          :key="t"
           type="button"
-          :aria-pressed="activeTag === t"
-          :class="chipClass(activeTag === t)"
-          @click="activeTag = t"
+          class="inline-flex h-32px flex-none items-center gap-6px rounded-16px border border-solid border-soft-line bg-surface px-12px text-12px text-ink-2 cursor-pointer hover:(border-control-hover text-ink) disabled:opacity-50"
+          :class="FOCUS"
+          :disabled="ind.needGate.value"
+          :aria-label="`当前行业：${industryName}，点击更换`"
+          @click="ind.gateOpen.value = true"
         >
-          {{ t }}
+          <span class="text-muted">行业</span>
+          <b class="font-600 text-ink">{{ industryName || '请选择' }}</b>
+          <svg class="h-10px w-10px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </button>
-      </div>
-      <label class="relative block w-240px flex-none">
-        <span class="sr-only">搜索模板</span>
-        <input
-          v-model="query"
-          type="search"
-          :placeholder="tab === 'headlines' ? '搜索模板' : '搜索已加载的模板'"
-          class="box-border h-32px w-full rounded-16px border border-solid border-white/90 bg-[linear-gradient(rgb(var(--xq-surface-rgb)/0.82),rgb(var(--xq-page-rgb)/0.64))] pl-14px pr-32px text-12px text-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)] outline-none placeholder:text-placeholder focus:(border-violet shadow-focus)"
-        />
-        <svg
-          class="pointer-events-none absolute right-10px top-9px h-14px w-14px text-placeholder"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          aria-hidden="true"
-        >
-          <circle cx="11" cy="11" r="7" />
-          <path d="M20 20l-3.5-3.5" />
-        </svg>
-      </label>
-    </div>
-
-    <div
-      v-if="headlinesMounted"
-      v-show="tab === 'headlines'"
-      id="agent-home-panel-headlines"
-      role="tabpanel"
-      aria-labelledby="agent-home-tab-headlines"
-    >
-      <TemplateHeadlines
-        :tag="activeTag"
-        :keyword="query"
-        :picked-id="pickedId"
-        :disabled="disabled"
-        @pick="emit('pick', $event)"
-        @period="period = $event"
-      />
-    </div>
-
-    <div
-      v-show="tab === 'templates'"
-      id="agent-home-panel-templates"
-      role="tabpanel"
-      aria-labelledby="agent-home-tab-templates"
-    >
-      <p v-if="keyword && hasMore" class="m-0 -mt-8px mb-12px text-11px leading-16px text-placeholder">
-        只在已加载的 {{ items.length }} 个模板中搜索，加载更多可扩大范围
-      </p>
-
-      <div v-if="loading" class="flex justify-center py-40px"><n-spin size="small" /></div>
-      <PageLoadError
-        v-else-if="failed"
-        compact
-        :subtitle="failMsg || '模板加载失败，请稍后重试'"
-        retryable
-        @retry="reload"
-      />
-      <PageEmpty
-        v-else-if="!items.length"
-        compact
-        text="暂无模板"
-        :description="activeTag ? '这个分类下还没有模板，换个分类看看' : '运营上架模板后会出现在这里'"
-      />
-      <template v-else>
-        <PageEmpty v-if="!shown.length" compact text="没有匹配的模板" description="换个分类或关键词试试" />
-        <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-14px">
-          <TemplateCard
-            v-for="t in shown"
-            :key="t.plazaTemplateId"
-            :item="t"
-            :picked="pickedId === t.plazaTemplateId"
-            :disabled="disabled"
-            @pick="emit('pick', $event)"
-          />
-        </div>
-        <div v-if="hasMore || moreFailed" class="mt-16px flex flex-col items-center gap-6px">
-          <p v-if="moreFailed" class="m-0 text-12px text-danger" role="alert">加载失败，请重试</p>
-          <button type="button" class="sx-btn" :disabled="loadingMore" @click="loadMore">
-            {{ loadingMore ? '加载中…' : moreFailed ? '重试' : '加载更多' }}
+        <div class="flex min-w-0 items-baseline gap-20px overflow-x-auto [scrollbar-width:none]" role="tablist" aria-label="内容来源" @keydown="onTabKey">
+          <button
+            v-for="t in TABS"
+            :id="`agent-home-tab-${t.key}`"
+            :key="t.key"
+            type="button"
+            role="tab"
+            :aria-controls="`agent-home-panel-${t.key}`"
+            :aria-selected="tab === t.key"
+            :tabindex="tab === t.key ? 0 : -1"
+            :aria-label="tabCount(t.key) != null ? `${t.label}，${tabCount(t.key)} 个` : undefined"
+            :disabled="ind.needGate.value"
+            :class="tabClass(tab === t.key)"
+            @click="tab = t.key"
+          >
+            {{ t.label }}
+            <span v-if="tabCount(t.key) != null" class="ml-2px text-11px font-500 text-placeholder">{{ tabCount(t.key) }}</span>
           </button>
         </div>
+        <label class="relative ml-auto block w-240px flex-none max-sm:(ml-0 w-full)">
+          <span class="sr-only">搜索模板</span>
+          <input
+            v-model="query"
+            type="search"
+            :placeholder="searchPlaceholder"
+            :disabled="ind.needGate.value"
+            class="box-border h-32px w-full rounded-16px border border-solid border-white/90 bg-[linear-gradient(rgb(var(--xq-surface-rgb)/0.82),rgb(var(--xq-page-rgb)/0.64))] pl-14px pr-32px text-12px text-ink shadow-[0_1px_2px_rgba(31,35,41,0.05)] outline-none placeholder:text-placeholder focus:(border-violet shadow-focus)"
+          />
+          <svg class="pointer-events-none absolute right-10px top-9px h-14px w-14px text-placeholder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3.5-3.5" />
+          </svg>
+        </label>
+        <button
+          type="button"
+          class="inline-flex h-32px flex-none items-center gap-6px rounded-16px border border-solid border-soft-line bg-surface px-12px text-12px text-ink-2 cursor-pointer hover:(border-control-hover text-ink) disabled:opacity-50"
+          :class="FOCUS"
+          :disabled="ind.needGate.value"
+          aria-label="我的：收藏与我的模板"
+          data-testid="plaza-my-entry"
+          @click="openLibrary"
+        >
+          <svg class="h-12px w-12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c1-4 4-6 8-6s7 2 8 6" /></svg>
+          我的
+        </button>
+      </div>
+
+      <IndustryBar v-if="ind.current.value && !ind.needGate.value" :industry="ind.current.value" :sub="ind.sub.value" @select="ind.selectSub" />
+
+      <p v-if="query.trim()" class="m-0 -mt-4px mb-12px text-11px leading-16px text-placeholder">
+        仅搜索「{{ industryName }}」· {{ resultLabel }}
+      </p>
+      <p v-else-if="tab === 'headline' && !ind.needGate.value" class="m-0 -mt-4px mb-12px text-12px leading-18px text-placeholder">
+        同行近 7 天都在做什么<template v-if="updatedText"> · {{ updatedText }}</template>
+      </p>
+      <span class="sr-only" aria-live="polite">{{ resultLabel }}</span>
+
+      <!-- 接着做：所有 Tab 顶部，登录后、有历史才出现（严格当前行业） -->
+      <RecentStrip
+        v-if="ind.current.value && !ind.needGate.value && !query.trim()"
+        :industry="ind.current.value.code"
+        :sub="ind.sub.value"
+        :picked-id="pickedId"
+        :disabled="disabled"
+        @pick="pickFromRecent"
+      />
+
+      <!-- 首次门：磨砂层盖在静态骨架上（不是真数据，不发请求） -->
+      <div v-if="ind.needGate.value" class="relative min-h-420px">
+        <div class="pointer-events-none grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-14px" aria-hidden="true" inert>
+          <div v-for="n in 6" :key="n" class="sx-soft h-148px rounded-18px opacity-70" />
+        </div>
+        <div class="gate-glass absolute inset-0 z-2 overflow-y-auto">
+          <IndustryGate :industries="ind.industries.value" @select="onSelectIndustry" />
+        </div>
+      </div>
+
+      <template v-else-if="ind.current.value">
+        <div
+          v-if="headlineMounted"
+          v-show="tab === 'headline'"
+          id="agent-home-panel-headline"
+          role="tabpanel"
+          aria-labelledby="agent-home-tab-headline"
+        >
+          <NodeStrip
+            v-if="!query.trim()"
+            :industry="ind.current.value.code"
+            :industry-name="industryName"
+            @loaded="nodeItems = $event"
+            @open="openFromNode"
+          />
+          <TemplateHeadlines
+            :industry="ind.current.value.code"
+            :industry-name="industryName"
+            :sub="ind.sub.value"
+            :keyword="tab === 'headline' ? query : ''"
+            :picked-id="pickedId"
+            :disabled="disabled"
+            @open="openPreview"
+            @loaded="(v) => ((headlineItems = v?.items ?? []), (computedAt = v?.computedAt ?? null))"
+            @gone="gone"
+            @switch-tab="tab = $event"
+          />
+        </div>
+        <div
+          v-if="tab !== 'headline'"
+          :id="`agent-home-panel-${tab}`"
+          role="tabpanel"
+          :aria-labelledby="`agent-home-tab-${tab}`"
+        >
+          <TemplateList
+            :industry="ind.current.value.code"
+            :industry-name="industryName"
+            :sub="ind.sub.value"
+            :sub-name="subName"
+            :media-type="tab"
+            :keyword="query"
+            :other-count="otherCount"
+            :picked-id="pickedId"
+            :disabled="disabled"
+            @open="openPreview"
+            @loaded="(items, total) => ((listItems = items), (listTotal = total))"
+            @gone="gone"
+            @switch-tab="tab = $event"
+            @clear-search="query = ''"
+            @clear-sub="ind.selectSub('')"
+          />
+        </div>
       </template>
-    </div>
+    </template>
+
+    <!-- 重开门：对话框，Esc / × / 遮罩都能关 -->
+    <NModal
+      :show="ind.gateOpen.value"
+      :auto-focus="false"
+      trap-focus
+      @update:show="(v: boolean) => (ind.gateOpen.value = v)"
+    >
+      <div class="sx-squircle relative w-[min(640px,94vw)] rounded-20px border border-solid border-soft-line bg-surface shadow-pop" role="dialog" aria-label="换个行业">
+        <button
+          type="button"
+          class="absolute right-8px top-8px z-3 grid h-44px w-44px place-items-center rounded-full border-0 bg-transparent text-ink-2 cursor-pointer hover:text-ink"
+          :class="FOCUS"
+          aria-label="关闭"
+          @click="ind.gateOpen.value = false"
+        >
+          <svg class="h-16px w-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+        <IndustryGate
+          dismissible
+          :industries="ind.industries.value"
+          :current="ind.current.value?.code"
+          @select="onSelectIndustry"
+          @close="ind.gateOpen.value = false"
+        />
+      </div>
+    </NModal>
+
+    <MyLibraryDrawer
+      :show="libOpen"
+      :industry="ind.current.value?.code ?? ''"
+      :industry-name="industryName"
+      @close="libOpen = false"
+      @open="openFromLibrary"
+      @restore="restoreMine"
+    />
+
+    <TemplatePreviewModal
+      :item="previewItem"
+      :index="previewIndex >= 0 ? previewIndex : undefined"
+      :total="previewSource.length"
+      :scope="curScope"
+      :disabled="disabled"
+      @close="previewItem = null"
+      @nav="navPreview"
+      @pick="pickFromPreview"
+    />
   </section>
 </template>
+
+<style scoped>
+/* 磨砂层：只模糊、不加色；不支持 backdrop-filter 时用近不透明的页面底色顶上 */
+.gate-glass {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .gate-glass {
+    background: rgb(var(--xq-page-rgb) / 0.92);
+  }
+}
+</style>

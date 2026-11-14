@@ -1,22 +1,23 @@
 <script setup lang="ts">
 /**
- * 模板广场：GET /api/v1/plaza-templates/tags 出分类胶囊，/list 分页（page/size，信封 current/pages）。
- * 卡片复用智能体首页的 TemplateCard 横卡；有 agentSkillId 的悬停出「一键复刻」，点击跳
- * /agent?plazaTemplateId=<id>，由智能体页走与首页模板浏览同一条选中路径（切技能 + 预填）。
- *
- * <p>搜索 / 细分只在<b>已加载</b>的模板里过滤：/plaza-templates/list 是 creaft v1 兼容口，
- * 线上入参以 v1 为准不加参数，故没有后端关键词。还有下一页时给出提示。
- * 细分 chip = 选中分类下已加载模板携带的其它标签（广场标签是平铺的，没有行业 → 细分两级结构）。
- * 使用次数 / 排名：接口不下发，不展示。
+ * 模板广场（行业版）：GET /api/v1/plaza/templates?industry=…（Go 原生，严格按行业，服务端关键词搜索与分页）。
+ * 行业复用智能体页的偏好（useIndustry，同一份本地缓存 / 服务端偏好）：已选直接用，未选就地出行业选择（不跳转）；
+ * 匿名可浏览。分类胶囊 = 当前行业的二级细分；图片 / 视频与已加载模板携带的标签作为第二行细分。
+ * 卡片复用智能体首页的 TemplateCard 横卡；「做同款」见 ../replicate.ts（图片去智能体页，视频去生成视频页）。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { plazaTemplateList, plazaTemplateTags, stashPlazaTemplate } from '@/api/plaza.ts'
+import { isIndustryGate, plazaErrorText, plazaTemplates } from '@/views/agent/industry/plazaScope.ts'
 import type { IPlazaTemplate } from '@/api/plaza.ts'
 import TemplateCard from '@/views/agent/TemplateCard.vue'
+import IndustryGate from '@/views/agent/industry/IndustryGate.vue'
+import { useIndustry } from '@/views/agent/industry/useIndustry.ts'
+import PageEmpty from '@/components/PageEmpty/index.vue'
 import { usePagedList } from '../usePagedList.ts'
 import { CATS_ROW, SEARCH_INPUT, chipClass, subChipClass } from '../styles.ts'
+import { replicateTemplate } from '../replicate.ts'
 import PlazaGrid from './PlazaGrid.vue'
+import IndustryGateModal from './IndustryGateModal.vue'
 
 defineOptions({ name: 'PlazaTemplatesPanel' })
 
@@ -25,121 +26,127 @@ const SUB_LIMIT = 12
 
 const router = useRouter()
 
-const tags = ref<string[]>([])
-/** 空串 = 全部 */
+const ind = useIndustry()
+onMounted(() => void ind.load())
+
+type Media = '' | 'image' | 'video'
+const MEDIA: { key: Media; label: string }[] = [
+  { key: '', label: '全部类型' },
+  { key: 'image', label: '图片' },
+  { key: 'video', label: '视频' },
+]
+const media = ref<Media>('')
 const activeTag = ref('')
-const activeSub = ref('')
 
-async function loadTags() {
-  try {
-    const res = await plazaTemplateTags()
-    tags.value = res.data ?? []
-  } catch {
-    // 标签拉失败不挡列表：只剩「全部」
-    tags.value = []
-  }
-}
-
-const list = usePagedList<IPlazaTemplate>(
-  async (page) => {
-    const res = await plazaTemplateList({ page, size: PAGE_SIZE, tags: activeTag.value || undefined })
-    const d = res.data
-    return { items: d?.data ?? [], hasMore: (d?.current ?? page) < (d?.pages ?? 0) }
-  },
-  { silenced: true },
-)
-const { items, hasMore, loading, loadingMore, failed, errorMsg, reload, loadMore, onScroll } = list
-
-function pickTag(t: string) {
-  activeTag.value = t
-  activeSub.value = ''
-}
-
-// 换分类 / 重试都从头加载：列表滚回顶部，否则停在旧位置像是没刷新、还可能立刻触发加载更多
-const scrollEl = ref<HTMLElement | null>(null)
-function reloadFromTop() {
-  if (scrollEl.value) scrollEl.value.scrollTop = 0
-  void reload()
-}
-watch(activeTag, reloadFromTop)
-
-// 搜索输入 300ms 防抖后才参与过滤
+// 搜索输入 300ms 防抖后走服务端关键词
 const query = ref('')
 const keyword = ref('')
 let timer: ReturnType<typeof setTimeout> | undefined
 watch(query, (v) => {
   clearTimeout(timer)
-  timer = setTimeout(() => (keyword.value = v.trim().toLowerCase()), 300)
+  timer = setTimeout(() => (keyword.value = v.trim()), 300)
 })
 onBeforeUnmount(() => clearTimeout(timer))
 
-onMounted(() => {
-  void loadTags()
-  void reload()
-})
-
-/**
- * 细分：选中分类后，已加载模板里出现的其它标签，按出现次数降序、同次数按名称排（顺序稳定，加载更多时不乱跳）。
- * 当前选中的细分始终留在列表里——加载更多后它可能掉出前 SUB_LIMIT，不能让选中项凭空消失。
- */
-const subTags = computed(() => {
-  if (!activeTag.value) return []
-  const count = new Map<string, number>()
-  for (const t of items.value) {
-    for (const tag of t.tags ?? []) {
-      if (tag !== activeTag.value) count.set(tag, (count.get(tag) ?? 0) + 1)
+const list = usePagedList<IPlazaTemplate>(
+  async (page) => {
+    const cur = ind.current.value
+    if (!cur) return { items: [], hasMore: false }
+    try {
+      const res = await plazaTemplates({
+        industry: cur.code,
+        subIndustry: ind.sub.value || undefined,
+        mediaType: media.value || undefined,
+        keyword: keyword.value || undefined,
+        page,
+        size: PAGE_SIZE,
+      })
+      const d = res.data
+      return { items: d?.data ?? [], hasMore: (d?.current ?? page) < (d?.pages ?? 0) }
+    } catch (err) {
+      // 行业失效 / 缺行业：清缓存回行业门；其余按行业版文案提示
+      if (isIndustryGate(err)) ind.handleGone()
+      throw new Error(plazaErrorText(err))
     }
-  }
+  },
+  { silenced: true },
+)
+const { items, hasMore, loading, loadingMore, failed, errorMsg, reload, loadMore, onScroll } = list
+
+// 换行业 / 二级 / 类型 / 关键词都从头加载：列表滚回顶部
+const scrollEl = ref<HTMLElement | null>(null)
+function reloadFromTop() {
+  if (scrollEl.value) scrollEl.value.scrollTop = 0
+  void reload()
+}
+watch(
+  () => [ind.current.value?.code ?? '', ind.sub.value, media.value, keyword.value] as const,
+  ([code]) => {
+    activeTag.value = ''
+    if (code) reloadFromTop()
+  },
+)
+
+function pickSub(code: string) {
+  ind.selectSub(code)
+}
+
+function onSelectIndustry(code: string) {
+  query.value = ''
+  keyword.value = ''
+  ind.select(code)
+}
+
+/** 已加载模板里出现的标签（排除当前行业二级名），按出现次数降序、同次数按名称排；选中项始终保留 */
+const subTags = computed(() => {
+  const count = new Map<string, number>()
+  for (const t of items.value) for (const tag of t.tags ?? []) count.set(tag, (count.get(tag) ?? 0) + 1)
   const top = [...count.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))
     .slice(0, SUB_LIMIT)
     .map(([tag]) => tag)
-  if (activeSub.value && !top.includes(activeSub.value)) top.push(activeSub.value)
+  if (activeTag.value && !top.includes(activeTag.value)) top.push(activeTag.value)
   return top
 })
 
-function textOf(t: IPlazaTemplate): string {
-  const d = t.payload?.description
-  return [t.title, typeof d === 'string' ? d : '', ...(t.tags ?? [])].join(' ').toLowerCase()
-}
-
 const shown = computed(() =>
-  items.value.filter(
-    (t) =>
-      (!activeSub.value || (t.tags ?? []).includes(activeSub.value)) &&
-      (!keyword.value || textOf(t).includes(keyword.value)),
-  ),
+  activeTag.value ? items.value.filter((t) => (t.tags ?? []).includes(activeTag.value)) : items.value,
 )
-const localFiltering = computed(() => !!(keyword.value || activeSub.value))
-const filtering = computed(() => localFiltering.value || !!activeTag.value)
+const filtering = computed(() => !!(keyword.value || activeTag.value || media.value || ind.sub.value))
 const empty = computed(() => !loading.value && !failed.value && !shown.value.length)
 
 function replicate(t: IPlazaTemplate) {
-  if (!t.agentSkillId) return
-  stashPlazaTemplate(t)
-  void router.push({ name: 'agent', query: { plazaTemplateId: String(t.plazaTemplateId) } })
+  replicateTemplate(router, t)
 }
 </script>
 
 <template>
   <div ref="scrollEl" class="h-full overflow-auto px-20px pb-20px" @scroll="onScroll">
     <div class="mx-auto max-w-1180px">
+      <template v-if="ind.loading.value || ind.failed.value">
+        <IndustryGate :industries="[]" :loading="ind.loading.value" :error="ind.failed.value" @retry="ind.load()" />
+      </template>
+      <PageEmpty v-else-if="ind.gateOff.value" compact text="模板正在准备中" description="你的行业模板很快会上线，也可以告诉我们你做什么生意" />
+      <IndustryGate v-else-if="ind.needGate.value" :industries="ind.industries.value" @select="onSelectIndustry" />
+      <template v-else>
       <div class="flex items-center gap-12px pt-4px pb-16px">
-        <div :class="CATS_ROW" role="group" aria-label="模板分类">
-          <button type="button" :aria-pressed="!activeTag" :class="chipClass(!activeTag)" @click="pickTag('')">
-            全部
+        <div :class="CATS_ROW" role="group" aria-label="行业细分">
+          <button type="button" :aria-pressed="!ind.sub.value" :class="chipClass(!ind.sub.value)" @click="pickSub('')">
+            {{ ind.current.value?.name }}
           </button>
           <button
-            v-for="t in tags"
-            :key="t"
+            v-for="c in ind.children.value"
+            :key="c.code"
             type="button"
-            :aria-pressed="activeTag === t"
-            :class="chipClass(activeTag === t)"
-            @click="pickTag(t)"
+            :title="c.hint"
+            :aria-pressed="ind.sub.value === c.code"
+            :class="chipClass(ind.sub.value === c.code)"
+            @click="pickSub(c.code)"
           >
-            {{ t }}
+            {{ c.name }}
           </button>
         </div>
+        <button type="button" class="sx-btn flex-none" @click="ind.gateOpen.value = true">换行业</button>
         <label class="relative block w-240px flex-none">
           <span class="sr-only">搜索模板</span>
           <input v-model="query" type="search" placeholder="搜索模板" :class="SEARCH_INPUT" />
@@ -157,30 +164,33 @@ function replicate(t: IPlazaTemplate) {
         </label>
       </div>
 
-      <div
-        v-if="subTags.length"
-        class="-mt-4px mb-16px flex flex-wrap gap-6px"
-        role="group"
-        :aria-label="`${activeTag} 细分`"
-      >
-        <button type="button" :aria-pressed="!activeSub" :class="subChipClass(!activeSub)" @click="activeSub = ''">
-          全部
-        </button>
+      <div class="-mt-4px mb-16px flex flex-wrap gap-6px" role="group" aria-label="类型与标签细分">
         <button
-          v-for="s in subTags"
-          :key="s"
+          v-for="m in MEDIA"
+          :key="m.key"
           type="button"
-          :aria-pressed="activeSub === s"
-          :class="subChipClass(activeSub === s)"
-          @click="activeSub = s"
+          :aria-pressed="media === m.key"
+          :class="subChipClass(media === m.key)"
+          @click="media = m.key"
         >
-          {{ s }}
+          {{ m.label }}
         </button>
+        <template v-if="subTags.length">
+          <button type="button" :aria-pressed="!activeTag" :class="subChipClass(!activeTag)" @click="activeTag = ''">
+            全部标签
+          </button>
+          <button
+            v-for="s in subTags"
+            :key="s"
+            type="button"
+            :aria-pressed="activeTag === s"
+            :class="subChipClass(activeTag === s)"
+            @click="activeTag = s"
+          >
+            {{ s }}
+          </button>
+        </template>
       </div>
-
-      <p v-if="localFiltering && hasMore" class="m-0 -mt-8px mb-12px text-11px leading-16px text-placeholder">
-        只在已加载的 {{ items.length }} 个模板中筛选，加载更多可扩大范围
-      </p>
 
       <PlazaGrid
         :loading="loading"
@@ -198,10 +208,17 @@ function replicate(t: IPlazaTemplate) {
           v-for="t in shown"
           :key="t.plazaTemplateId"
           :item="t"
-          :cta="t.agentSkillId ? '一键复刻' : false"
+          :cta="'一键复刻'"
           @pick="replicate"
         />
       </PlazaGrid>
+      </template>
     </div>
+    <IndustryGateModal
+      v-model:show="ind.gateOpen.value"
+      :industries="ind.industries.value"
+      :current="ind.current.value?.code"
+      @select="onSelectIndustry"
+    />
   </div>
 </template>

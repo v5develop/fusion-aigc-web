@@ -12,9 +12,13 @@
  * 原型 banner 右侧是实拍图：有封面的条目用真图（public/images/tool-covers，名称对齐原型 toolCovers.ts），
  * 没有的（本地生活导航首页）沿用同色调渐变占位。
  */
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
-import { plazaTemplateList, stashPlazaTemplate, type IPlazaTemplate } from '@/api/plaza.ts'
+import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
+import { isIndustryGone as isIndustryGate, plazaTemplates, type IPlazaTemplate } from '@/api/plaza.ts'
+import IndustryGate from '@/views/agent/industry/IndustryGate.vue'
+import { useIndustry } from '@/views/agent/industry/useIndustry.ts'
+import IndustryGateModal from '@/views/plaza/components/IndustryGateModal.vue'
+import { replicateTemplate } from '@/views/plaza/replicate.ts'
 import { useToolAvailability, withoutDisabledSections } from '@/utils/toolAvailability.ts'
 import { useTilt } from '@/utils/composables/useTilt.ts'
 import { toolCover } from './tool-covers.ts'
@@ -76,23 +80,40 @@ const imgBase = '[transform:translate3d(var(--hero-img-x,0px),var(--hero-img-y,0
 const imgHover = 'group-hover:[transform:translate3d(var(--hero-img-x,0px),var(--hero-img-y,0px),0)_scale(1.04)]'
 
 /**
- * 底部爆款货架：创意广场模板里取前 4 条**能一键复刻**（有 agentSkillId）的；
- * 页面没开货架（data.shelf 为假）不请求；失败或一条都没有整块不渲染（不放占位）。
- * 多拉一页再筛，避免前几条恰好没关联技能时货架空掉。
+ * 底部爆款货架：当前行业的创意广场模板前 4 条（GET /api/v1/plaza/templates?industry=…，严格按行业）。
+ * 行业复用智能体页的偏好（useIndustry）：已选直接用；未选就地出行业选择（匿名可选，不跳转）。
+ * 页面没开货架（data.shelf 为假）不请求；失败、行业整理中或一条都没有整块不渲染（不放占位）。
  */
 const SHELF_SIZE = 4
-const SHELF_SCAN = 24
+const router = useRouter()
+const ind = useIndustry()
 const shelf = ref<IPlazaTemplate[]>([])
 const shelfAnim = 'animate-[motion-enter-up_320ms_cubic-bezier(0.4,0,0.2,1)_760ms_both]'
-onMounted(async () => {
-  if (!props.data.shelf) return
-  try {
-    const res = await plazaTemplateList({ page: 1, size: SHELF_SCAN })
-    shelf.value = (res.data?.data ?? []).filter((t) => !!t.agentSkillId).slice(0, SHELF_SIZE)
-  } catch {
+let shelfSeq = 0
+async function loadShelf() {
+  const cur = ind.current.value
+  if (!props.data.shelf || !cur) {
     shelf.value = []
+    return
   }
+  const mine = ++shelfSeq
+  try {
+    const res = await plazaTemplates({ industry: cur.code, subIndustry: ind.sub.value || undefined, page: 1, size: SHELF_SIZE })
+    if (mine === shelfSeq) shelf.value = (res.data?.data ?? []).slice(0, SHELF_SIZE)
+  } catch (err) {
+    if (mine !== shelfSeq) return
+    shelf.value = []
+    if (isIndustryGate(err)) ind.handleGone()
+  }
+}
+onMounted(() => {
+  if (props.data.shelf) void ind.load()
 })
+watch(() => [ind.current.value?.code ?? '', ind.sub.value] as const, () => void loadShelf(), { immediate: true })
+const showGate = computed(() => !!props.data.shelf && ind.needGate.value)
+function onSelectIndustry(code: string) {
+  ind.select(code)
+}
 const shelfCover = (t: IPlazaTemplate) => t.payload?.result?.[0] ?? t.payload?.image_urls?.[0] ?? ''
 const shelfTarget = (t: IPlazaTemplate) => ({ path: '/agent', query: { plazaTemplateId: String(t.plazaTemplateId) } })
 const shelfMeta = (t: IPlazaTemplate) => (t.tags ?? []).slice(1, 3).join(' · ')
@@ -362,7 +383,7 @@ const hasCover = (name: string) => !!toolCover(name)
 
       <!-- 底部：爆款货架（创意广场前 4 个可一键复刻的模板；没有数据整块不出）；4 列 → <1024 两列 → <640 一列 -->
       <section
-        v-if="data.shelf && shelf.length"
+        v-if="data.shelf && (shelf.length || showGate)"
         aria-labelledby="landing-shelf"
         class="flex flex-col gap-10px min-h-0 motion-reduce:animate-none"
         :class="shelfAnim"
@@ -374,14 +395,25 @@ const hasCover = (name: string) => !!toolCover(name)
             class="ml-auto inline-flex items-center gap-2px text-12px text-violet-ink no-underline hover:underline"
             >去逛逛 ›</RouterLink
           >
+          <button
+            v-if="ind.current.value"
+            type="button"
+            class="m-0 cursor-pointer border-0 bg-transparent p-0 text-12px text-muted hover:text-ink"
+            :class="focusRing"
+            @click="ind.gateOpen.value = true"
+          >
+            {{ ind.current.value.name }} · 换行业
+          </button>
         </header>
+        <IndustryGate v-if="showGate" :industries="ind.industries.value" @select="onSelectIndustry" />
         <ul
+          v-else
           class="m-0 p-0 list-none grid grid-cols-4 gap-12px [@media(max-width:1023px)]:grid-cols-2 [@media(max-width:639px)]:grid-cols-1"
         >
           <li v-for="t in shelf" :key="t.plazaTemplateId" class="min-w-0">
             <RouterLink
               :to="shelfTarget(t)"
-              @click="stashPlazaTemplate(t)"
+              @click.prevent="replicateTemplate(router, t)"
               class="flex flex-col box-border p-7px rounded-18px border border-solid border-line bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-upload-hover-bottom)_100%)] shadow-[0_2px_6px_rgba(31,35,41,0.05)] no-underline sx-squircle transition-[border-color,box-shadow,transform] duration-140 hover:border-violet-line hover:shadow-[0_8px_18px_rgba(31,35,41,0.09)] hover:-translate-y-1px motion-reduce:transition-none motion-reduce:hover:transform-none"
               :class="focusRing"
             >
@@ -410,6 +442,13 @@ const hasCover = (name: string) => !!toolCover(name)
           </li>
         </ul>
       </section>
+      <IndustryGateModal
+        v-if="data.shelf"
+        v-model:show="ind.gateOpen.value"
+        :industries="ind.industries.value"
+        :current="ind.current.value?.code"
+        @select="onSelectIndustry"
+      />
     </div>
   </div>
 </template>

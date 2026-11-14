@@ -137,14 +137,20 @@ export class ApiError extends Error {
   readonly httpStatus?: number
   /** 传输层失败（超时 / 断网 / 中断，没拿到响应）：请求是否已被服务端处理未知 */
   readonly isNetwork: boolean
+  /** 失败响应里的 data（如入参校验的 { field, errors }）；没有为 undefined */
+  readonly data?: unknown
 
-  constructor(message: string, init: { code: number; reason?: string; httpStatus?: number; isNetwork?: boolean }) {
+  constructor(
+    message: string,
+    init: { code: number; reason?: string; httpStatus?: number; isNetwork?: boolean; data?: unknown },
+  ) {
     super(message)
     this.name = 'ApiError'
     this.code = init.code
     this.reason = init.reason
     this.httpStatus = init.httpStatus
     this.isNetwork = init.isNetwork ?? false
+    this.data = init.data
   }
 }
 
@@ -155,6 +161,7 @@ function fromBody(body: ApiResponse | undefined, fallbackMsg: string, httpStatus
     code,
     reason: code !== -1 && typeof b?.reason === 'string' ? b.reason : undefined,
     httpStatus,
+    data: code !== -1 ? b?.data : undefined,
   })
 }
 
@@ -224,6 +231,8 @@ const SILENT_ERROR_URLS = [
   '/plaza-templates/list',
   '/plaza-templates/tags',
   '/plaza-headlines',
+  // 行业偏好保存（PUT /plaza/industry-preference）：失败由行业状态自己提示 G-09「没能记住你的选择」并后台重试，不叠全局 toast
+  '/plaza/industry-preference',
   '/billing/quote/preview',
   '/studio/tryon/quote',
   '/studio/pose/quote',
@@ -406,6 +415,11 @@ export function post<T = any>(
   })
 }
 
+/** 静默 POST：业务失败不弹全局 toast（调用方自己就地展示错误） */
+export function postQuiet<T = any>(url: string, data: any, headers?: any): Promise<ApiResponse<T>> {
+  return service.request({ method: 'post', url, data, headers, silent: true } as AxiosRequestConfig)
+}
+
 export function get<T = any>(url: string, params?: any, headers?: any): Promise<ApiResponse<T>> {
   return service({
     method: 'get',
@@ -423,6 +437,16 @@ export function put<T = any>(url: string, data: any, headers?: any, timeout?: nu
     headers,
     ...(timeout ? { timeout } : {}),
   })
+}
+
+/** 静默 PUT：业务失败不弹全局 toast（调用方自己提示并回滚） */
+export function putQuiet<T = any>(url: string, data: any, headers?: any): Promise<ApiResponse<T>> {
+  return service.request({ method: 'put', url, data, headers, silent: true } as AxiosRequestConfig)
+}
+
+/** 静默 DELETE：业务失败不弹全局 toast（调用方自己提示并回滚） */
+export function delQuiet<T = any>(url: string, params?: any): Promise<ApiResponse<T>> {
+  return service.request({ method: 'delete', url, params, silent: true } as AxiosRequestConfig)
 }
 
 export function del<T = any>(url: string, params?: any): Promise<ApiResponse<T>> {

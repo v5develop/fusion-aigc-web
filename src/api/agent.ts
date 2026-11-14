@@ -123,6 +123,8 @@ export interface IAgentStreamReq {
   language?: string
   /** 广场模板「做同款」：服务端按 id 取模板提示词与 guidance（不存在 / 下架 / 无提示词回 ERROR 帧），只作用于本轮 */
   plazaTemplateId?: number
+  /** 模板入参（slots）的值：{ key: value }，image / video 为地址数组；只含可见槽位 */
+  inputs?: Record<string, unknown>
 }
 
 /** 回答语言选项：value 为空 = 不限语言（不带 language） */

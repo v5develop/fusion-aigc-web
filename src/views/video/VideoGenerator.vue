@@ -44,6 +44,8 @@ if (global_formData.value.home) {
   } = global_formData.value.video
   _formData = { entryCode, modelCode, prompt, ratio, resolution, duration, images, video }
   store.reset()
+  // reset() 指回的是同一个对象、home 不会复位：读一次即清，之后再进本页不会被旧预填覆盖
+  global_formData.value.home = false
 }
 
 // 生成中标志：提交后保持 true 直到本批任务全部到终态（供轮询完成副作用使用）
