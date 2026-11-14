@@ -6,6 +6,7 @@
  * 未读数按后端配置封顶，只做角标显示。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { NPopover } from 'naive-ui'
 import {
   notificationList,
@@ -24,6 +25,7 @@ const FOCUS = 'focus-visible:(outline outline-2 outline-solid outline-violet out
 
 const TYPE_LABELS: Record<string, string> = { SYSTEM: '系统', ACTIVITY: '活动', MAINTENANCE: '维护' }
 
+const router = useRouter()
 const unread = ref(0)
 const open = ref(false)
 const items = ref<INotification[]>([])
@@ -85,7 +87,37 @@ async function markRead(ids: number[]) {
   }
 }
 
+/** 站内链接：只放行本站路径（含同源绝对地址）；缺 link 时按 bizType 兜底到视频做同款任务；都没有 = 原行为 */
+function targetOf(n: INotification): string {
+  const raw = (n.link ?? '').trim()
+  if (raw) {
+    try {
+      const u = new URL(raw, window.location.origin)
+      if (u.origin === window.location.origin) {
+        const path = u.pathname + u.search + u.hash
+        // 只放行单斜杠开头的站内路径，拒绝 // 开头（协议相对地址）
+        if (/^\/(?!\/)/.test(path)) return path
+        return ''
+      }
+    } catch {
+      // 非法地址当作没有
+    }
+    return ''
+  }
+  if (n.bizType && /replicate/i.test(n.bizType) && n.bizId != null && n.bizId !== '') {
+    return `/video/replicate?job=${encodeURIComponent(String(n.bizId))}`
+  }
+  return ''
+}
+
 function onItemClick(n: INotification) {
+  const to = targetOf(n)
+  if (to) {
+    if (!n.read) void markRead([n.id])
+    open.value = false
+    void router.push(to).catch(() => undefined)
+    return
+  }
   expanded.value = expanded.value === n.id ? null : n.id
   if (!n.read) void markRead([n.id])
 }

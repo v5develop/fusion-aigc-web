@@ -233,6 +233,8 @@ const SILENT_ERROR_URLS = [
   '/plaza-headlines',
   // 行业偏好保存（PUT /plaza/industry-preference）：失败由行业状态自己提示 G-09「没能记住你的选择」并后台重试，不叠全局 toast
   '/plaza/industry-preference',
+  // 视频做同款（Go /api/v1/replicate/**）：错误按 reason / 业务码在页内就地展示（价变、方案过期、点数不足、缺项 gaps 等），不弹全局 toast
+  '/replicate/',
   '/billing/quote/preview',
   '/studio/tryon/quote',
   '/studio/pose/quote',

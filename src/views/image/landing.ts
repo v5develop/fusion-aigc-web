@@ -332,6 +332,12 @@ export const videoLanding: LandingPageData = {
       ['ai-video-translate', '视频翻译', '配音翻译'],
       ['ai-video-generator', '视频生成', '文生视频'],
       ['ai-video-clone', '视频复刻', '参照原片生成'],
+      [
+        'video-replicate',
+        '视频做同款',
+        '换成你的人和商品',
+        { route: '/video/replicate', icon: toolIcon('ai-video-clone') },
+      ],
     ]),
     {
       label: '电商',
