@@ -40,6 +40,8 @@ async function probe(route: string): Promise<boolean> {
 /** 刷新受控工具的可用性；缓存未过期不请求，force 跳过缓存（仍并发去重） */
 export function refreshToolAvailability(force = false): Promise<void> {
   if (!gatedRoutes.length) return Promise.resolve()
+  // 匿名浏览公开页：探测接口要登录，没有 token 不探（按「未知 = 可用」处理，登录后聚焦 / 可见时再探）
+  if (!localStorage.getItem('fusion_accessToken')) return Promise.resolve()
   if (inflight) return inflight
   const now = Date.now()
   if (!force && now - lastOk < FRESH_MS) return Promise.resolve()

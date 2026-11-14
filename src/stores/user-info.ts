@@ -19,6 +19,8 @@ export const useUserInfoStore = defineStore('useUserInfoStore', () => {
   let queued = false
 
   const request = () => {
+    // 匿名（未登录）浏览公开页（如 /agent）：没有 token 就不调需登录的 /auth/user-info，免得 401 把人弹去登录页
+    if (!localStorage.getItem('fusion_accessToken')) return Promise.resolve()
     // 记下发请求时的 token：响应回来时 token 已经换了（登录 / 换号 / 刷新），这份用户信息就不能拿来认账号
     const tokenAtRequest = localStorage.getItem('fusion_accessToken')
     return getUserInfo()

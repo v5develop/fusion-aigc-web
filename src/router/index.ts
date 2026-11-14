@@ -91,7 +91,8 @@ const router = createRouter({
         {
           path: '/agent',
           name: 'agent',
-          meta: { title: '智能体' },
+          // 公开：未登录也能浏览（行业门 / 页签 / 搜索 / 预览 / 示例 / 公开报价 / 节点条），点「做同款」/ 收藏 / 发送时才弹登录半屏
+          meta: { title: '智能体', public: true },
           component: () => import('@/views/agent/index.vue'),
         },
         {

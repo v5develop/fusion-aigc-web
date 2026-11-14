@@ -25,6 +25,7 @@ import { storeToRefs } from 'pinia'
 import { NDropdown, useDialog, type DropdownOption } from 'naive-ui'
 import { signOut } from '@/api/auth.ts'
 import { useUserInfoStore } from '@/stores/user-info.ts'
+import { loginVersion, requireLogin } from '@/views/agent/industry/useLoginGate.ts'
 import { useToolAvailability, withoutDisabledGroups } from '@/utils/toolAvailability'
 import { activeTaskCount } from '@/utils/taskWatcher'
 import { catalogFor, type CatalogGroup } from '@/views/tools/catalog'
@@ -51,6 +52,12 @@ const emit = defineEmits<{
 const router = useRouter()
 const route = useRoute()
 const { userInfo } = storeToRefs(useUserInfoStore())
+/** 是否已登录：路由切换或登录半屏登录成功（loginVersion）时重算 */
+const signedIn = computed(() => {
+  void route.fullPath
+  void loginVersion.value
+  return !!localStorage.getItem('fusion_accessToken')
+})
 /** 手机号脱敏：前 3 位 + **** + 后 4 位；位数不足 7 时不展示 */
 const maskedPhone = computed(() => {
   const p = (userInfo.value?.phone ?? '').replace(/\s|-/g, '')
@@ -916,12 +923,29 @@ onBeforeUnmount(() => hideRailTips(true))
 
         <!-- 通知铃铛 + 签到（签到开关关闭时 CheckInButton 不渲染任何内容）；收起态竖排 -->
         <div class="flex items-center gap-4px" :class="collapsed ? 'flex-col' : '-mx-6px px-6px'">
-          <NotificationBell :placement="collapsed ? 'right-end' : 'top-start'" />
-          <CheckInButton :placement="collapsed ? 'right-end' : 'top-start'" />
+          <!-- 匿名浏览（如 /agent）不挂：这两个组件挂载就会调需登录的接口（401 会把人弹去登录页） -->
+          <NotificationBell v-if="signedIn" :placement="collapsed ? 'right-end' : 'top-start'" />
+          <CheckInButton v-if="signedIn" :placement="collapsed ? 'right-end' : 'top-start'" />
         </div>
 
+        <!-- 匿名：不显示默认头像与点数，换成「登录」入口（弹智能体页同一个登录半屏） -->
+        <button
+          v-if="!signedIn"
+          type="button"
+          class="flex h-40px flex-none items-center gap-10px rounded-lg border border-solid border-transparent bg-transparent text-left text-14px font-500 text-ink cursor-pointer hover:bg-surface3"
+          :class="[FOCUS, collapsed ? 'justify-center' : '-mx-6px px-6px']"
+          aria-label="登录"
+          data-testid="nav-guest-login"
+          @click="requireLogin('mine')"
+        >
+          <span class="grid h-32px w-32px flex-none place-items-center rounded-full border border-solid border-line bg-surface3 text-muted" aria-hidden="true">
+            <svg class="h-16px w-16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4" /><path d="M4 21c1-4 4-6 8-6s7 2 8 6" /></svg>
+          </span>
+          <span v-if="!collapsed">登录</span>
+        </button>
         <!-- 用户行：高 40、内边距 0 6、r8，头像 32（NextSidebar.vue:533-563）；手机号 + 可用点数两行；点开账号菜单 -->
         <NDropdown
+          v-else
           trigger="click"
           :show="accountOpen"
           :options="accountOptions"
