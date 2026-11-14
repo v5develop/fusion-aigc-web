@@ -25,6 +25,7 @@ import { ossResize, thumbFallback } from '@/utils/oss.ts'
 import TitleModal from './TitleModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import CanvasDetail from './CanvasDetail.vue'
+import McpTokenDialog from './McpTokenDialog.vue'
 
 defineOptions({ name: 'canvas-page' })
 
@@ -194,6 +195,8 @@ function openCanvas(item: ICanvasSummary) {
 }
 
 const showDetail = ref(false)
+/** MCP 访问令牌管理弹窗 */
+const showMcpTokens = ref(false)
 const detailId = ref<string | null>(null)
 
 function openDetail(item: ICanvasSummary) {
@@ -388,6 +391,9 @@ async function doSaveAs(title: string) {
           <h1 class="m-0 text-14px font-600 text-ink">画布</h1>
         </div>
         <div class="flex items-center gap-8px ml-auto">
+          <button type="button" :class="BTN_DEFAULT" title="给外部 MCP 客户端操作画布用的访问令牌" @click="showMcpTokens = true">
+            MCP 访问令牌
+          </button>
           <button type="button" :class="BTN_DEFAULT" @click="openPicker()">
             <svg
               class="w-15px h-15px"
@@ -715,6 +721,9 @@ async function doSaveAs(title: string) {
 
       <!-- 详情抽屉 -->
       <CanvasDetail v-model:show="showDetail" :canvas-id="detailId" />
+
+      <!-- MCP 访问令牌（外部 MCP 客户端） -->
+      <McpTokenDialog v-model:show="showMcpTokens" />
     </div>
   </n-config-provider>
 </template>

@@ -5,6 +5,7 @@
  * 契约见 fusion_aigc_go/docs/api/api-canvas.md。
  */
 import { post, put, toApiError, get, del } from './index.ts'
+import { isCanvasMock } from './canvas-mock-switch.ts'
 
 const PREFIX = '/api/v1/canvas'
 
@@ -132,7 +133,8 @@ export function canvasFromTemplate(data: { templateId: number; title?: string })
 }
 
 /** 画布详情（含 snapshot） */
-export function canvasGet(id: string) {
+export async function canvasGet(id: string) {
+  if (isCanvasMock()) return (await import('./canvas-mock.ts')).mockCanvasGet(id)
   return get<ICanvasDetail>(`${PREFIX}/canvases/${id}`)
 }
 
@@ -161,7 +163,8 @@ export function canvasSaveAs(id: string, title?: string) {
 }
 
 /** 画布的执行记录（新的在前）；nodeId 只看该节点 */
-export function canvasRuns(id: string, limit = 50, nodeId?: string) {
+export async function canvasRuns(id: string, limit = 50, nodeId?: string) {
+  if (isCanvasMock()) return { code: 0, msg: 'ok', data: { items: [] } as ICanvasRuns }
   return get<ICanvasRuns>(`${PREFIX}/canvases/${id}/runs`, { limit, ...(nodeId ? { nodeId: nodeId } : {}) })
 }
 
@@ -284,7 +287,8 @@ export interface ICanvasCatalog {
 }
 
 /** 模型 / 参数目录（替代前端写死；面板字段按 capabilities 动态显示） */
-export function canvasCatalog() {
+export async function canvasCatalog() {
+  if (isCanvasMock()) return (await import('./canvas-mock.ts')).mockCatalog()
   return get<ICanvasCatalog>(`${PREFIX}/catalog`)
 }
 
@@ -321,7 +325,7 @@ export function canvasSelectCandidate(canvasId: string, nodeId: string, data: { 
 /**
  * 保存（乐观锁）。走共享拦截器：令牌过期时由它单航班刷新并重放（自动保存常在长时间编辑后发生，
  * 裸 axios 遇 401 只会一直保存失败）。保存接口的 4002 只有版本冲突一种（契约 2.4），
- * 这里把它还原成冲突信封交给编辑器弹「载入最新 / 覆盖保存」；其余失败照常 reject（拦截器已 toast）。
+ * 这里把它还原成冲突信封交给编辑器拉最新快照做三方合并；其余失败照常 reject（拦截器已 toast）。
  */
 export interface ICanvasApiEnvelope<T = unknown> {
   code: number
@@ -337,8 +341,9 @@ export interface ICanvasSaveConflict {
 
 export function canvasSaveWithLock(
   id: string,
-  data: { title?: string; snapshot: unknown; ifMatchRevision?: string; force?: boolean },
+  data: { title?: string; snapshot: unknown; ifMatchRevision: string },
 ): Promise<ICanvasApiEnvelope<ICanvasSaveResp | ICanvasSaveConflict>> {
+  if (isCanvasMock()) return import('./canvas-mock.ts').then((m) => m.mockCanvasSave(id, data))
   return put<ICanvasSaveResp>(`${PREFIX}/canvases/${id}`, data, undefined, 15000).then(
     (res) => ({ code: 0, msg: res.msg ?? 'ok', data: res.data }) as ICanvasApiEnvelope<ICanvasSaveResp>,
     (err: unknown) => {

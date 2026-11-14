@@ -1,8 +1,8 @@
 /**
  * 画布编辑器状态与业务（模块级单例，节点组件与面板共用）。
  *
- * <p>职责：加载 / 乐观锁保存（含 4002 冲突）/ 节点增删连线 / 单节点执行（幂等提交 +
- * 1.2s 轮询 + 取消）/ 候选选择。快照节点 data 内部 camelCase 原样收发（契约 1.4），
+ * <p>职责：加载 / 乐观锁保存（4002 冲突 → 拉最新快照三方合并）/ 实时同步（变更事件到达后静默载入或合并，见 merge.ts）/
+ * 节点增删连线 / 单节点执行（幂等提交 + 1.2s 轮询 + 取消）/ 候选选择。快照节点 data 内部 camelCase 原样收发（契约 1.4），
  * 接口外层字段同为 camelCase（Go 网关兼容），封装在 src/api/canvas-home.ts。
  */
 import { computed, nextTick, ref, watch } from 'vue'
@@ -26,6 +26,17 @@ import {
   type ICanvasRunResult,
 } from '@/api/canvas-home.ts'
 import { toApiError } from '@/api/index.ts'
+import { canvasGetAtRevision, type ICanvasChangeEvent } from '@/api/canvas-sync.ts'
+import type { ICanvasDetail } from '@/api/canvas-home.ts'
+import {
+  changedNodeIdsBetween,
+  mergeCanvas,
+  rebaseOntoRemote,
+  stableStringify,
+  type IMergeConflict,
+  type IMergeDoc,
+  type MergeSide,
+} from './merge.ts'
 import { createSafeUuid } from '@/utils/utils.ts'
 import {
   applyModelToNode,
@@ -104,7 +115,6 @@ let initSeq = 0
 let saveSeq = 0
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let saveChain: Promise<unknown> = Promise.resolve()
-let conflictDialogOpen = false
 
 /** 节点 id → 最近一次「成功」run 的 run_id（select-candidate 必须用成功 run，内存缓存） */
 const productRunIds = new Map<string, string>()
@@ -188,10 +198,14 @@ function buildSnapshot(keepReadOnly = false): CanvasEditorSnapshot {
 }
 
 function signature(): string {
+  return signatureOf(title.value, nodes.value, edges.value)
+}
+
+function signatureOf(docTitle: string, docNodes: CanvasEditorNode[], docEdges: CanvasEditorEdge[]): string {
   return JSON.stringify({
-    title: title.value,
-    nodes: nodes.value.map((node) => ({ id: node.id, type: node.type, p: node.position, d: slimData(node) })),
-    edges: edges.value.map((edge) => ({
+    title: docTitle,
+    nodes: docNodes.map((node) => ({ id: node.id, type: node.type, p: node.position, d: slimData(node) })),
+    edges: docEdges.map((edge) => ({
       id: edge.id,
       s: edge.source,
       t: edge.target,
@@ -227,10 +241,10 @@ const historyPending = ref(false)
 let historyRestoring = false
 
 /** 用户内容签名：与脏检测同口径排除运行态 / 成品字段（轮询、执行、自动保存都不产生历史），标题不进历史（原型撤销不回退标题） */
-function contentSignature(): string {
+function contentSignatureOf(nodeList: CanvasEditorNode[], edgeList: CanvasEditorEdge[]): string {
   return JSON.stringify({
-    nodes: nodes.value.map((node) => ({ id: node.id, type: node.type, p: node.position, d: slimData(node) })),
-    edges: edges.value.map((edge) => ({
+    nodes: nodeList.map((node) => ({ id: node.id, type: node.type, p: node.position, d: slimData(node) })),
+    edges: edgeList.map((edge) => ({
       id: edge.id,
       s: edge.source,
       t: edge.target,
@@ -239,6 +253,10 @@ function contentSignature(): string {
       d: edge.data ?? null,
     })),
   })
+}
+
+function contentSignature(): string {
+  return contentSignatureOf(nodes.value, edges.value)
 }
 
 function captureHistory(): IHistoryEntry {
@@ -259,6 +277,39 @@ function resetHistory(): void {
   historyPast.value = []
   historyFuture.value = []
   historyBase = ready.value ? captureHistory() : null
+}
+
+/**
+ * 远端变更落地后改基撤销栈（取代清空）：远端改动是不可撤销的基线，
+ * past / future 里每个旧快照都叠上 pre → post 的远端变化，撤销只回退本地操作（见 merge.ts rebaseOntoRemote）。
+ */
+function rebaseHistory(pre: IMergeDoc, post: IMergeDoc): void {
+  clearHistoryTimer()
+  const rebase = (entry: IHistoryEntry): IHistoryEntry => {
+    const doc = rebaseOntoRemote(
+      pre,
+      post,
+      { title: '', nodes: entry.snapshot.nodes, edges: entry.snapshot.edges },
+      isRuntimeKeyOf,
+    )
+    return {
+      snapshot: { nodes: doc.nodes, edges: doc.edges },
+      signature: contentSignatureOf(doc.nodes, doc.edges),
+    }
+  }
+  const past = historyPast.value.map(rebase)
+  const future = historyFuture.value.map(rebase)
+  // 改基后与新基线内容一致的相邻快照（只改了被远端覆盖的字段）合并掉，避免出现「撤销没反应」的空步
+  const base = ready.value ? captureHistory() : null
+  const dedup: IHistoryEntry[] = []
+  for (const entry of past) {
+    if (dedup.length && dedup[dedup.length - 1]!.signature === entry.signature) continue
+    dedup.push(entry)
+  }
+  while (base && dedup.length && dedup[dedup.length - 1]!.signature === base.signature) dedup.pop()
+  historyPast.value = dedup
+  historyFuture.value = future.filter((entry) => !base || entry.signature !== base.signature)
+  historyBase = base
 }
 
 /** 把待落定的用户改动记为一步：基线压入 past，清空 future */
@@ -442,7 +493,11 @@ async function init(id: string): Promise<boolean> {
   loading.value = true
   loadError.value = ''
   ready.value = false
-  conflictInfo.value = null
+  mergePending.value = null
+  baseDoc = null
+  ownRevisions.length = 0
+  pendingHints.length = 0
+  conflictStreak = 0
   // 作废在途保存的回包与待发的防抖保存（它们属于上一份内存状态）
   saveSeq += 1
   if (saveTimer) {
@@ -480,6 +535,7 @@ async function init(id: string): Promise<boolean> {
     ready.value = true
     saveState.value = 'saved'
     saveError.value = ''
+    rememberBase(revision.value, currentDoc())
     reconcileCatalogLimits()
     resetHistory()
     resumePollers()
@@ -499,10 +555,8 @@ async function init(id: string): Promise<boolean> {
 
 // ---------------- 保存（乐观锁 + 冲突处理） ----------------
 
-const conflictInfo = ref<{ revision: string; updatedAt: number } | null>(null)
-
 function scheduleSave(): void {
-  if (!ready.value || conflictInfo.value) return
+  if (!ready.value || mergePending.value) return
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     saveTimer = null
@@ -512,9 +566,9 @@ function scheduleSave(): void {
   }, 400)
 }
 
-/** 串行化保存：同一画布一次只发一个请求，上一个没回来不发下一个（自己和自己必冲突） */
-function enqueueSave(force = false): Promise<boolean> {
-  const run = saveChain.catch(() => undefined).then(() => doSave(force))
+/** 串行化保存：同一画布一次只发一个请求，上一个没回来不发下一个（自己和自己必冲突）；远端同步也排在同一条链上 */
+function enqueueSave(): Promise<boolean> {
+  const run = saveChain.catch(() => undefined).then(() => doSave())
   saveChain = run.catch(() => undefined)
   return run
 }
@@ -560,13 +614,15 @@ function checkSnapshot(snapshot: CanvasEditorSnapshot): string {
   return ''
 }
 
-async function doSave(force: boolean): Promise<boolean> {
-  if (!canvasId || !ready.value) return false
+async function doSave(): Promise<boolean> {
+  // 合并冲突待用户选择：不能拿未合并的内容去保存
+  if (!canvasId || !ready.value || mergePending.value) return false
   const seq = ++saveSeq
   const targetId = canvasId
   const payload = buildSnapshot()
+  const titleBefore = title.value
   const signatureBefore = signature()
-  if (!force && signatureBefore === lastSignature) return true
+  if (signatureBefore === lastSignature) return true
   const precheck = checkSnapshot(payload)
   if (precheck) {
     saveState.value = 'error'
@@ -576,14 +632,16 @@ async function doSave(force: boolean): Promise<boolean> {
   }
   saveState.value = 'saving'
   try {
-    const body = force
-      ? { title: title.value, snapshot: payload, force: true }
-      : { title: title.value, snapshot: payload, ifMatchRevision: revision.value }
+    // 永远带乐观锁：没有「强制覆盖」——别人（画布助手 / 其他窗口）的修改只能经三方合并取舍，不能被整段盖掉
+    const body = { title: titleBefore, snapshot: payload, ifMatchRevision: revision.value }
     const env = await canvasSaveWithLock(targetId, body)
     // 期间切换 / 重载了画布：这次回包的 revision 不属于当前画布，不能写进来
     if (seq !== saveSeq || targetId !== canvasId) return false
     if (env.code === 0 && env.data && 'revision' in env.data) {
       revision.value = env.data.revision
+      rememberOwnRevision(env.data.revision)
+      rememberBase(env.data.revision, { title: titleBefore, nodes: payload.nodes, edges: payload.edges })
+      conflictStreak = 0
       // 只把「发出去的那份」记为已保存：请求在途时的新改动仍是脏的，会被下一次保存带上
       lastSignature = signatureBefore
       saveState.value = 'saved'
@@ -592,9 +650,16 @@ async function doSave(force: boolean): Promise<boolean> {
       return true
     }
     if (env.code === 4002 && env.data && 'conflict' in env.data && env.data.conflict === 'revision') {
-      conflictInfo.value = { revision: env.data.revision ?? '', updatedAt: env.data.updatedAt ?? 0 }
+      // 服务端已有更新的版本：拉最新快照做三方合并（无冲突自动合并后再保存，有冲突弹窗逐个选）
+      conflictStreak += 1
+      if (conflictStreak > 3) {
+        saveState.value = 'error'
+        saveError.value = '画布一直在被修改，暂时无法保存，请稍后再试或刷新页面'
+        message.error(saveError.value)
+        return false
+      }
       saveState.value = 'conflict'
-      showConflictDialog()
+      requestSync({ source: 'user', revision: '', force: true })
       return false
     }
     saveState.value = 'error'
@@ -611,35 +676,6 @@ async function doSave(force: boolean): Promise<boolean> {
   }
 }
 
-function showConflictDialog(): void {
-  if (conflictDialogOpen) return
-  conflictDialogOpen = true
-  dialog.warning({
-    title: '画布已被其他窗口修改',
-    content: '远端已有更新的版本。可以载入最新版本（丢弃本地未保存的改动），或用当前内容强制覆盖。',
-    positiveText: '覆盖保存',
-    negativeText: '载入最新版本',
-    // 点遮罩 / Esc 关掉会留下 conflictInfo 而不再弹框，之后所有保存都被拦住：必须二选一
-    maskClosable: false,
-    closeOnEsc: false,
-    onPositiveClick: () => {
-      conflictDialogOpen = false
-      conflictInfo.value = null
-      void enqueueSave(true).then((ok) => {
-        if (ok) message.success('已覆盖保存')
-      })
-    },
-    onClose: () => {
-      conflictDialogOpen = false
-      void reloadLatest()
-    },
-    onNegativeClick: () => {
-      conflictDialogOpen = false
-      void reloadLatest()
-    },
-  })
-}
-
 async function reloadLatest(): Promise<void> {
   const ok = await init(canvasId)
   if (ok) message.success('已载入最新版本')
@@ -647,11 +683,289 @@ async function reloadLatest(): Promise<void> {
 
 async function flushSave(): Promise<boolean> {
   if (!dirty.value) return true
-  if (conflictInfo.value) {
-    message.warning('画布版本冲突待处理，请先选择「载入最新版本」或「覆盖保存」')
+  if (mergePending.value) {
+    message.warning('画布有待处理的合并冲突，请先在弹窗里逐项选择')
     return false
   }
   return enqueueSave()
+}
+
+// ---------------- 实时同步：变更事件 → 静默载入 / 三方合并 ----------------
+
+/** 本地编辑起点：最近一次载入 / 保存成功时的服务端内容（三方合并的 base） */
+let baseDoc: { revision: string; doc: IMergeDoc } | null = null
+/** 自己保存产生的 revision（事件回来时据此认出「是我这次保存」，最多记 20 个） */
+const ownRevisions: string[] = []
+/** 尚未处理的事件提示（合并成一次拉取） */
+const pendingHints: (Partial<ICanvasChangeEvent> & { force?: boolean })[] = []
+let syncQueued = false
+/** 连续保存冲突次数（防止服务端异常时无限「冲突 → 合并 → 冲突」） */
+let conflictStreak = 0
+
+export interface ICanvasMergePending {
+  conflicts: IMergeConflict[]
+  base: IMergeDoc | null
+  ours: IMergeDoc
+  theirs: IMergeDoc
+  theirsRevision: string
+  source: string
+}
+
+/** 待用户逐项选择的合并冲突（弹窗读它）；非空期间暂停保存 */
+const mergePending = ref<ICanvasMergePending | null>(null)
+/** 远端改动的节点：高亮 2 秒（seq 变化即重新触发） */
+const remoteHighlight = ref<{ ids: string[]; seq: number }>({ ids: [], seq: 0 })
+/** 远端改动提示条 */
+const remoteNotice = ref<{ text: string; seq: number } | null>(null)
+let remoteSeq = 0
+
+function isRuntimeKeyOf(node: CanvasEditorNode, key: string): boolean {
+  if (RUNTIME_KEYS.has(key)) return true
+  return PRODUCT_KEYS.has(key) && (node.type === 'model' || node.type === 'tool') && !node.data?.inputOnly
+}
+
+function currentDoc(): IMergeDoc {
+  const snap = buildSnapshot()
+  return { title: title.value, nodes: snap.nodes, edges: snap.edges }
+}
+
+function detailToDoc(detail: ICanvasDetail): IMergeDoc {
+  const docNodes = migrateNodes(detail?.snapshot?.nodes)
+  const docEdges = migrateEdges(detail?.snapshot?.edges, new Set(docNodes.map((node) => node.id)))
+  return { title: detail?.title || '未命名画布', nodes: docNodes, edges: docEdges }
+}
+
+function rememberBase(rev: string, doc: IMergeDoc): void {
+  baseDoc = { revision: rev, doc: JSON.parse(JSON.stringify(doc)) as IMergeDoc }
+}
+
+function rememberOwnRevision(rev: string): void {
+  if (!rev) return
+  ownRevisions.push(rev)
+  if (ownRevisions.length > 20) ownRevisions.shift()
+}
+
+/** 内容等价键（排除运行态、键序无关）：合并结果与远端相同就不必再保存一次 */
+function docKey(doc: IMergeDoc): string {
+  return stableStringify({
+    title: doc.title,
+    nodes: doc.nodes.map((node) => ({ id: node.id, type: node.type, p: node.position, d: slimData(node) })),
+    edges: doc.edges.map((edge) => ({
+      id: edge.id,
+      s: edge.source,
+      t: edge.target,
+      sh: edge.sourceHandle ?? '',
+      th: edge.targetHandle ?? '',
+    })),
+  })
+}
+
+function sourceLabel(source: string): string {
+  if (source === 'agent') return '画布助手'
+  if (source === 'run') return '生成任务'
+  if (source === 'unknown') return '服务端'
+  return '其他窗口'
+}
+
+/** 画布助手写类工具回的 changedNodeIds：只高亮、不提示（提示条由变更事件给） */
+function flashNodes(ids: string[]): void {
+  const live = ids.filter((id) => findNode(id))
+  if (!live.length) return
+  remoteSeq += 1
+  remoteHighlight.value = { ids: live, seq: remoteSeq }
+}
+
+function announceRemote(source: string, ids: string[], merged: boolean): void {
+  remoteSeq += 1
+  if (source !== 'run' && ids.length) remoteHighlight.value = { ids: [...ids], seq: remoteSeq }
+  // 生成任务回写产物是常态，不打扰；其余给一条提示
+  if (source === 'run' && !merged) return
+  const who = sourceLabel(source)
+  const count = ids.length
+  let text: string
+  if (merged)
+    text = count ? `已自动合并${who}对 ${count} 个节点的修改，你的改动已保留` : `已自动合并${who}的修改，你的改动已保留`
+  else if (source === 'agent') text = count ? `画布助手修改了 ${count} 个节点` : '画布助手更新了画布'
+  else text = count ? `画布已在${who}更新（${count} 个节点）` : `画布已在${who}更新`
+  remoteNotice.value = { text, seq: remoteSeq }
+}
+
+/**
+ * 收到一条 revision 变化（SSE 事件或轮询发现）：不是自己保存产生的就排进保存链拉最新。
+ * 与保存同链串行：在途保存回来后再判断，保存本身产生的事件因此会被认出来跳过。
+ */
+function handleRemoteEvent(event: ICanvasChangeEvent): void {
+  if (!ready.value || !canvasId) return
+  if (event.canvasId && event.canvasId !== canvasId) return
+  if (event.revision && (event.revision === revision.value || ownRevisions.includes(event.revision))) return
+  requestSync(event)
+}
+
+function requestSync(hint?: Partial<ICanvasChangeEvent> & { force?: boolean }): void {
+  if (hint) pendingHints.push(hint)
+  if (syncQueued) return
+  syncQueued = true
+  const run = saveChain
+    .catch(() => undefined)
+    .then(async () => {
+      syncQueued = false
+      await syncFromServer()
+    })
+  saveChain = run.catch(() => undefined)
+}
+
+/** 三方合并的 base：内存里的编辑起点；对不上（极少）再按 revision 取历史快照，取不到退化为无 base */
+async function resolveBase(targetId: string): Promise<IMergeDoc | null> {
+  if (baseDoc && baseDoc.revision === revision.value) return baseDoc.doc
+  if (!revision.value) return null
+  try {
+    return detailToDoc(await canvasGetAtRevision(targetId, revision.value))
+  } catch {
+    return null
+  }
+}
+
+async function syncFromServer(): Promise<void> {
+  if (!canvasId || !ready.value) return
+  const hints = pendingHints.splice(0)
+  // 全是自己保存 / 已知的 revision：不用拉
+  const meaningful = hints.filter(
+    (hint) =>
+      hint.force || !hint.revision || (hint.revision !== revision.value && !ownRevisions.includes(hint.revision)),
+  )
+  if (hints.length && !meaningful.length) return
+  const targetId = canvasId
+  const seq = initSeq
+  let detail: ICanvasDetail | undefined
+  try {
+    detail = (await canvasGet(targetId)).data
+  } catch {
+    if (saveState.value === 'conflict' && !mergePending.value) saveState.value = 'error'
+    return
+  }
+  if (seq !== initSeq || targetId !== canvasId || !ready.value || !detail) return
+  if (detail.revision === revision.value) {
+    if (saveState.value === 'conflict' && !mergePending.value) saveState.value = dirty.value ? 'dirty' : 'saved'
+    return
+  }
+  const theirs = detailToDoc(detail)
+  const source = meaningful.some((hint) => hint.source === 'agent')
+    ? 'agent'
+    : (meaningful.find((hint) => hint.source)?.source ?? 'user')
+  const hinted = [...new Set(meaningful.flatMap((hint) => hint.changedNodeIds ?? []))]
+
+  // 冲突弹窗开着时又来了更新：换成最新的对方内容，选择时按它合并
+  if (mergePending.value) {
+    const result = mergeCanvas(mergePending.value.base, currentDoc(), theirs, { isRuntimeKey: isRuntimeKeyOf })
+    mergePending.value = { ...mergePending.value, theirs, theirsRevision: detail.revision, conflicts: result.conflicts }
+    return
+  }
+
+  if (!dirty.value) {
+    const before = currentDoc()
+    await applyDoc(theirs, theirs, detail.revision)
+    if (seq !== initSeq || targetId !== canvasId) return
+    const changed = hinted.length
+      ? hinted.filter((id) => findNode(id))
+      : changedNodeIdsBetween(before, theirs, isRuntimeKeyOf)
+    announceRemote(source, changed, false)
+    saveState.value = 'saved'
+    return
+  }
+
+  const base = await resolveBase(targetId)
+  if (seq !== initSeq || targetId !== canvasId || !ready.value) return
+  const result = mergeCanvas(base, currentDoc(), theirs, { isRuntimeKey: isRuntimeKeyOf })
+  if (!result.conflicts.length) {
+    await applyDoc(result.doc, theirs, detail.revision)
+    if (seq !== initSeq || targetId !== canvasId) return
+    announceRemote(source, result.theirsNodeIds, true)
+    saveState.value = dirty.value ? 'dirty' : 'saved'
+    scheduleSave()
+    return
+  }
+  mergePending.value = {
+    conflicts: result.conflicts,
+    base,
+    ours: currentDoc(),
+    theirs,
+    theirsRevision: detail.revision,
+    source,
+  }
+  saveState.value = 'conflict'
+}
+
+/**
+ * 把一份内容写回编辑器（远端静默载入 / 合并结果），revision 前进到 theirs：
+ * 已有节点原地更新（保住 Vue Flow 的选中态与测量尺寸、不动视口），连线下一拍再补；
+ * 结果与 theirs 等价就记为已保存，否则留脏交给自动保存（带新 revision 的乐观锁）。
+ */
+async function applyDoc(doc: IMergeDoc, theirs: IMergeDoc, rev: string): Promise<void> {
+  const targetId = canvasId
+  // 静默期内还没落定的本地改动先记成一步，再叠远端：撤销栈保留，改基到新内容上
+  commitHistory()
+  const preDoc = currentDoc()
+  historyRestoring = true
+  try {
+    const copy = JSON.parse(JSON.stringify(doc)) as IMergeDoc
+    const live = new Map(nodes.value.map((node) => [node.id, node]))
+    const next = copy.nodes.map((node) => {
+      const current = live.get(node.id)
+      if (!current || current.type !== node.type) return node
+      if (current.position.x !== node.position.x || current.position.y !== node.position.y)
+        current.position = node.position
+      current.data = node.data
+      for (const key of ['draggable', 'selectable', 'zIndex'] as const) {
+        const value = (node as unknown as Record<string, unknown>)[key]
+        const target = current as unknown as Record<string, unknown>
+        if (value === undefined) delete target[key]
+        else target[key] = value
+      }
+      return current
+    })
+    nodes.value = next
+    title.value = copy.title
+    await nextTick()
+    if (targetId !== canvasId) return
+    edges.value = copy.edges
+    revision.value = rev
+    rememberBase(rev, theirs)
+    lastSignature = docKey(copy) === docKey(theirs) ? signature() : `remote:${rev}`
+    if (selectedNodeId.value && !findNode(selectedNodeId.value)) selectedNodeId.value = ''
+    await nextTick()
+    if (targetId !== canvasId) return
+    resumePollers()
+    resumeLibraryWatches()
+  } finally {
+    historyRestoring = false
+    // 远端改动是不可撤销的基线：撤销栈不清空，旧快照改基到新内容上，撤销只回退自己的操作，
+    // 不会把画布助手 / 其他窗口刚改的内容当成「上一步」撤掉
+    if (targetId === canvasId && ready.value) rebaseHistory(preDoc, currentDoc())
+  }
+}
+
+/** 冲突弹窗确认：按选择（缺省保留我的）与当前本地内容重新合并后写回，再走自动保存 */
+function resolveMerge(choices: Record<string, MergeSide>): Promise<void> {
+  const run = saveChain
+    .catch(() => undefined)
+    .then(async () => {
+      const pending = mergePending.value
+      if (!pending || !ready.value) return
+      const result = mergeCanvas(pending.base, currentDoc(), pending.theirs, { isRuntimeKey: isRuntimeKeyOf, choices })
+      mergePending.value = null
+      await applyDoc(result.doc, pending.theirs, pending.theirsRevision)
+      announceRemote(pending.source, result.theirsNodeIds, true)
+      saveState.value = dirty.value ? 'dirty' : 'saved'
+      scheduleSave()
+    })
+  saveChain = run.catch(() => undefined)
+  return run
+}
+
+/** 冲突弹窗「放弃我的修改」：丢掉本地未保存内容，载入最新版本 */
+async function discardLocalChanges(): Promise<void> {
+  mergePending.value = null
+  await reloadLatest()
 }
 
 watch([nodes, edges, title], () => scheduleSave(), { deep: true })
@@ -2076,7 +2390,11 @@ export function useCanvasEditor() {
     saveError,
     lastSavedAt,
     dirty,
-    conflictInfo,
+    revision,
+    mergePending,
+    remoteHighlight,
+    remoteNotice,
+    flashNodes,
     selectedNodeId,
     selectedNode,
     runningCount,
@@ -2095,6 +2413,8 @@ export function useCanvasEditor() {
       stopAllPollers()
       stopAllLibraryWatches()
       settling.clear()
+      mergePending.value = null
+      pendingHints.length = 0
       ready.value = false
       selectedNodeId.value = ''
       resetHistory()
@@ -2144,9 +2464,16 @@ export function useCanvasEditor() {
     redo,
     // 保存
     saveNow: () => enqueueSave(),
-    overwriteSave: () => enqueueSave(true),
     reloadLatest,
     flushSave,
+    // 实时同步
+    handleRemoteEvent,
+    /** 轮询 / 重连后补查：服务端 revision 与本地不同就当作一次远端变更 */
+    checkRemoteRevision: (rev: string) => {
+      if (rev && rev !== revision.value && !ownRevisions.includes(rev)) requestSync({ revision: rev })
+    },
+    resolveMerge,
+    discardLocalChanges,
     // 执行
     runNode: (nodeId: string, opts?: { quiet?: boolean }) => runNode(nodeId, undefined, opts),
     waitForSettled,

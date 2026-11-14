@@ -27,6 +27,11 @@ import { SITE_FONT_STACK, fontStackOf, textPrefs } from '@/utils/textPrefs.ts'
 import { palettes } from '@/theme/tokens.ts'
 import EditorIcon from './EditorIcon.vue'
 import CanvasTip from './CanvasTip.vue'
+import CanvasAgentPanel, { type ICanvasAgentRef } from './CanvasAgentPanel.vue'
+import CanvasMergeDialog from './CanvasMergeDialog.vue'
+import CanvasSyncLayer from './CanvasSyncLayer.vue'
+import { useCanvasSync } from './useCanvasSync.ts'
+import { currentAccountId as agentAccountId } from '@/utils/auth-session.ts'
 import EditorBezierEdge from './EditorBezierEdge.vue'
 import EditorTextNode from './nodes/EditorTextNode.vue'
 import EditorImageNode from './nodes/EditorImageNode.vue'
@@ -259,6 +264,61 @@ const {
   canUndo,
   canRedo,
 } = store
+
+// ---------------- 实时同步 + 画布助手侧栏 ----------------
+
+/** 变更事件订阅（SSE，退化轮询）；事件交给 store 静默载入 / 三方合并 */
+const { status: syncStatus, gone: syncGone } = useCanvasSync(store, canvasId, store.ready)
+const { mergePending, remoteHighlight, remoteNotice } = store
+
+/** 侧栏开合按账号记住（键前缀已登记在 auth-session 的 ACCOUNT_KEYED_PREFIXES）；默认收起 */
+const AGENT_PANEL_KEY_PREFIX = 'xq-canvas-agent-open:'
+function agentPanelKey() {
+  const who = agentAccountId()
+  return who ? `${AGENT_PANEL_KEY_PREFIX}${who}` : ''
+}
+function readAgentOpen(): boolean {
+  try {
+    const key = agentPanelKey()
+    return key ? localStorage.getItem(key) === '1' : false
+  } catch {
+    return false
+  }
+}
+const agentOpen = ref(readAgentOpen())
+watch(agentOpen, (value) => {
+  try {
+    const key = agentPanelKey()
+    if (key) localStorage.setItem(key, value ? '1' : '0')
+  } catch {
+    /* 存储不可用：本次生效 */
+  }
+})
+
+const NODE_KIND_LABEL: Record<string, string> = {
+  text: '文字',
+  image: '图片',
+  video: '视频',
+  model: '生成节点',
+  tool: '工具',
+  module: '分组',
+}
+/** 输入框可引用的选中节点：多选取 Vue Flow 选区，否则取当前选中的一个 */
+const agentRefs = computed<ICanvasAgentRef[]>(() => {
+  const list = selectedFlowNodes.value.length
+    ? selectedFlowNodes.value
+    : store.selectedNode.value
+      ? [store.selectedNode.value]
+      : []
+  return list
+    .filter((node) => node.type !== 'module')
+    .slice(0, 20)
+    .map((node) => ({
+      id: node.id,
+      title: node.data.title || node.id,
+      kind: node.data.subtitle || NODE_KIND_LABEL[node.type] || node.type,
+    }))
+})
 
 // ---------------- 加载 ----------------
 
@@ -2953,6 +3013,15 @@ useFileDropPaste(stageRef, {
         >
 
         <div class="flex items-center gap-6px ml-auto">
+          <button
+            type="button"
+            :class="[TOP_BTN, agentOpen && '!border-violet !text-violet-ink']"
+            :aria-pressed="agentOpen"
+            title="画布助手：让智能体帮你改画布"
+            @click="agentOpen = !agentOpen"
+          >
+            <EditorIcon name="sparkles" :size="16" /> 画布助手
+          </button>
           <button type="button" :class="TOP_BTN" title="模板库：套用现成画布结构" @click="showTemplates = true">
             <EditorIcon name="card" :size="16" /> 模板
           </button>
@@ -3707,6 +3776,7 @@ useFileDropPaste(stageRef, {
           </div>
 
           <CanvasTip :root="pageEl" />
+          <CanvasSyncLayer :notice="remoteNotice" :highlight="remoteHighlight" :status="syncStatus" :gone="syncGone" />
         </div>
 
         <!-- 生成卡控制台停靠栏：在流内时画布区变窄；容器 < 1100 叠在右缘上（带投影），不压缩画布 -->
@@ -3719,7 +3789,7 @@ useFileDropPaste(stageRef, {
               ? 'absolute right-0 top-0 bottom-76px z-15 shadow-[-12px_0_28px_rgba(58,38,72,0.16)]'
               : 'relative shrink-0'
           "
-          :style="{ width: `${dockWidth}px` }"
+          :style="{ width: `${dockWidth}px`, right: dockOverlay && agentOpen ? '360px' : undefined }"
           aria-label="生成卡控制台"
         >
           <NodeParamsPanel v-if="dockedNode" :key="dockedNode.id" :node="dockedNode" docked @locate="locateNode" />
@@ -3729,7 +3799,7 @@ useFileDropPaste(stageRef, {
         <aside
           v-if="promptFlyoutOpen"
           class="absolute right-12px top-56px z-20 overflow-hidden rounded-18px border border-solid border-line bg-overlay shadow-pop max-w-[calc(100%-24px)]"
-          :style="{ width: `${promptWidth}px`, bottom: `${promptBottom}px` }"
+          :style="{ width: `${promptWidth}px`, bottom: `${promptBottom}px`, right: agentOpen ? '372px' : undefined }"
           data-safe-block="right"
           aria-label="提示词库"
         >
@@ -3742,7 +3812,23 @@ useFileDropPaste(stageRef, {
             @select="(item) => insertPrompt(item.prompt)"
           />
         </aside>
+
+        <!-- 画布助手侧栏：在流内，打开时画布区变窄；按账号记住开合 -->
+        <aside
+          v-if="agentOpen"
+          class="relative shrink-0 w-360px min-h-0 border-l border-l-solid border-line"
+          data-canvas-popover
+          aria-label="画布助手"
+        >
+          <CanvasAgentPanel :canvas-id="canvasId" :selected="agentRefs" @close="agentOpen = false" @locate="locateNode" />
+        </aside>
       </div>
+
+      <CanvasMergeDialog
+        :pending="mergePending"
+        @resolve="(choices) => store.resolveMerge(choices)"
+        @discard="store.discardLocalChanges()"
+      />
 
       <TitleModal
         v-model:show="showSaveAs"
