@@ -21,11 +21,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { NConfigProvider, NSwitch, useMessage } from 'naive-ui'
 import { llTheme } from '@/views/local-life/theme.ts'
 import {
+  ASSET_KIND_GROUPS,
+  ASSET_KINDS,
   assetCategoryTree,
   assetLibCategories,
   assetLibList,
+  assetLibSysTags,
   assetLibTags,
   assetLibUpdate,
+  kindLabelOf,
 } from '@/api/asset-library.ts'
 import type {
   AssetLibKindGroup,
@@ -33,6 +37,7 @@ import type {
   IAssetLibAsset,
   IAssetLibCategory,
   IAssetLibListParams,
+  IAssetLibSysTag,
   IAssetLibTag,
 } from '@/api/asset-library.ts'
 import { useDebounce } from '@/utils/hooks'
@@ -43,6 +48,7 @@ import AssetPager from './components/AssetPager.vue'
 import DetailModal from './components/DetailModal.vue'
 import AssetTagStrip from './components/AssetTagStrip.vue'
 import BatchTagModal from './components/BatchTagModal.vue'
+import BatchRemoveTagModal from './components/BatchRemoveTagModal.vue'
 import BatchColorFixModal from './components/BatchColorFixModal.vue'
 import AssetTagPopover from './components/AssetTagPopover.vue'
 import PromptDomain from './components/PromptDomain.vue'
@@ -115,6 +121,7 @@ function applyDomain(next: Domain) {
   domain.value = next
   filters.source = ''
   filters.favoriteOnly = false
+  filters.kind = ''
   officialKind.value = ''
   activeGroup.value = ''
   activeSub.value = ''
@@ -147,15 +154,8 @@ function onDomainKey(e: KeyboardEvent) {
 
 // ---------------- 图片域：Java 聚合分类树 ----------------
 
-/** 卡片上的 kind 中文名 */
-const KIND_LABELS: Record<string, string> = {
-  model: '模特',
-  scene: '场景',
-  makeup: '妆容',
-  hair: '发型',
-  accessory: '配饰',
-}
-const kindLabel = (key: string) => (key ? (KIND_LABELS[key] ?? key) : '')
+/** 卡片上的 kind 中文名（含新增的商品图 / 门头门店等，见 ASSET_KINDS） */
+const kindLabel = kindLabelOf
 
 /**
  * 分类条：GET /api/v1/asset/categories。首项「全部」不是分类、不传 entry_codes；
@@ -268,6 +268,12 @@ const filters = reactive({
   favoriteOnly: false,
   q: '',
   tag: '',
+  /** 在 tag 之外追加的用户标签（多选「全部包含」，与 tag 一起发 tags=a,b） */
+  extraTags: [] as string[],
+  /** 系统标签筛选（只读标签，须全部包含） */
+  sysTags: [] as string[],
+  /** 分类 kind（ASSET_KINDS）；空 = 不限。优先于分类树里的 kind */
+  kind: '',
   aspectRatio: '',
 })
 /** 来源再点一次回到「全部」 */
@@ -285,7 +291,9 @@ const RATIO_OPTIONS = [
 ]
 
 const filterOpen = ref(false)
-const activeFilterCount = computed(() => (filters.favoriteOnly ? 1 : 0) + (filters.aspectRatio ? 1 : 0))
+const activeFilterCount = computed(
+  () => (filters.favoriteOnly ? 1 : 0) + (filters.aspectRatio ? 1 : 0) + filters.sysTags.length,
+)
 
 /** 关键词防抖后才进查询 */
 const debouncedQ = ref('')
@@ -296,6 +304,9 @@ const hasFilter = computed(
   () =>
     !!filters.source ||
     !!filters.tag ||
+    !!filters.kind ||
+    filters.extraTags.length > 0 ||
+    filters.sysTags.length > 0 ||
     filters.favoriteOnly ||
     !!filters.aspectRatio ||
     !!activeGroup.value ||
@@ -304,6 +315,9 @@ const hasFilter = computed(
 function clearFilters() {
   filters.source = ''
   filters.tag = ''
+  filters.extraTags = []
+  filters.sysTags = []
+  filters.kind = ''
   filters.favoriteOnly = false
   filters.aspectRatio = ''
   officialKind.value = ''
@@ -319,13 +333,55 @@ async function loadTags() {
   try {
     const res = await assetLibTags()
     untaggedCount.value = res.data?.untaggedCount ?? null
-    tags.value = (res.data?.items ?? []).slice().sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+    tags.value = (res.data?.items ?? []) // 服务端默认按使用次数倒序
   } catch {
     // 拉失败沿用上次的字典
   }
 }
+/** 点卡片 / 筛选条上的标签：没有主标签就当主标签；已有主标签再点别的 = 追加（全部包含），再点一次取消 */
 function toggleTag(name: string) {
-  filters.tag = filters.tag === name ? '' : name
+  if (!filters.tag || filters.tag === UNTAGGED_TAG) {
+    filters.tag = name
+    return
+  }
+  if (filters.tag === name) {
+    filters.tag = filters.extraTags.shift() ?? ''
+    return
+  }
+  const i = filters.extraTags.indexOf(name)
+  if (i >= 0) filters.extraTags.splice(i, 1)
+  else filters.extraTags.push(name)
+}
+function toggleSysTag(name: string) {
+  const i = filters.sysTags.indexOf(name)
+  if (i >= 0) filters.sysTags.splice(i, 1)
+  else filters.sysTags.push(name)
+}
+
+/** 系统标签字典（GET /sys-tags，带资产数）；已选中但字典里没有的补在后面，免得选中项消失 */
+const sysTagDict = ref<IAssetLibSysTag[]>([])
+async function loadSysTags() {
+  try {
+    sysTagDict.value = (await assetLibSysTags()).data?.items ?? []
+  } catch {
+    // 拉失败沿用上次的字典
+  }
+}
+const sysTagOptions = computed(() => {
+  const known = new Set(sysTagDict.value.map((t) => t.name))
+  return [...sysTagDict.value, ...filters.sysTags.filter((n) => !known.has(n)).map((name) => ({ name, assetCount: 0 }))]
+})
+
+/** 分类 kind 筛选条：按 kind_group 分组（商拍 / 营销素材 / 视频），数量取 GET /assets/categories；官方域有自己的 kind 条 */
+const kindGroupsShown = computed(() => {
+  const want: string[] = domain.value === 'image' ? ['image', 'marketing'] : domain.value === 'video' ? ['video'] : []
+  return ASSET_KIND_GROUPS.filter((g) => want.includes(g.key)).map((g) => ({
+    ...g,
+    kinds: ASSET_KINDS.filter((k) => k.group === g.key),
+  }))
+})
+function pickKind(v: string) {
+  filters.kind = filters.kind === v ? '' : v
 }
 
 // ---------------- 列表（分页） ----------------
@@ -337,6 +393,8 @@ const listParams = computed<IAssetLibListParams | 'empty' | null>(() => {
   const base: IAssetLibListParams = {
     aspectRatio: filters.aspectRatio || undefined,
     ...tagListParams(filters.tag),
+    ...(filters.extraTags.length && filters.tag ? { tag: undefined, tags: [filters.tag, ...filters.extraTags].join(',') } : {}),
+    sysTags: filters.sysTags.length ? filters.sysTags.join(',') : undefined,
     favoriteOnly: filters.favoriteOnly || undefined,
     q: debouncedQ.value || undefined,
   }
@@ -344,7 +402,7 @@ const listParams = computed<IAssetLibListParams | 'empty' | null>(() => {
     case 'official':
       return { ...base, source: 'official', kind: officialKind.value || undefined }
     case 'video':
-      return { ...base, source: filters.source || undefined, media: 'video' }
+      return { ...base, source: filters.source || undefined, media: 'video', kind: filters.kind || undefined }
     case 'image': {
       const cat = categoryFilter()
       if (cat?.entryCodes === '') return 'empty'
@@ -352,6 +410,7 @@ const listParams = computed<IAssetLibListParams | 'empty' | null>(() => {
         ...base,
         ...(cat ?? {}),
         entryCodes: cat?.entryCodes || undefined,
+        ...(filters.kind ? { kind: filters.kind, kindGroup: undefined } : {}),
         source: filters.source || undefined,
         media: 'image',
       }
@@ -456,6 +515,7 @@ onMounted(() => {
   void loadTree()
   void loadCategories()
   void loadTags()
+  void loadSysTags()
   void load()
   void nextTick(() => {
     syncBeam()
@@ -561,6 +621,18 @@ function onBatchColorFixed() {
   void silentRefresh()
 }
 
+const showBatchRemove = ref(false)
+const selectedSnapshots = computed(() =>
+  selectedIds.value
+    .map((id) => selectedAssets.get(id) ?? items.value.find((it) => it.id === id))
+    .filter((a): a is IAssetLibAsset => !!a),
+)
+function openBatchRemove() {
+  if (!selectedIds.value.length) return
+  if (selectedIds.value.length > 200) return void message.warning('一次最多给 200 个资产移除标签')
+  showBatchRemove.value = true
+}
+
 function onBatchTagged() {
   exitSelect()
   void silentRefresh()
@@ -607,8 +679,9 @@ onBeforeUnmount(() => clearTimeout(firstEnterTimer))
 /** 标签重命名 / 删除会影响卡片上的标签名；若删掉的正被用作筛选，清掉筛选 */
 function onTagsChanged(deletedName?: string) {
   void loadTags()
+  if (deletedName && filters.extraTags.includes(deletedName)) filters.extraTags = filters.extraTags.filter((t) => t !== deletedName)
   if (deletedName && filters.tag === deletedName) {
-    filters.tag = '' // 查询条件变了，watch 会整页重查
+    filters.tag = filters.extraTags.shift() ?? '' // 查询条件变了，watch 会整页重查
     return
   }
   void silentRefresh()
@@ -752,6 +825,15 @@ const emptyCopy = computed(() => {
               @click="openBatchTag"
             >
               批量打标签
+            </button>
+            <button
+              type="button"
+              :class="TOOL_CLS"
+              :disabled="!selectedIds.length"
+              :title="selectedIds.length ? undefined : '先勾选要移除标签的资产'"
+              @click="openBatchRemove"
+            >
+              移除标签
             </button>
             <button
               type="button"
@@ -907,6 +989,40 @@ const emptyCopy = computed(() => {
           </div>
         </div>
 
+        <!-- 分类 kind 筛选（按 kind_group 分组；点已选的取消） -->
+        <div v-if="kindGroupsShown.length" class="flex flex-wrap items-center gap-x-14px gap-y-6px mb-12px">
+          <div v-for="g in kindGroupsShown" :key="g.key" class="flex flex-wrap items-center gap-6px" role="group" :aria-label="`${g.label}分类`">
+            <span :class="ROW_LABEL_CLS" class="mr-2px">{{ g.label }}</span>
+            <button
+              v-if="g.key !== 'marketing'"
+              type="button"
+              :aria-pressed="!filters.kind"
+              :class="[PILL_CLS, !filters.kind ? PILL_ON : PILL_OFF]"
+              @click="filters.kind = ''"
+            >
+              全部
+            </button>
+            <button
+              v-for="k in g.kinds"
+              :key="k.value"
+              type="button"
+              :aria-pressed="filters.kind === k.value"
+              :class="[PILL_CLS, filters.kind === k.value ? PILL_ON : PILL_OFF]"
+              @click="pickKind(k.value)"
+            >
+              {{ k.label }}<em v-if="categories.length" :class="PILL_COUNT_CLS" class="not-italic">{{ countOf(k.value) }}</em>
+            </button>
+          </div>
+          <button
+            type="button"
+            :aria-pressed="filters.kind === 'uncategorized'"
+            :class="[PILL_CLS, filters.kind === 'uncategorized' ? PILL_ON : PILL_OFF]"
+            @click="pickKind('uncategorized')"
+          >
+            未分类<em v-if="categories.length" :class="PILL_COUNT_CLS" class="not-italic">{{ countOf('uncategorized') }}</em>
+          </button>
+        </div>
+
         <!-- 筛选面板：比例 / 只看收藏 -->
         <div
           v-if="filterOpen"
@@ -925,21 +1041,46 @@ const emptyCopy = computed(() => {
               {{ r.label }}
             </button>
           </div>
+          <div v-if="sysTagOptions.length" class="flex flex-wrap items-center gap-6px" role="group" aria-label="系统标签">
+            <span :class="ROW_LABEL_CLS" class="mr-2px">系统标签</span>
+            <button
+              v-for="t in sysTagOptions"
+              :key="t.name"
+              type="button"
+              :aria-pressed="filters.sysTags.includes(t.name)"
+              :class="[PILL_CLS, filters.sysTags.includes(t.name) ? PILL_ON : PILL_OFF]"
+              @click="toggleSysTag(t.name)"
+            >
+              {{ t.name }}<em v-if="t.assetCount" :class="PILL_COUNT_CLS" class="not-italic">{{ t.assetCount }}</em>
+            </button>
+          </div>
           <label class="flex items-center gap-6px min-h-32px text-12px text-ink-2 whitespace-nowrap cursor-pointer">
             <n-switch v-model:value="filters.favoriteOnly" size="small" />
             只看收藏
           </label>
         </div>
 
-        <!-- 生效中的标签筛选（标签带可能滚出视野，这里给个明确的清除口） -->
-        <div v-if="filters.tag" class="flex items-center gap-8px mb-12px">
+        <!-- 生效中的标签筛选（标签带可能滚出视野，这里给个明确的清除口；多个标签 = 全部包含） -->
+        <div v-if="filters.tag || filters.sysTags.length" class="flex flex-wrap items-center gap-8px mb-12px">
           <button
+            v-for="t in [...(filters.tag ? [filters.tag] : []), ...filters.extraTags]"
+            :key="'u:' + t"
             type="button"
             class="inline-flex items-center gap-4px h-30px px-10px rounded-15px border border-solid border-violet-line bg-info-soft text-12px text-violet-ink cursor-pointer sx-focus"
-            :aria-label="`清除标签筛选 ${tagFilterLabel(filters.tag)}`"
-            @click="filters.tag = ''"
+            :aria-label="`清除标签筛选 ${tagFilterLabel(t)}`"
+            @click="toggleTag(t)"
           >
-            标签：{{ tagFilterLabel(filters.tag) }} <span aria-hidden="true">×</span>
+            标签：{{ tagFilterLabel(t) }} <span aria-hidden="true">×</span>
+          </button>
+          <button
+            v-for="t in filters.sysTags"
+            :key="'s:' + t"
+            type="button"
+            class="inline-flex items-center gap-4px h-30px px-10px rounded-15px border border-solid border-line bg-surface3 text-12px text-muted cursor-pointer sx-focus"
+            :aria-label="`清除系统标签筛选 ${t}`"
+            @click="toggleSysTag(t)"
+          >
+            系统标签：{{ t }} <span aria-hidden="true">×</span>
           </button>
         </div>
 
@@ -969,6 +1110,7 @@ const emptyCopy = computed(() => {
               @toggle-favorite="toggleFavorite"
               @open="openDetail"
               @filter-tag="toggleTag"
+              @filter-sys-tag="toggleSysTag"
               @edit-tags="editTags"
             />
             <div v-if="!loading && !items.length" key="__empty" class="col-span-full h-360px">
@@ -1005,6 +1147,7 @@ const emptyCopy = computed(() => {
       @next="openSibling(1)"
     />
     <BatchTagModal v-model:show="showBatchTag" :asset-ids="selectedIds" @success="onBatchTagged" />
+    <BatchRemoveTagModal v-model:show="showBatchRemove" :assets="selectedSnapshots" @success="onBatchTagged" />
     <BatchColorFixModal v-model:show="showBatchColorFix" :assets="batchColorFixAssets" @changed="onBatchColorFixed" />
     <AssetTagPopover ref="tagPopover" @changed="onPopoverChanged" />
   </n-config-provider>

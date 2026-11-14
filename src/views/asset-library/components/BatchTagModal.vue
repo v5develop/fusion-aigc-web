@@ -58,8 +58,8 @@ function toggle(id: number) {
 async function createTag() {
   const name = newTagName.value.trim()
   if (!name) return
-  if (name.length > 20) {
-    message.warning('标签名最多 20 字')
+  if (name.length > 32) {
+    message.warning('标签名最多 32 字')
     return
   }
   creating.value = true
@@ -133,8 +133,8 @@ async function submit() {
           v-model:value="newTagName"
           class="flex-1"
           size="small"
-          maxlength="20"
-          placeholder="新建标签（≤20 字）"
+          maxlength="32"
+          placeholder="新建标签（≤32 字）"
           @keydown.enter="createTag"
         />
         <n-button size="small" :loading="creating" @click="createTag">新建</n-button>

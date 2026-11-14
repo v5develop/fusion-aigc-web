@@ -28,7 +28,7 @@ const emit = defineEmits<{ changed: [deletedName?: string] }>()
 const message = useMessage()
 const dialog = useDialog()
 
-const NAME_MAX = 20
+const NAME_MAX = 32
 const root = ref<HTMLElement | null>(null)
 const open = ref(false)
 const mode = ref<'' | 'rename' | 'delete'>('')

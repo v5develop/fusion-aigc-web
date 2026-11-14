@@ -27,6 +27,8 @@ interface ImportMetaEnv {
    * 列表 / 历史卡缩略图（utils/oss.ts ossResize）只对这些主机生效；不配则自定义域名一律用原图。
    */
   readonly VITE_OSS_IMAGE_HOSTS?: string
+  /** 后端未就绪接口的本地 mock 开关：plaza,replicate 或 all（见 src/api/mock-switch.ts） */
+  readonly VITE_MOCK_API?: string
 }
 
 interface ImportMeta {

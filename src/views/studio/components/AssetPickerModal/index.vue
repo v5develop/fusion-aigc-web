@@ -9,19 +9,21 @@
  * limit=1 时点一张即选中并关闭；多选时点「使用」确认。
  */
 import { computed, ref, watch } from 'vue'
-import { assetLibCategories, assetLibList } from '@/api/asset-library.ts'
-import type { IAssetLibAsset, IAssetLibCategory } from '@/api/asset-library.ts'
+import { ASSET_KINDS, assetLibCategories, assetLibList, assetLibTags } from '@/api/asset-library.ts'
+import type { IAssetLibAsset, IAssetLibCategory, IAssetLibTag } from '@/api/asset-library.ts'
 import { useDebounce } from '@/utils/hooks/index.ts'
 import { readRecentAssets, writeRecentAssets, RECENT_MAX } from '@/utils/asset-recent.ts'
 import type { IRecentAsset } from '@/utils/asset-recent.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 
-const { limit = 1, media = 'image' } = defineProps<{
+const { limit = 1, media = 'image', defaultKind = '' } = defineProps<{
   /** 本次最多还能选几张 */
   limit?: number
   /** 选哪类资产；不传 = 图片（原有行为） */
   media?: 'image' | 'video'
+  /** 打开时默认优先列出的资产分类 kind（如智能体门头位传 storefront）；可一键切到「全部」 */
+  defaultKind?: string
 }>()
 
 const emit = defineEmits<{
@@ -63,6 +65,29 @@ function dropRecent(url: string) {
 }
 
 const kind = ref('all')
+/** 用途 / 分类 kind 筛选（ASSET_KINDS）：空 = 全部；打开时取 defaultKind */
+const usageKind = ref('')
+const tagList = ref<IAssetLibTag[]>([])
+const pickedTags = ref<string[]>([])
+const kindChips = computed(() => ASSET_KINDS.filter((k) => (media === 'video' ? k.group === 'video' || k.value === 'reference' || k.value === 'other' : k.group !== 'video')))
+function toggleTagFilter(name: string) {
+  const i = pickedTags.value.indexOf(name)
+  if (i >= 0) pickedTags.value.splice(i, 1)
+  else pickedTags.value.push(name)
+}
+async function fetchTags() {
+  try {
+    const res = await assetLibTags()
+    tagList.value = (res.data?.items ?? []).filter((t) => t.assetCount > 0).sort((a, b) => b.assetCount - a.assetCount).slice(0, 16)
+  } catch {
+    tagList.value = []
+  }
+}
+/** 最近用过的排前：本页内已在「最近」里的资产提到最前（稳定排序） */
+function recentFirst(list: IAssetLibAsset[]) {
+  const used = new Set(readRecent().map((r) => r.url))
+  return [...list.filter((a) => used.has(pickUrl(a))), ...list.filter((a) => !used.has(pickUrl(a)))]
+}
 const source = ref('')
 const keyword = ref('')
 const categories = ref<IAssetLibCategory[]>([])
@@ -95,7 +120,9 @@ async function fetchPage(reset: boolean) {
   }
   try {
     const res = await assetLibList({
-      kind: kind.value === 'all' ? undefined : kind.value,
+      kind: usageKind.value || (kind.value === 'all' ? undefined : kind.value),
+      tags: pickedTags.value.length > 1 ? pickedTags.value.join(',') : undefined,
+      tag: pickedTags.value.length === 1 ? pickedTags.value[0] : undefined,
       source: source.value || undefined,
       media,
       q: keyword.value.trim().slice(0, 100) || undefined,
@@ -104,7 +131,7 @@ async function fetchPage(reset: boolean) {
     })
     if (my !== seq) return
     const list = (res.data?.items ?? []).filter((a) => a.media === media && isHttp(pickUrl(a)))
-    items.value = reset ? list : [...items.value, ...list]
+    items.value = reset ? recentFirst(list) : [...items.value, ...list]
     total.value = res.data?.total ?? 0
   } catch {
     if (my !== seq) return
@@ -189,6 +216,9 @@ watch(
   (open) => {
     if (!open) return
     kind.value = 'all'
+    usageKind.value = defaultKind
+    pickedTags.value = []
+    void fetchTags()
     source.value = ''
     keyword.value = ''
     chosen.value = []
@@ -205,9 +235,9 @@ watch(source, () => {
   void fetchCategories()
   reload()
 })
-watch(kind, () => {
+watch([kind, usageKind, pickedTags], () => {
   if (show.value) reload()
-})
+}, { deep: true })
 useDebounce({ data: keyword, callback: reload, delay: 300 })
 </script>
 
@@ -248,6 +278,42 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
           placeholder="搜标题 / 提示词"
           class="!w-200px ml-auto"
         />
+      </div>
+      <div v-if="!recentMode" class="flex gap-6px flex-wrap items-center" role="group" aria-label="资产分类">
+        <span class="text-11px text-placeholder">分类</span>
+        <button
+          type="button"
+          class="ll-pill !min-h-28px !text-12px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
+          :class="{ 'll-pill-active': !usageKind }"
+          @click="usageKind = ''"
+        >
+          全部
+        </button>
+        <button
+          v-for="k in kindChips"
+          :key="k.value"
+          type="button"
+          class="ll-pill !min-h-28px !text-12px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
+          :class="{ 'll-pill-active': usageKind === k.value }"
+          :aria-pressed="usageKind === k.value"
+          @click="usageKind = usageKind === k.value ? '' : k.value"
+        >
+          {{ k.label }}
+        </button>
+      </div>
+      <div v-if="!recentMode && tagList.length" class="flex gap-6px flex-wrap items-center" role="group" aria-label="标签筛选">
+        <span class="text-11px text-placeholder">标签</span>
+        <button
+          v-for="t in tagList"
+          :key="t.id"
+          type="button"
+          class="ll-pill !min-h-28px !text-12px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
+          :class="{ 'll-pill-active': pickedTags.includes(t.name) }"
+          :aria-pressed="pickedTags.includes(t.name)"
+          @click="toggleTagFilter(t.name)"
+        >
+          {{ t.name }} {{ t.assetCount }}
+        </button>
       </div>
       <div v-if="categories.length && !recentMode" class="flex gap-8px flex-wrap">
         <span
@@ -309,6 +375,7 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
         </div>
         <div v-else-if="!loading && !items.length" class="py-40px text-center text-12px text-placeholder">
           没有匹配的{{ mediaWord }}资产，换个分类或关键词试试
+          <span v-if="usageKind || pickedTags.length" class="ll-link ml-6px !text-13px" @click="((usageKind = ''), (pickedTags = []))">查看全部</span>
         </div>
         <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-10px">
           <button

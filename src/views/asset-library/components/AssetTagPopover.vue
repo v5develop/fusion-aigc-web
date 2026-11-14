@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 单卡快捷打标签浮层（原型 relay-tag-menu）：搜索标签 + 标签列表（含资产数）+ 新建标签。
+ * 单卡快捷浮层（原型 relay-tag-menu）：分类 kind（点选即存）+ 搜索标签 + 标签列表（含资产数）+ 新建标签；
+ * 搜索框里回车 = 添加：与已有标签重名就放入该标签，否则新建并放入（输入即联想我的标签）。
  * 点标签即在这一个资产上加 / 去该标签（加走 batch-tag，去走 PATCH tags 整组替换）；
  * 点「未分类」清空该资产全部标签。乐观更新卡片标签与计数，失败回滚。
  * 页面只放一个实例，卡片通过 open(asset, anchor) 唤起。
@@ -8,14 +9,21 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { NButton, NInput, NModal, useMessage } from 'naive-ui'
 import { ApiError } from '@/api/index.ts'
-import { assetLibBatchTag, assetLibTagCreate, assetLibTags, assetLibUpdate } from '@/api/asset-library.ts'
+import {
+  ASSET_KINDS,
+  assetLibBatchTag,
+  assetLibTagCreate,
+  assetLibTags,
+  assetLibUpdate,
+} from '@/api/asset-library.ts'
 import type { IAssetLibAsset, IAssetLibTag } from '@/api/asset-library.ts'
+import { MAX_TAGS_PER_ASSET, TAG_NAME_MAX } from '../usage.ts'
 
 const message = useMessage()
 const emit = defineEmits<{ changed: [] }>()
 
 const MENU_WIDTH = 260
-const MENU_HEIGHT = 360
+const MENU_HEIGHT = 440
 
 const tags = ref<IAssetLibTag[]>([])
 const asset = ref<IAssetLibAsset | null>(null)
@@ -174,6 +182,72 @@ async function pick(o: IOption) {
   }
 }
 
+// ---------------- 用途类型 ----------------
+
+/** value 为空串 = 恢复系统推算（PATCH kind:''，后端回 kind_source=auto 与推算出的 kind） */
+async function pickKind(value: string) {
+  const target = asset.value
+  if (!target || busy.value || (value && target.kind === value)) return
+  const prev = { kind: target.kind, src: target.kindSource }
+  if (value) {
+    target.kind = value
+    target.kindSource = 'user'
+  }
+  busy.value = true
+  try {
+    const res = await assetLibUpdate(target.id, { kind: value })
+    if (res.data) {
+      target.kind = res.data.kind
+      target.kindSource = res.data.kindSource
+    }
+    message.success(value ? '分类已更新' : '已恢复系统分类')
+    emit('changed')
+  } catch (err) {
+    target.kind = prev.kind
+    target.kindSource = prev.src
+    reportError(err)
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 搜索框回车：精确同名 → 放入；否则新建（≤32 字）并放入 */
+async function onEnter() {
+  const name = query.value.trim()
+  const target = asset.value
+  if (!name || !target || busy.value) return
+  if (target.tags.includes(name)) return void message.info('已经有这个标签了')
+  if (target.tags.length >= MAX_TAGS_PER_ASSET) return void message.warning(`一个资产最多 ${MAX_TAGS_PER_ASSET} 个标签`)
+  const exist = tags.value.find((t) => t.name === name)
+  if (exist) {
+    await pick({ key: String(exist.id), label: exist.name, count: exist.assetCount, tag: exist })
+    query.value = ''
+    return
+  }
+  if (name.length > TAG_NAME_MAX) return void message.warning(`标签名最多 ${TAG_NAME_MAX} 字`)
+  busy.value = true
+  try {
+    const res = await assetLibTagCreate(name)
+    const created = res.data
+    if (!created?.id) return
+    tags.value.push({ ...created, assetCount: 0 })
+    const rollback = applyLocal(target, [...target.tags, created.name])
+    try {
+      await assetLibBatchTag({ assetIds: [target.id], tagIds: [created.id] })
+      message.success(`已放入「${created.name}」`)
+      query.value = ''
+      emit('changed')
+    } catch (err) {
+      rollback()
+      reportError(err)
+    }
+  } catch (err) {
+    reportError(err)
+  } finally {
+    busy.value = false
+  }
+}
+
 /** 列表内上下键移动焦点；搜索框按下键进入列表 */
 function moveFocus(e: KeyboardEvent, delta: number) {
   const items = Array.from(menuEl.value?.querySelectorAll<HTMLElement>('[data-tag-option]') ?? [])
@@ -210,8 +284,8 @@ function onCreateClosed() {
 async function createTag() {
   const name = draft.value.trim()
   if (!name || creating.value) return
-  if (name.length > 20) {
-    message.warning('标签名最多 20 字')
+  if (name.length > 32) {
+    message.warning('标签名最多 32 字')
     return
   }
   creating.value = true
@@ -251,12 +325,42 @@ async function createTag() {
       v-if="asset"
       ref="menuEl"
       role="dialog"
-      aria-label="打标签"
+      aria-label="用途与标签"
       class="fixed z-[6000] w-260px p-6px border border-solid border-line rounded-8px bg-white shadow-[0_14px_36px_rgba(31,35,41,0.18)]"
       :style="{ left: `${pos.left}px`, top: `${pos.top}px` }"
       @keydown.esc.stop.prevent="close(true)"
       @focusout="onFocusOut"
     >
+      <div class="px-3px pt-2px pb-6px" role="group" aria-label="资产分类">
+        <div class="mb-4px text-11px text-placeholder">
+          分类<span v-if="asset.kindSource === 'auto'" class="ml-4px">（系统推算，点选可修改）</span>
+        </div>
+        <div class="flex flex-wrap gap-4px">
+          <button
+            v-for="u in ASSET_KINDS"
+            :key="u.value"
+            type="button"
+            :aria-pressed="asset.kind === u.value"
+            class="h-24px px-8px rounded-12px border border-solid text-11px cursor-pointer focus-visible:(outline outline-2 outline-violet)"
+            :class="
+              asset.kind === u.value
+                ? 'border-violet-line bg-violet-tint text-violet-ink font-600'
+                : 'border-line bg-white text-ink-2 hover:border-violet-line'
+            "
+            @click="pickKind(u.value)"
+          >
+            {{ u.label }}
+          </button>
+        </div>
+        <button
+          v-if="asset.kindSource === 'user'"
+          type="button"
+          class="mt-6px h-24px px-0 border-none bg-transparent text-11px text-violet-ink cursor-pointer hover:underline focus-visible:(outline outline-2 outline-violet)"
+          @click="pickKind('')"
+        >
+          恢复系统分类
+        </button>
+      </div>
       <label
         class="flex items-center gap-6px h-28px mx-3px mt-1px mb-5px px-7px border border-solid border-line rounded-5px text-[#a3a9b1] focus-within:border-violet-line"
       >
@@ -281,11 +385,16 @@ async function createTag() {
           ref="searchEl"
           v-model="query"
           aria-label="搜索标签"
-          placeholder="搜索标签"
+          placeholder="搜索标签，回车添加"
           class="min-w-0 flex-1 border-none outline-none bg-transparent text-11px text-ink placeholder:text-[#a3a9b1]"
+          @keydown.enter.prevent="onEnter"
           @keydown.down="moveFocus($event, 1)"
         />
       </label>
+      <div v-if="asset.sysTags?.length" class="flex flex-wrap items-center gap-4px mx-3px mb-5px">
+        <span class="text-11px text-placeholder">系统标签</span>
+        <span v-for="n in asset.sysTags" :key="n" class="h-18px px-6px rounded-9px bg-surface3 text-11px leading-18px text-placeholder">{{ n }}</span>
+      </div>
       <div class="max-h-250px overflow-y-auto" :aria-busy="busy">
         <button
           v-for="o in options"
@@ -323,7 +432,7 @@ async function createTag() {
     :auto-focus="true"
     @after-leave="onCreateClosed"
   >
-    <n-input v-model:value="draft" maxlength="20" placeholder="标签名称" @keyup.enter="createTag" />
+    <n-input v-model:value="draft" maxlength="32" placeholder="标签名称" @keyup.enter="createTag" />
     <template #footer>
       <div class="flex justify-end gap-8px">
         <n-button size="small" @click="showCreate = false">取消</n-button>

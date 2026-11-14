@@ -26,6 +26,7 @@ const emit = defineEmits<{
   'toggle-favorite': [asset: IAssetLibAsset]
   open: [asset: IAssetLibAsset]
   'filter-tag': [name: string]
+  'filter-sys-tag': [name: string]
   /** 标签按钮：唤起单卡快捷打标签浮层，anchor 为按钮本身（定位 + 关闭后还焦点） */
   'edit-tags': [asset: IAssetLibAsset, anchor: HTMLElement]
 }>()
@@ -63,6 +64,22 @@ const COVER_RATIO = '4 / 3'
 const downloadHref = computed(() => (isVideoAsset.value ? props.asset.videoUrl : props.asset.image) || '')
 const title = computed(() => props.asset.title || '未命名资产')
 
+/** 标签行：用户标签优先、至多 2 个；不足 2 个时用系统标签（浅色）补位。其余折成 +N */
+const chips = computed(() => {
+  const user = props.asset.tags.map((name) => ({ name, sys: false }))
+  const sys = (props.asset.sysTags ?? []).filter((n) => !props.asset.tags.includes(n)).map((name) => ({ name, sys: true }))
+  return [...user, ...sys]
+})
+const shownChips = computed(() => chips.value.slice(0, 2))
+
+/** 右键：直接打开用途 / 标签浮层（锚点用卡片上的标签按钮，浮层定位与关闭后还焦点都沿用） */
+function onContext(e: MouseEvent) {
+  const trigger = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[data-tag-trigger]')
+  if (!trigger || props.selecting) return
+  e.preventDefault()
+  emit('edit-tags', props.asset, trigger)
+}
+
 function onCard() {
   if (props.selecting) emit('toggle-select', props.asset.id)
   else emit('open', props.asset)
@@ -79,6 +96,7 @@ function onCard() {
     :aria-label="selecting ? `${checked ? '取消选择' : '选择'} ${title}` : title"
     :aria-pressed="selecting ? checked : undefined"
     @click="onCard"
+    @contextmenu="onContext"
     @keydown.enter.self.prevent="onCard"
     @keydown.space.self.prevent="onCard"
   >
@@ -207,19 +225,21 @@ function onCard() {
         {{ dateText }}<template v-if="sourceLabel"> · {{ sourceLabel }}</template>
       </small>
       <div class="flex items-center gap-4px min-w-0 mt-2px">
-        <button
-          v-if="asset.tags.length"
-          type="button"
-          class="min-w-0 inline-flex items-center h-28px px-0 border-none bg-transparent text-12px text-muted whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer hover:text-ink-2 sx-focus"
-          :title="`按标签「${asset.tags[0]}」筛选`"
-          @click.stop="emit('filter-tag', asset.tags[0]!)"
-        >
-          <span class="overflow-hidden text-ellipsis">{{ asset.tags[0] }}</span>
-        </button>
+        <template v-if="shownChips.length">
+          <button
+            v-for="c in shownChips"
+            :key="(c.sys ? 's:' : 'u:') + c.name"
+            type="button"
+            class="min-w-0 max-w-[48%] inline-flex items-center h-20px px-6px rounded-10px border-none text-11px whitespace-nowrap cursor-pointer sx-focus"
+            :class="c.sys ? 'bg-surface3 text-placeholder hover:text-muted' : 'bg-violet-tint text-violet-ink hover:bg-violet-soft'"
+            :title="c.sys ? `系统标签「${c.name}」，点击筛选` : `按标签「${c.name}」筛选`"
+            @click.stop="c.sys ? emit('filter-sys-tag', c.name) : emit('filter-tag', c.name)"
+          >
+            <span class="overflow-hidden text-ellipsis">{{ c.name }}</span>
+          </button>
+        </template>
         <span v-else class="text-12px leading-28px text-placeholder">未打标签</span>
-        <span v-if="asset.tags.length > 1" class="shrink-0 text-11px text-placeholder"
-          >+{{ asset.tags.length - 1 }}</span
-        >
+        <span v-if="chips.length > 2" class="shrink-0 text-11px text-placeholder">+{{ chips.length - 2 }}</span>
         <IconButton
           data-tag-trigger
           variant="quiet"

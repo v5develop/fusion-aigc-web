@@ -8,6 +8,7 @@
  * <p>复用 api/index.ts 的实例（token 注入、401 刷新、业务错误 toast 全部沿用）。
  */
 import { post, put, patch, get, del } from './index.ts'
+import { isMock } from './mock-switch.ts'
 
 const PREFIX = '/api/v1/asset-library'
 
@@ -76,15 +77,52 @@ export interface IAssetLibAsset {
   entryCode: string
   width: number
   height: number
+  /** kind 的来源：auto = 系统推算的默认分类，user = 用户改过；老后端不给 = 缺省 */
+  kindSource?: 'auto' | 'user'
+  /** 系统标签（只读，后端打的）；没有为 [] / 缺省 */
+  sysTags?: string[]
+}
+
+/**
+ * 资产分类 kind：value 以后端为准，label 只是展示名（后端新增取值时前端原样展示 value，不报错）。
+ * group 对应 kind_group：image = 图片类，video = 视频类，用来在筛选条里分组展示。
+ */
+export const ASSET_KINDS = [
+  { value: 'model', label: '模特', group: 'image' },
+  { value: 'scene', label: '场景', group: 'image' },
+  { value: 'makeup', label: '妆容', group: 'image' },
+  { value: 'hair', label: '发型', group: 'image' },
+  { value: 'accessory', label: '配饰', group: 'image' },
+  { value: 'product', label: '商品', group: 'marketing' },
+  { value: 'storefront', label: '门头门店', group: 'marketing' },
+  { value: 'dish', label: '菜品', group: 'marketing' },
+  { value: 'logo', label: 'Logo', group: 'marketing' },
+  { value: 'poster', label: '海报', group: 'marketing' },
+  { value: 'reference', label: '参考图', group: 'marketing' },
+  { value: 'other', label: '其他', group: 'marketing' },
+  { value: 'video_final', label: '成片', group: 'video' },
+  { value: 'video_segment', label: '视频片段', group: 'video' },
+] as const
+
+/** kind_group 的中文名：image = 商拍，marketing = 营销素材，video = 视频 */
+export const ASSET_KIND_GROUPS = [
+  { key: 'image', label: '商拍' },
+  { key: 'marketing', label: '营销素材' },
+  { key: 'video', label: '视频' },
+] as const
+
+export function kindLabelOf(v: string | undefined | null): string {
+  if (!v) return ''
+  return ASSET_KINDS.find((u) => u.value === v)?.label ?? v
 }
 
 /** 列表大类筛选 */
-export type AssetLibKindGroup = 'image' | 'video'
+export type AssetLibKindGroup = 'image' | 'marketing' | 'video'
 
 export interface IAssetLibListParams {
-  /** 空 = 全部；uncategorized = 未分类；或 5 个 kind 之一；或视频二级分类键（VIDEO_KINDS） */
+  /** 空 = 全部；uncategorized = 未分类；或 ASSET_KINDS 里的 kind；或视频二级分类键（VIDEO_KINDS） */
   kind?: string
-  /** 大类：image = 5 个图片 kind；video = 视频二级分类键。与 kind 同传时同时生效 */
+  /** 大类：image = 商拍，marketing = 营销素材，video = 视频（成员见 ASSET_KINDS）。与 kind 同传时同时生效；不要再传旧的视频二级键（viral_video 等，会 1003） */
   kindGroup?: AssetLibKindGroup
   /** 空 = 全部；input = official + upload */
   source?: string
@@ -96,6 +134,10 @@ export interface IAssetLibListParams {
   entryCodes?: string
   /** 标签名（精确匹配） */
   tag?: string
+  /** 多个用户标签，逗号分隔，须全部包含（单个时用 tag） */
+  tags?: string
+  /** 系统标签，逗号分隔，须全部包含 */
+  sysTags?: string
   /** true = 只要没挂任何标签的素材（「未分类」，口径同 GET /tags 的 untagged_count）；不能与 tag 同传 */
   untagged?: boolean
   favoriteOnly?: boolean
@@ -112,6 +154,8 @@ export interface IAssetLibListResp {
 }
 
 export interface IAssetLibCategory {
+  /** 所属大类 image / marketing / video；all、uncategorized 为空 */
+  group?: string
   /** all / model / scene / makeup / hair / accessory / uncategorized */
   key: string
   label: string
@@ -183,7 +227,7 @@ export interface IAssetLibDetail {
 export interface IAssetLibUpdateReq {
   /** ≤100 字 */
   title?: string
-  /** 5 个 kind 之一；空串 = 改回未分类 */
+  /** ASSET_KINDS 里的 kind；空串 = 改回未分类（kindSource 随之变 user） */
   kind?: string
   favorite?: boolean
   /** 标签名数组，整组替换（[] 清空）；字典里没有的自动建，≤10 个 */
@@ -203,6 +247,11 @@ export interface IAssetLibTag {
   createdAt: number
 }
 
+export interface IAssetLibSysTag {
+  name: string
+  assetCount: number
+}
+
 export interface IAssetLibTagListResp {
   items: IAssetLibTag[]
   /** 当前用户没挂任何标签的素材数（「未分类」的计数） */
@@ -212,6 +261,8 @@ export interface IAssetLibTagListResp {
 export interface IAssetLibBatchTagResp {
   /** 新增的关联条数 */
   added: number
+  /** 移除的关联条数 */
+  removed?: number
 }
 
 /** 删除结果（单删 / 批量同形） */
@@ -250,17 +301,20 @@ export interface IAssetLibFromUrlResp {
 
 // ---------------- 资产 ----------------
 
-export function assetLibList(params: IAssetLibListParams) {
+export async function assetLibList(params: IAssetLibListParams) {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockList(params)
   return get<IAssetLibListResp>(`${PREFIX}/assets`, params)
 }
 
 /** 分类条计数：固定返回 all + 5 kind + uncategorized，计数随 source / media 变化 */
-export function assetLibCategories(params: { source?: string; media?: string } = {}) {
+export async function assetLibCategories(params: { source?: string; media?: string } = {}) {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockCategories(params)
   return get<IAssetLibCategoriesResp>(`${PREFIX}/assets/categories`, params)
 }
 
 /** 我的资产分类树（Java 素材库接口，同一请求实例带用户 token） */
-export function assetCategoryTree() {
+export async function assetCategoryTree() {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockTree()
   return get<IAssetCategoryNode[]>('/api/v1/asset/categories')
 }
 
@@ -270,7 +324,8 @@ export function assetLibDetail(id: number, params: IAssetLibDetailParams = {}) {
 }
 
 /** 改标题 / 分类 / 收藏 / 标签 / 元数据 / 授权 / 当前版本（只改带了的字段），返回改后的完整资产 */
-export function assetLibUpdate(id: number, data: IAssetLibUpdateReq) {
+export async function assetLibUpdate(id: number, data: IAssetLibUpdateReq) {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockUpdate(id, data)
   return patch<IAssetLibAsset>(`${PREFIX}/assets/${id}`, data)
 }
 
@@ -320,26 +375,40 @@ export function assetLibBatchDelete(assetIds: number[]) {
 // ---------------- 标签 ----------------
 
 /** 我的标签字典（含每个标签的资产数），按名字排序 */
-export function assetLibTags() {
-  return get<IAssetLibTagListResp>(`${PREFIX}/tags`)
+export async function assetLibTags(sort: 'count' | 'name' = 'count') {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockTags(sort)
+  return get<IAssetLibTagListResp>(`${PREFIX}/tags`, { sort })
+}
+
+/** 系统标签字典（只读）：本人资产里出现过的系统标签及资产数，按数量倒序；点选后作为列表 sysTags 传 */
+export async function assetLibSysTags() {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockSysTags()
+  return get<{ items: IAssetLibSysTag[] }>(`${PREFIX}/sys-tags`)
 }
 
 /** 新建标签（≤20 字，每用户 ≤200 个）。重名 4002 */
-export function assetLibTagCreate(name: string) {
+export async function assetLibTagCreate(name: string) {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockTagCreate(name)
   return post<IAssetLibTag>(`${PREFIX}/tags`, { name })
 }
 
 /** 重命名标签，资产上的标签名随之变化 */
-export function assetLibTagRename(id: number, name: string) {
+export async function assetLibTagRename(id: number, name: string) {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockTagRename(id, name)
   return put<IAssetLibTag>(`${PREFIX}/tags/${id}`, { name })
 }
 
 /** 删除标签，同时从所有资产上摘掉 */
-export function assetLibTagDelete(id: number) {
+export async function assetLibTagDelete(id: number) {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockTagDelete(id)
   return del(`${PREFIX}/tags/${id}`)
 }
 
-/** 批量给资产加标签（追加，已有的跳过）。一次 ≤100 资产、≤10 标签，返回新增关联数 */
-export function assetLibBatchTag(data: { assetIds: number[]; tagIds: number[] }) {
+/**
+ * 批量追加（tagIds）/ 移除（removeTagIds）标签，至少给一个，同一事务先移后加。
+ * 一次 ≤200 资产、追加与移除各 ≤20 标签；任一资产追加后超 20 个标签 1003，整批不生效。
+ */
+export async function assetLibBatchTag(data: { assetIds: number[]; tagIds?: number[]; removeTagIds?: number[] }) {
+  if (isMock('asset')) return (await import('./asset-mock.ts')).mockBatchTag(data)
   return post<IAssetLibBatchTagResp>(`${PREFIX}/assets/batch-tag`, data)
 }
