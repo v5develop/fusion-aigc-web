@@ -499,8 +499,9 @@ const imageModelRatios = computed<string[] | null>(() => {
   if (!imageModelDriven.value) return null
   // 清晰度选「自适应」（商品精修 / 产品替换，不传档位）时没有当前档：比例清单取模型第一档的
   const model = currentImageModel.value
-  const list = (videoSizeOf(model, values.resolution) ?? (values.resolution === AUTO_OPTION ? model?.size?.[0] : undefined))
-    ?.aspectRatio
+  const list = (
+    videoSizeOf(model, values.resolution) ?? (values.resolution === AUTO_OPTION ? model?.size?.[0] : undefined)
+  )?.aspectRatio
   return list?.length ? list : null
 })
 
@@ -830,6 +831,20 @@ const displayUploads = computed(() =>
     .filter((u) => !mlPromptUploads.value.includes(u))
     .filter((u) => !productStage.value || (u !== productStage.value.anchor && u !== productStage.value.base))
     .sort((a, b) => Number(b.layout === 'material') - Number(a.layout === 'material')),
+)
+/**
+ * 叠片槽（layout=material，如图片复刻的资产图 / 参考海报、姿势延展的人物图 / 姿势图）并排放进一块素材板（同商拍换装 ToolTryonMaterials）：
+ * 叠片本身是 flex-[0_0_auto] 的横排单元、相邻两块之间画切口线，竖着堆在操作栏里会各自居中、上下留大片空。
+ */
+const materialUploads = computed(() =>
+  schema.value?.uploadsView === 'tryon' && tryonSlots.value
+    ? []
+    : displayUploads.value.filter((u) => u.layout === 'material'),
+)
+const restUploads = computed(() =>
+  schema.value?.uploadsView === 'tryon' && tryonSlots.value
+    ? []
+    : displayUploads.value.filter((u) => u.layout !== 'material'),
 )
 /**
  * 产品替换图台（原型 ProductPipeSlots 定稿）：替换素材（anchor，96 见方）在上、底图片格（pipe）在下，同在一张卡里，
@@ -1309,7 +1324,11 @@ const submitLabel = computed(() => {
   if (!s) return ''
   const fan = fanSlot(s)
   const n =
-    s.pricePerUpload !== undefined ? (uploads[s.pricePerUpload]?.length ?? 0) : fan ? (uploads[fan.slot]?.length ?? 0) : 0
+    s.pricePerUpload !== undefined
+      ? (uploads[s.pricePerUpload]?.length ?? 0)
+      : fan
+        ? (uploads[fan.slot]?.length ?? 0)
+        : 0
   const label = baseSubmitLabel.value
   if (s.sync && syncResultUrl.value) return '重新抠图'
   return s.submit.countLabel && n ? `${label}（${n} 张）` : label
@@ -1554,8 +1573,7 @@ function formBase(s: ToolSchema): {
         const notes = (base.imageUrls as string[]).map((url) => (assetNotes[url] ?? '').trim().slice(0, max))
         if (notes.some(Boolean)) base.assetNotes = notes
       }
-    }
-    else if (u.max > 1) fan = { key: u.javaKey, urls, asArray: false }
+    } else if (u.max > 1) fan = { key: u.javaKey, urls, asArray: false }
     else base[u.javaKey] = urls[0]
   }
   // 视频复刻标注：videoClone + 选填 content；参考图编号按本次实际提交的 imageUrls（@n = 下标 + 1）
@@ -2074,9 +2092,11 @@ const lightboxItems = computed<PreviewItem[]>(() =>
 /** 对照的输入列：姿态 = 人物图 + 姿势图、商拍 = 模特图 + 服装图、图片复刻 = 资产图 + 参考海报，其它按上传槽名取前两张 */
 const syncInputs = computed<CompareColumn[]>(() => {
   const item = current.value
-  const urls = (showSync.value ? [singleImage.value] : (item?.inputImageUrls?.length ? item.inputImageUrls : item?.payload?.imageUrls) ?? []).filter(
-    (u): u is string => !!u && !u.startsWith('placeholder://') && !isVideoUrl(u),
-  )
+  const urls = (
+    showSync.value
+      ? [singleImage.value]
+      : ((item?.inputImageUrls?.length ? item.inputImageUrls : item?.payload?.imageUrls) ?? [])
+  ).filter((u): u is string => !!u && !u.startsWith('placeholder://') && !isVideoUrl(u))
   if (!urls.length) return []
   const uploads = schema.value?.uploads ?? []
   const cols = urls.slice(0, 2).map<CompareColumn>((url, i) => ({
@@ -2117,7 +2137,15 @@ const syncGroups = computed<CompareGroup[]>(() => {
     const url = i === selectedIndex.value && canColorCompare.value && !stageFilter.value ? stageSrc.value : p.src
     out.push({
       name: products.value.length > 1 ? p.name : undefined,
-      columns: [...inputs, { url, label: '生成结果', generated: true, filename: `${title}-生成结果${products.value.length > 1 ? `-${i + 1}` : ''}` }],
+      columns: [
+        ...inputs,
+        {
+          url,
+          label: '生成结果',
+          generated: true,
+          filename: `${title}-生成结果${products.value.length > 1 ? `-${i + 1}` : ''}`,
+        },
+      ],
     })
   })
   return out
@@ -2361,7 +2389,11 @@ const plateBtnCls =
     <RouterLink to="/tools" class="ll-link" :class="focusRing">返回工具箱</RouterLink>
   </div>
 
-  <div v-else-if="toolUnavailable" class="h-full flex flex-col items-center justify-center gap-12px bg-page" role="status">
+  <div
+    v-else-if="toolUnavailable"
+    class="h-full flex flex-col items-center justify-center gap-12px bg-page"
+    role="status"
+  >
     <p class="m-0 text-15px text-ink">该功能暂未开放</p>
     <RouterLink to="/tools" class="ll-link" :class="focusRing">返回工具箱</RouterLink>
   </div>
@@ -2543,7 +2575,9 @@ const plateBtnCls =
               class="fixed z-[6000] flex flex-col box-border overflow-hidden rounded-10px border border-solid border-line bg-overlay shadow-pop"
               :style="switcherStyle"
             >
-              <div class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_var(--xq-line)]">
+              <div
+                class="flex-none flex items-center gap-8px h-44px pl-14px pr-8px shadow-[inset_0_-0.8px_0_var(--xq-line)]"
+              >
                 <b class="min-w-0 flex-1 text-13px font-600 text-muted">切换功能</b>
                 <div
                   class="inline-flex flex-none gap-2px p-2px box-border rounded-6px border border-solid border-line bg-surface3"
@@ -2731,10 +2765,35 @@ const plateBtnCls =
             />
             <ToolPipeLinks :root="productStageEl" />
           </div>
-          <template
-            v-for="u in schema.uploadsView === 'tryon' && tryonSlots ? [] : displayUploads"
-            :key="`${schema.homeId}-${u.slot}`"
+          <div
+            v-if="materialUploads.length"
+            class="relative w-full max-w-[434px] mx-auto flex items-start justify-center gap-16px box-border p-12px rounded-6px border border-solid border-line bg-white shadow-[inset_0_0_16px_rgba(31,35,41,0.12),inset_0_1px_0_rgba(31,35,41,0.05)]"
           >
+            <template v-for="u in materialUploads" :key="`${schema.homeId}-${u.slot}`">
+              <!-- titled 卡（视频生成参考视频）：模型不支持时保持卡形、禁用，标题下写原因 -->
+              <ToolUploadSlot
+                v-if="uploadEnabled(u) || u.titled"
+                :id="`tool-upload-${u.slot}`"
+                :model-value="uploads[u.slot] ?? []"
+                :spec="specOf(u)"
+                :layout="u.layout"
+                :titled="u.titled"
+                :unsupported-hint="uploadEnabled(u) ? '' : unsupportedUploadHint(u)"
+                :disabled="submitting || !uploadEnabled(u)"
+                :paste-primary="u.slot === pastePrimarySlot"
+                asset-picker
+                @update:uploading="setUploading(`slot-${u.slot}`, $event)"
+                @update:model-value="setUploads(u.slot, $event)"
+              />
+              <div v-else>
+                <div class="ll-label">
+                  <span>{{ u.label }}</span>
+                </div>
+                <p class="m-0 ll-empty py-12px">{{ unsupportedUploadHint(u) }}</p>
+              </div>
+            </template>
+          </div>
+          <template v-for="u in restUploads" :key="`${schema.homeId}-${u.slot}`">
             <!-- titled 卡（视频生成参考视频）：模型不支持时保持卡形、禁用，标题下写原因 -->
             <ToolUploadSlot
               v-if="uploadEnabled(u) || u.titled"
@@ -3951,7 +4010,9 @@ const plateBtnCls =
                 class="relative block w-full overflow-hidden aspect-square box-border p-0 rounded-4px border border-solid bg-surface3 cursor-pointer"
                 :class="[
                   focusRing,
-                  selectedIndex === i ? 'border-violet shadow-[0_0_0_1px_var(--xq-violet)]' : 'border-line hover:border-control',
+                  selectedIndex === i
+                    ? 'border-violet shadow-[0_0_0_1px_var(--xq-violet)]'
+                    : 'border-line hover:border-control',
                 ]"
                 :aria-label="`候选 ${i + 1}`"
                 :aria-pressed="selectedIndex === i"
