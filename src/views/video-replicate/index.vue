@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 视频做同款（/video/replicate）：把爆款视频换成你的人和商品，三步出片。
+ * 视频做同款（/local-life/video-replicate）：把爆款视频换成你的人和商品，三步出片。
  * 上传视频 → 选要换的 → 确认生成（多段默认先做第 1 段，满意再继续）；接口见 api/replicate.ts（Go 原生，未就绪时 `?mock=replicate`）。
  * 页面只负责编排步骤：状态与动作在 useReplicate，各步骤是同目录的 Step* / JobView；页头二级导航：新建 / 历史 / 我的方案。
  */

@@ -108,6 +108,7 @@ export const localLifeLanding: LandingPageData = {
     section('视频创作', [
       ['探店视频', '分镜探店大片', '/local-life/explore-shop', ICONS.exploreShop],
       ['带货短剧', '剧情带货成片', '/local-life/short-drama', ICONS.shortDrama],
+      ['视频做同款', '换成你的人和商品', '/local-life/video-replicate', ICONS.videoRemake],
       ['爆款视频复刻', '解析分镜同款', '/local-life/video-remake', ICONS.videoRemake],
     ]),
   ],

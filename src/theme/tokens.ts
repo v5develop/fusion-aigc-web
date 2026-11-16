@@ -34,6 +34,8 @@ const light = {
   /* 轻拟物按钮 / 设置条的白 → 近白渐变（sx-grad-plate），上传槽底 */
   'plate-top': '#ffffff',
   'plate-bottom': '#fbfcfc',
+  /** 白边浮片的描边：浅色仍是白（不改样子），深色要与卡面拉开，否则边看不见 */
+  'plate-edge': '#ffffff',
   'upload-bottom': '#f9fafb',
   'upload-hover-bottom': '#fbf7fd',
   /** 选中行内凹渐变的下端（sx-grad-sunk：surface3 → 它） */
@@ -165,6 +167,7 @@ const dark = {
   'ghost-press': '#2a2b33',
   'plate-top': '#1d1e24',
   'plate-bottom': '#191a1f',
+  'plate-edge': '#373a44',
   'upload-bottom': '#18191e',
   'upload-hover-bottom': '#201c26',
   'sunk-bottom': '#18191e',

@@ -105,7 +105,7 @@ function targetOf(n: INotification): string {
     return ''
   }
   if (n.bizType && /replicate/i.test(n.bizType) && n.bizId != null && n.bizId !== '') {
-    return `/video/replicate?job=${encodeURIComponent(String(n.bizId))}`
+    return `/local-life/video-replicate?job=${encodeURIComponent(String(n.bizId))}`
   }
   return ''
 }

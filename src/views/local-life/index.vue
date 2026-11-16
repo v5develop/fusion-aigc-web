@@ -303,6 +303,7 @@ const toolGroups = [
     items: [
       { title: '探店视频', desc: '文案 + 门店实拍，生成分镜探店大片', path: '/local-life/explore-shop' },
       { title: '带货短剧', desc: '主题 + 商品图，剧情带货短剧自动成片', path: '/local-life/short-drama' },
+      { title: '视频做同款', desc: '换成你的人和商品，三步出片', path: '/local-life/video-replicate' },
       { title: '爆款视频复刻', desc: '粘贴爆款链接，解析分镜同款复刻', path: '/local-life/video-remake' },
     ],
   },

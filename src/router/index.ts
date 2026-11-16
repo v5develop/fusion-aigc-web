@@ -76,7 +76,7 @@ const router = createRouter({
           component: () => import('@/views/video/VideoGenerator.vue'),
         },
         {
-          path: '/video/replicate',
+          path: '/local-life/video-replicate',
           name: 'video-replicate',
           meta: { title: '视频做同款' },
           component: () => import('@/views/video-replicate/index.vue'),

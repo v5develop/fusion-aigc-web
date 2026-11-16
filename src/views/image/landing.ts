@@ -336,7 +336,7 @@ export const videoLanding: LandingPageData = {
         'video-replicate',
         '视频做同款',
         '换成你的人和商品',
-        { route: '/video/replicate', icon: toolIcon('ai-video-clone') },
+        { route: '/local-life/video-replicate', icon: toolIcon('ai-video-clone') },
       ],
     ]),
     {

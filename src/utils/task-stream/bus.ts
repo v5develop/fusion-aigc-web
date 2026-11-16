@@ -7,12 +7,14 @@
  * <p>选举：localStorage 里一份租约 {tab, exp, hiddenSince}，主标签页每 2s 续约（6s 过期）。
  * 抢占分两步——先写、150ms 后回读确认，同时写入的两个标签页只有最后写入的那个能确认成功。
  * 主标签页在后台超过 {@link HANDOVER_MS} 时，可见的标签页可以接手（连接跟着用户眼前的那一页走）。
- * localStorage 不可用（隐私模式 / 被禁用）时每个标签页都当自己是主标签页——退化成各自连接，功能不丢。
+ * localStorage 不可用（隐私模式 / 被禁用）时改用 Web Locks 选举（同一浏览器只有一个标签页持锁）；
+ * 两者都没有时才每个标签页各自连接——这会占满后端每用户的连接上限（429），所以尽量不走到这一步。
  */
 
 const CHANNEL = 'xq-task-watcher'
 const BUS_KEY = 'xq_task_bus'
 const LEASE_KEY = 'xq_task_leader'
+const LOCK_NAME = 'xq-task-leader'
 const LEASE_MS = 6000
 const TICK_MS = 2000
 const CONFIRM_MS = 150
@@ -110,6 +112,9 @@ export interface ElectorOptions {
 export class LeaderElector {
   leader = false
   private timer: ReturnType<typeof setInterval> | null = null
+  /** Web Locks 兜底：持锁期间为主；releaseLock 解锁 */
+  private lockRelease: (() => void) | null = null
+  private lockPending = false
   private confirmTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly opts: ElectorOptions) {}
@@ -126,6 +131,7 @@ export class LeaderElector {
     if (this.confirmTimer) clearTimeout(this.confirmTimer)
     this.confirmTimer = null
     this.resign()
+    this.releaseLock()
   }
 
   /** 主动让位（关闭标签页 / 登出）：删掉自己的租约，别的标签页下一跳（或收到 resign 消息时）立即接手 */
@@ -147,8 +153,8 @@ export class LeaderElector {
     const now = Date.now()
     const lease = readLease()
     if (lease === undefined) {
-      // 存储不可用：各自为政
-      this.set(this.opts.canClaim())
+      // 存储不可用：Web Locks 选出一个主标签页；没有 Web Locks 才各自为政
+      this.tryWebLock(this.opts.canClaim())
       return
     }
     if (!this.opts.canClaim()) {
@@ -182,9 +188,48 @@ export class LeaderElector {
     )
   }
 
+  /** 不靠存储的选举：ifAvailable 抢锁，抢到就一直持有（直到让位 / 停止 / 页面关闭自动释放） */
+  private tryWebLock(want: boolean) {
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+    if (!locks) {
+      this.set(want)
+      return
+    }
+    if (!want) {
+      this.releaseLock()
+      this.set(false)
+      return
+    }
+    if (this.leader || this.lockPending) return
+    this.lockPending = true
+    locks
+      .request(LOCK_NAME, { ifAvailable: true }, (lock) => {
+        this.lockPending = false
+        if (!lock) {
+          this.set(false)
+          return undefined
+        }
+        return new Promise<void>((resolve) => {
+          this.lockRelease = resolve
+          this.set(true)
+        })
+      })
+      .catch(() => {
+        this.lockPending = false
+        this.set(false)
+      })
+  }
+
+  private releaseLock() {
+    const release = this.lockRelease
+    this.lockRelease = null
+    release?.()
+  }
+
   private set(leader: boolean) {
     if (this.leader === leader) return
     this.leader = leader
+    if (!leader) this.releaseLock()
     this.opts.onChange(leader)
   }
 }

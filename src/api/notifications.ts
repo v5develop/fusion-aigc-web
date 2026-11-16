@@ -18,7 +18,7 @@ export interface INotification {
   expireTime: string | null
   read: boolean
   readTime: string | null
-  /** 可选站内跳转（如 /video/replicate?job=xxx）；旧后端没有 */
+  /** 可选站内跳转（如 /local-life/video-replicate?job=xxx）；旧后端没有 */
   link?: string | null
   bizType?: string | null
   bizId?: string | number | null

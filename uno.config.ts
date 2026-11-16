@@ -163,7 +163,7 @@ export default defineConfig({
       surface3: c('surface3'),
       sunken: c('sunken'),
       overlay: c('overlay'),
-      plate: { top: c('plate-top'), bottom: c('plate-bottom') },
+      plate: { top: c('plate-top'), bottom: c('plate-bottom'), edge: c('plate-edge') },
       'upload-bottom': c('upload-bottom'),
       'upload-hover-bottom': c('upload-hover-bottom'),
       'sunk-bottom': c('sunk-bottom'),
