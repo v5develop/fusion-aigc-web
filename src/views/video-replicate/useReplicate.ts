@@ -114,6 +114,16 @@ export function useReplicate() {
     }
   }
 
+  function readVideoMetaUrl(url: string): Promise<number> {
+    return new Promise((resolve) => {
+      const v = document.createElement('video')
+      v.preload = 'metadata'
+      v.onloadedmetadata = () => resolve(v.duration || 0)
+      v.onerror = () => resolve(0)
+      v.src = url
+    })
+  }
+
   function readVideoMeta(file: File): Promise<number> {
     return new Promise((resolve) => {
       const v = document.createElement('video')
@@ -178,6 +188,28 @@ export function useReplicate() {
     }
   }
 
+  /** 从资产库选视频：时长用 metadata 读（资产没有时长字段），其余校验与上传路径一致；不再上传，地址直接用资产的 */
+  async function pickSourceAsset(url: string, name: string) {
+    source.error = ''
+    source.notice = ''
+    const dur = await readVideoMetaUrl(url)
+    const maxSec = limits.value?.maxDurationSec ?? 80
+    if (dur > maxSec) {
+      const m = Math.floor(dur / 60)
+      const s = Math.round(dur % 60)
+      source.error = `这条视频有 ${m ? `${m} 分 ` : ''}${s} 秒，单次最长支持 ${maxSec} 秒。可以换一段更短的视频`
+      return
+    }
+    const minGen = limits.value?.specMinSec ?? 4
+    if (dur > 0 && dur < minGen) {
+      source.notice = `原视频只有 ${Math.round(dur)} 秒，生成最短按 ${minGen} 秒计，会比原片多 ${Math.round(minGen - dur)} 秒`
+    }
+    source.name = name
+    source.durationSec = dur
+    source.sizeMb = 0
+    source.url = url
+  }
+
   function clearSource() {
     source.name = ''
     source.url = ''
@@ -205,6 +237,12 @@ export function useReplicate() {
     } finally {
       slotBusy[k] = false
     }
+  }
+
+  /** 从资产库选图：资产地址直接作为参考图（不重新上传） */
+  function pickSlotAsset(k: SlotKey, url: string, name: string) {
+    slotError[k] = ''
+    slots[k] = { url, name }
   }
 
   function clearSlot(k: SlotKey) {
@@ -1207,6 +1245,8 @@ export function useReplicate() {
     pickVideo,
     clearSource,
     pickSlotImage,
+    pickSlotAsset,
+    pickSourceAsset,
     clearSlot,
     analysis,
     analysisError,

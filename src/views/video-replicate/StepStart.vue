@@ -5,6 +5,7 @@
  * 「换成我的素材做同款」用示例出你自己的方案。从「我的方案」来但原片已不在时，顶部提示重新上传原片（方案设置保留）。
  */
 import { computed, ref } from 'vue'
+import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { SLOTS, mm, type SlotKey } from './constants.ts'
 import type { useReplicate } from './useReplicate.ts'
 
@@ -30,6 +31,24 @@ function onSlot(k: SlotKey, e: Event) {
   const f = (e.target as HTMLInputElement).files?.[0]
   if (f) void rep.pickSlotImage(k, f)
   ;(e.target as HTMLInputElement).value = ''
+}
+/** 资产库选图 / 选视频：与上传同一套校验，地址直接用资产的 */
+const assetVideoOpen = ref(false)
+const assetImageOpen = ref(false)
+const assetSlot = ref<SlotKey | null>(null)
+function openSlotAsset(k: SlotKey) {
+  assetSlot.value = k
+  assetImageOpen.value = true
+}
+function onAssetVideo(urls: string[]) {
+  const u = urls[0]
+  if (u) void rep.pickSourceAsset(u, '资产库视频')
+}
+function onAssetSlot(urls: string[]) {
+  const u = urls[0]
+  const k = assetSlot.value
+  if (!u || !k) return
+  rep.pickSlotAsset(k, u, SLOTS.find((s) => s.key === k)?.label ?? '图片')
 }
 
 const maxSec = () => rep.limits.value?.maxDurationSec ?? 80
@@ -183,6 +202,7 @@ const maxMb = () => 300 // Go 的 limits 没有大小上限，沿用体验文档
           </span>
         </button>
         <input ref="fileEl" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" class="hidden" @change="onFile" />
+        <button type="button" class="sx-soft-btn mt-8px self-start" @click="assetVideoOpen = true">从资产库添加</button>
       </template>
 
       <div v-else class="flex items-center gap-12px rounded-14px bg-surface2 p-10px">
@@ -233,6 +253,7 @@ const maxMb = () => 300 // Go 的 limits 没有大小上限，沿用体验文档
           <b class="text-13px font-600 text-ink">{{ s.label }}</b>
           <small class="text-11px leading-16px text-placeholder">{{ s.hint }}</small>
           <button v-if="rep.slots[s.key]" type="button" class="sx-soft-btn self-start" @click="rep.clearSlot(s.key)">移除</button>
+          <button type="button" class="sx-soft-btn self-start" :disabled="rep.slotBusy[s.key]" @click="openSlotAsset(s.key)">从资产库添加</button>
           <small v-if="rep.slotError[s.key]" class="text-11px text-danger" role="alert">{{ rep.slotError[s.key] }}</small>
         </div>
       </div>
@@ -248,6 +269,8 @@ const maxMb = () => 300 // Go 的 limits 没有大小上限，沿用体验文档
       </div>
       <p class="m-0 mt-8px text-11px leading-16px text-placeholder">视频里的文字不是 AI 画的，会在做好之后清晰地加上去，也可以随时再改。</p>
     </section>
+    <AssetPickerModal v-model:show="assetVideoOpen" :limit="1" media="video" @select="onAssetVideo" />
+    <AssetPickerModal v-model:show="assetImageOpen" :limit="1" media="image" @select="onAssetSlot" />
 
     <div class="flex flex-wrap items-center justify-end gap-12px">
       <span class="text-12px text-muted">分析免费，不扣点数；只分析一次，之后改方案不用再等</span>

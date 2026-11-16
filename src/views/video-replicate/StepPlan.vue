@@ -9,7 +9,8 @@ import { NModal } from 'naive-ui'
 import { CONFIRM_THRESHOLD_POINTS } from '@/api/replicate.ts'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { hasBillingPage, openBillingPage } from '@/utils/billing.ts'
-import { DIM_SLOT, INTENTS, fmtPts, mm, type SlotKey } from './constants.ts'
+import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
+import { DIM_SLOT, INTENTS, SLOTS, fmtPts, mm, type SlotKey } from './constants.ts'
 import type { useReplicate } from './useReplicate.ts'
 
 const props = defineProps<{ rep: ReturnType<typeof useReplicate> }>()
@@ -66,6 +67,18 @@ const buttonText = computed(() => {
 
 // 行内放图（从示例 / 我的方案进来时没经过上一步的放图区）
 const slotInputs = ref<Partial<Record<SlotKey, HTMLInputElement>>>({})
+const assetImageOpen = ref(false)
+const assetSlot = ref<SlotKey | null>(null)
+function openSlotAsset(k: SlotKey) {
+  assetSlot.value = k
+  assetImageOpen.value = true
+}
+function onAssetSlot(urls: string[]) {
+  const u = urls[0]
+  const k = assetSlot.value
+  if (!u || !k) return
+  rep.pickSlotAsset(k, u, SLOTS.find((s) => s.key === k)?.label ?? '图片')
+}
 function onSlot(k: SlotKey, e: Event) {
   const f = (e.target as HTMLInputElement).files?.[0]
   if (f) void rep.pickSlotImage(k, f)
@@ -203,6 +216,14 @@ function doConfirm() {
               </button>
             </template>
             <small v-if="rep.slotError[DIM_SLOT[d.key]!]" class="text-11px text-danger" role="alert">{{ rep.slotError[DIM_SLOT[d.key]!] }}</small>
+            <button
+              type="button"
+              class="sx-soft-btn"
+              :disabled="rep.slotBusy[DIM_SLOT[d.key]!]"
+              @click="openSlotAsset(DIM_SLOT[d.key]!)"
+            >
+              从资产库添加
+            </button>
             <input
               :ref="(el) => el && (slotInputs[DIM_SLOT[d.key]!] = el as HTMLInputElement)"
               type="file"
@@ -411,5 +432,6 @@ function doConfirm() {
         </div>
       </div>
     </NModal>
+    <AssetPickerModal v-model:show="assetImageOpen" :limit="1" media="image" @select="onAssetSlot" />
   </div>
 </template>
