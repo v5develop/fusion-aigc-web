@@ -17,7 +17,11 @@ import type { IRecentAsset } from '@/utils/asset-recent.ts'
 
 const show = defineModel<boolean>('show', { required: true })
 
-const { limit = 1, media = 'image', defaultKind = '' } = defineProps<{
+const {
+  limit = 1,
+  media = 'image',
+  defaultKind = '',
+} = defineProps<{
   /** 本次最多还能选几张 */
   limit?: number
   /** 选哪类资产；不传 = 图片（原有行为） */
@@ -64,12 +68,29 @@ function dropRecent(url: string) {
   writeRecent(recent.value)
 }
 
+/** 分类 kind 筛选：all = 全部；打开时取 defaultKind */
 const kind = ref('all')
-/** 用途 / 分类 kind 筛选（ASSET_KINDS）：空 = 全部；打开时取 defaultKind */
-const usageKind = ref('')
 const tagList = ref<IAssetLibTag[]>([])
 const pickedTags = ref<string[]>([])
-const kindChips = computed(() => ASSET_KINDS.filter((k) => (media === 'video' ? k.group === 'video' || k.value === 'reference' || k.value === 'other' : k.group !== 'video')))
+const kindChips = computed(() =>
+  ASSET_KINDS.filter((k) =>
+    media === 'video' ? k.group === 'video' || k.value === 'reference' || k.value === 'other' : k.group !== 'video',
+  ),
+)
+/**
+ * 一排分类：接口给的带数量分类为准（含「未分类」）；数量为 0 的不出（选中的除外），图片弹窗不出视频分类。
+ * 原来写死的分类排与接口分类排各管一个 kind、上面那排还压住下面那排，两排重复且数量对不上。接口没回来时退回写死的分类（不带数）。
+ */
+const categoryChips = computed<{ key: string; label: string; count?: number }[]>(() => {
+  if (!categories.value.length) {
+    return [
+      { key: 'all', label: '全部' },
+      ...kindChips.value.map((k) => ({ key: k.value as string, label: k.label as string })),
+    ]
+  }
+  // 接口按 media 计数，另一媒体的分类数量恒为 0，按数量过滤即可
+  return categories.value.filter((c) => c.key === 'all' || c.key === kind.value || c.count > 0)
+})
 function toggleTagFilter(name: string) {
   const i = pickedTags.value.indexOf(name)
   if (i >= 0) pickedTags.value.splice(i, 1)
@@ -78,7 +99,10 @@ function toggleTagFilter(name: string) {
 async function fetchTags() {
   try {
     const res = await assetLibTags()
-    tagList.value = (res.data?.items ?? []).filter((t) => t.assetCount > 0).sort((a, b) => b.assetCount - a.assetCount).slice(0, 16)
+    tagList.value = (res.data?.items ?? [])
+      .filter((t) => t.assetCount > 0)
+      .sort((a, b) => b.assetCount - a.assetCount)
+      .slice(0, 16)
   } catch {
     tagList.value = []
   }
@@ -120,7 +144,7 @@ async function fetchPage(reset: boolean) {
   }
   try {
     const res = await assetLibList({
-      kind: usageKind.value || (kind.value === 'all' ? undefined : kind.value),
+      kind: kind.value === 'all' ? undefined : kind.value,
       tags: pickedTags.value.length > 1 ? pickedTags.value.join(',') : undefined,
       tag: pickedTags.value.length === 1 ? pickedTags.value[0] : undefined,
       source: source.value || undefined,
@@ -215,8 +239,7 @@ watch(
   show,
   (open) => {
     if (!open) return
-    kind.value = 'all'
-    usageKind.value = defaultKind
+    kind.value = defaultKind || 'all'
     pickedTags.value = []
     void fetchTags()
     source.value = ''
@@ -235,9 +258,13 @@ watch(source, () => {
   void fetchCategories()
   reload()
 })
-watch([kind, usageKind, pickedTags], () => {
-  if (show.value) reload()
-}, { deep: true })
+watch(
+  [kind, pickedTags],
+  () => {
+    if (show.value) reload()
+  },
+  { deep: true },
+)
 useDebounce({ data: keyword, callback: reload, delay: 300 })
 </script>
 
@@ -282,26 +309,23 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
       <div v-if="!recentMode" class="flex gap-6px flex-wrap items-center" role="group" aria-label="资产分类">
         <span class="text-11px text-placeholder">分类</span>
         <button
+          v-for="c in categoryChips"
+          :key="c.key"
           type="button"
           class="ll-pill !min-h-28px !text-12px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
-          :class="{ 'll-pill-active': !usageKind }"
-          @click="usageKind = ''"
+          :class="{ 'll-pill-active': kind === c.key }"
+          :aria-pressed="kind === c.key"
+          @click="kind = kind === c.key && c.key !== 'all' ? 'all' : c.key"
         >
-          全部
-        </button>
-        <button
-          v-for="k in kindChips"
-          :key="k.value"
-          type="button"
-          class="ll-pill !min-h-28px !text-12px outline-none focus-visible:(outline-2 outline-solid outline-violet outline-offset-2)"
-          :class="{ 'll-pill-active': usageKind === k.value }"
-          :aria-pressed="usageKind === k.value"
-          @click="usageKind = usageKind === k.value ? '' : k.value"
-        >
-          {{ k.label }}
+          {{ c.label }}<span v-if="c.count != null" class="ml-4px tabular-nums opacity-70">{{ c.count }}</span>
         </button>
       </div>
-      <div v-if="!recentMode && tagList.length" class="flex gap-6px flex-wrap items-center" role="group" aria-label="标签筛选">
+      <div
+        v-if="!recentMode && tagList.length"
+        class="flex gap-6px flex-wrap items-center"
+        role="group"
+        aria-label="标签筛选"
+      >
         <span class="text-11px text-placeholder">标签</span>
         <button
           v-for="t in tagList"
@@ -315,17 +339,6 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
           {{ t.name }} {{ t.assetCount }}
         </button>
       </div>
-      <div v-if="categories.length && !recentMode" class="flex gap-8px flex-wrap">
-        <span
-          v-for="c in categories"
-          :key="c.key"
-          class="ll-pill !min-h-32px !text-13px"
-          :class="{ 'll-pill-active': kind === c.key }"
-          @click="kind = c.key"
-          >{{ c.label }} {{ c.count }}</span
-        >
-      </div>
-
       <div v-if="recentMode" class="max-h-[min(52vh,480px)] min-h-200px overflow-y-auto">
         <div v-if="!recentShown.length" class="py-40px text-center text-12px text-placeholder">
           还没有最近使用的{{ mediaWord }}，选过之后会出现在这里
@@ -375,7 +388,12 @@ useDebounce({ data: keyword, callback: reload, delay: 300 })
         </div>
         <div v-else-if="!loading && !items.length" class="py-40px text-center text-12px text-placeholder">
           没有匹配的{{ mediaWord }}资产，换个分类或关键词试试
-          <span v-if="usageKind || pickedTags.length" class="ll-link ml-6px !text-13px" @click="((usageKind = ''), (pickedTags = []))">查看全部</span>
+          <span
+            v-if="kind !== 'all' || pickedTags.length"
+            class="ll-link ml-6px !text-13px"
+            @click="((kind = 'all'), (pickedTags = []))"
+            >查看全部</span
+          >
         </div>
         <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-10px">
           <button
