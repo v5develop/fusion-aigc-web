@@ -3113,7 +3113,7 @@ useFileDropPaste(stageRef, {
         <!-- 舞台：原型 .wf-canvas 底色 #f5f5f5；框选框藤紫描边 + 8% 浅底；非法连线红色虚线 -->
         <div
           ref="stageRef"
-          class="relative flex-1 min-w-0 overflow-hidden bg-[#f5f5f5] [[data-theme=dark]_&]:bg-page"
+          class="xq-canvas-stage relative flex-1 min-w-0 overflow-hidden bg-[#f5f5f5] [[data-theme=dark]_&]:bg-page"
           @dblclick="onStageDblClick"
           @dragover="onStageDragOver"
           @dragleave="onStageDragLeave"
@@ -3860,6 +3860,17 @@ useFileDropPaste(stageRef, {
   不覆盖操作条自身的 -translate-x-50% 居中。减少动态效果时由 motion-reduce:animate-none 关掉。
 -->
 <style>
+/*
+ * 画布深色文字提亮一档（2026-11-16）：舞台上节点正文 ink-2、辅助字 muted 各提约 9 级亮度，只作用于画布舞台，
+ * 全站深色令牌（src/theme/tokens.ts）不动；ink 主标题与 placeholder 不变，避免刺眼。
+ */
+[data-theme='dark'] .xq-canvas-stage {
+  --xq-ink-2: #c2c6cf;
+  --xq-ink-2-rgb: 194 198 207;
+  --xq-muted: #9da2ad;
+  --xq-muted-rgb: 157 162 173;
+}
+
 /*
  * 画布浮层的行样式（UnoCSS 写起来重复，落全局类；画布页专用命名，不与工具页冲突）：
  * - ctx-*：右键 / 节点「…」菜单（原型 .wf-node-menu：行 36h gap 10 px10 r6、14px 图标；组 4×6；分隔内缩 14）
