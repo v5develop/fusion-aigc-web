@@ -3864,6 +3864,16 @@ useFileDropPaste(stageRef, {
  * 画布深色文字提亮一档（2026-11-16）：舞台上节点正文 ink-2、辅助字 muted 各提约 9 级亮度，只作用于画布舞台，
  * 全站深色令牌（src/theme/tokens.ts）不动；ink 主标题与 placeholder 不变，避免刺眼。
  */
+/*
+ * 提示词节点输入框（用户最常读写的文本，2026-11-16）：比节点正文 ink-2 再清楚一档，但不到标题 ink，避免刺眼。
+ * 浅色往深走（#4b5563 → #374151），深色往亮走（#c2c6cf → #d3d6dd）；只给 EditorTextNode 的 textarea 用。
+ */
+.xq-canvas-stage {
+  --xq-canvas-prompt: #374151;
+}
+[data-theme='dark'] .xq-canvas-stage {
+  --xq-canvas-prompt: #d3d6dd;
+}
 [data-theme='dark'] .xq-canvas-stage {
   --xq-ink-2: #c2c6cf;
   --xq-ink-2-rgb: 194 198 207;

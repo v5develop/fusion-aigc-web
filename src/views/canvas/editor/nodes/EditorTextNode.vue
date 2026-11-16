@@ -81,7 +81,7 @@ const sourceRefs = computed(() => {
     <div class="flex flex-1 flex-col gap-8px px-12px pt-4px pb-20px">
       <textarea
         v-model="text"
-        class="block flex-1 w-full min-h-40px overflow-y-auto p-0 border-none bg-transparent text-ink-2 text-13px leading-[1.6] resize-none outline-none placeholder:text-placeholder nodrag nowheel"
+        class="block flex-1 w-full min-h-40px overflow-y-auto p-0 border-none bg-transparent text-[color:var(--xq-canvas-prompt,var(--xq-ink-2))] text-13px leading-[1.6] resize-none outline-none placeholder:text-placeholder nodrag nowheel"
         :maxlength="TEXT_MAX"
         placeholder="输入提示词…"
         :aria-label="`${data.title || '文字'} 提示词`"
