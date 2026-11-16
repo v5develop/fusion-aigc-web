@@ -98,8 +98,6 @@ const videoHead = group('视频处理', [
   ['ai-video-translate', '视频翻译', '配音翻译'],
   ['ai-video-generator', '视频生成', '文生视频'],
   ['ai-video-clone', '视频复刻', '参照原片生成'],
-  // 注册表没收：Go 原生的视频做同款独立页（/local-life/video-replicate），借视频复刻的图标
-  ['video-replicate', '视频做同款', '换成你的人和商品', '/local-life/video-replicate', 'ai-video-clone'],
   ['ai-voiceover', '数字人口播', '文案出口播'],
 ])
 

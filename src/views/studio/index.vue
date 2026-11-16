@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 工作室首页（还原 v1.0 原型 StudioView）：
- * 页头 + 「全部 / 素材生成 / 一键成片」分组标签 + 本地生活 9 个重点功能卡；
+ * 页头 + 「全部 / 素材生成 / 一键成片」分组标签 + 本地生活重点功能卡；
  * 「全部」下另列商拍工作室三件套（换装 / 姿态 / 图片生成），保留原有入口。
  * 名称、描述、分组、卡片灰字取自原型 src/data/studio-features.ts；
  * 跳转对到 src/router/local-life 的现有页面，没有对应页面的卡片置灰为「即将开放」。
@@ -89,6 +89,15 @@ const localLifeTools: (ToolCard & { group: ToolGroup })[] = [
     tag: '视频',
     icon: 'repeat',
     path: '/local-life/action-transfer',
+  },
+  {
+    key: 'video-replicate',
+    group: 'asset',
+    name: '视频做同款',
+    desc: '上传一条爆款视频，换成你的人和商品，三步出片',
+    tag: '视频',
+    icon: 'scan',
+    path: '/local-life/video-replicate',
   },
   {
     key: 'replicate',
