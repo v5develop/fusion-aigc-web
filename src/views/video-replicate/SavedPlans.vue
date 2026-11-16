@@ -9,6 +9,8 @@ import { useDialog } from 'naive-ui'
 import {
   replicateDeleteSavedPlan,
   replicateErrorText,
+  replicateNotReady,
+  REPLICATE_OFF_TEXT,
   replicateListSavedPlans,
   replicateSavePlan,
   type ReplicateSavedPlan,
@@ -33,6 +35,8 @@ const loading = ref(true)
 const loadingMore = ref(false)
 const failed = ref(false)
 const errText = ref('')
+/** 功能没开（读接口 7003）：不算加载失败、不给重试，只说暂未开放 */
+const off = ref(false)
 /** 卡片上的就地提示（用它做 / 删除 / 改名失败） */
 const cardError = ref<Record<number, string>>({})
 const deleting = ref<number | null>(null)
@@ -47,6 +51,7 @@ async function load(next = 1) {
   if (next === 1) loading.value = true
   else loadingMore.value = true
   failed.value = false
+  off.value = false
   try {
     const res = await replicateListSavedPlans({ page: next, size: SIZE })
     const d = res.data
@@ -56,6 +61,10 @@ async function load(next = 1) {
     limit.value = d?.limit || 50
     page.value = next
   } catch (err) {
+    if (next === 1 && replicateNotReady(err)) {
+      off.value = true
+      return
+    }
     failed.value = true
     errText.value = netOr(err, '加载失败，点这里重试', '加载失败，点这里重试')
   } finally {
@@ -114,7 +123,10 @@ async function saveName(sp: ReplicateSavedPlan) {
     items.value = items.value.map((x) => (x.id === sp.id ? { ...x, name } : x))
     renaming.value = null
   } catch (err) {
-    cardError.value = { ...cardError.value, [sp.id]: netOr(err, '网络不稳，名字没改成，再试一次', '名字没改成，再试一次') }
+    cardError.value = {
+      ...cardError.value,
+      [sp.id]: netOr(err, '网络不稳，名字没改成，再试一次', '名字没改成，再试一次'),
+    }
   } finally {
     renameBusy.value = false
   }
@@ -125,13 +137,16 @@ async function saveName(sp: ReplicateSavedPlan) {
   <section class="vr-panel">
     <div class="flex items-baseline gap-8px">
       <h3 class="vr-h3 !m-0">我的方案</h3>
-      <span v-if="!loading && items.length" class="text-11px tabular-nums text-placeholder">{{ total }}/{{ limit }}</span>
+      <span v-if="!loading && items.length" class="text-11px tabular-nums text-placeholder"
+        >{{ total }}/{{ limit }}</span
+      >
     </div>
     <p class="vr-sub !mt-4px">保存过的改法，换一批图或一条新视频，点一下就能再做一条</p>
 
     <div v-if="loading" class="flex flex-col gap-8px" aria-busy="true">
       <span v-for="i in 3" :key="i" class="vr-pulse block h-76px rounded-12px bg-surface3" />
     </div>
+    <PageEmpty v-else-if="off" compact :text="REPLICATE_OFF_TEXT" />
     <PageLoadError v-else-if="failed && !items.length" compact retryable :subtitle="errText" @retry="load(1)" />
     <PageEmpty
       v-else-if="!items.length"
@@ -141,41 +156,101 @@ async function saveName(sp: ReplicateSavedPlan) {
     />
     <template v-else>
       <ul class="m-0 flex list-none flex-col gap-8px p-0">
-        <li v-for="sp in items" :key="sp.id" class="rounded-12px border border-solid border-line bg-surface px-12px py-10px">
+        <li
+          v-for="sp in items"
+          :key="sp.id"
+          class="rounded-12px border border-solid border-line bg-surface px-12px py-10px"
+        >
           <div class="flex items-center gap-12px max-sm:flex-wrap">
             <span class="relative block h-56px w-40px flex-none overflow-hidden rounded-6px bg-surface3">
-              <img v-if="sp.sourceThumbUrl && sp.sourceAvailable" :src="sp.sourceThumbUrl" alt="" loading="lazy" class="h-full w-full object-cover" aria-hidden="true" />
+              <img
+                v-if="sp.sourceThumbUrl && sp.sourceAvailable"
+                :src="sp.sourceThumbUrl"
+                alt=""
+                loading="lazy"
+                class="h-full w-full object-cover"
+                aria-hidden="true"
+              />
             </span>
             <div class="min-w-0 flex-1">
               <form v-if="renaming === sp.id" class="flex items-center gap-6px" @submit.prevent="saveName(sp)">
-                <input v-model="nameDraft" maxlength="40" aria-label="方案名" class="vr-input !h-30px min-w-0 flex-1 !text-12px" />
-                <button type="submit" class="sx-soft-btn" :disabled="renameBusy">{{ renameBusy ? '保存中…' : '保存' }}</button>
+                <input
+                  v-model="nameDraft"
+                  maxlength="40"
+                  aria-label="方案名"
+                  class="vr-input !h-30px min-w-0 flex-1 !text-12px"
+                />
+                <button type="submit" class="sx-soft-btn" :disabled="renameBusy">
+                  {{ renameBusy ? '保存中…' : '保存' }}
+                </button>
                 <button type="button" class="sx-soft-btn" @click="renaming = null">取消</button>
               </form>
               <b v-else class="block truncate text-13px font-600 text-ink">{{ sp.name }}</b>
               <div class="mt-4px flex flex-wrap items-center gap-4px">
-                <span v-if="!sp.sourceAvailable" class="inline-flex h-18px items-center rounded-4px bg-surface3 px-6px text-10px text-warning">原片已不在</span>
-                <span v-if="sp.sampleId" class="inline-flex h-18px items-center rounded-4px bg-surface3 px-6px text-10px text-muted">示例视频</span>
-                <span v-for="l in sp.labels" :key="l" class="inline-flex h-18px items-center rounded-9px bg-violet-soft px-8px text-10px text-violet-ink">{{ l }}</span>
+                <span
+                  v-if="!sp.sourceAvailable"
+                  class="inline-flex h-18px items-center rounded-4px bg-surface3 px-6px text-10px text-warning"
+                  >原片已不在</span
+                >
+                <span
+                  v-if="sp.sampleId"
+                  class="inline-flex h-18px items-center rounded-4px bg-surface3 px-6px text-10px text-muted"
+                  >示例视频</span
+                >
+                <span
+                  v-for="l in sp.labels"
+                  :key="l"
+                  class="inline-flex h-18px items-center rounded-9px bg-violet-soft px-8px text-10px text-violet-ink"
+                  >{{ l }}</span
+                >
               </div>
               <small class="mt-2px block text-11px text-muted">
-                {{ sp.lastUsedAt ? `上次使用 ${formatShortTime(sp.lastUsedAt)}` : `保存于 ${formatShortTime(sp.createdAt)}` }}{{ sp.useCount ? ` · 用过 ${sp.useCount} 次` : '' }}
+                {{
+                  sp.lastUsedAt
+                    ? `上次使用 ${formatShortTime(sp.lastUsedAt)}`
+                    : `保存于 ${formatShortTime(sp.createdAt)}`
+                }}{{ sp.useCount ? ` · 用过 ${sp.useCount} 次` : '' }}
               </small>
             </div>
             <div class="flex flex-none items-center gap-6px">
-              <button type="button" class="sx-soft-btn" :class="FOCUS" :disabled="renaming === sp.id" @click="startRename(sp)">重命名</button>
-              <button type="button" class="sx-soft-btn" :class="FOCUS" :disabled="deleting === sp.id" @click="askDelete(sp)">{{ deleting === sp.id ? '删除中…' : '删除' }}</button>
-              <button type="button" class="sx-btn-primary" :disabled="rep.reuseBusy.value != null || rep.notReady.value" @click="use(sp)">
+              <button
+                type="button"
+                class="sx-soft-btn"
+                :class="FOCUS"
+                :disabled="renaming === sp.id"
+                @click="startRename(sp)"
+              >
+                重命名
+              </button>
+              <button
+                type="button"
+                class="sx-soft-btn"
+                :class="FOCUS"
+                :disabled="deleting === sp.id"
+                @click="askDelete(sp)"
+              >
+                {{ deleting === sp.id ? '删除中…' : '删除' }}
+              </button>
+              <button
+                type="button"
+                class="sx-btn-primary"
+                :disabled="rep.reuseBusy.value != null || rep.notReady.value"
+                @click="use(sp)"
+              >
                 {{ rep.reuseBusy.value === sp.id ? '正在打开…' : '用它做一条' }}
               </button>
             </div>
           </div>
-          <p v-if="!sp.sourceAvailable" class="m-0 mt-6px text-11px leading-16px text-placeholder">这个方案的原片已经不在了。需要重新上传原片（方案设置会保留）</p>
+          <p v-if="!sp.sourceAvailable" class="m-0 mt-6px text-11px leading-16px text-placeholder">
+            这个方案的原片已经不在了。需要重新上传原片（方案设置会保留）
+          </p>
           <p v-if="cardError[sp.id]" class="m-0 mt-6px text-12px text-danger" role="alert">{{ cardError[sp.id] }}</p>
         </li>
       </ul>
       <div v-if="items.length < total" class="mt-10px flex justify-center">
-        <button type="button" class="sx-btn" :disabled="loadingMore" @click="load(page + 1)">{{ loadingMore ? '加载中…' : '加载更多' }}</button>
+        <button type="button" class="sx-btn" :disabled="loadingMore" @click="load(page + 1)">
+          {{ loadingMore ? '加载中…' : '加载更多' }}
+        </button>
       </div>
       <p v-if="failed" class="m-0 mt-8px text-12px text-warning" role="status">{{ errText }}</p>
     </template>

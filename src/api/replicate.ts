@@ -629,7 +629,9 @@ export async function replicatePatchAnnotations(no: string, p: ReplicatePatchAnn
 /** POST /plans/{no}/save：保存为我的方案（name ≤40 字，不传由后端生成）；同一张方案只存一份，再存只改名（created=false） */
 export async function replicateSavePlan(no: string, p: { name?: string } = {}) {
   if (isMock('replicate')) return (await mock()).savePlan(no, p)
-  return write(`save:${no}:${p.name ?? ''}`, (h) => postQuiet<ReplicateSavedPlan>(`/api/v1/replicate/plans/${enc(no)}/save`, p, h))
+  return write(`save:${no}:${p.name ?? ''}`, (h) =>
+    postQuiet<ReplicateSavedPlan>(`/api/v1/replicate/plans/${enc(no)}/save`, p, h),
+  )
 }
 
 /** GET /saved-plans?page=&size=：我的方案（page 从 1 起，size 默认 20、最大 50；limit = 每人上限） */
@@ -650,7 +652,9 @@ export async function replicateDeleteSavedPlan(id: number) {
  */
 export async function replicateReuseSavedPlan(id: number, p: ReplicateReuseRequest = {}) {
   if (isMock('replicate')) return (await mock()).reuseSavedPlan(id, p)
-  return write(`reuse:${id}:${JSON.stringify(p)}`, (h) => postQuiet<ReplicatePlan>(`/api/v1/replicate/saved-plans/${id}/reuse`, p, h))
+  return write(`reuse:${id}:${JSON.stringify(p)}`, (h) =>
+    postQuiet<ReplicatePlan>(`/api/v1/replicate/saved-plans/${id}/reuse`, p, h),
+  )
 }
 
 /** GET /samples?industry=：示例列表（industry 为行业 code，空 = 全部；非空返回该行业 + 通用示例） */
@@ -675,9 +679,14 @@ export async function replicateQuote(no: string) {
  * POST /plans/{no}/confirm：唯一出片入口，返回 JobView（不是 `{job}`）。
  * `expectedPoints` = 页面上展示的本次预留点数；与后端重算不一致 → 409 QUOTE_CHANGED（不动钱）。
  */
-export async function replicateConfirm(no: string, p: { planHash: string; stage: 'first' | 'all'; expectedPoints: number }) {
+export async function replicateConfirm(
+  no: string,
+  p: { planHash: string; stage: 'first' | 'all'; expectedPoints: number },
+) {
   if (isMock('replicate')) return (await mock()).confirm(no, p)
-  return write(`confirm:${no}:${p.planHash}:${p.stage}`, (h) => postQuiet<ReplicateJob>(`/api/v1/replicate/plans/${enc(no)}/confirm`, p, h))
+  return write(`confirm:${no}:${p.planHash}:${p.stage}`, (h) =>
+    postQuiet<ReplicateJob>(`/api/v1/replicate/plans/${enc(no)}/confirm`, p, h),
+  )
 }
 
 export async function replicateGetJob(id: number | string) {
@@ -694,7 +703,9 @@ export async function replicateListJobs(p: { page: number; size: number }) {
 /** POST /jobs/{id}/continue：第 1 段满意后做剩下的（同 planHash 幂等） */
 export async function replicateContinue(id: number | string, p: { planHash: string; expectedPoints: number }) {
   if (isMock('replicate')) return (await mock()).continueJob(String(id))
-  return write(`continue:${id}:${p.planHash}`, (h) => postQuiet<ReplicateJob>(`/api/v1/replicate/jobs/${enc(String(id))}/continue`, p, h))
+  return write(`continue:${id}:${p.planHash}`, (h) =>
+    postQuiet<ReplicateJob>(`/api/v1/replicate/jobs/${enc(String(id))}/continue`, p, h),
+  )
 }
 
 /** POST /jobs/{id}/stop：不继续了，只交付第 1 段（没有「取消整条」接口） */
@@ -704,7 +715,9 @@ export async function replicateStop(id: number | string) {
 }
 
 /** GET /models：可选出片模型（带 analysisNo / sampleId 时按这条视频的分段判断时长并给预计点数） */
-export async function replicateModels(p: { analysisNo?: string; sampleId?: number; resolution?: string; aspectRatio?: string } = {}) {
+export async function replicateModels(
+  p: { analysisNo?: string; sampleId?: number; resolution?: string; aspectRatio?: string } = {},
+) {
   if (isMock('replicate')) return (await mock()).models()
   const q: Record<string, string | number> = {}
   if (p.analysisNo) q.analysisNo = p.analysisNo
@@ -717,13 +730,17 @@ export async function replicateModels(p: { analysisNo?: string; sampleId?: numbe
 /** POST /jobs/{id}/cancel-rest：不做剩下的段（没开始的段退点，在途段做完；幂等，返回新的 JobView） */
 export async function replicateCancelRest(id: number | string) {
   if (isMock('replicate')) return (await mock()).cancelRest(String(id))
-  return write(`cancel-rest:${id}`, (h) => postQuiet<ReplicateJob>(`/api/v1/replicate/jobs/${enc(String(id))}/cancel-rest`, {}, h))
+  return write(`cancel-rest:${id}`, (h) =>
+    postQuiet<ReplicateJob>(`/api/v1/replicate/jobs/${enc(String(id))}/cancel-rest`, {}, h),
+  )
 }
 
 /** POST /jobs/{id}/segments/{k}/redo：重做失败的一段（每段 3 次、每任务 10 次） */
 export async function replicateRedoSegment(id: number | string, k: number, p: { expectedPoints: number }) {
   if (isMock('replicate')) return (await mock()).redo(String(id), k)
-  return write(`redo:${id}:${k}`, (h) => postQuiet<ReplicateJob>(`/api/v1/replicate/jobs/${enc(String(id))}/segments/${k}/redo`, p, h))
+  return write(`redo:${id}:${k}`, (h) =>
+    postQuiet<ReplicateJob>(`/api/v1/replicate/jobs/${enc(String(id))}/segments/${k}/redo`, p, h),
+  )
 }
 
 /** PUT /pref：账户偏好「以后直接全部做」（缺 autoContinue → 1002） */
@@ -779,6 +796,12 @@ export function replicateSourceGone(err: unknown): boolean {
   return toApiError(err)?.reason === 'SOURCE_GONE'
 }
 
+/**
+ * 整个功能没开（gateway 配置 Replicate.Enabled=false，模块未装配）时页面上的说法。
+ * 区分依据：读接口（limits / 历史 / 我的方案）也回 7003 只可能是没装配——运行时总开关只拦写接口，那才是「维护中」。
+ */
+export const REPLICATE_OFF_TEXT = '视频做同款暂未开放，开放后即可使用'
+
 /** 功能总开关没开（7003 且是 Go 的固定文案「功能暂未开放」） */
 export function replicateNotReady(err: unknown): boolean {
   const e = toApiError(err)
@@ -794,7 +817,8 @@ export function replicateErrorText(err: unknown, opts: ReplicateErrorOpts = {}):
   const net = opts.write
     ? '没提交成功，没有扣点数。可以直接再点一次，不会重复扣点'
     : '网络异常只影响页面显示，生成仍在进行'
-  if (!e) return opts.fallback ?? (opts.write ? '没成功，没有多扣点数，可以再点一次' : '出了点问题，我们在处理。没有多扣点数')
+  if (!e)
+    return opts.fallback ?? (opts.write ? '没成功，没有多扣点数，可以再点一次' : '出了点问题，我们在处理。没有多扣点数')
   if (e.isNetwork) return net
   const r = e.reason ?? ''
   if (REASON_TEXT[r]) return PREFER_MSG.has(r) && e.message ? e.message : REASON_TEXT[r]!

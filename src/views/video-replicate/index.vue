@@ -6,6 +6,7 @@
  */
 import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { REPLICATE_OFF_TEXT } from '@/api/replicate.ts'
 import HistoryList from './HistoryList.vue'
 import JobView from './JobView.vue'
 import SavedPlans from './SavedPlans.vue'
@@ -62,8 +63,16 @@ const maxSec = computed(() => rep.limits.value?.maxDurationSec ?? 80)
         {{ rep.step.value === 'start' ? '上传一条想做同款的视频' : '视频做同款' }}
       </h1>
       <p class="m-0 mt-6px text-13px leading-20px text-muted">把爆款视频换成你的人和商品，三步出片</p>
-      <p v-if="rep.step.value === 'start'" class="m-0 mt-2px text-11px text-placeholder">MP4 / MOV，最长 {{ maxSec }} 秒，300MB 以内</p>
-      <p v-if="rep.notReady.value" class="m-0 mt-6px rounded-10px bg-surface2 px-12px py-8px text-12px text-ink-2" role="status">视频做同款正在维护，暂时不能提交。已提交的任务不受影响</p>
+      <p v-if="rep.step.value === 'start'" class="m-0 mt-2px text-11px text-placeholder">
+        MP4 / MOV，最长 {{ maxSec }} 秒，300MB 以内
+      </p>
+      <p
+        v-if="rep.notReady.value"
+        class="m-0 mt-6px rounded-10px bg-surface2 px-12px py-8px text-12px text-ink-2"
+        role="status"
+      >
+        {{ REPLICATE_OFF_TEXT }}
+      </p>
       <div class="mt-10px flex gap-8px" role="tablist" aria-label="视频做同款">
         <button
           v-for="t in TABS"
@@ -73,7 +82,9 @@ const maxSec = computed(() => rep.limits.value?.maxDurationSec ?? 80)
           :aria-selected="tab === t.k"
           :class="[
             'h-32px rounded-16px border border-solid px-14px text-12px cursor-pointer select-none',
-            tab === t.k ? 'border-violet-line bg-violet-tint font-600 text-violet-ink' : 'border-soft-line bg-surface text-muted hover:text-ink',
+            tab === t.k
+              ? 'border-violet-line bg-violet-tint font-600 text-violet-ink'
+              : 'border-soft-line bg-surface text-muted hover:text-ink',
             FOCUS,
           ]"
           @click="rep.tab.value = t.k"
@@ -94,7 +105,11 @@ const maxSec = computed(() => rep.limits.value?.maxDurationSec ?? 80)
             <span
               :class="[
                 'grid h-18px w-18px place-items-center rounded-full text-10px font-600',
-                i < Math.min(current, 2) ? 'bg-success text-white' : i === Math.min(current, 2) ? 'bg-violet-solid text-white' : 'bg-surface3 text-placeholder',
+                i < Math.min(current, 2)
+                  ? 'bg-success text-white'
+                  : i === Math.min(current, 2)
+                    ? 'bg-violet-solid text-white'
+                    : 'bg-surface3 text-placeholder',
               ]"
             >
               {{ i < Math.min(current, 2) ? '✓' : i + 1 }}
