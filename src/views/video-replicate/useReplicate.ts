@@ -51,6 +51,8 @@ import {
   type ReplicateSavedPlan,
   type ReplicateTextOverlay,
   type VideoCloneDimKey,
+  REPLICATE_OFF_TEXT,
+  REPLICATE_PAUSED_TEXT,
 } from '@/api/replicate.ts'
 import { DIM_LABEL, DIM_SLOT, INTENTS, MISSING_SLOT_TEXT, SLOTS, type SlotKey } from './constants.ts'
 
@@ -79,8 +81,10 @@ export function useReplicate() {
   /** 页头二级导航：新建 / 历史 / 我的方案 */
   const tab = ref<Tab>('new')
   const limits = ref<ReplicateLimits | null>(null)
-  /** 功能总开关没开（7003「功能暂未开放」）：页面提示维护，不让上传 */
+  /** 不接新提交：总开关关着（limits.enabled=false）或模块没装配（limits 也回 7003）。页头提示、禁用提交入口 */
   const notReady = ref(false)
+  /** 页头那句：总开关关着 = 暂停新提交（历史照常）；模块没装配 = 暂未开放 */
+  const notReadyText = ref(REPLICATE_PAUSED_TEXT)
 
   // ---- 1 原视频与素材 ----
   const source = reactive({
@@ -101,10 +105,12 @@ export function useReplicate() {
     try {
       const res = await replicateLimits()
       limits.value = res.data ?? null
-      notReady.value = false
+      notReady.value = res.data?.enabled === false
+      notReadyText.value = REPLICATE_PAUSED_TEXT
     } catch (err) {
       limits.value = null
       notReady.value = replicateNotReady(err)
+      notReadyText.value = REPLICATE_OFF_TEXT
     }
   }
 
@@ -258,7 +264,9 @@ export function useReplicate() {
       sampleTry.value = res.data ?? null
       if (!res.data) sampleError.value = '示例没打开，再点一次试试'
     } catch (err) {
-      sampleError.value = toApiError(err)?.isNetwork ? '网络不稳，示例没打开，再点一次试试' : replicateErrorText(err, { fallback: '示例没打开，再点一次试试' })
+      sampleError.value = toApiError(err)?.isNetwork
+        ? '网络不稳，示例没打开，再点一次试试'
+        : replicateErrorText(err, { fallback: '示例没打开，再点一次试试' })
     } finally {
       sampleTryBusy.value = null
     }
@@ -686,7 +694,13 @@ export function useReplicate() {
       dims[k] = [e.mode, (e.note ?? '').trim(), rid.startsWith('http') ? '*' : rid]
     }
     const texts = (ann?.texts ?? []).map((t) => [t.kind ?? '', t.text.trim()])
-    return JSON.stringify([ann?.audio || 'regenerate', Object.keys(dims).sort().map((k) => [k, dims[k]]), texts])
+    return JSON.stringify([
+      ann?.audio || 'regenerate',
+      Object.keys(dims)
+        .sort()
+        .map((k) => [k, dims[k]]),
+      texts,
+    ])
   }
 
   /**
@@ -703,9 +717,16 @@ export function useReplicate() {
       const differs = inputCanon(buildAnnotations(), localRids) !== inputCanon(latest.annotations, latestRids)
       if (differs && latest.annotations) {
         suppressWatch = true
-        const keep = new Map(Object.entries(slots).filter(([, v]) => v?.rid).map(([k, v]) => [v!.rid, { k, url: v!.url }]))
+        const keep = new Map(
+          Object.entries(slots)
+            .filter(([, v]) => v?.rid)
+            .map(([k, v]) => [v!.rid, { k, url: v!.url }]),
+        )
         for (const k of Object.keys(slots) as SlotKey[]) slots[k] = null
-        restoreMarks(latest.annotations, (latest.refImages ?? []).map((r) => ({ index: r.index, rid: r.rid, url: keep.get(r.rid)?.url ?? '' })))
+        restoreMarks(
+          latest.annotations,
+          (latest.refImages ?? []).map((r) => ({ index: r.index, rid: r.rid, url: keep.get(r.rid)?.url ?? '' })),
+        )
         await nextTick()
         suppressWatch = false
         submitError.value = '方案已在别处更新，已换成最新的方案，请再看一眼改法和价格'
@@ -756,7 +777,9 @@ export function useReplicate() {
     } catch (err) {
       const e = toApiError(err)
       saveLimit.value = e?.reason === 'SAVED_PLAN_LIMIT'
-      saveError.value = e?.isNetwork ? '网络不稳，没保存上，再点一次' : replicateErrorText(err, { fallback: '没保存上，再点一次' })
+      saveError.value = e?.isNetwork
+        ? '网络不稳，没保存上，再点一次'
+        : replicateErrorText(err, { fallback: '没保存上，再点一次' })
     } finally {
       saveBusy.value = false
     }
@@ -861,7 +884,12 @@ export function useReplicate() {
       planDims.value = [...p.changes, ...p.kept]
         .filter((l) => DIM_LABEL[l.key as VideoCloneDimKey])
         .sort((x, y) => order.indexOf(x.key) - order.indexOf(y.key))
-        .map((l) => ({ key: l.key as VideoCloneDimKey, label: DIM_LABEL[l.key as VideoCloneDimKey], present: true, now: l.current }))
+        .map((l) => ({
+          key: l.key as VideoCloneDimKey,
+          label: DIM_LABEL[l.key as VideoCloneDimKey],
+          present: true,
+          now: l.current,
+        }))
       planSummary.value = p.analysis?.summary || sp.title
       basePlanNo = p.planNo
       appliedKey = planInputKey()
@@ -916,10 +944,18 @@ export function useReplicate() {
     // 与 StepPlan 的 staged 同口径：只有多段且选了「先做第 1 段」才按第 1 段报价
     return stage.value === 'first' && multiSegment.value ? p.stageQuotes.first : p.stageQuotes.total
   })
-  const shortfall = computed(() => (balance.value != null && needPoints.value > balance.value ? needPoints.value - balance.value : 0))
+  const shortfall = computed(() =>
+    balance.value != null && needPoints.value > balance.value ? needPoints.value - balance.value : 0,
+  )
   const multiSegment = computed(() => (plan.value?.timeline.segments.length ?? 0) > 1)
   const canConfirm = computed(
-    () => !!plan.value && plan.value.status === 'READY' && !planBusy.value && !planDirty.value && !missing.value.length && !submitting.value,
+    () =>
+      !!plan.value &&
+      plan.value.status === 'READY' &&
+      !planBusy.value &&
+      !planDirty.value &&
+      !missing.value.length &&
+      !submitting.value,
   )
 
   async function confirm() {
@@ -933,7 +969,11 @@ export function useReplicate() {
     submitting.value = true
     submitError.value = ''
     try {
-      const res = await replicateConfirm(p.planNo, { planHash: p.planHash, stage: stage.value, expectedPoints: needPoints.value })
+      const res = await replicateConfirm(p.planNo, {
+        planHash: p.planHash,
+        stage: stage.value,
+        expectedPoints: needPoints.value,
+      })
       if (!res.data) throw new Error('empty')
       enterJob(res.data)
     } catch (err) {
@@ -956,7 +996,9 @@ export function useReplicate() {
   let jobTimer: ReturnType<typeof setTimeout> | undefined
   let jobSeq = 0
 
-  const jobRunning = computed(() => !!job.value && ['submitting', 'queued', 'running', 'continuing'].includes(job.value.status))
+  const jobRunning = computed(
+    () => !!job.value && ['submitting', 'queued', 'running', 'continuing'].includes(job.value.status),
+  )
 
   function enterJob(j: ReplicateJob) {
     step.value = 'job'
@@ -996,9 +1038,11 @@ export function useReplicate() {
       const j = job.value
       if (!j) return
       // 在途（含逐段预留 / 预留其余段）、有段在跑或自动重试、整条成片还在合成（result.status=retry）时继续轮询；等你确认（waiting）/ 终态停
-      const anyActive = j.status !== 'waiting' && j.segments.some((x) => ['queued', 'running', 'retrying'].includes(x.state))
+      const anyActive =
+        j.status !== 'waiting' && j.segments.some((x) => ['queued', 'running', 'retrying'].includes(x.state))
       const composing = ['succeeded', 'partial'].includes(j.status) && j.result?.status === 'retry'
-      if (['submitting', 'queued', 'running', 'continuing'].includes(j.status) || anyActive || composing) jobTimer = setTimeout(tick, POLL_JOB)
+      if (['submitting', 'queued', 'running', 'continuing'].includes(j.status) || anyActive || composing)
+        jobTimer = setTimeout(tick, POLL_JOB)
       else scheduleUrlRefresh()
     }
     jobTimer = setTimeout(tick, 600)
@@ -1055,7 +1099,9 @@ export function useReplicate() {
       jobError.value = PRICE_PENDING_TEXT
       return
     }
-    return jobAction(() => replicateContinue(job.value!.jobId, { planHash: job.value!.planHash, expectedPoints: continuePoints.value }))
+    return jobAction(() =>
+      replicateContinue(job.value!.jobId, { planHash: job.value!.planHash, expectedPoints: continuePoints.value }),
+    )
   }
   const redoSegment = (k: number) => {
     if (!job.value) return
@@ -1124,19 +1170,108 @@ export function useReplicate() {
 
   return {
     tab,
-    industry, samples, samplesLoading, sampleTry, sampleTryBusy, sampleError, sampleId, sampleTitle,
-    initSamples, loadSamples, trySample, closeSample, useSample,
-    savedPlan, saveBusy, saveError, saveLimit, planSaved, savePlan,
-    pendingReuse, reuseBusy, reuseSaved, cancelPendingReuse, summaryText,
-    step, limits, notReady, source, slots, slotBusy, slotError, text,
-    loadLimits, pickVideo, clearSource, pickSlotImage, clearSlot,
-    analysis, analysisError, analysisRetryable, analysisElapsed, canAnalyze, startAnalysis, cancelAnalysis,
-    marks, audio, consent, stage, plan, planBusy, planDirty, submitPlan, planError, planGaps, balance, submitting, submitError,
-    dims, intentOn, changedCount, markOf, setMode, setNote, toggleIntent, resetMarks, refList,
-    missing, nothingChanged, needPoints, shortfall, multiSegment, canConfirm, setStage, createPlan, refreshQuote, confirm,
-    job, jobBusy, jobError, jobRunning, openJob, ensureFreshUrls, continueRest, redoSegment, stopJob, setAutoContinue, continuePoints,
-    continueReady, redoReady, redoPointsOf, PRICE_PENDING_TEXT,
-    modelGroup, models, modelsLoading, currentModel, loadModels, setModel, cancelRest, cancelRestPoints, canCancelRest,
-    backToPlan, restart,
+    industry,
+    samples,
+    samplesLoading,
+    sampleTry,
+    sampleTryBusy,
+    sampleError,
+    sampleId,
+    sampleTitle,
+    initSamples,
+    loadSamples,
+    trySample,
+    closeSample,
+    useSample,
+    savedPlan,
+    saveBusy,
+    saveError,
+    saveLimit,
+    planSaved,
+    savePlan,
+    pendingReuse,
+    reuseBusy,
+    reuseSaved,
+    cancelPendingReuse,
+    summaryText,
+    step,
+    limits,
+    notReady,
+    notReadyText,
+    source,
+    slots,
+    slotBusy,
+    slotError,
+    text,
+    loadLimits,
+    pickVideo,
+    clearSource,
+    pickSlotImage,
+    clearSlot,
+    analysis,
+    analysisError,
+    analysisRetryable,
+    analysisElapsed,
+    canAnalyze,
+    startAnalysis,
+    cancelAnalysis,
+    marks,
+    audio,
+    consent,
+    stage,
+    plan,
+    planBusy,
+    planDirty,
+    submitPlan,
+    planError,
+    planGaps,
+    balance,
+    submitting,
+    submitError,
+    dims,
+    intentOn,
+    changedCount,
+    markOf,
+    setMode,
+    setNote,
+    toggleIntent,
+    resetMarks,
+    refList,
+    missing,
+    nothingChanged,
+    needPoints,
+    shortfall,
+    multiSegment,
+    canConfirm,
+    setStage,
+    createPlan,
+    refreshQuote,
+    confirm,
+    job,
+    jobBusy,
+    jobError,
+    jobRunning,
+    openJob,
+    ensureFreshUrls,
+    continueRest,
+    redoSegment,
+    stopJob,
+    setAutoContinue,
+    continuePoints,
+    continueReady,
+    redoReady,
+    redoPointsOf,
+    PRICE_PENDING_TEXT,
+    modelGroup,
+    models,
+    modelsLoading,
+    currentModel,
+    loadModels,
+    setModel,
+    cancelRest,
+    cancelRestPoints,
+    canCancelRest,
+    backToPlan,
+    restart,
   }
 }

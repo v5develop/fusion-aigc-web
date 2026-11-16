@@ -6,7 +6,6 @@
  */
 import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { REPLICATE_OFF_TEXT } from '@/api/replicate.ts'
 import HistoryList from './HistoryList.vue'
 import JobView from './JobView.vue'
 import SavedPlans from './SavedPlans.vue'
@@ -71,7 +70,7 @@ const maxSec = computed(() => rep.limits.value?.maxDurationSec ?? 80)
         class="m-0 mt-6px rounded-10px bg-surface2 px-12px py-8px text-12px text-ink-2"
         role="status"
       >
-        {{ REPLICATE_OFF_TEXT }}
+        {{ rep.notReadyText.value }}
       </p>
       <div class="mt-10px flex gap-8px" role="tablist" aria-label="视频做同款">
         <button

@@ -58,6 +58,8 @@ export interface ReplicateLimits {
   writerEnabled?: boolean
   /** 单次确认总价超过它（点数）须二次确认；对齐后端 replicate.confirm_threshold_points，缺省用前端兜底 {@link CONFIRM_THRESHOLD_POINTS} */
   confirmThresholdPoints?: number
+  /** 当前是否接新提交（总开关：库里 replicate.enabled 优先、否则部署配置）；false = 暂停新提交，读接口照常。旧网关不带 = 视为开 */
+  enabled?: boolean
 }
 
 /** 二次确认阈值的前端兜底（点数）；limits 下发 confirmThresholdPoints 时优先用后端的 */
@@ -797,10 +799,12 @@ export function replicateSourceGone(err: unknown): boolean {
 }
 
 /**
- * 整个功能没开（gateway 配置 Replicate.Enabled=false，模块未装配）时页面上的说法。
- * 区分依据：读接口（limits / 历史 / 我的方案）也回 7003 只可能是没装配——运行时总开关只拦写接口，那才是「维护中」。
+ * 模块没装配（gateway 没配 DataSource）时页面上的说法：读接口（limits / 历史 / 我的方案）也回 7003 只可能是这种。
+ * 总开关（库里 replicate.enabled 优先、否则 Replicate.Enabled）关着只拦写接口，那是 REPLICATE_PAUSED_TEXT。
  */
 export const REPLICATE_OFF_TEXT = '视频做同款暂未开放，开放后即可使用'
+/** 总开关关着（limits.enabled=false 或写接口 7003）：只停新提交，历史 / 我的方案 / 在途任务照常 */
+export const REPLICATE_PAUSED_TEXT = '视频做同款暂停新提交，已提交的任务和保存的方案不受影响'
 
 /** 功能总开关没开（7003 且是 Go 的固定文案「功能暂未开放」） */
 export function replicateNotReady(err: unknown): boolean {
@@ -829,7 +833,7 @@ export function replicateErrorText(err: unknown, opts: ReplicateErrorOpts = {}):
       return e.message || '该功能暂未配置价格，请联系客服'
     case 7003:
       // 功能未开放（Go 固定文案）→ 维护文案；多段能力未开放时 msg 本身就是建议（「超过 N 秒的视频要拆成几段…」）
-      return replicateNotReady(err) ? '视频做同款正在维护，暂时不能提交。已提交的任务不受影响' : e.message
+      return replicateNotReady(err) ? REPLICATE_PAUSED_TEXT : e.message
     case 1002:
       return e.message || '缺少请求标识，请刷新页面后重试'
     case 1003:
