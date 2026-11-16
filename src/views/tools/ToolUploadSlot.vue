@@ -372,7 +372,7 @@ const cardCls =
   '[transition:border-color_0.2s_ease,background_0.2s_ease]'
 /** 白边浮片（2026-11-06 C-37 放大一档）：批量 78×130 · r5 · 1px #fff · 0 1px 3px .16；pipe（产品替换底图）保持 60×100；悬停只把影压深 */
 const plateCls =
-  'relative box-border rounded-5px border border-solid border-white bg-white ' +
+  'relative w-full h-full box-border rounded-5px border border-solid border-white bg-white ' +
   'shadow-[0_1px_3px_rgba(31,35,41,0.16)] transition-shadow duration-160 ease-out motion-reduce:transition-none ' +
   'hover:shadow-[0_2px_6px_rgba(31,35,41,0.2)]'
 /** 片格尺寸与网格按版式分档：batch 4 列 78 / 行 130 / 列距 27、行距 40；pipe 5 列 60 / 行 100 */
