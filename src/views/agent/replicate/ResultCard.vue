@@ -12,8 +12,10 @@ const props = defineProps<{
   job: ReplicateJob
   /** 对话里用户上传的原片地址（可空） */
   sourceUrl?: string
+  /** 智能体正在回复：快捷动作置灰 */
+  busy?: boolean
 }>()
-const emit = defineEmits<{ (e: 'renew', force: boolean): void }>()
+const emit = defineEmits<{ (e: 'renew', force: boolean): void; (e: 'send', text: string): void }>()
 
 const result = computed(() => props.job.result)
 const preview = computed(() => result.value?.kind === 'preview')
@@ -39,6 +41,8 @@ const saveText = computed(() => {
   return '成片暂时拿不到，可以稍后再看'
 })
 const canDownload = computed(() => !!result.value?.videoUrl && !preview.value && result.value?.status === 'ready')
+/** 已交付（完整版 / 部分版，非预览）才给发布文案与多比例的快捷动作；只发用户消息，不调 REST */
+const delivered = computed(() => canDownload.value && ['succeeded', 'partial'].includes(props.job.status))
 function download() {
   emit('renew', false)
   const u = props.job.result?.videoUrl
@@ -62,6 +66,10 @@ function download() {
     <p v-if="saveText" class="m-0 text-12px leading-18px text-muted" role="status">{{ saveText }}</p>
     <div class="flex flex-wrap gap-8px">
       <button v-if="canDownload" type="button" class="sx-btn !h-32px" @click="download">下载</button>
+      <template v-if="delivered">
+        <button type="button" class="sx-btn !h-32px" :disabled="busy" @click="emit('send', '生成发布文案')">生成发布文案</button>
+        <button type="button" class="sx-btn !h-32px" :disabled="busy" @click="emit('send', '导出其它比例')">导出其它比例</button>
+      </template>
       <RouterLink :to="{ name: 'video-replicate', query: { job: String(job.jobId) } }" class="sx-btn !h-32px no-underline">在完整页查看</RouterLink>
     </div>
   </div>

@@ -250,6 +250,9 @@ export interface ReplicateDimLine {
   note?: string
   refs?: number[]
   risk?: 'high' | 'mid' | 'low' | string
+  /** 逐套换装（Go §O1）：可读文案「第 1 套 → 图 2；第 3 套 → 图 3」，有它时优先展示 */
+  occurrenceText?: string
+  occurrences?: { index: number; refs: number[] }[]
 }
 
 export interface ReplicateTimelineSegment {
@@ -440,6 +443,37 @@ export interface ReplicateJobResult {
   /** 占位的段号 */
   missing?: number[]
   text?: string
+}
+
+/** 发布文案（Go `PublishCopyView`，CONTRACT §N） */
+export interface ReplicatePublishCopy {
+  jobId: number | string
+  platform: 'douyin' | 'kuaishou' | 'xiaohongshu' | 'shipinhao'
+  titles: string[]
+  hashtags: string[]
+  description: string
+  coverAtSec: number
+  quotaUsed: number
+  quotaTotal: number
+}
+
+/** 多比例导出（Go `ExportView`，CONTRACT §N）；videoUrl 在事件帧里被清洗，经 GET /jobs/:id/exports 取现签地址 */
+export interface ReplicateExport {
+  jobId: number | string
+  ratio: '9:16' | '1:1' | '16:9' | '3:4' | '4:3'
+  mode: 'pad' | 'crop'
+  videoUrl?: string
+  urlExpiresAt?: string
+  /** 资产库保存状态：Go LibraryView {status, state}（同值，saved / saving / failed）；兼容旧的纯字符串 */
+  library?: string | { status?: string; state?: string }
+  /** 同比例时返回的就是成片本身 */
+  original?: boolean
+}
+
+/** GET /jobs/{id}/exports 的响应（Go：{jobId, exports}；成片未交付时 exports 为空数组） */
+export interface ReplicateExportList {
+  jobId: number | string
+  exports: ReplicateExport[]
 }
 
 /** confirm / continue / stop / redo / GET /jobs/{id}（Go `JobView`） */
@@ -722,6 +756,12 @@ export async function replicateConfirm(
 export async function replicateGetJob(id: number | string) {
   if (isMock('replicate')) return (await mock()).getJob(String(id))
   return getQuiet<ReplicateJob>(`/api/v1/replicate/jobs/${enc(String(id))}`)
+}
+
+/** GET /jobs/{id}/exports：该成片已导出的各比例（只读，取现签地址） */
+export async function replicateListExports(jobId: number | string) {
+  if (isMock('replicate')) return (await mock()).listExports(String(jobId))
+  return getQuiet<ReplicateExportList>(`/api/v1/replicate/jobs/${enc(String(jobId))}/exports`)
 }
 
 /** GET /plans/{no}/preview：只读取已生成的定妆图 / 原片帧的现签地址（仅本人，从不触发生成；不存在 → RESOURCE_NOT_FOUND） */

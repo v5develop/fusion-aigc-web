@@ -20,7 +20,7 @@ const frame = (eventType: string, payload: Record<string, unknown>): IAgentFrame
 function scrub<T>(v: T): T {
   return JSON.parse(JSON.stringify(v, (k, x) => (k === 'videoUrl' || k === 'coverUrl' ? undefined : x))) as T
 }
-export function cardFrame(toolName: string, type: 'analysis' | 'plan' | 'job' | 'preview', id: string | number, view: unknown): IAgentFrame {
+export function cardFrame(toolName: string, type: 'analysis' | 'plan' | 'job' | 'preview' | 'batch' | 'copy' | 'export', id: string | number, view: unknown): IAgentFrame {
   return frame('tool_result', {
     toolName,
     status: 'completed',
@@ -104,6 +104,7 @@ function consentOf(over: { action: string; points: number } & Record<string, unk
 
 let lastPlan: ReplicatePlan | null = null
 let lastJob: ReplicateJob | null = null
+let mockBatch = false
 
 export async function mockReplicateAgentStream(
   req: IAgentStreamReq,
@@ -130,6 +131,13 @@ export async function mockReplicateAgentStream(
 
   if (choice === 'cancel') {
     await say('好的，先不做，没有扣点。想换个改法随时告诉我。')
+  } else if (choice === 'continue' && mockBatch && lastPlan) {
+    mockBatch = false
+    const made: ReplicateJob[] = []
+    for (let i = 0; i < 3; i++) made.push((await replicateMock.confirm(lastPlan.planNo, { planHash: lastPlan.planHash, stage: 'all', expectedPoints: 0 })).data)
+    const jobsView = made.map((j) => ({ jobId: j.jobId, status: j.status, statusLabel: j.statusLabel, segDone: j.segDone, segTotal: j.segTotal, money: j.money }))
+    emit(cardFrame('批量确认', 'batch', 'mock-batch-1', { batchId: 'mock-batch-1', planNo: lastPlan.planNo, jobs: jobsView, total: made.length, status: 'running' }))
+    await say('三条都开始做了，进度见上面的卡片。')
   } else if (choice === 'continue' && lastPlan && !lastJob) {
     // 首次同意：确认方案 → 任务卡
     const res = await replicateMock.confirm(lastPlan.planNo, { planHash: lastPlan.planHash, stage: 'first', expectedPoints: 0 })
@@ -146,6 +154,40 @@ export async function mockReplicateAgentStream(
     emit(consentFrame(consentOf({ action: 'redo', points: 80, seg_index: k, job_id: lastJob.jobId })))
   } else if (/继续做剩下/.test(content) && lastJob) {
     emit(consentFrame(consentOf({ action: 'continue', points: lastPlan?.stageQuotes.rest ?? 240, job_id: lastJob.jobId })))
+  } else if (/发布文案/.test(content) && lastJob) {
+    emit(
+      cardFrame('生成发布文案', 'copy', `${lastJob.jobId}:douyin`, {
+        jobId: lastJob.jobId,
+        platform: 'douyin',
+        titles: ['一个保温杯，冬天喝水的仪式感', '通勤包里必备，热水喝到下班', '这杯子我用了三个月，说说真实感受'],
+        hashtags: ['#保温杯', '#好物分享', '#通勤必备', '#冬日暖饮', '#生活小物'],
+        description: '早上灌满热水，到下午还是烫的。杯口好清洗，放包里不漏水，送人自用都合适。',
+        coverAtSec: 2.4,
+        quotaUsed: 3,
+        quotaTotal: 20,
+      }),
+    )
+    await say('文案在上面，点一下就能复制。')
+  } else if (/其它比例|其他比例|导出/.test(content) && lastJob) {
+    emit(cardFrame('导出比例', 'export', `${lastJob.jobId}:1:1:crop`, { jobId: lastJob.jobId, ratio: '1:1', mode: 'crop', library: '已存入资产库' }))
+    emit(cardFrame('导出比例', 'export', `${lastJob.jobId}:9:16:pad`, { jobId: lastJob.jobId, ratio: '9:16', mode: 'pad', library: '已存入资产库' }))
+    await say('已经导出，免费，也存进了资产库。')
+  } else if (/批量/.test(content) && lastPlan) {
+    // 批量：先出批量同意卡；点继续后用真 mock 任务（stage=all）造三条，出批量卡
+    mockBatch = true
+    emit(
+      consentFrame(
+        consentOf({
+          action: 'batch',
+          points: 3 * (lastPlan.stageQuotes.first + lastPlan.stageQuotes.rest),
+          rows: ['我的商品：保温杯.jpg', '我的商品：水壶.jpg', '我的商品：运动水杯（蓝色限量款）.jpg'].map((label) => ({
+            label,
+            points: lastPlan!.stageQuotes.first + lastPlan!.stageQuotes.rest,
+          })),
+          plan_no: lastPlan.planNo,
+        }),
+      ),
+    )
   } else if (/预览图|定妆/.test(content) && lastPlan) {
     // 一次带地址（被清洗前的样子），一次不带（清洗后的占位）
     emit(previewFrame(lastPlan.planNo, !/无地址/.test(content)))

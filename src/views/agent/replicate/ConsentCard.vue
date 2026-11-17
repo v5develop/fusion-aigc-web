@@ -45,6 +45,7 @@ const cancelText = computed(() => {
   const running = c.running > 0 ? `正在生成的 ${c.running} 段会做完并照常收费；` : ''
   return `不做剩下的 ${c.cancelSegments} 段，退回 ${fmtPts(c.refundPoints)} 点；${running}已做好的段保留。`
 })
+const isBatch = computed(() => props.consent.action === 'batch')
 const lines = computed(() => {
   const c = props.consent
   return [
@@ -76,8 +77,20 @@ const lines = computed(() => {
       <p v-if="consent.priceChangedFrom > 0" class="m-0 mb-6px text-12px leading-18px text-warning" role="status">
         价格变了：原来 {{ fmtPts(consent.priceChangedFrom) }} 点，现在 {{ fmtPts(consent.points) }} 点
       </p>
-      <ul class="m-0 flex list-none flex-col gap-6px p-0">
-        <li class="flex gap-8px text-13px leading-20px">
+      <!-- 批量：一行一条（名称 + 点数），合计一行 -->
+      <template v-if="isBatch">
+        <ul class="m-0 flex max-h-200px list-none flex-col gap-4px overflow-y-auto p-0">
+          <li v-for="(r, i) in consent.rows" :key="i" class="flex items-baseline gap-8px text-13px leading-20px">
+            <span class="min-w-0 flex-1 truncate text-ink-2" :title="r.label">{{ r.label }}</span>
+            <span class="flex-none text-right font-600 tabular-nums text-ink">{{ fmtPts(r.points) }} 点</span>
+          </li>
+        </ul>
+        <p :class="['m-0 mt-6px flex justify-between border-0 border-t border-solid border-line pt-6px text-13px font-600 leading-20px tabular-nums', large ? 'text-danger' : 'text-ink']">
+          <span>合计</span><span>{{ fmtPts(consent.points) }} 点</span>
+        </p>
+      </template>
+      <ul :class="['m-0 flex list-none flex-col gap-6px p-0', isBatch && 'mt-10px']">
+        <li v-if="!isBatch" class="flex gap-8px text-13px leading-20px">
           <b class="w-32px flex-none font-600 text-muted">点数</b>
           <span :class="['min-w-0 flex-1 font-600 tabular-nums', large ? 'text-danger' : 'text-ink']">{{ pointsLine }}</span>
         </li>

@@ -118,7 +118,7 @@ const DECISION_MESSAGE: Record<string, string> = {
     </div>
 
     <div v-if="hasResult" class="mt-12px">
-      <ResultCard :job="job" :source-url="sourceUrl" @renew="renew" />
+      <ResultCard :job="job" :source-url="sourceUrl" :busy="busy" @renew="renew" @send="(t: string) => emit('send', t)" />
     </div>
     <p v-if="error" class="m-0 mt-8px text-12px text-warning" role="status">{{ error }}</p>
   </section>

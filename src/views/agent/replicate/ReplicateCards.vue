@@ -3,10 +3,13 @@
  * 一条回复里的复刻卡片列表。key = entity.type + entity.id，由页面保证「同 key 只显示最新一帧、位置留在第一次出现处」（原位更新）。
  * 卡片自身不改任何业务状态：JobCard 的动作经 send 事件变成一条用户消息。
  */
-import type { ReplicateAnalysis, ReplicateJob, ReplicatePlan, ReplicatePreview } from '@/api/replicate.ts'
+import type { ReplicateAnalysis, ReplicateExport, ReplicateJob, ReplicatePlan, ReplicatePreview, ReplicatePublishCopy } from '@/api/replicate.ts'
 import { CARD_ANCHOR_ATTR, type ReplicateCardFrame } from '@/api/replicate-card.ts'
 import '@/views/video-replicate/video-replicate.css'
+import BatchCard from './BatchCard.vue'
 import AnalysisCard from './AnalysisCard.vue'
+import CopyCard from './CopyCard.vue'
+import ExportCard from './ExportCard.vue'
 import JobCard from './JobCard.vue'
 import PlanCard from './PlanCard.vue'
 import PreviewCard from './PreviewCard.vue'
@@ -37,6 +40,16 @@ const anchor = (key: string) => ({ [CARD_ANCHOR_ATTR]: key })
         />
         <PreviewCard v-else-if="f.type === 'preview'" :view="f.view as ReplicatePreview" />
         <PlanCard v-else-if="f.type === 'plan'" :view="f.view as ReplicatePlan" />
+        <CopyCard v-else-if="f.type === 'copy'" :view="f.view as ReplicatePublishCopy" />
+        <ExportCard v-else-if="f.type === 'export'" :view="f.view as ReplicateExport" />
+        <BatchCard
+          v-else-if="f.type === 'batch'"
+          :frame="f"
+          :busy="busy"
+          :source-url="sourceUrl"
+          @send="(t: string) => emit('send', t)"
+          @draft="(t: string) => emit('draft', t)"
+        />
         <JobCard
           v-else
           :frame="f"

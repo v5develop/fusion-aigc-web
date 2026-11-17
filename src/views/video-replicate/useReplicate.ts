@@ -93,6 +93,8 @@ export function useReplicate() {
     durationSec: 0,
     sizeMb: 0,
     uploading: false,
+    /** 上传进度 0~1（仅大文件分片上传有细粒度值，0 = 未知，界面用不确定动画） */
+    progress: 0,
     error: '',
     notice: '',
   })
@@ -171,12 +173,13 @@ export function useReplicate() {
     source.durationSec = dur
     source.sizeMb = Math.round(mb)
     source.uploading = true
+    source.progress = 0
     try {
       if (isMock('replicate')) {
         await new Promise((r) => setTimeout(r, 900))
         source.url = URL.createObjectURL(file)
       } else {
-        const urls = await upload([file], undefined, { compress: false })
+        const urls = await upload([file], undefined, { compress: false, onProgress: (f) => (source.progress = f) })
         source.url = String(urls[0] ?? '')
         if (!source.url) throw new Error('empty')
       }

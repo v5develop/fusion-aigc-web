@@ -11,9 +11,16 @@
  *
  * <p>线上键名可能是 snake_case（契约原文）或被 Java 整体转成 lowerCamel，这里两种都认。
  */
-import type { ReplicateAnalysis, ReplicateJob, ReplicatePlan, ReplicatePreview } from './replicate.ts'
+import type {
+  ReplicateAnalysis,
+  ReplicateExport,
+  ReplicateJob,
+  ReplicatePlan,
+  ReplicatePreview,
+  ReplicatePublishCopy,
+} from './replicate.ts'
 
-export type ReplicateCardType = 'analysis' | 'plan' | 'job' | 'preview'
+export type ReplicateCardType = 'analysis' | 'plan' | 'job' | 'preview' | 'batch' | 'copy' | 'export'
 
 export interface ReplicateCardError {
   code: string
@@ -29,7 +36,26 @@ export interface ReplicateCardFrame {
   toolName: string
   isError: boolean
   error?: ReplicateCardError
-  view?: ReplicateAnalysis | ReplicatePlan | ReplicateJob | ReplicatePreview
+  view?: ReplicateAnalysis | ReplicatePlan | ReplicateJob | ReplicatePreview | ReplicateBatch | ReplicatePublishCopy | ReplicateExport
+}
+
+/** 批量卡里的一条任务摘要（Go JobSummary 的子集，只取卡片用到的字段） */
+export interface ReplicateBatchJob {
+  jobId: number
+  status: ReplicateJob['status']
+  statusLabel: string
+  segDone: number
+  segTotal: number
+  money?: ReplicateJob['money']
+}
+
+/** Go BatchView（CONTRACT §M） */
+export interface ReplicateBatch {
+  batchId: string
+  planNo: string
+  jobs: ReplicateBatchJob[]
+  total: number
+  status: string
 }
 
 const rec = (v: unknown): Record<string, unknown> =>
@@ -42,7 +68,7 @@ const pick = (o: Record<string, unknown>, ...names: string[]): unknown => {
 }
 
 export const REPLICATE_CARD_RESULT_TYPE = 'replicate_card'
-const TYPES: readonly string[] = ['analysis', 'plan', 'job', 'preview']
+const TYPES: readonly string[] = ['analysis', 'plan', 'job', 'preview', 'batch', 'copy', 'export']
 let errSeq = 0
 
 /** 解析一条 tool_result 的 payload；不是复刻卡片返回 null */
@@ -98,6 +124,12 @@ export function cardChipText(f: ReplicateCardFrame): string {
     const prog = j.segTotal > 1 ? `（${j.segDone}/${j.segTotal} 段）` : ''
     return `${j.statusLabel || '任务进行中'}${prog}`
   }
+  if (f.type === 'batch') {
+    const b = f.view as ReplicateBatch
+    const jobs = b.jobs ?? []
+    const done = jobs.filter((j) => ['succeeded', 'partial', 'failed', 'canceled'].includes(j.status)).length
+    return `批量 ${b.total || jobs.length} 条（已结束 ${done} 条）`
+  }
   if (f.type === 'plan') {
     const t = (f.view as ReplicatePlan).title
     return t ? `方案已更新：${t}` : '方案已更新'
@@ -108,7 +140,7 @@ export function cardChipText(f: ReplicateCardFrame): string {
 // ---------------- 同意卡 ----------------
 
 export interface ReplicateConsent {
-  action: 'confirm' | 'continue' | 'redo' | 'refine' | 'stop' | 'cancel_rest'
+  action: 'confirm' | 'continue' | 'redo' | 'refine' | 'stop' | 'cancel_rest' | 'batch'
   points: number
   restPoints: number
   etaText: string
@@ -128,9 +160,11 @@ export interface ReplicateConsent {
   running: number
   /** 价格变了（涨价或复刻服务判价变）时的原价；0 = 没变 */
   priceChangedFrom: number
+  /** 批量同意卡（action=batch）：每条的名称与点数；points 是合计 */
+  rows: { label: string; points: number }[]
 }
 
-const CONSENT_ACTIONS = ['confirm', 'continue', 'redo', 'refine', 'stop', 'cancel_rest'] as const
+const CONSENT_ACTIONS = ['confirm', 'continue', 'redo', 'refine', 'stop', 'cancel_rest', 'batch'] as const
 export const isCancelConsent = (c: ReplicateConsent) => c.action === 'stop' || c.action === 'cancel_rest'
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0)
@@ -160,6 +194,7 @@ export function parseConsent(raw: unknown): ReplicateConsent | null {
     cancelSegments: num(pick(c, 'cancelSegments', 'cancel_segments')),
     running: num(pick(c, 'running', 'running')),
     priceChangedFrom: num(pick(c, 'priceChangedFrom', 'price_changed_from')),
+    rows: (Array.isArray(c.rows) ? c.rows : []).map((r) => ({ label: str(rec(r).label), points: num(rec(r).points) })),
   }
 }
 
@@ -169,6 +204,7 @@ export function consentPrimaryLabel(c: ReplicateConsent): string {
   if (c.action === 'continue') return `继续 · ${pts} 点`
   if (c.action === 'redo') return `重做第 ${c.segIndex || 1} 段 · ${pts} 点`
   if (c.action === 'refine') return `精修第 ${c.segIndex || 1} 段 · ${pts} 点`
+  if (c.action === 'batch') return `做这 ${c.rows.length} 条 · 合计 ${pts} 点`
   if (c.action === 'stop') return '确认不继续'
   if (c.action === 'cancel_rest') return `确认不做剩下的段 · 退回 ${c.refundPoints.toLocaleString('en-US')} 点`
   if (c.restPoints <= 0) return `开始生成 · ${pts} 点`

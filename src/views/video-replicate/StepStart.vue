@@ -211,13 +211,18 @@ const maxMb = () => 300 // Go 的 limits 没有大小上限，沿用体验文档
         <div class="min-w-0 flex-1">
           <b class="block truncate text-13px font-600 text-ink">{{ rep.source.name }}</b>
           <p v-if="rep.source.uploading" class="m-0 mt-2px text-12px text-muted" role="status">
-            正在上传 {{ rep.source.sizeMb }}MB · 上传的同时可以先放商品图
+            正在上传 {{ rep.source.sizeMb }}MB<template v-if="rep.source.progress > 0 && rep.source.progress < 1"> · {{ Math.round(rep.source.progress * 100) }}%</template> · 上传的同时可以先放商品图
           </p>
           <p v-else class="m-0 mt-2px text-12px text-muted">
             {{ rep.source.durationSec ? `${Math.round(rep.source.durationSec)} 秒` : '' }} · 上传好了，可以开始分析
           </p>
           <div v-if="rep.source.uploading" class="mt-6px h-4px overflow-hidden rounded-2px bg-surface3" role="progressbar" aria-label="上传中">
-            <i class="vr-indeterminate block h-full w-1/3 rounded-2px bg-violet" />
+            <i
+              v-if="rep.source.progress > 0"
+              class="block h-full rounded-2px bg-violet transition-[width]"
+              :style="{ width: `${Math.round(rep.source.progress * 100)}%` }"
+            />
+            <i v-else class="vr-indeterminate block h-full w-1/3 rounded-2px bg-violet" />
           </div>
         </div>
         <button type="button" class="sx-btn" :disabled="rep.source.uploading" @click="rep.clearSource()">换一条</button>

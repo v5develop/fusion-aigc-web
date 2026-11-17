@@ -16,7 +16,7 @@
  * 示例 / 我的方案 / 改标注（契约 §10）：示例列表与 try、PATCH 改标注（旧方案变 STALE + supersededBy）、GET 方案、保存 / 列表 / 删除 / reuse。
  */
 import { ApiError } from './index.ts'
-import type {
+import type { ReplicateExportList,
   ReplicateAnalysis,
   ReplicateAnalysisResult,
   ReplicateGap,
@@ -34,6 +34,7 @@ import type {
   ReplicateSampleTry,
   ReplicateSavedPlan,
   ReplicateSavedPlanList,
+  ReplicateExport,
 } from './replicate.ts'
 
 type Resp<T> = { code: number; msg: string; data: T }
@@ -693,6 +694,15 @@ export const replicateMock = {
     const j = jobs.get(Number(id))
     if (!j) throw new ApiError('找不到这个任务', { code: 4001, reason: 'RESOURCE_NOT_FOUND' })
     return ok(jobView(j))
+  },
+  async listExports(id: string) {
+    await wait(150)
+    const sample = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4'
+    const exports: ReplicateExport[] = [
+      { jobId: id, ratio: '9:16', mode: 'pad', videoUrl: sample, urlExpiresAt: new Date(Date.now() + 3600_000).toISOString(), library: { status: 'saved', state: 'saved' } },
+      { jobId: id, ratio: '1:1', mode: 'crop', videoUrl: sample, urlExpiresAt: new Date(Date.now() + 3600_000).toISOString(), library: { status: 'saving', state: 'saving' } },
+    ]
+    return ok({ jobId: id, exports } satisfies ReplicateExportList)
   },
   async listJobs(p: { page: number; size: number }): Promise<Resp<ReplicateJobList>> {
     await wait(150)

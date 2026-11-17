@@ -133,7 +133,7 @@ import ConsentCard from './replicate/ConsentCard.vue'
 import CardChips from './replicate/CardChips.vue'
 import ReplicateCards from './replicate/ReplicateCards.vue'
 import { upload as ossUpload } from '@/api/oss-upload.ts'
-import type { ReplicateCardFrame } from '@/api/replicate-card.ts'
+import { CARD_ANCHOR_ATTR, type ReplicateCardFrame } from '@/api/replicate-card.ts'
 import { clearScene, hasScene, isLoggedIn, loginVersion, requireLogin, saveScene, takeScene } from './industry/useLoginGate.ts'
 import SamplePanel from './SamplePanel.vue'
 import { useSamples } from './industry/useSamples.ts'
@@ -402,6 +402,10 @@ interface VideoAttachment {
   preview: string
   /** 上传完成后的 http(s) 地址；空 = 还在传 */
   url: string
+  /** 上传进度 0~1（大文件分片才有细粒度值；0 = 未知） */
+  progress: number
+  /** 取消上传 */
+  abort?: AbortController
 }
 const videoAttachments = ref<VideoAttachment[]>([])
 let videoSeq = 0
@@ -410,11 +414,12 @@ const videoRoom = computed(() => Math.max(0, MAX_VIDEOS - videoAttachments.value
 const videoInputEl = ref<HTMLInputElement | null>(null)
 
 function dropVideo(v: VideoAttachment) {
+  if (!v.url) v.abort?.abort() // 还在传就一并中止
   URL.revokeObjectURL(v.preview)
   videoAttachments.value = videoAttachments.value.filter((x) => x.id !== v.id)
 }
 function removeVideo(v: VideoAttachment) {
-  if (streaming.value) return
+  if (streaming.value && v.url) return // 传完的附件回复中不可删；上传中的随时可取消
   dropVideo(v)
 }
 function clearVideos(urls: string[]) {
@@ -433,18 +438,20 @@ async function onVideoChange(e: Event) {
     else ok.push(f)
   }
   if (ok.length > videoRoom.value) message.warning(`最多添加 ${MAX_VIDEOS} 条视频，多选的已忽略`)
-  // 上传器没有进度回调：缩略图先出来，上传中显示转圈，传完才算「已添加」
+  // 缩略图先出来，上传中显示百分比进度条（可取消），传完才算「已添加」
   for (const f of ok.slice(0, videoRoom.value)) {
-    const v = reactive<VideoAttachment>({ id: ++videoSeq, name: f.name, preview: URL.createObjectURL(f), url: '' })
+    const v = reactive<VideoAttachment>({ id: ++videoSeq, name: f.name, preview: URL.createObjectURL(f), url: '', progress: 0 })
+    const ac = new AbortController()
+    v.abort = ac
     videoAttachments.value.push(v)
-    void ossUpload([f], undefined, { compress: false })
+    void ossUpload([f], undefined, { compress: false, signal: ac.signal, onProgress: (p) => (v.progress = p) })
       .then((urls) => {
         const u = urls[0]
         if (u && /^https?:\/\//i.test(u)) v.url = u
         else throw new Error('empty url')
       })
-      .catch(() => {
-        message.error(`「${f.name}」上传失败，请重试`)
+      .catch((err) => {
+        if (err?.name !== 'AbortError') message.error(`「${f.name}」上传失败，请重试`)
         dropVideo(v)
       })
   }
@@ -1654,6 +1661,70 @@ watch(streaming, (on) => {
 watch(
   () => route.query.plazaTemplateId,
   () => void applyPlazaTemplateQuery(),
+)
+
+/**
+ * 通知深链 /agent?conversation=<id>&job=<jobId>：打开该会话，滚到并短暂高亮 job:<jobId> 的复刻卡。
+ * 卡不在已加载消息里就逐页往前加载，直到找到或到顶；找不到则退到最新一张任务卡并提示。参数处理完即摘掉。
+ */
+let jobLinkSeq = 0
+/** 回复进行中点了通知：先记下，回复结束后自动打开（不让用户再点一次通知） */
+let pendingJobLink: { conv: string; jobId: string } | null = null
+async function applyJobDeepLink() {
+  const qv = (v: unknown) => String((Array.isArray(v) ? v[0] : v) ?? '')
+  const conv = qv(route.query.conversation)
+  if (!conv) return
+  const jobId = qv(route.query.job)
+  const rest = { ...route.query }
+  delete rest.conversation
+  delete rest.job
+  void router.replace({ query: rest })
+  if (!isLoggedIn()) return
+  if (streaming.value) {
+    pendingJobLink = { conv, jobId }
+    message.info('当前回复结束后自动打开通知里的对话')
+    return
+  }
+  await openJobLink(conv, jobId)
+}
+watch(streaming, (busy) => {
+  if (busy || !pendingJobLink) return
+  const link = pendingJobLink
+  pendingJobLink = null
+  void openJobLink(link.conv, link.jobId)
+})
+async function openJobLink(conv: string, jobId: string) {
+  const mine = ++jobLinkSeq
+  if (activeId.value !== conv || !items.value.length) {
+    activeId.value = ''
+    await selectConversation(conv)
+  }
+  if (disposed || mine !== jobLinkSeq || activeId.value !== conv) return
+  const key = `job:${jobId}`
+  while (jobId && !replicateCardMap.value.latest.has(key) && msgPage.value > 1) {
+    const before = msgPage.value
+    await loadEarlier()
+    if (disposed || mine !== jobLinkSeq || msgPage.value === before) break
+  }
+  let target = jobId && replicateCardMap.value.latest.has(key) ? key : ''
+  if (!target) {
+    if (jobId) message.warning('没找到这条任务，已打开对话')
+    for (const c of replicateCardMap.value.latest.values()) if (c.type === 'job') target = c.key
+  }
+  if (!target) return
+  await nextTick()
+  const el = document.querySelector<HTMLElement>(`[${CARD_ANCHOR_ATTR}="${CSS.escape(target)}"]`)
+  if (!el) return
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  // 短暂高亮：复用跨轮提示的 vr-flash 动画
+  el.classList.remove('vr-flash')
+  void el.offsetWidth
+  el.classList.add('vr-flash')
+  window.setTimeout(() => el.classList.remove('vr-flash'), 1800)
+}
+watch(
+  () => route.query.conversation,
+  () => void applyJobDeepLink(),
 )
 
 function clearTemplate() {
@@ -3196,6 +3267,7 @@ onMounted(() => {
   skillsReady = loadSkills()
   void loadConversations(true)
   void applyPlazaTemplateQuery()
+  void applyJobDeepLink()
   void restorePlazaScene() // 换号登录整页重载后：还原登录前选的模板与已填入参（不自动发送）
   narrowMql = window.matchMedia(NARROW_QUERY)
   narrow.value = narrowMql.matches
@@ -4881,10 +4953,26 @@ onUnmounted(() => {
                         role="status"
                         aria-label="上传中"
                       >
-                        <n-spin :size="14" />
+                        <span class="flex flex-col items-center gap-2px">
+                          <span v-if="v.progress > 0" class="text-11px font-600 leading-14px text-white tabular-nums">{{ Math.round(v.progress * 100) }}%</span>
+                          <n-spin v-else :size="14" />
+                          <button type="button" class="cursor-pointer rounded-2px border-none bg-[rgba(255,255,255,0.2)] px-3px py-0 text-10px leading-14px text-white" @click="removeVideo(v)">取消</button>
+                        </span>
+                      </span>
+                      <span
+                        v-if="!v.url && v.progress > 0"
+                        class="absolute inset-x-0 bottom-0 h-3px overflow-hidden rounded-b-3px bg-[rgba(255,255,255,0.35)]"
+                        role="progressbar"
+                        aria-label="上传进度"
+                        :aria-valuenow="Math.round(v.progress * 100)"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                      >
+                        <i class="block h-full bg-violet" :style="{ width: `${Math.round(v.progress * 100)}%` }" />
                       </span>
                       <span class="absolute bottom-1px left-1px rounded-2px bg-[rgba(31,35,41,0.72)] px-3px text-10px leading-14px text-white">视频{{ i + 1 }}</span>
                       <button
+                        v-if="v.url"
                         type="button"
                         title="移除视频"
                         :aria-label="`移除视频 ${i + 1}`"
