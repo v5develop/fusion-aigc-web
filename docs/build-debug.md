@@ -53,3 +53,9 @@
 开发服验证码默认值：`123456`（在 Union 开发服中生效）
 
 在 APP 容器内（`window.ThirdServiceBridge` 存在）则不走登录页，由路由守卫拿 unionToken 静默换取 fusion token。
+
+## OSS 存储桶 CORS：断点续传需要暴露 ETag
+
+大于 10MB 的文件（如视频复刻的原片）走 ali-oss 分片上传（`multipartUpload`，1MB 分片、并发 3，带进度条与取消）。浏览器只有拿到每个分片响应里的 `ETag` 才能合并分片，所以**上传用的 OSS 存储桶 CORS 规则必须配置 `ExposeHeaders: ETag`**（同时允许 `PUT` / `POST` / `GET` / `HEAD` 方法与 `*` 请求头）。
+
+没配时不会导致上传失败：分片出错会自动退回一次普通 `put`（没有进度条），并在控制台打印一条 `[oss-upload] 分片上传失败，已退回普通上传` 警告。看到这条警告先检查 CORS。
