@@ -43,6 +43,7 @@ import {
   buildReferences,
   edgeColorForHandle,
   isDuplicateEdge,
+  isVideoSource,
   makeImageNode,
   makeModelNode,
   makeTextNode,
@@ -1399,7 +1400,7 @@ function addReferenceFrom(targetId: string, sourceId: string): boolean {
   if (!source || !target) return false
   let targetHandle = 'image'
   if (target.data.kind === 'video') {
-    if (source.type === 'model' && source.data.kind === 'video') targetHandle = 'video'
+    if (isVideoSource(source)) targetHandle = 'video'
     else if (!edges.value.some((edge) => edge.target === targetId && edge.targetHandle === 'image1')) {
       targetHandle = 'image1'
     }

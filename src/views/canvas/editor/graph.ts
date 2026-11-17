@@ -18,12 +18,13 @@ export const INPUT_HANDLE_RULES: Record<
   { accepts: CanvasEditorNode['type'][]; color: string; label: string }
 > = {
   prompt: { accepts: ['text', 'tool'], color: '#22c55e', label: '提示词' },
-  image: { accepts: ['image', 'model', 'video', 'tool'], color: '#38bdf8', label: '参考图' },
-  video: { accepts: ['model'], color: '#f97373', label: '参考视频' },
+  // 视频素材节点（type=video）只有视频没有图，只进参考视频口（与 Go validate.go accepts 同一规则）
+  image: { accepts: ['image', 'model', 'tool'], color: '#38bdf8', label: '参考图' },
+  video: { accepts: ['model', 'video'], color: '#f97373', label: '参考视频' },
   audio: { accepts: [], color: '#a78bfa', label: '音频' },
-  garment: { accepts: ['image', 'model', 'video', 'tool'], color: '#875f9a', label: '服装' },
-  models: { accepts: ['image', 'model', 'video', 'tool'], color: '#2f80ed', label: '模特' },
-  'image-in': { accepts: ['image', 'model', 'video', 'tool'], color: '#38bdf8', label: '图片' },
+  garment: { accepts: ['image', 'model', 'tool'], color: '#875f9a', label: '服装' },
+  models: { accepts: ['image', 'model', 'tool'], color: '#2f80ed', label: '模特' },
+  'image-in': { accepts: ['image', 'model', 'tool'], color: '#38bdf8', label: '图片' },
 }
 
 /** 视频首尾帧等别名归并：image1/image2/first/last 单独保留口名（提交时按原口名） */
@@ -80,6 +81,11 @@ function imageLimitFor(target: CanvasEditorNode): number {
   return 1
 }
 
+/** 能喂参考视频口的来源：视频模型（含 inputOnly 参考视频素材）或用户上传的视频素材节点 */
+export function isVideoSource(node: CanvasEditorNode): boolean {
+  return node.type === 'video' || (node.type === 'model' && node.data.kind === 'video')
+}
+
 /**
  * 连线校验（契约 6.1）。targetHandle 为空的拖到节点主体时由调用方先解析出口名再进来。
  * @param pool 参与容量统计的既有连线（提示词口「新线替换旧线」，调用方先剔除旧 prompt 线）
@@ -107,6 +113,9 @@ export function validateConnection(
   }
   if (!targetHandle) return { ok: false, reason: '请连到有编号的输入端口', color }
   const rule = INPUT_HANDLE_RULES[targetHandle]
+  if (source.type === 'video' && targetHandle !== 'video') {
+    return { ok: false, reason: '视频素材请连到参考视频口', color }
+  }
   if (target.type === 'image' && target.data.kind === 'result') {
     if (rawTargetHandle !== 'image-in') return { ok: false, reason: '结果图片只有一个输入口', color }
   } else if (!rule.accepts.includes(source.type)) {
@@ -114,7 +123,7 @@ export function validateConnection(
       targetHandle === 'prompt'
         ? '提示词端口只收文字节点'
         : targetHandle === 'video'
-          ? '参考视频端口只收视频模型的输出'
+          ? '参考视频端口只收视频素材或视频模型的输出'
           : targetHandle === 'audio'
             ? '音频参考暂未接入'
             : '参考图端口只收图片或模型输出'
@@ -128,8 +137,8 @@ export function validateConnection(
   if (targetIsTryon && targetHandle !== 'garment' && targetHandle !== 'models') {
     return { ok: false, reason: '模特试穿只有服装、模特两个输入口', color }
   }
-  if (targetHandle === 'video' && !(source.type === 'model' && source.data.kind === 'video')) {
-    return { ok: false, reason: '参考视频端口只收视频模型的输出', color }
+  if (targetHandle === 'video' && !isVideoSource(source)) {
+    return { ok: false, reason: '参考视频端口只收视频素材或视频模型的输出', color }
   }
   const isVideoFramePort =
     target.type === 'model' &&

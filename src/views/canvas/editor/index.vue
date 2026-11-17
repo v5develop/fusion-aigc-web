@@ -61,7 +61,7 @@ import {
 import { downloadImage } from '@/utils/download.ts'
 import { takeCanvasImport } from '@/utils/canvas-import-handoff.ts'
 import { joinPrompt, PROMPT_MAX_LEN } from '@/utils/prompt-library'
-import { isGroupPlate, normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
+import { isGroupPlate, isVideoSource, normalizeHandle, spawnPosition, validateConnection } from './graph.ts'
 import { DEFAULT_CANVAS_ZOOM, readCanvasZoom, writeCanvasZoom } from './canvas-zoom-prefs.ts'
 import { stepZoomLevel, viewportKeepingCenter, type ICanvasClipboard } from './clipboard.ts'
 import { editorDialog, editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
@@ -672,7 +672,7 @@ function autoTargetHandle(source: CanvasEditorNode, target: CanvasEditorNode): s
   const targetId = target.id
   let targetHandle = 'image'
   if (source.type === 'text' || (source.data.kind === 'tool' && source.data.tool === 'i2p')) targetHandle = 'prompt'
-  else if (target.data.kind === 'video' && source.type === 'model' && source.data.kind === 'video') {
+  else if (target.data.kind === 'video' && isVideoSource(source)) {
     targetHandle = 'video'
   } else if (target.data.kind === 'video') {
     const usedFirst = edges.value.some((edge) => edge.target === targetId && edge.targetHandle === 'image1')
