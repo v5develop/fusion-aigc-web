@@ -423,6 +423,41 @@ function removeVideo(v: VideoAttachment) {
   if (streaming.value && v.url) return // 传完的附件回复中不可删；上传中的随时可取消
   dropVideo(v)
 }
+// 高频入口（CONTRACT §V）：任何技能都能加视频；加了视频自动切到复刻助手（可撤销），草稿与附件原样保留
+const REPLICATE_INTENT = /复刻|做同款|做个同款|照着(这个|这条)?(视频)?做|一模一样|翻拍/
+/** 切换提示：switched = 刚自动切过去（带撤销）；undone = 已撤销；null = 不显示 */
+const replicateNotice = ref<{ kind: 'switched'; prevSkillId: string } | { kind: 'undone' } | null>(null)
+/** 只有文字意图、没带视频：发送后在输入区下方给「去视频复刻」入口 */
+const replicateHint = ref(false)
+let replicateNoticeTimer: ReturnType<typeof setTimeout> | undefined
+function showReplicateNotice(n: NonNullable<typeof replicateNotice.value>) {
+  replicateNotice.value = n
+  clearTimeout(replicateNoticeTimer)
+  replicateNoticeTimer = setTimeout(() => (replicateNotice.value = null), 10000)
+}
+onUnmounted(() => clearTimeout(replicateNoticeTimer))
+/** 不在复刻技能时自动切过去；已在复刻技能则什么都不做 */
+function switchToReplicate() {
+  if (isReplicateSkill.value) return
+  const prevSkillId = selectedSkillId.value
+  pickSkill(REPLICATE_SKILL_ID)
+  replicateHint.value = false
+  showReplicateNotice({ kind: 'switched', prevSkillId })
+}
+/** 撤销自动切换：回到原技能；其它技能不识别视频，所以视频附件一并移除（图片与草稿不动） */
+function undoReplicateSwitch() {
+  const n = replicateNotice.value
+  if (n?.kind !== 'switched') return
+  pickSkill(n.prevSkillId)
+  for (const v of [...videoAttachments.value]) dropVideo(v)
+  showReplicateNotice({ kind: 'undone' })
+}
+/** 输入区下方的「去视频复刻」：选中复刻技能并打开视频选择 */
+function goReplicateFromHint() {
+  replicateHint.value = false
+  pickSkill(REPLICATE_SKILL_ID)
+  void nextTick(() => videoInputEl.value?.click())
+}
 function clearVideos(urls: string[]) {
   for (const v of videoAttachments.value.filter((x) => urls.includes(x.url))) dropVideo(v)
 }
@@ -456,6 +491,8 @@ async function onVideoChange(e: Event) {
         dropVideo(v)
       })
   }
+  // 加了视频就切到复刻助手（非复刻技能下才会真的切）
+  if (ok.length) switchToReplicate()
 }
 
 // 「收藏资产」页签已去掉：资产选择器没有「收藏」筛选，之前一直是置灰的死入口
@@ -1836,6 +1873,13 @@ async function send(
     }
     requireLogin('pick')
     return
+  }
+  // 非复刻技能：文字带复刻意图且已有视频 → 先切过去再发；只有意图没视频 → 照常发，输入区下方给入口（不按文字自动切）
+  if (!isReplicateSkill.value && !opts.noAttach && REPLICATE_INTENT.test(content)) {
+    if (videoAttachments.value.length) switchToReplicate()
+    else replicateHint.value = true
+  } else if (!REPLICATE_INTENT.test(content)) {
+    replicateHint.value = false
   }
   if (uploading.value || (isReplicateSkill.value && videoUploading.value)) {
     message.info(isReplicateSkill.value && videoUploading.value ? '视频还在上传，请稍候' : UPLOAD_BUSY)
@@ -4970,8 +5014,20 @@ onUnmounted(() => {
                       </button>
                     </li>
                   </ul>
+                  <p
+                    v-if="replicateNotice && !slotMode"
+                    class="m-0 mb-8px flex flex-wrap items-center gap-8px self-start text-12px leading-18px text-ink-2"
+                    role="status"
+                    data-testid="replicate-switch-notice"
+                  >
+                    <template v-if="replicateNotice.kind === 'switched'">
+                      已切换到视频复刻助手
+                      <button type="button" :class="BTN" data-testid="replicate-switch-undo" @click="undoReplicateSwitch">撤销</button>
+                    </template>
+                    <template v-else>已撤销，视频附件已移除</template>
+                  </p>
                   <ul
-                    v-if="videoAttachments.length && isReplicateSkill && !slotMode"
+                    v-if="videoAttachments.length && !slotMode"
                     class="m-0 mb-8px flex list-none gap-8px self-start p-0"
                     aria-label="已添加的视频"
                   >
@@ -5064,9 +5120,9 @@ onUnmounted(() => {
                       </svg>
                       图片 {{ attachments.length }}/{{ MAX_IMAGES }}
                     </button>
-                    <!-- 视频入口：只有选了复刻技能才出现（MP4 / MOV / WEBM，≤200MB，最多 2 条） -->
+                    <!-- 视频入口：任何技能都有（加了视频自动切到复刻助手；MP4 / MOV / WEBM，≤200MB，最多 2 条） -->
                     <button
-                      v-if="isReplicateSkill && !slotMode"
+                      v-if="!slotMode"
                       type="button"
                       :aria-label="`添加视频，已添加 ${videoAttachments.length}/${MAX_VIDEOS}`"
                       :title="`MP4 / MOV / WEBM，单个 200MB 以内，最多 ${MAX_VIDEOS} 条`"
@@ -5091,7 +5147,6 @@ onUnmounted(() => {
                       视频 {{ videoAttachments.length }}/{{ MAX_VIDEOS }}
                     </button>
                     <input
-                      v-if="isReplicateSkill"
                       ref="videoInputEl"
                       type="file"
                       multiple
@@ -5292,6 +5347,15 @@ onUnmounted(() => {
                     </button>
                   </div>
                 </div>
+                <p
+                  v-if="replicateHint && !isReplicateSkill && !slotMode"
+                  class="m-0 mt-6px flex flex-wrap items-center justify-center gap-6px text-12px leading-18px text-ink-2"
+                  role="status"
+                  data-testid="replicate-hint"
+                >
+                  想复刻视频？
+                  <button type="button" :class="BTN" @click="goReplicateFromHint">去视频复刻 →</button>
+                </p>
                 <p v-if="!isHome" class="m-0 mt-6px text-center text-11px leading-16px text-placeholder">
                   AI 生成内容仅供参考，请仔细甄别
                 </p>
