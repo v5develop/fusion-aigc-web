@@ -4,7 +4,7 @@
  * 卡片自身不改任何业务状态：JobCard 的动作经 send 事件变成一条用户消息。
  */
 import type { ReplicateAnalysis, ReplicateExport, ReplicateJob, ReplicatePlan, ReplicatePreview, ReplicatePublishCopy } from '@/api/replicate.ts'
-import { CARD_ANCHOR_ATTR, type ReplicateCardFrame } from '@/api/replicate-card.ts'
+import { CARD_ANCHOR_ATTR, type ReplicateCardFrame, type ReplicateShare, type ReplicateTrending, type ReplicateVoices } from '@/api/replicate-card.ts'
 import '@/views/video-replicate/video-replicate.css'
 import BatchCard from './BatchCard.vue'
 import AnalysisCard from './AnalysisCard.vue'
@@ -13,6 +13,9 @@ import ExportCard from './ExportCard.vue'
 import JobCard from './JobCard.vue'
 import PlanCard from './PlanCard.vue'
 import PreviewCard from './PreviewCard.vue'
+import ShareCard from './ShareCard.vue'
+import TrendingCard from './TrendingCard.vue'
+import VoicesCard from './VoicesCard.vue'
 
 defineProps<{ frames: ReplicateCardFrame[]; busy?: boolean; sourceUrl?: string; latest?: boolean }>()
 const emit = defineEmits<{ (e: 'send', text: string): void; (e: 'draft', text: string): void }>()
@@ -42,6 +45,24 @@ const anchor = (key: string) => ({ [CARD_ANCHOR_ATTR]: key })
         <PlanCard v-else-if="f.type === 'plan'" :view="f.view as ReplicatePlan" />
         <CopyCard v-else-if="f.type === 'copy'" :view="f.view as ReplicatePublishCopy" />
         <ExportCard v-else-if="f.type === 'export'" :view="f.view as ReplicateExport" />
+        <VoicesCard
+          v-else-if="f.type === 'voices'"
+          :view="f.view as ReplicateVoices"
+          :disabled="busy || !latest"
+          @send="(t: string) => emit('send', t)"
+        />
+        <TrendingCard
+          v-else-if="f.type === 'trending'"
+          :view="f.view as ReplicateTrending"
+          :disabled="busy || !latest"
+          @send="(t: string) => emit('send', t)"
+        />
+        <ShareCard
+          v-else-if="f.type === 'share'"
+          :view="f.view as ReplicateShare"
+          :disabled="busy || !latest"
+          @send="(t: string) => emit('send', t)"
+        />
         <BatchCard
           v-else-if="f.type === 'batch'"
           :frame="f"

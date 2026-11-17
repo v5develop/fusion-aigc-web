@@ -20,7 +20,7 @@ import type {
   ReplicatePublishCopy,
 } from './replicate.ts'
 
-export type ReplicateCardType = 'analysis' | 'plan' | 'job' | 'preview' | 'batch' | 'copy' | 'export'
+export type ReplicateCardType = 'analysis' | 'plan' | 'job' | 'preview' | 'batch' | 'copy' | 'export' | 'voices' | 'trending' | 'share'
 
 export interface ReplicateCardError {
   code: string
@@ -36,7 +36,7 @@ export interface ReplicateCardFrame {
   toolName: string
   isError: boolean
   error?: ReplicateCardError
-  view?: ReplicateAnalysis | ReplicatePlan | ReplicateJob | ReplicatePreview | ReplicateBatch | ReplicatePublishCopy | ReplicateExport
+  view?: ReplicateAnalysis | ReplicatePlan | ReplicateJob | ReplicatePreview | ReplicateBatch | ReplicatePublishCopy | ReplicateExport | ReplicateVoices | ReplicateTrending | ReplicateShare
 }
 
 /** 批量卡里的一条任务摘要（Go JobSummary 的子集，只取卡片用到的字段） */
@@ -47,6 +47,40 @@ export interface ReplicateBatchJob {
   segDone: number
   segTotal: number
   money?: ReplicateJob['money']
+}
+
+/** replicate_list_voices 的 view（CONTRACT §P）；sampleUrl 是签名地址，可能被事件清洗剔除（缺失时卡片不显示试听） */
+export interface ReplicateVoice {
+  voiceId: string
+  name: string
+  gender?: string
+  style?: string
+  sampleUrl?: string
+}
+export interface ReplicateVoices {
+  voices: ReplicateVoice[]
+}
+
+/** replicate_trending 的 view（CONTRACT §S）：匿名统计，不含任何人的素材 */
+export interface ReplicateTrendingItem {
+  label: string
+  desc?: string
+  dims?: { key: string; mode: string }[]
+  audio?: string
+  sampleId?: string
+}
+export interface ReplicateTrending {
+  industry?: string
+  period?: string
+  items: ReplicateTrendingItem[]
+}
+
+/** replicate_share_sample 的 view（CONTRACT §T） */
+export interface ReplicateShare {
+  submissionId: string | number
+  jobId?: string | number
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
+  rejectReason?: string
 }
 
 /** Go BatchView（CONTRACT §M） */
@@ -68,7 +102,7 @@ const pick = (o: Record<string, unknown>, ...names: string[]): unknown => {
 }
 
 export const REPLICATE_CARD_RESULT_TYPE = 'replicate_card'
-const TYPES: readonly string[] = ['analysis', 'plan', 'job', 'preview', 'batch', 'copy', 'export']
+const TYPES: readonly string[] = ['analysis', 'plan', 'job', 'preview', 'batch', 'copy', 'export', 'voices', 'trending', 'share']
 let errSeq = 0
 
 /** 解析一条 tool_result 的 payload；不是复刻卡片返回 null */

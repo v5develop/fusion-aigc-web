@@ -195,7 +195,7 @@ const DIM_LABEL: Record<string, string> = {
   line: '台词', camera: '镜头', light: '光线', scene: '场景·门店', style: '风格',
 }
 const MODE_LABEL = { keep: '不改', replace: '换成我的图', describe: '按我写的改' } as const
-const AUDIO_LABEL = { regenerate: '重新配乐', keep: '保留原声', mute: '无声' } as const
+const AUDIO_LABEL = { regenerate: '重新配乐', keep: '保留原声', mute: '无声', revoice: '换个声音' } as const
 
 /** 同 Go validate 的子集：未知模型 / 缺图 / 缺说明 / 原片没有这一项 / 什么都没改 */
 function validate(p: ReplicatePlanRequest): ReplicateGap[] {

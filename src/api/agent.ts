@@ -581,6 +581,8 @@ export interface IAgentQuestion {
   placeholder: string
   defaultSelected: string[]
   defaultText: string
+  /** 文字题字数上限（CONTRACT §P 改台词）；0 = 不限。取 maxChars / max_chars，缺省时从标题「第 N 句（最多 X 字）」解析 */
+  maxChars: number
 }
 
 /** 待答的参数确认表单（question_asker 发起的中断） */
@@ -635,6 +637,14 @@ function toOptions(raw: unknown): IAgentQuestionOption[] {
     .filter((o) => !!o.id)
 }
 
+/** 文字题字数上限：显式字段优先（两种写法都认），否则从标题「（最多 X 字）」里取；都没有 = 0 */
+function textLimitOf(q: Record<string, unknown>, title: string): number {
+  const n = Number(q.maxChars ?? q.max_chars)
+  if (Number.isFinite(n) && n > 0) return Math.floor(n)
+  const m = /第\s*\d+\s*句\s*[（(]\s*最多\s*(\d+)\s*字\s*[）)]/.exec(title)
+  return m ? Number(m[1]) : 0
+}
+
 function toQuestion(raw: unknown): IAgentQuestion | null {
   const q = rec(raw)
   const id = str(q.questionId).trim()
@@ -642,10 +652,11 @@ function toQuestion(raw: unknown): IAgentQuestion | null {
   const type = str(q.questionType).trim() || 'text'
   // interrupt_required 已按 textInputConfig 定好；tool_result 回退时缺省规则同服务端：select 题默认可补充文字
   const allowText = typeof q.allowTextInput === 'boolean' ? q.allowTextInput : SELECT_TYPES.includes(type)
+  const title = str(q.title).trim() || id
   return {
     id,
     type,
-    title: str(q.title).trim() || id,
+    title,
     message: str(q.message).trim(),
     required: q.required === true,
     options: toOptions(q.options),
@@ -653,6 +664,7 @@ function toQuestion(raw: unknown): IAgentQuestion | null {
     placeholder: str(q.textInputPlaceholder).trim(),
     defaultSelected: strList(q.defaultSelected),
     defaultText: str(q.defaultText).trim(),
+    maxChars: textLimitOf(q, title),
   }
 }
 
@@ -756,9 +768,14 @@ export function answerReady(q: IAgentQuestion, a: IAgentAnswer | undefined): boo
   return parent.children.length ? parent.children.some((c) => c.id === last) : last === parent.id
 }
 
-/** 必答题都答了才能提交 */
+/** 文字题是否超过字数上限（按字符数，不去首尾空白以外的东西）；无上限的题恒为 false */
+export function overLimit(q: IAgentQuestion, a: IAgentAnswer | undefined): boolean {
+  return q.maxChars > 0 && [...(a?.text ?? '').trim()].length > q.maxChars
+}
+
+/** 必答题都答了、且没有超字数的题才能提交 */
 export function formReady(form: IAgentForm, answers: Record<string, IAgentAnswer>): boolean {
-  return form.questions.every((q) => !q.required || answerReady(q, answers[q.id]))
+  return form.questions.every((q) => (!q.required || answerReady(q, answers[q.id])) && !overLimit(q, answers[q.id]))
 }
 
 /** 组 attribute.answers：每题都带（没答的给空），文字去首尾空白 */

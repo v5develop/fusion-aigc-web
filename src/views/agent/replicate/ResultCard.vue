@@ -40,6 +40,8 @@ const saveText = computed(() => {
   if (r.status === 'retry') return '正在把几段接成一条…'
   return '成片暂时拿不到，可以稍后再看'
 })
+/** 声音没做成：只提示后端给的说明，重做声音走发消息 */
+const audioFailed = computed(() => result.value?.audio === 'failed')
 const canDownload = computed(() => !!result.value?.videoUrl && !preview.value && result.value?.status === 'ready')
 /** 已交付（完整版 / 部分版，非预览）才给发布文案与多比例的快捷动作；只发用户消息，不调 REST */
 const delivered = computed(() => canDownload.value && ['succeeded', 'partial'].includes(props.job.status))
@@ -64,12 +66,24 @@ function download() {
       @result-error="emit('renew', true)"
     />
     <p v-if="saveText" class="m-0 text-12px leading-18px text-muted" role="status">{{ saveText }}</p>
+    <p v-if="audioFailed && result?.audioNote" class="m-0 text-12px leading-18px text-warning" role="status">{{ result.audioNote }}</p>
     <div class="flex flex-wrap gap-8px">
       <button v-if="canDownload" type="button" class="sx-btn !h-32px" @click="download">下载</button>
       <template v-if="delivered">
         <button type="button" class="sx-btn !h-32px" :disabled="busy" @click="emit('send', '生成发布文案')">生成发布文案</button>
         <button type="button" class="sx-btn !h-32px" :disabled="busy" @click="emit('send', '导出其它比例')">导出其它比例</button>
+        <button v-if="audioFailed" type="button" class="sx-btn !h-32px" :disabled="busy" @click="emit('send', '重做声音')">重做声音（免费）</button>
       </template>
+      <!-- 低强调：文字按钮，视觉上弱于发布文案 / 导出 -->
+      <button
+        v-if="delivered && job.status === 'succeeded'"
+        type="button"
+        class="h-32px cursor-pointer rounded-8px border-none bg-transparent px-8px text-12px text-muted underline-offset-2 enabled:hover:(text-ink-2 underline) disabled:cursor-not-allowed disabled:opacity-50 focus-visible:(outline outline-2 outline-violet outline-offset-2)"
+        :disabled="busy"
+        @click="emit('send', '我想把这条分享为示例')"
+      >
+        分享为示例
+      </button>
       <RouterLink :to="{ name: 'video-replicate', query: { job: String(job.jobId) } }" class="sx-btn !h-32px no-underline">在完整页查看</RouterLink>
     </div>
   </div>

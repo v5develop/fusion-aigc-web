@@ -40,6 +40,7 @@ import {
   urlExpiringSoon,
   type ReplicateAnalysis,
   type ReplicateAnnotations,
+  type ReplicateAudio,
   type ReplicateDimEdit,
   type ReplicateGap,
   type ReplicateJob,
@@ -391,7 +392,8 @@ export function useReplicate() {
 
   // ---- 3 方案 ----
   const marks = reactive<Partial<Record<VideoCloneDimKey, { mode: DimMode; note: string }>>>({})
-  const audio = ref<'keep' | 'regenerate' | 'mute'>('regenerate')
+  // revoice（换声音）只在对话里设置音色 / 台词；独立页能显示和保留它，但不提供编辑（选项里只在当前就是 revoice 时出现）
+  const audio = ref<ReplicateAudio>('regenerate')
   const consent = ref(false)
   const stage = ref<'first' | 'all'>('first')
   const plan = ref<ReplicatePlan | null>(null)

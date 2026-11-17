@@ -6,7 +6,7 @@
  * 编辑先只改本地，停手 1.5 秒或点「更新报价」才在当前方案上改出一张新方案（提交中再改则合并到下一次）（EXPERIENCE §3.4.1）；缺图可以在行内直接放；方案出来后可「保存为我的方案」（§3.9.2）。
  */
 import { NModal } from 'naive-ui'
-import { CONFIRM_THRESHOLD_POINTS } from '@/api/replicate.ts'
+import { CONFIRM_THRESHOLD_POINTS, type ReplicateAudio } from '@/api/replicate.ts'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { hasBillingPage, openBillingPage } from '@/utils/billing.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
@@ -122,6 +122,14 @@ function doConfirm() {
   confirmOpen.value = false
   void rep.confirm()
 }
+
+/** 声音选项：「换个声音」只在对话里设置（音色 / 台词），独立页只在方案本来就是它时显示，保持不丢 */
+const audioOptions = computed<{ k: ReplicateAudio; l: string }[]>(() => [
+  { k: 'regenerate', l: '重新配乐' },
+  { k: 'keep', l: '保留原声' },
+  { k: 'mute', l: '无声' },
+  ...(props.rep.audio.value === 'revoice' ? [{ k: 'revoice' as const, l: '换个声音' }] : []),
+])
 </script>
 
 <template>
@@ -241,17 +249,20 @@ function doConfirm() {
         <div>
           <div class="inline-flex gap-2px rounded-12px bg-surface3 p-2px" role="radiogroup" aria-label="声音">
             <button
-              v-for="a in [{ k: 'regenerate', l: '重新配乐' }, { k: 'keep', l: '保留原声' }, { k: 'mute', l: '无声' }]"
+              v-for="a in audioOptions"
               :key="a.k"
               type="button"
               role="radio"
               :aria-checked="rep.audio.value === a.k"
               :class="['h-28px rounded-10px border-0 px-10px text-12px cursor-pointer', rep.audio.value === a.k ? 'bg-surface font-600 text-violet-ink shadow-soft' : 'bg-transparent text-muted hover:text-ink', FOCUS]"
-              @click="rep.audio.value = a.k as 'keep' | 'regenerate' | 'mute'"
+              @click="rep.audio.value = a.k"
             >
               {{ a.l }}
             </button>
           </div>
+          <p v-if="rep.audio.value === 'revoice'" class="m-0 mt-6px text-12px leading-18px text-muted">
+            音色和台词是在对话里设置的，这里不能修改；换声音后口型可能对不上。
+          </p>
         </div>
       </div>
     </section>

@@ -10,6 +10,10 @@ const props = defineProps<{ view: ReplicatePlan }>()
 /** 改动说明按换行 / 中英文分号拆成多行（后端逐套文案每套一句） */
 const noteLines = (note: string) => note.split(/[\n;；]+/).map((l) => l.trim()).filter(Boolean)
 
+/** 换声音（audio=revoice）：配音设置那一行与口型风险要显眼 */
+const revoice = computed(() => props.view.annotations?.audio === 'revoice')
+const isVoiceChange = (key: string) => revoice.value && /audio|voice/i.test(key)
+
 const segCount = computed(() => props.view.timeline?.segments?.length ?? 0)
 const staged = computed(() => props.view.cost?.defaultStage === 'first' && segCount.value > 1)
 const points = computed(() => (staged.value ? props.view.stageQuotes?.first : props.view.stageQuotes?.total) ?? props.view.cost?.total ?? 0)
@@ -44,7 +48,11 @@ const link = computed(() =>
     <p v-if="view.overview" class="vr-sub !mt-4px">{{ view.overview }}</p>
 
     <ul v-if="view.changes?.length" class="m-0 flex list-none flex-col gap-6px p-0" aria-label="会改的地方">
-      <li v-for="c in view.changes" :key="c.key" class="flex gap-8px text-12px leading-18px">
+      <li
+        v-for="c in view.changes"
+        :key="c.key"
+        :class="['flex gap-8px text-12px leading-18px', isVoiceChange(c.key) && 'rounded-10px border border-solid border-violet bg-violet-tint px-8px py-6px']"
+      >
         <b class="w-52px flex-none font-600 text-ink">{{ c.label }}</b>
         <span class="min-w-0 flex-1 break-words text-ink-2">
           <span class="mr-4px inline-flex h-18px items-center rounded-9px bg-violet-soft px-6px text-10px font-600 text-violet-ink">{{ c.modeLabel }}</span>
@@ -62,8 +70,15 @@ const link = computed(() =>
     <p v-if="view.kept?.length" class="m-0 mt-8px text-12px leading-18px text-muted">
       保持原样：{{ view.kept.map((k) => k.label).join('、') }}
     </p>
-    <ul v-if="view.risks?.length" class="m-0 mt-8px flex list-none flex-col gap-4px p-0" aria-label="需要留意">
-      <li v-for="r in view.risks" :key="r" class="text-12px leading-18px text-warning">{{ r }}</li>
+    <ul
+      v-if="view.risks?.length"
+      :class="[
+        'm-0 mt-8px flex list-none flex-col gap-4px p-0',
+        revoice && 'rounded-10px border border-solid border-warning-line bg-warning-soft px-10px py-8px',
+      ]"
+      aria-label="需要留意"
+    >
+      <li v-for="r in view.risks" :key="r" :class="['break-words text-12px leading-18px text-warning', revoice && 'font-600']">{{ r }}</li>
     </ul>
 
     <div v-if="view.cost" class="mt-10px rounded-12px bg-surface2 px-12px py-10px">

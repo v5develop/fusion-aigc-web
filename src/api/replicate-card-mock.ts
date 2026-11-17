@@ -20,12 +20,35 @@ const frame = (eventType: string, payload: Record<string, unknown>): IAgentFrame
 function scrub<T>(v: T): T {
   return JSON.parse(JSON.stringify(v, (k, x) => (k === 'videoUrl' || k === 'coverUrl' ? undefined : x))) as T
 }
-export function cardFrame(toolName: string, type: 'analysis' | 'plan' | 'job' | 'preview' | 'batch' | 'copy' | 'export', id: string | number, view: unknown): IAgentFrame {
+export function cardFrame(toolName: string, type: 'analysis' | 'plan' | 'job' | 'preview' | 'batch' | 'copy' | 'export' | 'voices' | 'trending' | 'share', id: string | number, view: unknown): IAgentFrame {
   return frame('tool_result', {
     toolName,
     status: 'completed',
     message: '',
     result: { toolName: toolName, resultType: 'replicate_card', isError: false, entity: { type, id: String(id) }, view: scrub(view) },
+  })
+}
+/** 逐句改台词中断（CONTRACT §P）：每句一道文字题，标题「第 N 句（最多 X 字）」，默认值 = 原句；第 2 句默认就超限，用来看红色计数 */
+export function lineEditFrame(): IAgentFrame {
+  const lines = [
+    { text: '这个保温杯，冬天喝水真的很舒服', max: 20 },
+    { text: '早上灌满热水，到下午还是烫的，杯口好清洗放包里也不漏水', max: 18 },
+    { text: '现在下单还有赠品', max: 12 },
+  ]
+  return frame('interrupt_required', {
+    interruptId: `mock-int-lines-${Date.now()}`,
+    title: '改台词',
+    message: '每句字数按原句时长限制，超了需要缩短。',
+    questions: lines.map((l, i) => ({
+      questionId: `line_${i + 1}`,
+      title: `第 ${i + 1} 句（最多 ${l.max} 字）`,
+      message: '',
+      questionType: 'text',
+      required: true,
+      allowTextInput: true,
+      defaultText: l.text,
+      options: [],
+    })),
   })
 }
 export function errorCardFrame(toolName: string, message: string, retryable = true): IAgentFrame {
@@ -154,6 +177,39 @@ export async function mockReplicateAgentStream(
     emit(consentFrame(consentOf({ action: 'redo', points: 80, seg_index: k, job_id: lastJob.jobId })))
   } else if (/继续做剩下/.test(content) && lastJob) {
     emit(consentFrame(consentOf({ action: 'continue', points: lastPlan?.stageQuotes.rest ?? 240, job_id: lastJob.jobId })))
+  } else if (/改台词/.test(content)) {
+    emit(lineEditFrame())
+  } else if (/换声音|换个声音|音色/.test(content)) {
+    // 一个带试听地址、一个被清洗掉（不显示试听按钮）
+    emit(
+      cardFrame('音色列表', 'voices', 'voices', {
+        voices: [
+          { voiceId: 'v1', name: '温柔女声', gender: 'female', style: '温柔', sampleUrl: 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=' },
+          { voiceId: 'v2', name: '知性女声', gender: 'female', style: '知性', sampleUrl: 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=' },
+          { voiceId: 'v3', name: '磁性男声', gender: 'male', style: '沉稳' },
+          { voiceId: 'v4', name: '阳光男声', gender: 'male', style: '活力', sampleUrl: 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=' },
+        ],
+      }),
+    )
+    await say('音色在上面，点一个就行。')
+  } else if (/灵感|推荐|改法/.test(content)) {
+    emit(
+      cardFrame('灵感推荐', 'trending', 'trending', {
+        industry: '家居百货',
+        period: '7d',
+        items: [
+          { label: '换成我的商品，保留原来的口播', desc: '只换商品，其余不动' },
+          { label: '换商品并换一个声音', desc: '商品和配音一起换', audio: 'voice' },
+          { label: '换商品和场景', desc: '换成我自己的场景' },
+        ],
+      }),
+    )
+  } else if (/分享为示例/.test(content) && lastJob) {
+    emit(cardFrame('分享示例', 'share', 'mock-sub-1', { submissionId: 'mock-sub-1', jobId: lastJob.jobId, status: 'pending' }))
+    await say('已提交审核，通过后会作为示例展示。')
+  } else if (/撤回我分享/.test(content)) {
+    emit(cardFrame('撤回示例', 'share', 'mock-sub-1', { submissionId: 'mock-sub-1', status: 'withdrawn' }))
+    await say('已撤回。')
   } else if (/发布文案/.test(content) && lastJob) {
     emit(
       cardFrame('生成发布文案', 'copy', `${lastJob.jobId}:douyin`, {

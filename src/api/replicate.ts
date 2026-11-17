@@ -199,7 +199,7 @@ export interface ReplicateTextOverlay {
   color?: string
 }
 
-export type ReplicateAudio = 'regenerate' | 'keep' | 'mute'
+export type ReplicateAudio = 'regenerate' | 'keep' | 'mute' | 'revoice'
 
 export interface ReplicateAnnotations {
   dims: Partial<Record<VideoCloneDimKey, ReplicateDimEdit>>
@@ -443,6 +443,9 @@ export interface ReplicateJobResult {
   /** 占位的段号 */
   missing?: number[]
   text?: string
+  /** 声音结果：failed = 声音没做成（配合 audioNote 说明） */
+  audio?: string
+  audioNote?: string
 }
 
 /** 发布文案（Go `PublishCopyView`，CONTRACT §N） */

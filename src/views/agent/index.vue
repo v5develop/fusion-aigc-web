@@ -39,6 +39,7 @@ import {
   chatSkillGroups,
   emptyReply,
   formReady,
+  overLimit,
   genTaskPending,
   initialAnswer,
   isNestedQuestion,
@@ -893,6 +894,20 @@ function setAnswerText(item: ChatItem, q: IAgentQuestion, v: string) {
 }
 
 const STEP_REQUIRED = '这道题是必填'
+const STEP_OVER = '这句超出字数上限，请缩短'
+
+/** 当前题是「必勾的单项授权」（required + multi_select + 仅一个选项，如 share_consent）且还没勾：提交 / 下一步置灰 */
+function consentPending(item: ChatItem): boolean {
+  const q = formQuestion(item)
+  if (!q || !q.required || q.type !== 'multi_select' || q.options.length !== 1) return false
+  return !answerReady(q, item.form?.answers[q.id])
+}
+
+/** 表单里有没有超字数的文字题（改台词表单：任一句超了就不能翻页 / 提交） */
+function formOver(item: ChatItem): boolean {
+  const qs = item.reply.form?.questions ?? []
+  return qs.some((q) => overLimit(q, item.form?.answers[q.id]))
+}
 
 /** 当前题（越界时夹到最后一题） */
 function formQuestion(item: ChatItem): IAgentQuestion | undefined {
@@ -916,6 +931,10 @@ function formNext(item: ChatItem) {
   const s = item.form
   const q = formQuestion(item)
   if (!s || !q || !formOpen(item)) return
+  if (overLimit(q, s.answers[q.id])) {
+    s.stepError = STEP_OVER
+    return
+  }
   if (q.required && !answerReady(q, s.answers[q.id])) {
     s.stepError = STEP_REQUIRED
     return
@@ -930,6 +949,10 @@ function onFormSubmit(item: ChatItem) {
   const form = item.reply.form
   if (!s || !form || !formOpen(item)) return
   if (!isLastStep(item)) return formNext(item)
+  if (formOver(item)) {
+    s.stepError = STEP_OVER
+    return
+  }
   const missing = form.questions.findIndex((q) => q.required && !answerReady(q, s.answers[q.id]))
   if (missing >= 0) {
     s.step = missing
@@ -4374,6 +4397,20 @@ onUnmounted(() => {
                               class="sx-soft-input mt-8px w-full !h-34px disabled:(cursor-not-allowed opacity-60)"
                               @input="setAnswerText(item, q, ($event.target as HTMLInputElement).value)"
                             />
+                            <!-- 改台词：字数实时计数，超了变红（提交已被禁用，不自动截断） -->
+                            <p
+                              v-if="q.maxChars > 0"
+                              :class="[
+                                'm-0 mt-4px text-right text-12px leading-18px tabular-nums',
+                                overLimit(q, item.form.answers[q.id]) ? 'font-600 text-danger-strong' : 'text-placeholder',
+                              ]"
+                              :role="overLimit(q, item.form.answers[q.id]) ? 'alert' : 'status'"
+                            >
+                              已写 {{ [...(item.form.answers[q.id]?.text ?? '').trim()].length }} / {{ q.maxChars }} 字<template
+                                v-if="overLimit(q, item.form.answers[q.id])"
+                                >，超出 {{ [...(item.form.answers[q.id]?.text ?? '').trim()].length - q.maxChars }} 字</template
+                              >
+                            </p>
                           </fieldset>
                           <div class="mx-18px mt-12px flex items-center gap-6px">
                             <span class="flex min-w-0 flex-1 items-center gap-10px">
@@ -4406,7 +4443,7 @@ onUnmounted(() => {
                             >
                               上一步
                             </button>
-                            <button type="submit" :disabled="!formOpen(item)" :class="BTN_PRIMARY">
+                            <button type="submit" :disabled="!formOpen(item) || formOver(item) || consentPending(item)" :class="BTN_PRIMARY">
                               {{ isLastStep(item) ? '确认并生成' : '下一步' }}
                             </button>
                           </div>
