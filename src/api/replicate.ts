@@ -222,6 +222,8 @@ export interface ReplicatePlanRequest {
   modelGroup: string
   resolution?: string
   aspectRatio?: string
+  /** 画面连贯度（CONTRACT §Y）：不传 = fast；只对多段方案有意义 */
+  continuity?: ReplicateContinuity
 }
 
 /** PATCH /plans/{no}/annotations：refImages 不传 = 沿用原方案的图（传了就整体替换），其余不传 = 沿用 */
@@ -231,6 +233,7 @@ export interface ReplicatePatchAnnotationsRequest {
   modelGroup?: string
   resolution?: string
   aspectRatio?: string
+  continuity?: ReplicateContinuity
 }
 
 /** 方案 / 保存的方案里的参考图（序号从 1 起，对应标注里的 refs）；保存的方案带现签的 url */
@@ -252,6 +255,8 @@ export interface ReplicateDimLine {
   risk?: 'high' | 'mid' | 'low' | string
   /** 逐套换装（Go §O1）：可读文案「第 1 套 → 图 2；第 3 套 → 图 3」，有它时优先展示 */
   occurrenceText?: string
+  /** 多人点名（CONTRACT §X）：逐人一行文案「左侧白衣女生 → 图1；男生 保持不变」，有它时优先展示 */
+  subjectText?: string
   occurrences?: { index: number; refs: number[] }[]
 }
 
@@ -265,6 +270,9 @@ export interface ReplicateTimelineSegment {
   cutLabel?: string
   points: number
 }
+
+/** 画面连贯度：fast 更快（默认，缺省即 fast）/ smooth 更连贯（后段用上一段末帧衔接，更慢，价格不变） */
+export type ReplicateContinuity = 'fast' | 'smooth'
 
 export interface ReplicateEtaRange {
   lowSec: number
@@ -321,12 +329,22 @@ export interface ReplicatePlan {
     seamTip?: string
     segments: ReplicateTimelineSegment[]
   }
+  /** 当前画面连贯度；缺省 = fast */
+  continuity?: ReplicateContinuity
   modelGroup: string
   /** 段提示词按哪家方言写的 */
   dialect?: string
   cost: ReplicateCost
   stageQuotes: { first: number; rest: number; total: number }
-  eta: { first?: ReplicateEtaRange; rest?: ReplicateEtaRange; total: ReplicateEtaRange; prior: boolean }
+  eta: {
+    first?: ReplicateEtaRange
+    rest?: ReplicateEtaRange
+    total: ReplicateEtaRange
+    prior: boolean
+    /** 多段方案才有：两种连贯度各自的预计时间 */
+    fast?: ReplicateEtaRange
+    smooth?: ReplicateEtaRange
+  }
   /** 成片规则（付费前必须展示）；后端没承诺的「AI 生成」角标不展示 */
   policy: { watermark: boolean; removableBy?: string; text: string }
   /** 主按钮文案，如「先做第 1 段（120 点）」 */
@@ -473,6 +491,31 @@ export interface ReplicateExport {
   original?: boolean
 }
 
+/** 反馈原因（CONTRACT §Z）：枚举码 → 用户口径文案 */
+export const REPLICATE_FEEDBACK_REASONS = [
+  { key: 'face_mismatch', label: '人不像' },
+  { key: 'product_deformed', label: '商品变形' },
+  { key: 'motion_weird', label: '动作奇怪' },
+  { key: 'seam_jump', label: '接缝跳变' },
+  { key: 'text_garbled', label: '画面有乱码' },
+  { key: 'other', label: '其他' },
+] as const
+export type ReplicateFeedbackReason = (typeof REPLICATE_FEEDBACK_REASONS)[number]['key']
+
+/** POST /jobs/{id}/feedback 入参：不满意才带 reasons；segIndex 缺省 = 整条；note ≤200 字 */
+export interface ReplicateFeedbackRequest {
+  rating: 'up' | 'down'
+  reasons?: ReplicateFeedbackReason[]
+  segIndex?: number
+  note?: string
+}
+
+/** POST /jobs/{id}/feedback：属主；同一用户同一任务同一段重复提交 = 覆盖更新（天然幂等，不带 Idempotency-Key） */
+export async function replicateSubmitFeedback(jobId: number | string, p: ReplicateFeedbackRequest) {
+  if (isMock('replicate')) return { code: 0, msg: 'ok', data: {} as Record<string, never> }
+  return postQuiet<Record<string, never>>(`/api/v1/replicate/jobs/${enc(String(jobId))}/feedback`, p)
+}
+
 /** GET /jobs/{id}/exports 的响应（Go：{jobId, exports}；成片未交付时 exports 为空数组） */
 export interface ReplicateExportList {
   jobId: number | string
@@ -495,6 +538,8 @@ export interface ReplicateJob {
   /** 「已完成 1/3 段」 */
   overview: string
   segments: ReplicateJobSegment[]
+  /** 所选画面连贯度（smooth 时任务卡显示「更连贯」）；缺省 = fast */
+  continuity?: ReplicateContinuity
   money: { held: number; confirmed: number; refunded: number; refundPending: number; text?: string }
   decision?: ReplicateDecision
   /** 到期 / 不继续等结局说明 */

@@ -23,13 +23,17 @@ const stages = computed(() => (props.view.stages?.length ? props.view.stages : F
 const done = computed(() => props.view.status === 'succeeded' && !!props.view.result)
 const failed = computed(() => props.view.status === 'failed')
 
+/** 分析出的人物称呼（只取名字，去空） */
+const subjectNames = computed(() => (props.view.result?.subjects ?? []).map((s) => s.name?.trim()).filter(Boolean))
+
 /** 「看懂了什么」：人物数、镜头数、时长、台词首句（有就列，没有就不列） */
 const facts = computed(() => {
   const r = props.view.result
   if (!r) return []
   const out: { k: string; v: string }[] = []
   if (r.durationS) out.push({ k: '时长', v: `${Math.round(r.durationS)} 秒` })
-  if (r.subjects?.length) out.push({ k: '人物', v: `${r.subjects.length} 个（${r.subjects.map((s) => s.name).slice(0, 3).join('、')}）` })
+  // 2 人及以上单独成行（见模板），这里只留单人
+  if (r.subjects?.length === 1) out.push({ k: '人物', v: `${r.subjects.length} 个（${r.subjects.map((s) => s.name).slice(0, 3).join('、')}）` })
   if (r.sections?.length) out.push({ k: '镜头', v: `${r.sections.length} 个` })
   const line = r.onScreenText?.[0]?.text
   if (line) out.push({ k: '字幕首句', v: line })
@@ -55,6 +59,10 @@ const facts = computed(() => {
           <dd class="m-0 min-w-0 break-words text-ink-2">{{ f.v }}</dd>
         </template>
       </dl>
+      <!-- 多人：只列称呼，换哪位在方案阶段点名 -->
+      <p v-if="subjectNames.length >= 2" class="m-0 mt-8px break-words text-12px leading-18px text-ink-2">
+        画面里有 {{ subjectNames.length }} 个人：{{ subjectNames.join('、') }}
+      </p>
       <div v-if="suggestions.length" class="mt-12px flex flex-col gap-6px" role="group" aria-label="一键方案">
         <button
           v-for="s in suggestions"

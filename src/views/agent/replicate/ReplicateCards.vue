@@ -42,7 +42,12 @@ const anchor = (key: string) => ({ [CARD_ANCHOR_ATTR]: key })
           @send="(t: string) => emit('send', t)"
         />
         <PreviewCard v-else-if="f.type === 'preview'" :view="f.view as ReplicatePreview" />
-        <PlanCard v-else-if="f.type === 'plan'" :view="f.view as ReplicatePlan" />
+        <PlanCard
+          v-else-if="f.type === 'plan'"
+          :view="f.view as ReplicatePlan"
+          :busy="busy"
+          @send="(t: string) => emit('send', t)"
+        />
         <CopyCard v-else-if="f.type === 'copy'" :view="f.view as ReplicatePublishCopy" />
         <ExportCard v-else-if="f.type === 'export'" :view="f.view as ReplicateExport" />
         <VoicesCard

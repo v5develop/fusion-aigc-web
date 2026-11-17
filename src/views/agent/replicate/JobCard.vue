@@ -50,7 +50,10 @@ const DECISION_MESSAGE: Record<string, string> = {
 
 <template>
   <section v-if="job" class="sx-squircle w-full max-w-520px rounded-18px sx-soft px-16px py-14px" aria-label="换片任务">
-    <h3 class="vr-h3">{{ job.statusLabel }}</h3>
+    <h3 class="vr-h3">
+      {{ job.statusLabel }}
+      <span v-if="job.continuity === 'smooth'" class="ml-6px inline-flex h-18px items-center rounded-9px bg-violet-soft px-6px align-middle text-10px font-600 text-violet-ink">更连贯</span>
+    </h3>
     <p class="vr-sub" role="status">
       {{ finished ? job.message || job.overview : job.overview }}<template v-if="live && job.concurrencyText"> · {{ job.concurrencyText }}</template>
     </p>

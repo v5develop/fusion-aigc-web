@@ -4,8 +4,11 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { ReplicatePlan } from '@/api/replicate.ts'
 import QuoteBlock from '@/views/video-replicate/parts/QuoteBlock.vue'
+import ContinuityPicker from '@/views/video-replicate/parts/ContinuityPicker.vue'
 
-const props = defineProps<{ view: ReplicatePlan }>()
+const props = defineProps<{ view: ReplicatePlan; /** 智能体正在回复：连贯度切换置灰 */ busy?: boolean }>()
+/** 连贯度切换只替用户发一条消息，由智能体改方案 */
+const emit = defineEmits<{ (e: 'send', text: string): void }>()
 
 /** 改动说明按换行 / 中英文分号拆成多行（后端逐套文案每套一句） */
 const noteLines = (note: string) => note.split(/[\n;；]+/).map((l) => l.trim()).filter(Boolean)
@@ -56,12 +59,12 @@ const link = computed(() =>
         <b class="w-52px flex-none font-600 text-ink">{{ c.label }}</b>
         <span class="min-w-0 flex-1 break-words text-ink-2">
           <span class="mr-4px inline-flex h-18px items-center rounded-9px bg-violet-soft px-6px text-10px font-600 text-violet-ink">{{ c.modeLabel }}</span>
-          <!-- 多套逐套文案（「第 1 套 → 图 2；第 3 套 → 图 3」）：按换行 / 分号拆开，每套一行 -->
-          <template v-if="c.occurrenceText || c.note">
-            <template v-if="noteLines(c.occurrenceText || c.note || '').length > 1">
-              <span v-for="(line, i) in noteLines(c.occurrenceText || c.note || '')" :key="i" class="block">{{ line }}</span>
+          <!-- 逐人 / 多套逐套文案（「左侧白衣女生 → 图1；男生 保持不变」「第 1 套 → 图 2；第 3 套 → 图 3」）：按换行 / 分号拆开，每套一行 -->
+          <template v-if="c.subjectText || c.occurrenceText || c.note">
+            <template v-if="noteLines(c.subjectText || c.occurrenceText || c.note || '').length > 1">
+              <span v-for="(line, i) in noteLines(c.subjectText || c.occurrenceText || c.note || '')" :key="i" class="block">{{ line }}</span>
             </template>
-            <template v-else>{{ c.occurrenceText || c.note }}</template>
+            <template v-else>{{ c.subjectText || c.occurrenceText || c.note }}</template>
           </template>
           <small v-if="c.current" class="block text-11px text-placeholder">现在是：{{ c.current }}</small>
         </span>
@@ -80,6 +83,13 @@ const link = computed(() =>
     >
       <li v-for="r in view.risks" :key="r" :class="['break-words text-12px leading-18px text-warning', revoice && 'font-600']">{{ r }}</li>
     </ul>
+
+    <ContinuityPicker
+      class="mt-10px"
+      :plan="view"
+      :disabled="busy || !!statusText"
+      @select="(v) => emit('send', v === 'smooth' ? '改成更连贯' : '改成更快')"
+    />
 
     <div v-if="view.cost" class="mt-10px rounded-12px bg-surface2 px-12px py-10px">
       <QuoteBlock :cost="view.cost" :points="points" :staged="staged" :eta="eta" :policy-text="view.policy?.text" compact />

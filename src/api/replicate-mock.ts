@@ -295,7 +295,8 @@ function planOf(row: PlanRow): ReplicatePlan {
       holdText: '确认后先预留点数（从可用余额里暂时扣出）；生成成功才真正扣除，没成功的段会退回',
     },
     stageQuotes: { first: FIRST, rest: REST, total: TOTAL },
-    eta: { first: eta(240, 360), rest: eta(240, 360), total: eta(420, 720), prior: true },
+    eta: { first: eta(240, 360), rest: eta(240, 360), total: eta(420, 720), prior: true, fast: eta(420, 720), smooth: eta(720, 1080) },
+    ...(row.req.continuity === 'smooth' ? { continuity: 'smooth' as const } : {}),
     policy: { watermark: false, text: '成片：不带水印' },
     confirmButton: `先做第 1 段（${pts(FIRST)}）`,
     copyright: '默认会改写原视频的台词和画面文字，只沿用结构和节奏',
@@ -427,6 +428,7 @@ function jobView(j: JobRow): ReplicateJob {
     taskId: `AiCreation_LF_mock${j.id}`,
     planNo: j.planNo,
     planHash: j.planHash,
+    ...(plans.get(j.planNo)?.req.continuity === 'smooth' ? { continuity: 'smooth' as const } : {}),
     status,
     statusLabel: labels[status],
     staged: j.staged,
@@ -570,6 +572,7 @@ export const replicateMock = {
       modelGroup: p.modelGroup ?? row.req.modelGroup,
       resolution: p.resolution ?? row.req.resolution,
       aspectRatio: p.aspectRatio ?? row.req.aspectRatio,
+      ...((p.continuity ?? row.req.continuity) ? { continuity: p.continuity ?? row.req.continuity } : {}),
     }
     const gaps = validate(req)
     if (gaps.length) throwGaps(gaps)

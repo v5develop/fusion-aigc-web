@@ -12,6 +12,7 @@ import { hasBillingPage, openBillingPage } from '@/utils/billing.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { DIM_SLOT, INTENTS, SLOTS, fmtPts, mm, type SlotKey } from './constants.ts'
 import QuoteBlock from './parts/QuoteBlock.vue'
+import ContinuityPicker from './parts/ContinuityPicker.vue'
 import type { useReplicate } from './useReplicate.ts'
 
 const props = defineProps<{ rep: ReturnType<typeof useReplicate> }>()
@@ -303,6 +304,11 @@ const audioOptions = computed<{ k: ReplicateAudio; l: string }[]>(() => [
         <span>{{ mm(segs.at(-1)?.t1 ?? 0) }}</span>
       </div>
       <p v-if="plan?.timeline.seamTip" class="m-0 mt-8px text-11px leading-16px text-placeholder">{{ plan.timeline.seamTip }}{{ q?.overlapText ? `，${q.overlapText}` : '' }}</p>
+    </section>
+
+    <section v-if="plan && segCount > 1 && plan.eta?.fast && plan.eta?.smooth" class="vr-panel" aria-label="画面连贯度">
+      <p class="vr-sub !mt-0">多段视频默认逐段并行、更快；选「更连贯」会让后一段接着上一段的最后一帧，人物和场景衔接更自然</p>
+      <ContinuityPicker :plan="plan" :disabled="rep.planBusy.value || rep.submitting.value" @select="rep.setContinuity" />
     </section>
 
     <section v-if="rep.models.value.length > 1" class="vr-panel" aria-label="选择模型">

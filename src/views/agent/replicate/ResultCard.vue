@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { ReplicateJob } from '@/api/replicate.ts'
 import ResultCompare from '@/views/video-replicate/parts/ResultCompare.vue'
+import JobFeedback from '@/views/video-replicate/parts/JobFeedback.vue'
 
 const props = defineProps<{
   job: ReplicateJob
@@ -86,5 +87,7 @@ function download() {
       </button>
       <RouterLink :to="{ name: 'video-replicate', query: { job: String(job.jobId) } }" class="sx-btn !h-32px no-underline">在完整页查看</RouterLink>
     </div>
+    <!-- 反馈直接调 REST（不是对话动作）；同任务重复提交后端覆盖更新 -->
+    <JobFeedback v-if="delivered" :job-id="job.jobId" :segments="job.segments" />
   </div>
 </template>

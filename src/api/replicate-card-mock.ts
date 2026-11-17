@@ -51,6 +51,30 @@ export function lineEditFrame(): IAgentFrame {
     })),
   })
 }
+/** 多人点名中断（CONTRACT §X）：每人一道单选，选项 = 保持不变 / 图N / 我的模特；第 3 人 6 个选项走下拉 */
+export function subjectFormFrame(): IAgentFrame {
+  const opts = (more: string[]) => [{ id: 'keep', label: '保持不变' }, { id: 'img1', label: '图1' }, { id: 'img2', label: '图2' }, ...more.map((m, i) => ({ id: `m${i}`, label: m }))]
+  const subs = [
+    { name: '左侧白衣女生', desc: '长发，白色连衣裙', options: opts([]) },
+    { name: '右侧男生', desc: '深色西装，短发', options: opts([]) },
+    { name: '背景里的店员', desc: '穿围裙，画面较远', options: opts(['我的模特:小雅', '我的模特:阿杰', '我的模特:Lily']) },
+  ]
+  return frame('interrupt_required', {
+    interruptId: `mock-int-subj-${Date.now()}`,
+    title: '换哪几个人',
+    message: '画面里有 3 个人，选「保持不变」的人不会被替换。',
+    questions: subs.map((s, i) => ({
+      questionId: `subject_s${i + 1}`,
+      title: s.name,
+      message: s.desc,
+      questionType: 'single_select',
+      required: true,
+      allowTextInput: false,
+      defaultSelected: [],
+      options: s.options,
+    })),
+  })
+}
 export function errorCardFrame(toolName: string, message: string, retryable = true): IAgentFrame {
   return frame('tool_result', {
     toolName,
@@ -177,6 +201,34 @@ export async function mockReplicateAgentStream(
     emit(consentFrame(consentOf({ action: 'redo', points: 80, seg_index: k, job_id: lastJob.jobId })))
   } else if (/继续做剩下/.test(content) && lastJob) {
     emit(consentFrame(consentOf({ action: 'continue', points: lastPlan?.stageQuotes.rest ?? 240, job_id: lastJob.jobId })))
+  } else if (/多人|点名/.test(content)) {
+    // 多人开场：2 人分析 → 带逐人文案的方案 → 人物选择表单
+    const ana = (await replicateMock.startAnalysis()).data
+    let cur = ana
+    for (let i = 0; i < 12 && (cur.status === 'running' || cur.status === 'queued'); i++) {
+      await step(1000)
+      cur = (await replicateMock.getAnalysis(ana.analysisNo)).data
+    }
+    const two = cur.result ? { ...cur, result: { ...cur.result, subjects: [{ id: 's1', name: '左侧白衣女生', desc: '长发，白色连衣裙' }, { id: 's2', name: '右侧男生', desc: '深色西装，短发' }] } } : cur
+    emit(cardFrame('分析视频', 'analysis', ana.analysisNo, two))
+    lastJob = null
+    const plan = (await replicateMock.createPlan({ analysisNo: ana.analysisNo, annotations: { dims: { model: { mode: 'replace', refs: [1] } }, audio: 'regenerate' }, refImages: ['https://example.com/mock-model.jpg'], modelGroup: 'vid.seedance-2.5' })).data
+    lastPlan = plan
+    const changes = plan.changes.map((c, i) => (i === 0 ? { ...c, subjectText: '左侧白衣女生 → 图1\n右侧男生 保持不变' } : c))
+    emit(cardFrame('生成方案', 'plan', plan.planNo, { ...plan, changes, risks: ['只换你指定的人，其他人保持原样（人物较近或互相遮挡时可能串）'] }))
+    emit(subjectFormFrame())
+  } else if (/改成更连贯|改成更快/.test(content) && lastPlan) {
+    // 连贯度切换（§Y）：同 planNo 的方案卡原位刷新，带所选 continuity
+    const smooth = /更连贯/.test(content)
+    lastPlan = { ...lastPlan, continuity: smooth ? 'smooth' : 'fast' }
+    emit(cardFrame('更新方案', 'plan', lastPlan.planNo, lastPlan))
+    await say(smooth ? '改成更连贯了，后一段会接着上一段的最后一帧，价格不变。' : '改回更快了。')
+  } else if (/成片反馈|不满意/.test(content)) {
+    // 已完成的成片卡（带反馈入口）：成功的任务 + 反馈走 replicateSubmitFeedback（mock 下直接成功）
+    const made = (await replicateMock.confirm(lastPlan?.planNo ?? '', { planHash: lastPlan?.planHash ?? '', stage: 'all', expectedPoints: 0 })).data
+    lastJob = { ...made, status: 'succeeded', statusLabel: '做好了', continuity: lastPlan?.continuity }
+    emit(cardFrame('查看任务', 'job', lastJob.jobId, lastJob))
+    await say('成片做好了，觉得怎么样可以在卡片下面告诉我。')
   } else if (/改台词/.test(content)) {
     emit(lineEditFrame())
   } else if (/换声音|换个声音|音色/.test(content)) {

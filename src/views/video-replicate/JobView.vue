@@ -11,6 +11,7 @@ import { fmtPts } from './constants.ts'
 import MoneyLine from './parts/MoneyLine.vue'
 import ResultCompare from './parts/ResultCompare.vue'
 import SegmentStatusBar from './parts/SegmentStatusBar.vue'
+import JobFeedback from './parts/JobFeedback.vue'
 import type { useReplicate } from './useReplicate.ts'
 
 const props = defineProps<{ rep: ReturnType<typeof useReplicate> }>()
@@ -78,8 +79,6 @@ async function doSpend() {
   else if (a.seg) await rep.redoSegment(a.seg)
 }
 
-// ---- 反馈：不满意原因 ----
-const fb = ref<'up' | 'down' | 'thx' | null>(null)
 </script>
 
 <template>
@@ -208,15 +207,7 @@ const fb = ref<'up' | 'down' | 'thx' | null>(null)
             <button type="button" class="sx-btn" @click="rep.restart()">做新的</button>
           </div>
           <p v-if="st === 'succeeded'" class="m-0 text-11px leading-16px text-placeholder">我们不会替你发布任何内容，成品只在你的资产里。时长、大小限制以平台当前规则为准。</p>
-          <div v-if="st === 'succeeded'" class="flex flex-wrap items-center gap-8px">
-            <span class="text-12px text-muted">这条视频怎么样？</span>
-            <button type="button" class="sx-btn !h-28px" :aria-pressed="fb === 'up'" aria-label="满意" @click="fb = 'thx'">满意</button>
-            <button type="button" class="sx-btn !h-28px" :aria-pressed="fb === 'down'" aria-label="不满意" @click="fb = 'down'">不满意</button>
-          </div>
-          <div v-if="fb === 'down'" class="flex flex-wrap gap-6px">
-            <button v-for="r in ['人不像', '商品变了', '拼接处跳', '动作不对', '画质', '其他']" :key="r" type="button" class="sx-btn !h-28px" @click="fb = 'thx'">{{ r }}</button>
-          </div>
-          <p v-if="fb === 'thx'" class="m-0 text-12px text-muted" role="status">收到，谢谢。这些会帮我们改得更好</p>
+          <JobFeedback v-if="st === 'succeeded'" :job-id="job.jobId" :segments="segs" />
         </div>
       </div>
     </section>

@@ -60,6 +60,7 @@ import type {
   IAgentRetryView,
   IAgentImageQuote,
   IAgentMessage,
+  IAgentForm,
   IAgentQuestion,
   IAgentQuestionOption,
   IAgentReply,
@@ -852,13 +853,40 @@ function toItem(m: IAgentMessage, index: number): ChatItem | null {
 
 // ---------------- 参数确认表单 ----------------
 
+// ---------------- 人物选择表单（CONTRACT §X） ----------------
+
+/** 人物题：question_id 以 subject_ 开头的单选题（标题 = 人物称呼，message = 简短描述） */
+const isSubjectQuestion = (q: IAgentQuestion) => q.id.startsWith('subject_') && q.type === 'single_select'
+const isSubjectForm = (form: IAgentForm | null | undefined) => !!form?.questions.length && form.questions.every(isSubjectQuestion)
+
+/** 本会话用户上传的图片，按出现顺序即「图1 / 图2 …」；用于选项缩略图（没有对应地址就不显示） */
+const uploadedImages = computed(() => {
+  const out: string[] = []
+  for (const it of items.value) if (it.role === 'user') for (const u of it.images ?? []) if (u && !out.includes(u)) out.push(u)
+  return out
+})
+/** 选项指向「图N」时取该图地址 */
+function optionThumb(o: IAgentQuestionOption): string {
+  const n = Number(/图\s*(\d+)/.exec(o.label)?.[1])
+  return n >= 1 ? (uploadedImages.value[n - 1] ?? '') : ''
+}
+
 /** 回复带表单而还没有作答状态时建一份（按服务端默认值预选）；restored = 历史里该表单已提交的答案 */
 function initForm(item: ChatItem, restored?: Record<string, IAgentAnswer> | null) {
   const form = item.reply.form
   if (!form || item.form) return
   const answers: Record<string, IAgentAnswer> = {}
-  for (const q of form.questions) answers[q.id] = restored?.[q.id] ?? initialAnswer(q)
-  item.form = { answers, submitting: false, done: false, error: '', step: 0, stepError: '' }
+  for (const q of form.questions) {
+    const a = restored?.[q.id] ?? initialAnswer(q)
+    // 人物选择题：服务端没给默认值就预选「保持不变」
+    if (isSubjectQuestion(q) && !a.selected.length) {
+      const keep = q.options.find((o) => o.label.includes('保持不变'))
+      if (keep) a.selected = [keep.id]
+    }
+    answers[q.id] = a
+  }
+  // 人物表单（CONTRACT §X）一页展示全部人物，直接落在「最后一步」，没有翻页
+  item.form = { answers, submitting: false, done: false, error: '', step: isSubjectForm(form) ? form.questions.length - 1 : 0, stepError: '' }
 }
 
 /** 历史回读后：给每张表单建状态；后面已有消息的表单视为已结束，下一条若是续答就读回答案 */
@@ -4321,7 +4349,53 @@ onUnmounted(() => {
                           >
                             {{ item.reply.form.message }}
                           </p>
+                          <!-- 人物选择表单：每人一行，称呼 + 描述在左，选项在右（≤4 个分段按钮，更多用下拉） -->
                           <fieldset
+                            v-if="isSubjectForm(item.reply.form)"
+                            :disabled="!formOpen(item)"
+                            class="m-0 mx-18px mt-6px min-w-0 border-none p-0"
+                          >
+                            <div
+                              v-for="q in item.reply.form.questions"
+                              :key="q.id"
+                              class="flex flex-wrap items-center gap-x-12px gap-y-6px border-b border-b-solid border-b-line py-10px last:border-b-0"
+                            >
+                              <div class="min-w-120px flex-1 basis-140px">
+                                <div class="break-words text-13px font-600 leading-20px text-ink">{{ q.title }}</div>
+                                <div v-if="q.message" class="break-words text-11px leading-16px text-placeholder">{{ q.message }}</div>
+                              </div>
+                              <select
+                                v-if="q.options.length > 4"
+                                :value="item.form.answers[q.id]?.selected[0] ?? ''"
+                                :aria-label="q.title"
+                                class="sx-soft-input !h-34px min-w-0 max-w-full disabled:(cursor-not-allowed opacity-60)"
+                                @change="pickOption(item, q, q.options.find((o) => o.id === ($event.target as HTMLSelectElement).value)!)"
+                              >
+                                <option v-for="o in q.options" :key="o.id" :value="o.id">{{ o.label }}</option>
+                              </select>
+                              <div v-else role="radiogroup" :aria-label="q.title" class="flex min-w-0 max-w-full flex-wrap gap-6px">
+                                <button
+                                  v-for="o in q.options"
+                                  :key="o.id"
+                                  type="button"
+                                  role="radio"
+                                  :aria-checked="optionPicked(item, q, o)"
+                                  :class="[OPT, '!min-h-32px !px-10px !py-3px !text-12px', optionPicked(item, q, o) ? OPT_ON : OPT_OFF]"
+                                  @click="pickOption(item, q, o)"
+                                >
+                                  <img
+                                    v-if="optionThumb(o)"
+                                    :src="optionThumb(o)"
+                                    alt=""
+                                    class="h-22px w-22px flex-none rounded-5px object-cover"
+                                  />
+                                  <span class="min-w-0 break-words">{{ o.label }}</span>
+                                </button>
+                              </div>
+                            </div>
+                          </fieldset>
+                          <fieldset
+                            v-else
                             v-for="q in formQuestion(item) ? [formQuestion(item)!] : []"
                             :key="q.id"
                             :disabled="!formOpen(item)"
@@ -4458,7 +4532,7 @@ onUnmounted(() => {
                           </fieldset>
                           <div class="mx-18px mt-12px flex items-center gap-6px">
                             <span class="flex min-w-0 flex-1 items-center gap-10px">
-                              <span class="inline-flex flex-none items-center gap-3px" aria-hidden="true">
+                              <span v-if="!isSubjectForm(item.reply.form)" class="inline-flex flex-none items-center gap-3px" aria-hidden="true">
                                 <i
                                   v-for="(_q, k) in item.reply.form.questions"
                                   :key="k"
@@ -4480,6 +4554,7 @@ onUnmounted(() => {
                             </span>
                             <n-spin v-if="item.form.submitting" :size="14" />
                             <button
+                              v-if="!isSubjectForm(item.reply.form)"
                               type="button"
                               :disabled="!formOpen(item) || item.form.step === 0"
                               :class="BTN"

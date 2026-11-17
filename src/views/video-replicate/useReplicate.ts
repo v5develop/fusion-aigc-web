@@ -35,6 +35,7 @@ import {
   replicateStop,
   replicateCancelRest,
   replicateModels,
+  type ReplicateContinuity,
   type ReplicateModel,
   replicateTrySample,
   urlExpiringSoon,
@@ -624,6 +625,15 @@ export function useReplicate() {
     void submitPlan()
   }
 
+  // ---- 画面连贯度（§Y）：默认 fast；只有多段方案有意义，切换 = 立即出新方案（新 ETA） ----
+  const continuity = ref<ReplicateContinuity>('fast')
+  function setContinuity(v: ReplicateContinuity) {
+    if (v === continuity.value) return
+    continuity.value = v
+    planDirty.value = true
+    void submitPlan()
+  }
+
   async function doCreatePlan(s: number) {
     if (s !== planSeq) return
     if (nothingChanged.value || localGaps.value.length) {
@@ -643,8 +653,8 @@ export function useReplicate() {
     planError.value = ''
     try {
       const p = basePlanNo
-        ? await patchLatest(basePlanNo, { annotations, refImages, modelGroup: modelGroup.value })
-        : (await replicateCreatePlan({ ...origin, annotations, refImages, modelGroup: modelGroup.value })).data
+        ? await patchLatest(basePlanNo, { annotations, refImages, modelGroup: modelGroup.value, continuity: continuity.value })
+        : (await replicateCreatePlan({ ...origin, annotations, refImages, modelGroup: modelGroup.value, continuity: continuity.value })).data
       if (p) basePlanNo = p.planNo
       if (s !== planSeq) return
       planGaps.value = []
@@ -665,6 +675,7 @@ export function useReplicate() {
     if (!p) return
     plan.value = p
     if (p.modelGroup) modelGroup.value = p.modelGroup
+    continuity.value = p.continuity === 'smooth' ? 'smooth' : 'fast'
     latestPlan = p
     if (!planSummary.value && p.analysis?.summary) planSummary.value = p.analysis.summary
     const multi = p.timeline.segments.length > 1
@@ -1356,6 +1367,8 @@ export function useReplicate() {
     currentModel,
     loadModels,
     setModel,
+    continuity,
+    setContinuity,
     cancelRest,
     cancelRestPoints,
     canCancelRest,
