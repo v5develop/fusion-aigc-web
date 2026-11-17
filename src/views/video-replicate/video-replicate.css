@@ -57,7 +57,25 @@
     opacity: 0.35;
   }
 }
+/* 跨轮提示点「查看」后，原卡片短暂高亮 */
+.vr-flash {
+  border-radius: 18px;
+  animation: vr-flash 1.8s ease-out 1;
+}
+@keyframes vr-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 3px rgb(var(--xq-violet-rgb) / 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 3px rgb(var(--xq-violet-rgb) / 0);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .vr-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px rgb(var(--xq-violet-rgb) / 0.55);
+  }
   .vr-indeterminate,
   .vr-pulse {
     animation: none;

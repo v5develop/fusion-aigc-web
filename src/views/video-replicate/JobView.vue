@@ -7,8 +7,10 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NModal } from 'naive-ui'
-import type { ReplicateJobSegment } from '@/api/replicate.ts'
 import { fmtPts } from './constants.ts'
+import MoneyLine from './parts/MoneyLine.vue'
+import ResultCompare from './parts/ResultCompare.vue'
+import SegmentStatusBar from './parts/SegmentStatusBar.vue'
 import type { useReplicate } from './useReplicate.ts'
 
 const props = defineProps<{ rep: ReturnType<typeof useReplicate> }>()
@@ -41,7 +43,6 @@ async function download(url: string) {
   const fresh = rep.job.value?.result?.videoUrl ?? url
   window.open(fresh, '_blank', 'noopener')
 }
-const segText = (s: ReplicateJobSegment) => s.stateLabel
 
 /** 「不继续了」前确认：不收费、只留第 1 段（文案取后端 decision 的 stop 选项与到期说明） */
 const stopOpen = ref(false)
@@ -96,19 +97,7 @@ const fb = ref<'up' | 'down' | 'thx' | null>(null)
         <template v-else>{{ job.message || job.overview }}</template>
       </p>
 
-      <div class="flex gap-4px" aria-label="分段状态">
-        <div
-          v-for="s in segs"
-          :key="s.index"
-          :class="[
-            'flex min-w-0 flex-1 flex-col gap-2px rounded-10px border border-solid px-8px py-6px text-center',
-            s.state === 'succeeded' ? 'border-success-line bg-success-soft' : s.state === 'failed' ? 'border-danger-line bg-danger-soft' : s.state === 'running' ? 'border-violet-line bg-violet-tint' : 'border-line bg-surface2',
-          ]"
-        >
-          <b class="text-12px font-600 text-ink">第 {{ s.index }} 段</b>
-          <span class="text-11px text-muted">{{ segText(s) }}</span>
-        </div>
-      </div>
+      <SegmentStatusBar :segments="segs" />
 
       <ul class="m-0 mt-12px flex list-none flex-col gap-8px p-0">
         <li v-for="s in segs" :key="s.index" :class="['flex items-center gap-10px rounded-12px border border-solid px-12px py-10px', s.state === 'failed' ? 'border-danger-line bg-danger-soft' : 'border-line bg-surface']">
@@ -146,19 +135,16 @@ const fb = ref<'up' | 'down' | 'thx' | null>(null)
     <!-- 决策卡：第 1 段做好了（标题、按钮文案、点数、剩余时间都来自后端 decision） -->
     <template v-if="waiting && job.decision">
       <section class="vr-panel">
-        <div class="grid grid-cols-2 gap-10px max-sm:grid-cols-1">
-          <figure class="relative m-0 aspect-[9/16] max-h-360px overflow-hidden rounded-14px bg-surface3">
-            <video v-if="rep.source.url" :src="`${rep.source.url}#t=0.1`" muted playsinline controls class="h-full w-full object-cover" />
-            <figcaption class="absolute left-8px top-8px rounded-4px bg-black/55 px-6px py-2px text-10px text-white">原片 · 第 1 段</figcaption>
-          </figure>
-          <figure class="relative m-0 aspect-[9/16] max-h-360px overflow-hidden rounded-14px bg-surface3">
-            <video v-if="isPlaying(firstUrl)" :src="firstUrl" controls playsinline class="h-full w-full object-cover" @play="rep.ensureFreshUrls()" @error="rep.ensureFreshUrls(true)" />
-            <img v-else-if="firstUrl" :src="firstUrl" alt="你的成片第 1 段" class="h-full w-full object-cover" />
-            <span v-else class="grid h-full w-full place-items-center px-12px text-center text-11px text-placeholder">第 1 段已生成</span>
-            <figcaption class="absolute left-8px top-8px rounded-4px bg-violet-solid px-6px py-2px text-10px text-white">你的成片 · 第 1 段</figcaption>
-            <span class="absolute bottom-8px right-8px rounded-4px bg-black/55 px-6px py-2px text-10px text-white">AI 生成</span>
-          </figure>
-        </div>
+        <ResultCompare
+          :source-url="rep.source.url"
+          source-label="原片 · 第 1 段"
+          :result-url="firstUrl"
+          result-label="你的成片 · 第 1 段"
+          result-alt="你的成片第 1 段"
+          result-empty="第 1 段已生成"
+          @result-play="rep.ensureFreshUrls()"
+          @result-error="rep.ensureFreshUrls(true)"
+        />
       </section>
       <section class="vr-panel" role="group" aria-label="是否继续">
         <b class="mb-8px block text-14px font-600 text-ink">{{ job.decision.title }}</b>
@@ -211,7 +197,7 @@ const fb = ref<'up' | 'down' | 'thx' | null>(null)
               {{ result.status === 'retry' ? '正在把几段接成一条…' : result.text || '这几段没能拼成一条，但每一段都做好了，可以分别下载' }}
             </b>
           </div>
-          <p v-if="job.money.text" class="m-0 text-12px tabular-nums text-muted">{{ job.money.text }}</p>
+          <MoneyLine :money="job.money" />
           <div class="flex flex-wrap gap-8px">
             <button v-for="o in redoOptions" :key="o.segIndex" type="button" class="sx-btn-primary" :disabled="rep.jobBusy.value || !rep.redoReady(o.segIndex ?? 0)" @click="o.segIndex && askRedo(o.segIndex)">
               {{ o.label }}

@@ -11,6 +11,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { hasBillingPage, openBillingPage } from '@/utils/billing.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
 import { DIM_SLOT, INTENTS, SLOTS, fmtPts, mm, type SlotKey } from './constants.ts'
+import QuoteBlock from './parts/QuoteBlock.vue'
 import type { useReplicate } from './useReplicate.ts'
 
 const props = defineProps<{ rep: ReturnType<typeof useReplicate> }>()
@@ -325,37 +326,24 @@ function doConfirm() {
     </section>
 
     <section v-if="plan && q" class="vr-panel">
-      <h3 class="vr-h3">费用</h3>
-      <p class="vr-sub">{{ q.explain }}</p>
-      <div class="flex flex-wrap items-baseline gap-10px">
-        <b class="text-24px font-700 tabular-nums text-ink">{{ fmtPts(rep.needPoints.value) }} 点</b>
-        <span class="text-13px text-ink-2">{{ staged ? q.firstText : q.totalText }}{{ eta ? ` · ${eta}` : '' }}</span>
-      </div>
-      <p v-if="staged" class="m-0 mt-4px text-12px leading-18px text-ink-2">{{ q.restText }} · {{ q.totalText }}</p>
-      <p v-if="rep.planBusy.value" class="m-0 mt-6px text-12px text-muted" role="status">正在更新报价…</p>
-      <p v-else-if="rep.planDirty.value" class="m-0 mt-6px text-12px text-warning" role="status">
-        刚才的改动还没算进价格
-        <button type="button" class="ml-6px border-0 bg-transparent text-violet-ink cursor-pointer hover:underline" @click="rep.submitPlan()">更新报价</button>
-      </p>
-      <table v-if="q.lines.length > 1" class="mt-10px w-full border-collapse text-12px" aria-label="分段报价">
-        <tbody>
-          <tr v-for="l in q.lines" :key="l.index" class="border-0 border-t border-solid border-line">
-            <td class="py-6px text-ink-2">第 {{ l.index }} 段 · {{ l.seconds }} 秒{{ staged && l.index > 1 ? '（满意后再做）' : '' }}</td>
-            <td class="py-6px text-right tabular-nums">{{ fmtPts(l.points) }} 点</td>
-          </tr>
-          <tr class="border-0 border-t border-solid border-line font-600">
-            <td class="py-6px">合计</td>
-            <td class="py-6px text-right tabular-nums">{{ fmtPts(q.total) }} 点</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="m-0 mt-8px text-12px text-muted">{{ plan.policy.text }}</p>
-      <p v-if="rep.balance.value != null" class="m-0 mt-4px text-12px tabular-nums text-muted">可用 {{ fmtPts(rep.balance.value) }} 点</p>
-      <p class="m-0 mt-4px text-12px leading-18px text-placeholder">{{ q.holdText }}</p>
-      <p v-if="leftSec != null" class="m-0 mt-4px text-11px text-placeholder" :class="expired ? '!text-danger' : ''">
-        {{ expired ? '报价已过期' : `报价 ${mm(leftSec)} 内有效` }}
-        <button v-if="expired" type="button" class="ml-6px border-0 bg-transparent text-violet-ink cursor-pointer hover:underline" @click="rep.refreshQuote()">刷新报价</button>
-      </p>
+      <QuoteBlock :cost="q" :points="rep.needPoints.value" :staged="staged" :eta="eta" :policy-text="plan.policy.text">
+        <template #status>
+          <p v-if="rep.planBusy.value" class="m-0 mt-6px text-12px text-muted" role="status">正在更新报价…</p>
+          <p v-else-if="rep.planDirty.value" class="m-0 mt-6px text-12px text-warning" role="status">
+            刚才的改动还没算进价格
+            <button type="button" class="ml-6px border-0 bg-transparent text-violet-ink cursor-pointer hover:underline" @click="rep.submitPlan()">更新报价</button>
+          </p>
+        </template>
+        <template #mid>
+          <p v-if="rep.balance.value != null" class="m-0 mt-4px text-12px tabular-nums text-muted">可用 {{ fmtPts(rep.balance.value) }} 点</p>
+        </template>
+        <template #foot>
+          <p v-if="leftSec != null" class="m-0 mt-4px text-11px text-placeholder" :class="expired ? '!text-danger' : ''">
+            {{ expired ? '报价已过期' : `报价 ${mm(leftSec)} 内有效` }}
+            <button v-if="expired" type="button" class="ml-6px border-0 bg-transparent text-violet-ink cursor-pointer hover:underline" @click="rep.refreshQuote()">刷新报价</button>
+          </p>
+        </template>
+      </QuoteBlock>
       <details v-if="plan.prompts?.length" class="mt-8px text-12px text-muted">
         <summary class="cursor-pointer">查看每段提示词（高级）</summary>
         <p class="m-0 mt-4px text-11px leading-16px text-placeholder">想改效果，请改上面的「按我写的改」，提示词会自动更新</p>

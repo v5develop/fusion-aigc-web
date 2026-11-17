@@ -11,8 +11,19 @@
  */
 import { ApiError, authorizedFetch, del, get, patch, post } from './index.ts'
 import type { IBatchSubmitReq } from './batch-hosting.ts'
+import { isMock } from './mock-switch.ts'
+import {
+  findConsent,
+  parseReplicateCard,
+  upsertCard,
+  type ReplicateCardFrame,
+  type ReplicateConsent,
+} from './replicate-card.ts'
 
 const PREFIX = '/api/v1/agent'
+
+/** 视频复刻技能的固定 id（Java 迁移 V1.0.237 种子；category 为空，不在技能目录里） */
+export const REPLICATE_SKILL_ID = '7700000000000000002'
 
 // ---------------- 类型 ----------------
 
@@ -112,7 +123,11 @@ export interface IAgentStreamReq {
   /** 普通消息必填非空；只有带 attribute.answers 的表单续答可为空串 */
   content: string
   /** 表单续答：answers = { 问题 id: { selected, text } } */
-  attribute?: { answers: Record<string, IAgentAnswer> }
+  attribute?: {
+    answers?: Record<string, IAgentAnswer>
+    /** 复刻技能的视频附件（http/https，≤2 条；CONTRACT §E）；其余技能不带 */
+    video_urls?: string[]
+  }
   /** 表单续答：取自 interrupt_required 帧的 interrupt_id，不带则按会话当前待答表单处理 */
   interruptId?: string
   /** 必填（服务端要求 > 0）：没有可用技能时页面不发请求 */
@@ -575,6 +590,8 @@ export interface IAgentForm {
   title: string
   message: string
   questions: IAgentQuestion[]
+  /** 复刻扣点同意卡数据（question 带 replicate_consent 时有）：有则渲染同意卡而不是通用表单 */
+  consent?: ReplicateConsent
 }
 
 /** 一轮助手回复的可渲染状态 */
@@ -582,6 +599,8 @@ export interface IAgentReply {
   text: string
   thinking: string
   tools: IAgentToolResult[]
+  /** 复刻卡片（tool_result 的 replicate_card）：同 entity.type + entity.id 原位替换，不进执行清单 */
+  cards: ReplicateCardFrame[]
   /** 本轮以参数确认表单中断时的表单；null = 无 */
   form: IAgentForm | null
   /** ERROR 帧的 message；空 = 无错误 */
@@ -591,7 +610,7 @@ export interface IAgentReply {
 }
 
 export function emptyReply(): IAgentReply {
-  return { text: '', thinking: '', tools: [], form: null, error: '', finished: false }
+  return { text: '', thinking: '', tools: [], cards: [], form: null, error: '', finished: false }
 }
 
 const str = (v: unknown) => (v == null ? '' : String(v))
@@ -659,6 +678,11 @@ export function applyFrame(reply: IAgentReply, frame: IAgentFrame): void {
       if (content.eventType === 'message_delta') reply.text += str(payload.delta)
       else if (content.eventType === 'thinking_delta') reply.thinking += str(payload.delta)
       else if (content.eventType === 'tool_result') {
+        const card = parseReplicateCard(payload)
+        if (card) {
+          reply.cards = upsertCard(reply.cards, card)
+          break
+        }
         reply.tools.push({
           name: str(payload.toolName),
           status: str(payload.status),
@@ -669,10 +693,14 @@ export function applyFrame(reply: IAgentReply, frame: IAgentFrame): void {
         if (result.resultType === QUESTION_RESULT_TYPE && !reply.form?.interruptId) {
           const data = rec(result.data)
           reply.form = toForm('', data.title, data.message || result.summary, data.questionCandidates) ?? reply.form
+          const consent = findConsent(data, data.questionCandidates)
+          if (reply.form && consent) reply.form.consent = consent
         }
       } else if (content.eventType === 'interrupt_required') {
         reply.form =
           toForm(str(payload.interruptId).trim(), payload.title, payload.message, payload.questions) ?? reply.form
+        const consent = findConsent(payload, payload.questions)
+        if (reply.form && consent) reply.form.consent = consent
       }
       break
     }
@@ -828,6 +856,10 @@ export function agentRecoverStream(
  * 主动 abort 时抛原生 AbortError，由调用方忽略。
  */
 export function agentStream(body: IAgentStreamReq, opts: IAgentStreamOptions): Promise<void> {
+  // 开发期：复刻技能的对话走本地假数据（?mock=replicate），不依赖后端
+  if (isMock('replicate') && body.agentSkillId === REPLICATE_SKILL_ID) {
+    return import('./replicate-card-mock.ts').then((m) => m.mockReplicateAgentStream(body, opts))
+  }
   return readSse(`${PREFIX}/stream`, body, { 'X-Request-Id': opts.requestId }, opts)
 }
 

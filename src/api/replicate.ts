@@ -152,6 +152,30 @@ export interface ReplicateAnalysis {
   result?: ReplicateAnalysisResult
   warnings?: string[]
   elapsedS: number
+  /** 一键方案（最多 3 条，顺序即推荐度）：点了替用户发 label 这条消息 */
+  suggestions?: ReplicateSuggestion[]
+}
+
+/** 分析卡的一键方案（Go `AnalysisView.suggestions[]`） */
+export interface ReplicateSuggestion {
+  key: string
+  label: string
+  desc: string
+  needs: string
+}
+
+/** 定妆图（Go `PreviewView`）：免费，每人每天 quotaTotal 次 */
+export interface ReplicatePreview {
+  planNo: string
+  /** 签名地址会被事件清洗剔除，可能缺失 */
+  imageUrl?: string
+  imageRid?: string
+  /** 原片被替换的那一帧（现签地址，同样会被事件清洗剔除） */
+  frameUrl?: string
+  frameAtSec?: number
+  quotaUsed: number
+  quotaTotal: number
+  urlExpiresAt?: string
 }
 
 export type ReplicateDimMode = 'keep' | 'replace' | 'describe'
@@ -380,6 +404,10 @@ export interface ReplicateJobSegment {
   /** 「重做这一段（80 点）」 */
   redoLabel?: string
   redos: number
+  /** 已成功的段可付费精修（需带修改说明）；精修中仍可播放旧视频 */
+  refinable?: boolean
+  /** 「精修这一段（80 点）」 */
+  refineLabel?: string
 }
 
 export interface ReplicateDecisionOption {
@@ -694,6 +722,28 @@ export async function replicateConfirm(
 export async function replicateGetJob(id: number | string) {
   if (isMock('replicate')) return (await mock()).getJob(String(id))
   return getQuiet<ReplicateJob>(`/api/v1/replicate/jobs/${enc(String(id))}`)
+}
+
+/** GET /plans/{no}/preview：只读取已生成的定妆图 / 原片帧的现签地址（仅本人，从不触发生成；不存在 → RESOURCE_NOT_FOUND） */
+export async function replicateGetPreview(planNo: string) {
+  if (isMock('replicate')) {
+    // mock 不走网络：直接给两张占位图
+    return {
+      code: 0,
+      msg: 'ok',
+      data: {
+        planNo,
+        imageUrl: 'https://picsum.photos/seed/xq-preview/720/1280',
+        imageRid: 'mock-rid-1',
+        frameUrl: 'https://picsum.photos/seed/xq-frame/720/1280',
+        frameAtSec: 0.4,
+        quotaUsed: 1,
+        quotaTotal: 3,
+        urlExpiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      } as ReplicatePreview,
+    }
+  }
+  return getQuiet<ReplicatePreview>(`/api/v1/replicate/plans/${enc(planNo)}/preview`)
 }
 
 /** GET /jobs?page=&size=：本人历史（id 倒序；page 从 1 起，size 默认 20、最大 50） */

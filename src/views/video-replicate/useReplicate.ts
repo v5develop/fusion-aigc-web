@@ -945,6 +945,48 @@ export function useReplicate() {
     }
   }
 
+  /**
+   * 对话里的方案 → `?plan=<planNo>` 深链：GET 方案后进入方案步骤，标注 / 参考图预填（与「用它做一条」同一套恢复路径）。
+   * 只认 READY 的方案；过期 / 已被改过 / 找不到 → 返回提示语，页面照常从头开始（不改状态）。成功返回 ''。
+   */
+  async function openPlan(no: string): Promise<string> {
+    try {
+      const res = await replicateGetPlan(no)
+      const p = res.data
+      if (!p) return '没找到这个方案，可以重新上传视频开始'
+      if (p.status === 'EXPIRED') return '这个方案已过期，可以重新上传视频开始'
+      if (p.status === 'STALE') return '这个方案已经被改过，请回到对话里打开最新的方案'
+      if (p.status === 'CONFIRMED') return '这个方案已经开始做了，可以在「历史」里查看'
+      restart()
+      tab.value = 'new'
+      step.value = 'plan'
+      sampleId.value = p.sampleId || null
+      void loadModels()
+      void ensureBalance()
+      suppressWatch = true
+      restoreMarks(p.annotations, p.refImages)
+      await nextTick()
+      suppressWatch = false
+      const order = Object.keys(DIM_LABEL)
+      planDims.value = [...p.changes, ...p.kept]
+        .filter((l) => DIM_LABEL[l.key as VideoCloneDimKey])
+        .sort((x, y) => order.indexOf(x.key) - order.indexOf(y.key))
+        .map((l) => ({
+          key: l.key as VideoCloneDimKey,
+          label: DIM_LABEL[l.key as VideoCloneDimKey],
+          present: true,
+          now: l.current,
+        }))
+      planSummary.value = p.analysis?.summary || p.title
+      basePlanNo = p.planNo
+      appliedKey = planInputKey()
+      applyPlan(p)
+      return ''
+    } catch (err) {
+      return replicateErrorText(err, { fallback: '没打开这个方案，可以重新上传视频开始' })
+    }
+  }
+
   /** 重新上传的原片分析好了：带 analysisNo 用保存的方案出新方案；新视频里没有的项按缺项提示 */
   async function reuseWithAnalysis(analysisNo: string) {
     const sp = pendingReuse.value
@@ -1230,6 +1272,7 @@ export function useReplicate() {
     pendingReuse,
     reuseBusy,
     reuseSaved,
+    openPlan,
     cancelPendingReuse,
     summaryText,
     step,

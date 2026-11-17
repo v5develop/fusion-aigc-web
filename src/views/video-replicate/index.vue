@@ -4,8 +4,9 @@
  * 上传视频 → 选要换的 → 确认生成（多段默认先做第 1 段，满意再继续）；接口见 api/replicate.ts（Go 原生，未就绪时 `?mock=replicate`）。
  * 页面只负责编排步骤：状态与动作在 useReplicate，各步骤是同目录的 Step* / JobView；页头二级导航：新建 / 历史 / 我的方案。
  */
-import { computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
+import { REPLICATE_SKILL_ID } from '@/api/agent.ts'
 import HistoryList from './HistoryList.vue'
 import JobView from './JobView.vue'
 import SavedPlans from './SavedPlans.vue'
@@ -30,7 +31,17 @@ onMounted(() => {
   void rep.initSamples()
   const j = route.query.job
   if (typeof j === 'string' && j) void rep.openJob(j)
+  else void openPlanFromQuery()
 })
+
+/** 对话里的方案深链 ?plan=<planNo>：进入方案步骤；过期 / 已改过 / 找不到 → 提示后照常从头开始 */
+const planHint = ref('')
+async function openPlanFromQuery() {
+  const p = route.query.plan
+  const no = Array.isArray(p) ? p[0] : p
+  if (typeof no !== 'string' || !no) return
+  planHint.value = (await rep.openPlan(no)) || ''
+}
 
 // 通知 / 外部链接在本页内换 ?job=：重新打开该任务（首次进入由 onMounted 处理）
 watch(
@@ -62,6 +73,9 @@ const maxSec = computed(() => rep.limits.value?.maxDurationSec ?? 80)
         {{ rep.step.value === 'start' ? '上传一条想做同款的视频' : '视频做同款' }}
       </h1>
       <p class="m-0 mt-6px text-13px leading-20px text-muted">把爆款视频换成你的人和商品，三步出片</p>
+      <p v-if="planHint" class="m-0 mt-6px rounded-10px bg-surface2 px-12px py-8px text-12px text-ink-2" role="status">
+        {{ planHint }}
+      </p>
       <p v-if="rep.step.value === 'start'" class="m-0 mt-2px text-11px text-placeholder">
         MP4 / MOV，最长 {{ maxSec }} 秒，300MB 以内
       </p>
@@ -72,7 +86,8 @@ const maxSec = computed(() => rep.limits.value?.maxDurationSec ?? 80)
       >
         {{ rep.notReadyText.value }}
       </p>
-      <div class="mt-10px flex gap-8px" role="tablist" aria-label="视频做同款">
+      <div class="mt-10px flex flex-wrap items-center gap-8px">
+      <div class="flex gap-8px" role="tablist" aria-label="视频做同款">
         <button
           v-for="t in TABS"
           :key="t.k"
@@ -90,6 +105,18 @@ const maxSec = computed(() => rep.limits.value?.maxDurationSec ?? 80)
         >
           {{ t.l }}
         </button>
+      </div>
+        <!-- 次要入口：换成跟智能体对话来做（复刻技能深链） -->
+        <RouterLink
+          :to="{ path: '/agent', query: { skill: REPLICATE_SKILL_ID } }"
+          :class="[
+            'ml-auto inline-flex h-32px items-center gap-6px rounded-16px border border-solid border-soft-line bg-surface px-14px text-12px text-muted no-underline hover:text-ink',
+            FOCUS,
+          ]"
+        >
+          <svg class="h-14px w-14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>
+          用对话做
+        </RouterLink>
       </div>
     </header>
 

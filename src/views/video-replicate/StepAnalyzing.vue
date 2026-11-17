@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** 第二步：正在看这条视频（阶段条 + 已识别内容渐进展示；分析免费）。文案取自 EXPERIENCE §4.3。 */
 import { computed } from 'vue'
+import AnalysisStages from './parts/AnalysisStages.vue'
 import type { useReplicate } from './useReplicate.ts'
 
 const props = defineProps<{ rep: ReturnType<typeof useReplicate> }>()
@@ -22,25 +23,7 @@ const stages = computed(() => (rep.analysis.value?.stages?.length ? rep.analysis
       <h3 class="vr-h3">正在看这条视频</h3>
       <p class="vr-sub">{{ rep.analysis.value?.freeText || '分析免费，不扣点数；只分析一次，之后改方案不用再等' }}</p>
       <p v-if="rep.analysis.value?.cached && rep.analysis.value.cachedText" class="m-0 mb-8px text-12px text-success" role="status">{{ rep.analysis.value.cachedText }}</p>
-      <ol class="m-0 flex list-none flex-col gap-8px p-0" aria-live="polite">
-        <li
-          v-for="t in stages"
-          :key="t.key"
-          :class="['flex items-center gap-8px text-13px', t.status === 'done' || t.status === 'skipped' ? 'text-ink-2' : t.status === 'active' ? 'font-600 text-ink' : 'text-placeholder']"
-        >
-          <span
-            :class="[
-              'grid h-16px w-16px flex-none place-items-center rounded-full border border-solid',
-              t.status === 'done' ? 'border-success bg-success text-white' : t.status === 'active' ? 'border-violet' : 'border-line',
-            ]"
-            aria-hidden="true"
-          >
-            <svg v-if="t.status === 'done'" class="h-10px w-10px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-            <i v-else-if="t.status === 'active'" class="vr-pulse block h-6px w-6px rounded-full bg-violet" />
-          </span>
-          {{ t.label }}<small v-if="t.status === 'skipped'" class="ml-6px text-11px text-placeholder">原片没有声音，已跳过</small>
-        </li>
-      </ol>
+      <AnalysisStages :stages="stages" />
       <div class="mt-14px flex items-center gap-12px">
         <span class="text-12px text-muted">已用 {{ rep.analysisElapsed.value }} 秒</span>
         <span class="flex-1" />

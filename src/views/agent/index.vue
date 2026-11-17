@@ -12,6 +12,7 @@
  * 沿用同一个 X-Request-Id（服务端据它幂等），用户点「重试」才重发；确定失败或已受理则换新 id。
  */
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, useId, watch } from 'vue'
+import { getCanvasAgentActiveTurn } from '@/api/canvas-agent.ts'
 import { NConfigProvider, NInput, NModal, NPopover, NSpin, useDialog, useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import { llTheme } from '@/views/local-life/theme.ts'
@@ -28,6 +29,7 @@ import {
   agentRecoverStream,
   agentRenameConversation,
   agentShareConversation,
+  REPLICATE_SKILL_ID,
   agentSkills,
   agentStream,
   answerReady,
@@ -127,6 +129,11 @@ import VariantsSetting from './VariantsSetting.vue'
 import AgainButtons from './AgainButtons.vue'
 import LoginSheet from './LoginSheet.vue'
 import SaveMineDialog from './SaveMineDialog.vue'
+import ConsentCard from './replicate/ConsentCard.vue'
+import CardChips from './replicate/CardChips.vue'
+import ReplicateCards from './replicate/ReplicateCards.vue'
+import { upload as ossUpload } from '@/api/oss-upload.ts'
+import type { ReplicateCardFrame } from '@/api/replicate-card.ts'
 import { clearScene, hasScene, isLoggedIn, loginVersion, requireLogin, saveScene, takeScene } from './industry/useLoginGate.ts'
 import SamplePanel from './SamplePanel.vue'
 import { useSamples } from './industry/useSamples.ts'
@@ -306,6 +313,9 @@ async function loadSkills() {
     const res = await agentSkills()
     skillGroups.value = chatSkillGroups(res.data)
     selectedSkillId.value = skills.value[0]?.agentSkillId ?? ''
+    // 视频复刻技能没有分类、不在目录里：靠深链 ?skill=<id> 进入（服务端按 id 受理，同画布助手）
+    const q = route.query.skill
+    if ((Array.isArray(q) ? q[0] : q) === REPLICATE_SKILL_ID) selectedSkillId.value = REPLICATE_SKILL_ID
   } catch {
     // 目录拉失败：没有可用技能，发送按 skillMissing 禁用（服务端拒收不带 agentSkillId 的一轮）
     skillGroups.value = []
@@ -319,6 +329,8 @@ function pickSkill(id: string) {
 }
 
 const selectedSkill = computed(() => skills.value.find((s) => s.agentSkillId === selectedSkillId.value))
+/** 技能胶囊上的名字：目录里没有的固定技能（视频复刻）用自己的名字 */
+const skillPillTitle = computed(() => selectedSkill.value?.title ?? (isReplicateSkill.value ? '视频做同款' : ''))
 
 /** 首字作为技能头像 */
 function skillInitial(s: IAgentSkill): string {
@@ -374,6 +386,69 @@ const LIMIT_TEXT = `最多上传 ${MAX_IMAGES} 张`
 const attachments = ref<string[]>([])
 const imageRoom = computed(() => Math.max(0, MAX_IMAGES - attachments.value.length))
 const { uploading, uploadFiles } = useStudioUploader()
+
+// ---------------- 视频附件（复刻技能：StreamRequest.attribute.video_urls，CONTRACT §E） ----------------
+
+const MAX_VIDEOS = 2
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024
+const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm']
+const VIDEO_ACCEPT = 'video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm'
+const isReplicateSkill = computed(() => selectedSkillId.value === REPLICATE_SKILL_ID)
+
+interface VideoAttachment {
+  id: number
+  name: string
+  /** 本地预览地址（blob:），上传完成前就能看缩略图 */
+  preview: string
+  /** 上传完成后的 http(s) 地址；空 = 还在传 */
+  url: string
+}
+const videoAttachments = ref<VideoAttachment[]>([])
+let videoSeq = 0
+const videoUploading = computed(() => videoAttachments.value.some((v) => !v.url))
+const videoRoom = computed(() => Math.max(0, MAX_VIDEOS - videoAttachments.value.length))
+const videoInputEl = ref<HTMLInputElement | null>(null)
+
+function dropVideo(v: VideoAttachment) {
+  URL.revokeObjectURL(v.preview)
+  videoAttachments.value = videoAttachments.value.filter((x) => x.id !== v.id)
+}
+function removeVideo(v: VideoAttachment) {
+  if (streaming.value) return
+  dropVideo(v)
+}
+function clearVideos(urls: string[]) {
+  for (const v of videoAttachments.value.filter((x) => urls.includes(x.url))) dropVideo(v)
+}
+
+async function onVideoChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  if (!files.length || streaming.value) return
+  const ok: File[] = []
+  for (const f of files) {
+    if (!VIDEO_TYPES.includes(f.type) && !/\.(mp4|mov|webm)$/i.test(f.name)) message.warning(`「${f.name}」不是 mp4 / mov / webm 视频`)
+    else if (f.size > MAX_VIDEO_BYTES) message.warning(`「${f.name}」超过 200MB，请压缩或剪短后再传`)
+    else ok.push(f)
+  }
+  if (ok.length > videoRoom.value) message.warning(`最多添加 ${MAX_VIDEOS} 条视频，多选的已忽略`)
+  // 上传器没有进度回调：缩略图先出来，上传中显示转圈，传完才算「已添加」
+  for (const f of ok.slice(0, videoRoom.value)) {
+    const v = reactive<VideoAttachment>({ id: ++videoSeq, name: f.name, preview: URL.createObjectURL(f), url: '' })
+    videoAttachments.value.push(v)
+    void ossUpload([f], undefined, { compress: false })
+      .then((urls) => {
+        const u = urls[0]
+        if (u && /^https?:\/\//i.test(u)) v.url = u
+        else throw new Error('empty url')
+      })
+      .catch(() => {
+        message.error(`「${f.name}」上传失败，请重试`)
+        dropVideo(v)
+      })
+  }
+}
 
 // 「收藏资产」页签已去掉：资产选择器没有「收藏」筛选，之前一直是置灰的死入口
 const IMAGE_TABS = [
@@ -609,6 +684,8 @@ interface ChatItem {
   text: string
   /** 用户消息附带的图片（历史消息的 imageUrls） */
   images?: string[]
+  /** 用户消息附带的视频（复刻技能：attribute.video_urls） */
+  videos?: string[]
   reply: IAgentReply
   /** 本条回复的流仍在进行 */
   live?: boolean
@@ -695,6 +772,13 @@ function trackFrame(item: ChatItem, frame: IAgentFrame) {
   if (Number.isFinite(seq) && seq > (item.lastSeq ?? 0)) item.lastSeq = seq
 }
 
+/** 历史用户消息的视频附件：attribute 键出网时转成了 lowerCamel（videoUrls），两种写法都认 */
+function videosOfAttribute(attribute: Record<string, unknown> | undefined): { videos?: string[] } {
+  const raw = attribute?.videoUrls ?? attribute?.video_urls
+  const list = (Array.isArray(raw) ? raw : []).filter((u): u is string => typeof u === 'string' && /^https?:\/\//i.test(u))
+  return list.length ? { videos: list } : {}
+}
+
 /** @param index 该消息在整个会话里的顺序下标（从 0 起），两条一轮 */
 function toItem(m: IAgentMessage, index: number): ChatItem | null {
   const turnNo = Math.floor(index / 2) + 1
@@ -705,6 +789,7 @@ function toItem(m: IAgentMessage, index: number): ChatItem | null {
       role: 'user',
       text: typeof m.content === 'string' ? m.content : '',
       images: (m.imageUrls ?? []).filter(Boolean),
+      ...videosOfAttribute(m.attribute),
       reply: emptyReply(),
       turnNo,
       ...(m.attribute ? { attribute: m.attribute } : {}),
@@ -873,13 +958,96 @@ function answeredCount(item: ChatItem): number {
   return form ? form.questions.filter((q) => answerReady(q, item.form?.answers[q.id])).length : 0
 }
 
+// ---------------- 复刻：同意卡与对话卡片 ----------------
+
+/** 预算确认那一题（replicate_consent 挂在它上面）；没有显式 id 时退回第一题 */
+function consentQuestion(item: ChatItem): IAgentQuestion | undefined {
+  const qs = item.reply.form?.questions ?? []
+  return qs.find((q) => q.id === 'budget_confirm') ?? qs[0]
+}
+
+/** 同意卡当前结果：已作答读选中的选项，被取代为 expired，其余为空 */
+function consentResult(item: ChatItem): '' | 'continue' | 'cancel' | 'expired' {
+  const s = item.form
+  if (!s?.done) return ''
+  if (s.superseded) return 'expired'
+  const q = consentQuestion(item)
+  return q && s.answers[q.id]?.selected[0] === 'cancel' ? 'cancel' : 'continue'
+}
+
+/** 点主按钮 = 以 continue 回答预算确认中断，「先不做」= cancel；肖像授权勾选随答案带上。和通用表单走同一条提交路径，不调复刻 REST */
+function answerConsent(item: ChatItem, choice: 'continue' | 'cancel', portrait: boolean) {
+  const s = item.form
+  const q = consentQuestion(item)
+  if (!s || !q || !formOpen(item)) return
+  s.answers[q.id] = { selected: [choice], text: '' }
+  void submitForm(item, portrait && choice === 'continue' ? { portrait_consent: { selected: ['yes'], text: '' } } : undefined)
+}
+
+/**
+ * 复刻卡片原位更新：同 key（entity.type + entity.id）的卡在整个会话里只显示一张——
+ * 位置留在第一次出现的那条回复里，内容换成最新一帧。错误帧 key 唯一，各显示各的。
+ */
+const replicateCardMap = computed(() => {
+  const latest = new Map<string, ReplicateCardFrame>()
+  const first = new Map<string, string>()
+  for (const it of items.value) {
+    for (const c of it.reply.cards) {
+      latest.set(c.key, c)
+      if (!first.has(c.key)) first.set(c.key, it.key)
+    }
+  }
+  return { latest, first }
+})
+function cardsOf(item: ChatItem): ReplicateCardFrame[] {
+  if (!item.reply.cards.length) return []
+  const { latest, first } = replicateCardMap.value
+  return item.reply.cards.filter((c) => first.get(c.key) === item.key).map((c) => latest.get(c.key) ?? c)
+}
+/** 跨轮进度提示：这条回复里出现、但卡片住在更早回复里的任务 / 方案帧（取最新一帧的状态） */
+function chipsOf(item: ChatItem): ReplicateCardFrame[] {
+  if (!item.reply.cards.length) return []
+  const { latest, first } = replicateCardMap.value
+  const seen = new Set<string>()
+  const out: ReplicateCardFrame[] = []
+  for (const c of item.reply.cards) {
+    if (c.isError || (c.type !== 'job' && c.type !== 'plan')) continue
+    if (first.get(c.key) === item.key || seen.has(c.key)) continue
+    seen.add(c.key)
+    out.push(latest.get(c.key) ?? c)
+  }
+  return out
+}
+/** 对话里最近一条用户上传的视频：成片并排对照用的「原片」 */
+const latestSourceVideo = computed(() => {
+  for (let i = items.value.length - 1; i >= 0; i--) {
+    const v = items.value[i]!.videos
+    if (v?.length) return v[0]
+  }
+  return undefined
+})
+/** 卡片动作（重做第 N 段 / 继续 / 就这样）：只是替用户发一条消息，扣点仍走同意卡 */
+function sendFromCard(text: string) {
+  void send(text, [], null, { noAttach: true })
+}
+
+/** 卡片「精修这一段」：只把「精修第 k 段：」预填进输入框并聚焦，改什么由用户自己写、自己发送 */
+function draftFromCard(text: string) {
+  onDraftInput(text)
+  void nextTick(() => {
+    const el = textareaEl.value
+    el?.focus()
+    el?.setSelectionRange(text.length, text.length)
+  })
+}
+
 /**
  * 提交表单：同一会话发一轮 content 为空、带 attribute.answers（+ interruptId）的流式请求，续跑被中断的那一轮。
  * 服务端按 interruptId 幂等（同一表单重复提交接回原轮次），X-Request-Id 每次新取即可。
  * 受理前被拒只有一帧 ERROR；表单类拒收（已提交 / 已失效 / 仍在处理）的 detail 与 message 同句，
  * 此时提示原文并回读消息，以服务端当前状态为准。
  */
-async function submitForm(item: ChatItem) {
+async function submitForm(item: ChatItem, extraAnswers?: Record<string, IAgentAnswer>) {
   const form = item.reply.form
   const state = item.form
   const conversationId = activeId.value
@@ -914,7 +1082,7 @@ async function submitForm(item: ChatItem) {
         content: '',
         agentSkillId: selectedSkillId.value,
         ...(language ? { language } : {}),
-        attribute: { answers: buildAnswers(form, state.answers) },
+        attribute: { answers: { ...buildAnswers(form, state.answers), ...extraAnswers } },
         ...(form.interruptId ? { interruptId: form.interruptId } : {}),
       },
       {
@@ -1108,6 +1276,12 @@ const { dragging: composerDragging } = useFileDropPaste(composerEl, {
 /** 空态场景按钮：把示例需求填进输入框（原型 .scenes） */
 function fillDraft(v: string) {
   onDraftInput(v)
+  void nextTick(() => textareaEl.value?.focus())
+}
+
+/** 空态「视频复刻」：选中复刻技能（同 ?skill= 深链），并聚焦输入框；视频从输入区的上传按钮加 */
+function startReplicate() {
+  pickSkill(REPLICATE_SKILL_ID)
   void nextTick(() => textareaEl.value?.focus())
 }
 
@@ -1541,6 +1715,8 @@ interface SendOptions {
   retryKey?: string
   /** 重试：沿用上一轮的模板入参（输入框里的已被清掉） */
   inputs?: Record<string, unknown>
+  /** 卡片动作代发的消息：不带输入区里的视频附件 */
+  noAttach?: boolean
 }
 
 /** 服务端要求 content 非空（只有表单续答可空），所以有图也得有文字 */
@@ -1567,8 +1743,8 @@ async function send(
     requireLogin('pick')
     return
   }
-  if (uploading.value) {
-    message.info(UPLOAD_BUSY)
+  if (uploading.value || (isReplicateSkill.value && videoUploading.value)) {
+    message.info(isReplicateSkill.value && videoUploading.value ? '视频还在上传，请稍候' : UPLOAD_BUSY)
     return
   }
   if (skillMissing.value) {
@@ -1630,11 +1806,17 @@ async function send(
       ? (buildOverlayCtx(template.plazaTemplateId, true, tslots.items.value, slotInputs, tslots.values.value) ?? undefined)
       : undefined
   const imageUrls = prepared ? imageUrlsOf(tslots.items.value, prepared) : [...images]
+  // 视频只在复刻技能下带（Java 只在该技能识别 attribute.video_urls）；卡片动作发的消息（opts.noAttach）不带附件
+  const videoUrls =
+    isReplicateSkill.value && !opts.noAttach
+      ? videoAttachments.value.map((v) => v.url).filter((u) => /^https?:\/\//i.test(u)).slice(0, MAX_VIDEOS)
+      : []
   const req: IAgentStreamReq = {
     conversationId,
     content,
     agentSkillId: selectedSkillId.value,
     ...(imageUrls.length ? { imageUrls } : {}),
+    ...(videoUrls.length ? { attribute: { video_urls: videoUrls } } : {}),
     ...(template ? { plazaTemplateId: template.plazaTemplateId } : {}),
     ...(slotInputs ? { inputs: slotInputs } : {}),
   }
@@ -1653,6 +1835,7 @@ async function send(
     role: 'user',
     text: content,
     images: imageUrls,
+    ...(videoUrls.length ? { videos: videoUrls } : {}),
     reply: emptyReply(),
   })
   const bot = reactive<ChatItem>({
@@ -1694,6 +1877,7 @@ async function send(
             // 受理才移除本轮真正发出的图片与模板；失败时留着，便于改后重发。
             // 只摘掉发出的那几张：重试 / 生成中新加的附图不能被一并清掉
             attachments.value = attachments.value.filter((u) => !imageUrls.includes(u))
+            clearVideos(videoUrls)
             if (opts.fromDraft && template && selectedTemplate.value?.plazaTemplateId === template.plazaTemplateId) {
               selectedTemplate.value = null
               templateFill = ''
@@ -1759,6 +1943,51 @@ async function send(
 }
 
 // ---------------- 续流（POST /agent/recover-stream） ----------------
+
+// ---------------- 复刻：拆解完成后后端自动开的隐藏轮次（AGENT §13.3） ----------------
+
+/**
+ * 最后一条助手回复里有还没拆完的分析卡、且没有流在跑：后端拆完会在本会话自动开一轮隐藏回合直接出方案，
+ * 页面不知道它何时开始——这里低频查「进行中的轮次」，查到就接流（与刷新重进会话同一条续流路径）。
+ * 只在这种等待态轮询；出现新回复 / 有流 / 页面在后台 / 超过 20 分钟都停。
+ */
+const ANALYSIS_TERMINAL = new Set(['succeeded', 'failed'])
+const awaitingAnalysisTurn = computed(() => {
+  if (streaming.value || !activeId.value) return false
+  const last = items.value[items.value.length - 1]
+  if (!last || last.role !== 'assistant' || !last.reply.finished) return false
+  return last.reply.cards.some(
+    (c) => c.type === 'analysis' && !c.isError && !ANALYSIS_TERMINAL.has(String((c.view as { status?: string } | undefined)?.status ?? '')),
+  )
+})
+let followUpTimer: ReturnType<typeof setInterval> | undefined
+let followUpSince = 0
+function stopFollowUpPoll() {
+  if (followUpTimer) clearInterval(followUpTimer)
+  followUpTimer = undefined
+}
+async function checkFollowUpTurn() {
+  if (!awaitingAnalysisTurn.value || document.hidden) return
+  if (Date.now() - followUpSince > 20 * 60_000) return stopFollowUpPoll()
+  const id = activeId.value
+  try {
+    const turn = await getCanvasAgentActiveTurn(id)
+    if (!turn || id !== activeId.value || !awaitingAnalysisTurn.value) return
+    stopFollowUpPoll()
+    const bot = reactive<ChatItem>({ key: `l${++localKey}`, role: 'assistant', text: '', reply: emptyReply() })
+    items.value.push(bot)
+    void resumeTurn(id, bot, 'open', true)
+  } catch {
+    /* 查询失败：下一拍再试 */
+  }
+}
+watch(awaitingAnalysisTurn, (waiting) => {
+  stopFollowUpPoll()
+  if (!waiting) return
+  followUpSince = Date.now()
+  followUpTimer = setInterval(() => void checkFollowUpTurn(), 6000)
+})
+onUnmounted(stopFollowUpPoll)
 
 /** 打开会话时最后一轮还没收尾（助手消息只在终态落库，运行中只有用户那条）：试着接上运行中的流 */
 function resumeIfRunning(id: string) {
@@ -3450,6 +3679,27 @@ onUnmounted(() => {
                   </svg>
                   创意设计
                 </button>
+                <button
+                  type="button"
+                  :disabled="streaming"
+                  :class="[isReplicateSkill ? BTN_TINT : BTN, QUICK]"
+                  :aria-pressed="isReplicateSkill"
+                  @click="startReplicate"
+                >
+                  <svg
+                    class="h-14px w-14px"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="3" y="6" width="13" height="12" rx="2" />
+                    <path d="M16 10.5l5-3v9l-5-3z" />
+                  </svg>
+                  视频复刻
+                </button>
                 <button type="button" :class="[BTN, QUICK]" @click="openBatch">
                   <svg
                     class="h-14px w-14px"
@@ -3591,13 +3841,21 @@ onUnmounted(() => {
                     <!-- 用户气泡：白瓷、右下收一角 -->
                     <div
                       v-if="item.role === 'user'"
-                      v-show="item.text || item.images?.length"
+                      v-show="item.text || item.images?.length || item.videos?.length"
                       class="msg-wrap relative flex flex-col"
                     >
                       <div
                         class="sx-squircle max-w-460px self-end rounded-[18px_18px_6px_18px] border border-solid border-soft-line sx-soft-bg px-20px py-14px text-13px leading-20px text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
                       >
                         <div v-if="item.text" class="whitespace-pre-wrap break-words">{{ item.text }}</div>
+                        <div v-if="item.videos?.length" :class="['flex flex-wrap gap-6px', item.text ? 'mt-6px' : '']">
+                          <span
+                            v-for="(_u, i) in item.videos"
+                            :key="i"
+                            class="inline-flex h-24px items-center gap-4px rounded-12px bg-surface3 px-8px text-11px text-ink-2"
+                            >视频 {{ i + 1 }}</span
+                          >
+                        </div>
                         <div v-if="item.images?.length" :class="['flex gap-4px', item.text ? 'mt-6px' : '']">
                           <button
                             v-for="(url, i) in item.images.slice(0, MAX_IMAGES)"
@@ -3810,9 +4068,30 @@ onUnmounted(() => {
                           </li>
                         </ul>
                       </div>
+                      <!-- 复刻卡片（replicate_card）：同 entity 原位更新；动作只发消息，不调复刻写接口 -->
+                      <ReplicateCards
+                        v-if="cardsOf(item).length"
+                        :frames="cardsOf(item)"
+                        :busy="streaming"
+                        :source-url="latestSourceVideo"
+                        :latest="item.key === items[items.length - 1]?.key"
+                        @send="sendFromCard"
+                        @draft="draftFromCard"
+                      />
+                      <CardChips v-if="chipsOf(item).length" :frames="chipsOf(item)" />
+                      <!-- 复刻扣点同意卡：预算确认中断带 replicate_consent 时代替通用表单；答案走同一条续答路径 -->
+                      <ConsentCard
+                        v-if="item.reply.form?.consent && item.form"
+                        :consent="item.reply.form.consent"
+                        :open="formOpen(item)"
+                        :submitting="item.form.submitting"
+                        :result="consentResult(item)"
+                        :error="item.form.error"
+                        @answer="(c: 'continue' | 'cancel', p: boolean) => answerConsent(item, c, p)"
+                      />
                       <!-- 参数确认表单（question_asker 中断）：逐题作答，最后一题「确认并生成」续跑本轮；提交后收成摘要卡 -->
                       <form
-                        v-if="item.reply.form && item.form"
+                        v-if="item.reply.form && item.form && !item.reply.form.consent"
                         :class="[
                           'form-card sx-squircle overflow-hidden rounded-18px sx-soft',
                           item.form.done ? 'is-done max-w-480px' : 'max-w-820px pb-12px',
@@ -4582,6 +4861,41 @@ onUnmounted(() => {
                       </button>
                     </li>
                   </ul>
+                  <ul
+                    v-if="videoAttachments.length && isReplicateSkill && !slotMode"
+                    class="m-0 mb-8px flex list-none gap-8px self-start p-0"
+                    aria-label="已添加的视频"
+                  >
+                    <li v-for="(v, i) in videoAttachments" :key="v.id" class="relative h-53px w-40px flex-none">
+                      <video
+                        :src="`${v.preview}#t=0.1`"
+                        preload="metadata"
+                        muted
+                        playsinline
+                        :aria-label="`视频 ${i + 1}：${v.name}`"
+                        class="block h-full w-full rounded-3px border border-solid border-line bg-surface3 object-cover"
+                      />
+                      <span
+                        v-if="!v.url"
+                        class="absolute inset-0 grid place-items-center rounded-3px bg-[rgba(31,35,41,0.45)]"
+                        role="status"
+                        aria-label="上传中"
+                      >
+                        <n-spin :size="14" />
+                      </span>
+                      <span class="absolute bottom-1px left-1px rounded-2px bg-[rgba(31,35,41,0.72)] px-3px text-10px leading-14px text-white">视频{{ i + 1 }}</span>
+                      <button
+                        type="button"
+                        title="移除视频"
+                        :aria-label="`移除视频 ${i + 1}`"
+                        :disabled="streaming"
+                        class="absolute right-1px top-1px grid h-20px w-20px place-items-center rounded-3px border-none bg-[rgba(31,35,41,0.72)] p-0 text-12px leading-none text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                        @click="removeVideo(v)"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  </ul>
                   <textarea
                     ref="textareaEl"
                     :value="draft"
@@ -4625,18 +4939,55 @@ onUnmounted(() => {
                       </svg>
                       图片 {{ attachments.length }}/{{ MAX_IMAGES }}
                     </button>
+                    <!-- 视频入口：只有选了复刻技能才出现（MP4 / MOV / WEBM，≤200MB，最多 2 条） -->
+                    <button
+                      v-if="isReplicateSkill && !slotMode"
+                      type="button"
+                      :aria-label="`添加视频，已添加 ${videoAttachments.length}/${MAX_VIDEOS}`"
+                      :title="`MP4 / MOV / WEBM，单个 200MB 以内，最多 ${MAX_VIDEOS} 条`"
+                      :disabled="streaming"
+                      :class="[BTN, '!px-11px']"
+                      @click="videoRoom > 0 ? videoInputEl?.click() : message.warning(`最多添加 ${MAX_VIDEOS} 条视频`)"
+                    >
+                      <n-spin v-if="videoUploading" :size="12" />
+                      <svg
+                        v-else
+                        class="h-14px w-14px"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <rect x="3" y="6" width="13" height="12" rx="2" />
+                        <path d="M16 10.5l5-3v9l-5-3z" />
+                      </svg>
+                      视频 {{ videoAttachments.length }}/{{ MAX_VIDEOS }}
+                    </button>
+                    <input
+                      v-if="isReplicateSkill"
+                      ref="videoInputEl"
+                      type="file"
+                      multiple
+                      :accept="VIDEO_ACCEPT"
+                      class="hidden"
+                      tabindex="-1"
+                      aria-hidden="true"
+                      @change="onVideoChange"
+                    />
                     <button
                       v-if="skills.length"
                       ref="skillPillEl"
                       type="button"
                       aria-haspopup="dialog"
-                      :aria-label="selectedSkill ? `技能：${selectedSkill.title}，点击更换` : '选择技能'"
+                      :aria-label="skillPillTitle ? `技能：${skillPillTitle}，点击更换` : '选择技能'"
                       :title="selectedSkill?.description"
                       :disabled="streaming"
                       :class="[
                         BTN,
                         '!px-11px max-w-[260px]',
-                        selectedSkill ? '' : '!border-warning-line !text-warning',
+                        skillPillTitle ? '' : '!border-warning-line !text-warning',
                       ]"
                       @click="openSkillDialog"
                     >
@@ -4651,7 +5002,7 @@ onUnmounted(() => {
                       >
                         <path :d="ICON.sparkle" />
                       </svg>
-                      <span class="truncate">{{ selectedSkill ? selectedSkill.title : '选择技能' }}</span>
+                      <span class="truncate">{{ skillPillTitle || '选择技能' }}</span>
                       <span
                         v-if="versionLabel(selectedSkill)"
                         class="flex-none rounded-3px bg-violet-soft px-3px text-10px leading-14px text-violet-ink"
