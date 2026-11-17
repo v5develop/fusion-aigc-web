@@ -680,7 +680,8 @@ export function applyFrame(reply: IAgentReply, frame: IAgentFrame): void {
       reply.finished = true
       break
     case 'ERROR':
-      reply.error = str(content.message) || 'agent 执行失败'
+      // detail 是后端给用户看的原因（CreaftV1AgentFailureMessages）；message 是固定的「agent 执行失败」，只作兜底
+      reply.error = str(content.detail).trim() || str(content.message) || 'agent 执行失败'
       break
   }
 }
