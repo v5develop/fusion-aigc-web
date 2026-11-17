@@ -93,6 +93,13 @@ interface IFormState {
 
 const turns = ref<ITurn[]>([])
 const input = ref('')
+const inputEl = ref<HTMLTextAreaElement | null>(null)
+/** 输入上限与显示字数的阈值 */
+const INPUT_MAX = 2000
+const INPUT_WARN = 1600
+/** 展开：写长需求时把输入区放大到约半屏 */
+const inputExpanded = ref(false)
+const inputHeight = ref('28px')
 const refs = ref<ICanvasAgentRef[]>([])
 const streaming = ref(false)
 const disabled = ref(false)
@@ -148,6 +155,7 @@ watch(
     historyError.value = false
     historyLoading.value = false
     void restore()
+    loadDraft()
   },
 )
 
@@ -696,6 +704,69 @@ function newConversation() {
   clearCanvasAgentSession(props.canvasId)
 }
 
+// ---------------- 输入框：自动长高 / 展开 / 草稿（localStorage canvas-agent:draft:{canvasId}） ----------------
+
+/** 按内容调整高度：收起时最多约 8 行，展开时约半屏；超出后框内滚动 */
+function fitInput() {
+  const el = inputEl.value
+  if (!el) return
+  const max = inputExpanded.value ? Math.max(200, Math.round(window.innerHeight * 0.5)) : 168
+  const min = inputExpanded.value ? Math.min(max, 200) : 28
+  el.style.height = 'auto'
+  const next = Math.min(max, Math.max(min, el.scrollHeight))
+  inputHeight.value = `${next}px`
+  el.style.height = inputHeight.value
+  el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden'
+}
+
+function toggleInputExpanded() {
+  inputExpanded.value = !inputExpanded.value
+  void nextTick(() => {
+    fitInput()
+    inputEl.value?.focus()
+  })
+}
+
+const draftKey = (canvasId: string) => `canvas-agent:draft:${canvasId}`
+let draftTimer: ReturnType<typeof setTimeout> | undefined
+
+function saveDraft() {
+  if (!props.canvasId) return
+  try {
+    if (input.value.trim()) localStorage.setItem(draftKey(props.canvasId), input.value)
+    else localStorage.removeItem(draftKey(props.canvasId))
+  } catch {
+    /* 隐私模式 / 存储被禁：草稿只是便利，不影响输入 */
+  }
+}
+
+function loadDraft() {
+  let text = ''
+  try {
+    text = props.canvasId ? (localStorage.getItem(draftKey(props.canvasId)) ?? '') : ''
+  } catch {
+    text = ''
+  }
+  input.value = text
+  void nextTick(fitInput)
+}
+
+function onInput() {
+  fitInput()
+  clearTimeout(draftTimer)
+  draftTimer = setTimeout(saveDraft, 400)
+}
+
+// 发送后 input 被清空：同步收起并清掉草稿
+watch(input, (value) => {
+  if (!value) {
+    clearTimeout(draftTimer)
+    saveDraft()
+    inputExpanded.value = false
+    void nextTick(fitInput)
+  }
+})
+
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
@@ -708,6 +779,7 @@ onMounted(() => {
   // 刷新 / 关页前把合并中的游标与快照落盘
   window.addEventListener('pagehide', flushCursor)
   void restore()
+  loadDraft()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('online', onOnline)
@@ -1014,36 +1086,69 @@ function stepIcon(step: ICanvasAgentStep): string {
         </button>
         <span v-else-if="!refs.length" class="text-11px text-placeholder">选中画布上的节点后可在这里引用</span>
       </div>
-      <div class="flex items-end gap-6px">
+      <!-- 输入框：一个整体（文字区 + 底栏），随内容自动长高；长需求可展开到约半屏；草稿按画布自动保存 -->
+      <div
+        class="rounded-10px border border-solid border-line bg-surface transition-colors focus-within:border-violet"
+        :class="disabled ? 'opacity-60' : ''"
+      >
         <textarea
+          ref="inputEl"
           v-model="input"
-          rows="2"
-          maxlength="2000"
-          class="flex-1 min-h-40px max-h-140px px-8px py-6px rounded-8px border border-solid border-line bg-surface text-ink text-13px leading-20px resize-none outline-none focus:border-violet"
-          :placeholder="disabled ? '画布助手暂未开启' : '让助手改画布…（Enter 发送，Shift+Enter 换行）'"
+          rows="1"
+          :maxlength="INPUT_MAX"
+          class="block w-full box-border px-10px pt-8px pb-2px border-none bg-transparent text-ink text-13px leading-20px resize-none outline-none"
+          :style="{ height: inputHeight }"
+          :placeholder="disabled ? '画布助手暂未开启' : '描述你想怎么改画布…'"
           :disabled="disabled"
           aria-label="给画布助手的消息"
+          @input="onInput"
           @keydown="onKeydown"
         />
-        <button
-          v-if="streaming"
-          type="button"
-          class="h-36px px-12px rounded-8px border border-solid border-line bg-surface text-ink text-13px cursor-pointer"
-          :class="FOCUS_RING"
-          @click="stop"
-        >
-          停止
-        </button>
-        <button
-          v-else
-          type="button"
-          class="h-36px px-14px rounded-8px border-none bg-violet text-on-accent text-13px cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          :class="FOCUS_RING"
-          :disabled="!canSend"
-          @click="send()"
-        >
-          发送
-        </button>
+        <div class="flex items-center gap-6px pl-10px pr-6px pb-6px">
+          <span class="flex-1 min-w-0 truncate text-11px text-placeholder">Enter 发送 · Shift+Enter 换行</span>
+          <span
+            v-if="input.length >= INPUT_WARN"
+            class="shrink-0 text-11px tabular-nums"
+            :class="input.length >= INPUT_MAX ? 'text-danger' : 'text-muted'"
+          >
+            {{ input.length }} / {{ INPUT_MAX }}
+          </span>
+          <button
+            type="button"
+            class="shrink-0 flex items-center justify-center w-28px h-28px rounded-6px border-none bg-transparent text-muted cursor-pointer hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="FOCUS_RING"
+            :disabled="disabled"
+            :title="inputExpanded ? '收起输入框' : '展开输入框（写长需求）'"
+            :aria-label="inputExpanded ? '收起输入框' : '展开输入框'"
+            :aria-pressed="inputExpanded"
+            @click="toggleInputExpanded"
+          >
+            <EditorIcon :name="inputExpanded ? 'collapse' : 'expand'" :size="14" />
+          </button>
+          <button
+            v-if="streaming"
+            type="button"
+            class="shrink-0 flex items-center justify-center w-28px h-28px rounded-full border border-solid border-line bg-surface text-ink cursor-pointer"
+            :class="FOCUS_RING"
+            title="停止"
+            aria-label="停止"
+            @click="stop"
+          >
+            <EditorIcon name="stop" :size="12" />
+          </button>
+          <button
+            v-else
+            type="button"
+            class="shrink-0 flex items-center justify-center w-28px h-28px rounded-full border-none bg-violet text-on-accent cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            :class="FOCUS_RING"
+            :disabled="!canSend"
+            title="发送（Enter）"
+            aria-label="发送"
+            @click="send()"
+          >
+            <EditorIcon name="send" :size="14" />
+          </button>
+        </div>
       </div>
       <div class="flex flex-wrap items-center gap-4px mt-6px text-11px text-muted">
         <label class="flex items-center gap-4px cursor-pointer select-none">

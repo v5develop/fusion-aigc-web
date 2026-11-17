@@ -43,6 +43,9 @@ const PATHS: Record<string, string> = {
   /** 校色（滑杆，与 ColorFixPill 同形） */
   sliders: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9.5 9.5h5v5h-5z',
+  // 发送（向上箭头）/ 收起（四角向内）：画布助手输入框
+  send: 'M12 19V5.5M6 11.5l6-6 6 6',
+  collapse: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
   shirt: 'M9 4L4 7l2 4 2-1v10h8V10l2 1 2-4-5-3a3 3 0 0 1-6 0z',
   brush: 'M14.5 4.5l5 5-8 8-5-5zM6.5 12.5L4 20l7.5-2.5',
   settings:
