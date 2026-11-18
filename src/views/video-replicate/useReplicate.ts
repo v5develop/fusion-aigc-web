@@ -439,13 +439,22 @@ export function useReplicate() {
   async function classifyBatch(list: RefAsset[], purpose: 'pending' | 'subjects', analysisNo?: string) {
     const no = analysisNo ?? (analysis.value?.status === 'succeeded' ? analysis.value.analysisNo : '')
     const images = list.map((a) => (a.rid ? { rid: a.rid } : { url: a.url }))
-    let items: { index: number; kind: ReplicateRefKind; subjectId?: string; label?: string }[] | null = null
+    let items: { index: number; kind: ReplicateRefKind; subjectId?: string; label?: string; rejected?: boolean; reason?: string }[] | null = null
     try {
       const res = await Promise.race([
         replicateClassifyRefs({ images, ...(no ? { analysisNo: no } : {}) }),
         new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), CLASSIFY_TIMEOUT_MS)),
       ])
-      if (res.data && !res.data.degraded) items = res.data.items ?? []
+      // 逐张拒收（来源不合规）：错误挂在那张图上，按「其他」待用户去掉或换图；不影响其余图
+      for (const it of res.data?.items ?? []) {
+        const a = it.rejected ? list[it.index - 1] : undefined
+        if (a && assets.value.includes(a)) {
+          a.error = it.reason || '这张图不是你在本站上传的，请重新上传'
+          a.kind = 'other'
+          a.kindState = 'degraded'
+        }
+      }
+      if (res.data && !res.data.degraded) items = (res.data.items ?? []).filter((x) => !x.rejected)
     } catch (err) {
       items = null
       const ae = toApiError(err)

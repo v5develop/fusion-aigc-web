@@ -1017,6 +1017,10 @@ export interface ReplicateClassifyItem {
   confidence: number
   /** 短标签，如「穿白衣的女生」 */
   label: string
+  /** true = 这张图来源不合规（不是本站上传 / 不属于你），没送识别；其余图照常识别 */
+  rejected?: boolean
+  /** 被拒原因，如「第 2 张图不是你在本站上传的，请重新上传」 */
+  reason?: string
 }
 
 export interface ReplicateClassifyResult {
