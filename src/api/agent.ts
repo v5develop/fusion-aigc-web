@@ -960,3 +960,34 @@ async function readSse(
     throw new ApiError(err instanceof Error ? err.message : 'network error', { code: -1, isNetwork: true })
   }
 }
+
+// ---------------- 复刻助手里存的品牌素材（我的模特 / 我的商品 / 我的店铺） ----------------
+
+export type AgentBrandAssetKind = 'model' | 'product' | 'shop'
+
+export interface AgentBrandAsset {
+  id: string | number
+  kind: AgentBrandAssetKind
+  name: string
+  /** 短时效可显示地址（有 rid 时只用来显示：现签地址会过期，Go 复刻接口也不收） */
+  url: string
+  /** 图是私有媒体引用时给出（媒体 id，不带 mr:// 前缀）；送给 Go（classify / 方案参考图）一律用它 */
+  rid?: string
+  updatedAt?: string
+}
+
+/** GET /api/v1/agent/brand-assets?kind=model|product|shop（不传 kind = 全部） */
+export async function agentBrandAssets(kind?: AgentBrandAssetKind) {
+  if (isMock('replicate')) {
+    const svg = (c: string, t: string) =>
+      `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="160"><rect width="120" height="160" fill="${c}"/><text x="60" y="84" font-size="16" fill="#fff" text-anchor="middle">${t}</text></svg>`)}`
+    const all: AgentBrandAsset[] = [
+      { id: 1, kind: 'model', name: '小林', url: svg('#b9859a', '小林') },
+      { id: 2, kind: 'model', name: '阿杰', url: svg('#7d8fb5', '阿杰'), rid: 'mock-brand-rid-2' },
+      { id: 3, kind: 'product', name: '泡脚桶', url: svg('#c9a35b', '泡脚桶') },
+      { id: 4, kind: 'shop', name: '总店门头', url: svg('#6fa583', '门头') },
+    ]
+    return { code: 0, msg: 'ok', data: all.filter((a) => !kind || a.kind === kind) }
+  }
+  return get<AgentBrandAsset[]>(`${PREFIX}/brand-assets`, kind ? { kind } : undefined)
+}

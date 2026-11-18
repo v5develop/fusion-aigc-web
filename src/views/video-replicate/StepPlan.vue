@@ -10,7 +10,10 @@ import { CONFIRM_THRESHOLD_POINTS, type ReplicateAudio } from '@/api/replicate.t
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { hasBillingPage, openBillingPage } from '@/utils/billing.ts'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
-import { DIM_SLOT, INTENTS, SLOTS, fmtPts, mm, type SlotKey } from './constants.ts'
+import { DIM_SLOT, INTENTS, KIND_LABEL, SLOTS, fmtPts, mm, type SlotKey } from './constants.ts'
+import type { VideoCloneDimKey } from '@/api/replicate.ts'
+import AgentLink from './parts/AgentLink.vue'
+import AssetArea from './parts/AssetArea.vue'
 import QuoteBlock from './parts/QuoteBlock.vue'
 import ContinuityPicker from './parts/ContinuityPicker.vue'
 import type { useReplicate } from './useReplicate.ts'
@@ -57,6 +60,7 @@ const expiredPlan = computed(() => rep.submitError.value.includes('重新生成�
 // 主按钮：与方案默认确认方式一致时用后端给的文案；用户切了确认方式，数字仍取后端 stageQuotes
 const buttonText = computed(() => {
   if (rep.submitting.value) return '正在提交…'
+  if (rep.preparing.value) return '正在对照素材…'
   if (rep.planBusy.value) return '正在更新报价…'
   if (rep.planDirty.value) return '先更新报价'
   if (rep.shortfall.value > 0) return hasBillingPage() ? '点数不够，去充值' : '点数不足'
@@ -66,6 +70,13 @@ const buttonText = computed(() => {
   if (rep.needPoints.value <= 0) return '价格还没出来'
   return staged.value ? `先做第 1 段（${fmtPts(rep.needPoints.value)} 点）` : `确认并生成（${fmtPts(rep.needPoints.value)} 点）`
 })
+
+/** 逐人 / 逐套指定时，这一项的图由下面的行选，不再走整体的「放一张图」 */
+const structured = (k: VideoCloneDimKey) => !!(rep.marks[k]?.subjects || rep.marks[k]?.occurrences)
+const subjectEntry = (k: VideoCloneDimKey, id: string) => rep.marks[k]?.subjects?.find((x) => x.id === id)
+const outfitEntry = (i: number) => rep.marks.garment?.occurrences?.find((x) => x.index === i)
+const MULTI_HINT = (k: VideoCloneDimKey) =>
+  k === 'garment' ? '视频里有好几个人，每位的衣服换成哪张图：' : '视频里有好几个人，每位换成哪张图（没选的保持不变）：'
 
 // 行内放图（从示例 / 我的方案进来时没经过上一步的放图区）
 const slotInputs = ref<Partial<Record<SlotKey, HTMLInputElement>>>({})
@@ -165,6 +176,35 @@ const audioOptions = computed<{ k: ReplicateAudio; l: string }[]>(() => [
       </div>
     </section>
 
+    <section class="vr-panel" aria-label="你的素材">
+      <h3 class="vr-h3">你的素材</h3>
+      <p class="vr-sub !mb-8px">类别不对可以直接改；下面每一项会按类别用到对应的图</p>
+      <AssetArea :rep="rep" />
+      <ul v-if="rep.assetNotes.value.length" class="m-0 mt-8px flex list-none flex-col gap-2px p-0">
+        <li v-for="n in rep.assetNotes.value" :key="n" class="text-12px leading-18px text-warning">{{ n }}</li>
+      </ul>
+    </section>
+
+    <section v-if="rep.preparing.value || rep.wishView.value || rep.wishNote.value" class="vr-panel" aria-label="想怎么改">
+      <h3 class="vr-h3">你说的想怎么改</h3>
+      <p v-if="rep.wishText.value.trim()" class="m-0 mb-8px rounded-10px bg-surface2 px-12px py-8px text-12px leading-18px text-ink-2">{{ rep.wishText.value }}</p>
+      <p v-if="rep.preparing.value" class="vr-pulse m-0 text-13px text-muted" role="status">正在对照你的素材、理解想怎么改…</p>
+      <template v-else>
+        <ul v-if="rep.wishView.value?.explain.length" class="m-0 flex list-none flex-col gap-6px p-0">
+          <li v-for="(it, i) in rep.wishView.value.explain" :key="i" class="flex items-start gap-8px text-13px leading-20px text-ink-2">
+            <svg class="mt-3px h-14px w-14px flex-none text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            <span :class="['min-w-0 flex-1', it.undone ? 'text-placeholder line-through' : '']">{{ it.text }}</span>
+            <span v-if="it.undone" class="flex-none text-12px text-muted">已撤销</span>
+            <button v-else type="button" class="sx-soft-btn flex-none" @click="rep.undoWish(i)">撤销</button>
+          </li>
+        </ul>
+        <p v-if="rep.wishView.value?.unsupported?.length" class="m-0 mt-8px text-12px leading-18px text-warning" role="status">
+          这几条暂时做不了：{{ rep.wishView.value.unsupported.join('；') }}
+        </p>
+        <p v-if="rep.wishNote.value" class="m-0 text-12px leading-18px text-muted" role="status">{{ rep.wishNote.value }}</p>
+      </template>
+    </section>
+
     <section class="vr-panel">
       <div class="flex items-center gap-8px">
         <h3 class="vr-h3 !m-0">这条方案会改什么</h3>
@@ -202,6 +242,63 @@ const audioOptions = computed<{ k: ReplicateAudio; l: string }[]>(() => [
           </div>
           <span v-else class="text-12px text-placeholder">视频里没有这一项</span>
           <small v-if="d.present && d.now" class="mt-4px block text-11px leading-16px text-placeholder">视频里现在是：{{ d.now }}</small>
+          <!-- 多人：每人一行（保持不变 / 换成图N） -->
+          <div v-if="d.present && rep.markOf(d.key).mode === 'replace' && rep.marks[d.key]?.subjects" class="mt-8px flex flex-col gap-8px">
+            <p class="m-0 text-12px text-muted">{{ MULTI_HINT(d.key) }}</p>
+            <div v-for="s in rep.subjectList.value" :key="s.id" class="flex flex-wrap items-center gap-x-10px gap-y-4px">
+              <span class="min-w-0 basis-140px text-12px leading-16px text-ink"><b class="font-600">{{ s.name }}</b><small v-if="s.desc" class="ml-4px text-placeholder">{{ s.desc }}</small></span>
+              <span v-if="subjectEntry(d.key, s.id)?.mode === 'describe'" class="text-12px text-muted">按文字改：{{ subjectEntry(d.key, s.id)?.note }}</span>
+              <div v-else class="inline-flex flex-wrap gap-2px rounded-12px bg-surface3 p-2px" role="radiogroup" :aria-label="`${s.name}怎么改`">
+                <button
+                  type="button"
+                  role="radio"
+                  :aria-checked="!(subjectEntry(d.key, s.id)?.refIds.length)"
+                  :class="['h-28px rounded-10px border-0 px-10px text-12px cursor-pointer', !(subjectEntry(d.key, s.id)?.refIds.length) ? 'bg-surface font-600 text-violet-ink shadow-soft' : 'bg-transparent text-muted hover:text-ink', FOCUS]"
+                  @click="rep.setSubjectAsset(d.key, s.id, 0)"
+                >保持不变</button>
+                <button
+                  v-for="a in rep.assetsOfKind(DIM_SLOT[d.key]!)"
+                  :key="a.id"
+                  type="button"
+                  role="radio"
+                  :aria-checked="subjectEntry(d.key, s.id)?.refIds[0] === a.id"
+                  :class="['inline-flex h-28px items-center gap-4px rounded-10px border-0 px-8px text-12px cursor-pointer', subjectEntry(d.key, s.id)?.refIds[0] === a.id ? 'bg-surface font-600 text-violet-ink shadow-soft' : 'bg-transparent text-muted hover:text-ink', FOCUS]"
+                  @click="rep.setSubjectAsset(d.key, s.id, a.id)"
+                >
+                  <img :src="a.url || a.preview" alt="" class="h-20px w-20px rounded-4px object-cover" aria-hidden="true" />换成图{{ rep.assetNo(a.id) }}
+                </button>
+              </div>
+            </div>
+            <p v-if="!rep.assetsOfKind(DIM_SLOT[d.key]!).length" class="m-0 text-12px text-warning">还没有{{ KIND_LABEL[DIM_SLOT[d.key]!] }}图，在上面的素材里放一张</p>
+          </div>
+          <!-- 多套造型：逐套选 -->
+          <div v-else-if="d.present && rep.markOf(d.key).mode === 'replace' && rep.marks[d.key]?.occurrences" class="mt-8px flex flex-col gap-8px">
+            <p class="m-0 text-12px text-muted">视频里换了 {{ rep.outfitList.value.length }} 套造型，每套换成哪张图（没选的保持不变）：</p>
+            <div v-for="o in rep.outfitList.value" :key="o.index" class="flex flex-wrap items-center gap-x-10px gap-y-4px">
+              <span class="min-w-0 basis-140px text-12px leading-16px text-ink"><b class="font-600">第 {{ o.index }} 套</b><small class="ml-4px text-placeholder">{{ mm(o.t0) }}–{{ mm(o.t1) }} {{ o.desc }}</small></span>
+              <div class="inline-flex flex-wrap gap-2px rounded-12px bg-surface3 p-2px" role="radiogroup" :aria-label="`第 ${o.index} 套怎么改`">
+                <button
+                  type="button"
+                  role="radio"
+                  :aria-checked="!(outfitEntry(o.index)?.refIds.length)"
+                  :class="['h-28px rounded-10px border-0 px-10px text-12px cursor-pointer', !(outfitEntry(o.index)?.refIds.length) ? 'bg-surface font-600 text-violet-ink shadow-soft' : 'bg-transparent text-muted hover:text-ink', FOCUS]"
+                  @click="rep.setOutfitAsset(o.index, 0)"
+                >保持不变</button>
+                <button
+                  v-for="a in rep.assetsOfKind('garment')"
+                  :key="a.id"
+                  type="button"
+                  role="radio"
+                  :aria-checked="outfitEntry(o.index)?.refIds[0] === a.id"
+                  :class="['inline-flex h-28px items-center gap-4px rounded-10px border-0 px-8px text-12px cursor-pointer', outfitEntry(o.index)?.refIds[0] === a.id ? 'bg-surface font-600 text-violet-ink shadow-soft' : 'bg-transparent text-muted hover:text-ink', FOCUS]"
+                  @click="rep.setOutfitAsset(o.index, a.id)"
+                >
+                  <img :src="a.url || a.preview" alt="" class="h-20px w-20px rounded-4px object-cover" aria-hidden="true" />换成图{{ rep.assetNo(a.id) }}
+                </button>
+              </div>
+            </div>
+            <p v-if="!rep.assetsOfKind('garment').length" class="m-0 text-12px text-warning">还没有服装图，在上面的素材里放一张</p>
+          </div>
           <input
             v-if="d.present && rep.markOf(d.key).mode === 'describe'"
             :value="rep.markOf(d.key).note"
@@ -213,23 +310,23 @@ const audioOptions = computed<{ k: ReplicateAudio; l: string }[]>(() => [
           />
         </div>
         <div class="pt-4px">
-          <span v-if="d.present && rep.markOf(d.key).mode === 'replace' && DIM_SLOT[d.key]" class="flex flex-col items-end gap-4px max-sm:items-start">
-            <span v-if="rep.slots[DIM_SLOT[d.key]!]" class="inline-flex items-center gap-6px">
-              <img v-if="rep.slots[DIM_SLOT[d.key]!]!.url" :src="rep.slots[DIM_SLOT[d.key]!]!.url" alt="" class="h-28px w-28px rounded-6px object-cover" aria-hidden="true" />
+          <span v-if="d.present && rep.markOf(d.key).mode === 'replace' && DIM_SLOT[d.key] && !structured(d.key)" class="flex flex-col items-end gap-4px max-sm:items-start">
+            <span v-if="rep.slots.value[DIM_SLOT[d.key]!]" class="inline-flex items-center gap-6px">
+              <img v-if="rep.slots.value[DIM_SLOT[d.key]!]!.url" :src="rep.slots.value[DIM_SLOT[d.key]!]!.url" alt="" class="h-28px w-28px rounded-6px object-cover" aria-hidden="true" />
               <span class="inline-flex h-20px items-center rounded-4px bg-success-soft px-6px text-11px text-success">已放图</span>
-              <button type="button" class="sx-soft-btn" :disabled="rep.slotBusy[DIM_SLOT[d.key]!]" @click="slotInputs[DIM_SLOT[d.key]!]?.click()">换一张</button>
+              <button type="button" class="sx-soft-btn" :disabled="rep.slotBusy.value[DIM_SLOT[d.key]!]" @click="slotInputs[DIM_SLOT[d.key]!]?.click()">换一张</button>
             </span>
             <template v-else>
               <span class="text-12px text-warning">需要放一张图</span>
-              <button type="button" class="sx-soft-btn" :disabled="rep.slotBusy[DIM_SLOT[d.key]!]" @click="slotInputs[DIM_SLOT[d.key]!]?.click()">
-                {{ rep.slotBusy[DIM_SLOT[d.key]!] ? '上传中…' : '放一张图' }}
+              <button type="button" class="sx-soft-btn" :disabled="rep.slotBusy.value[DIM_SLOT[d.key]!]" @click="slotInputs[DIM_SLOT[d.key]!]?.click()">
+                {{ rep.slotBusy.value[DIM_SLOT[d.key]!] ? '上传中…' : '放一张图' }}
               </button>
             </template>
             <small v-if="rep.slotError[DIM_SLOT[d.key]!]" class="text-11px text-danger" role="alert">{{ rep.slotError[DIM_SLOT[d.key]!] }}</small>
             <button
               type="button"
               class="sx-soft-btn"
-              :disabled="rep.slotBusy[DIM_SLOT[d.key]!]"
+              :disabled="rep.slotBusy.value[DIM_SLOT[d.key]!]"
               @click="openSlotAsset(DIM_SLOT[d.key]!)"
             >
               从资产库添加
@@ -386,7 +483,7 @@ const audioOptions = computed<{ k: ReplicateAudio; l: string }[]>(() => [
     </section>
 
     <p v-if="plan?.copyright" class="m-0 text-11px leading-16px text-placeholder">{{ plan.copyright }}</p>
-    <label v-if="rep.slots.person" class="flex items-start gap-8px text-13px text-ink-2 cursor-pointer">
+    <label v-if="rep.slots.value.person" class="flex items-start gap-8px text-13px text-ink-2 cursor-pointer">
       <input v-model="rep.consent.value" type="checkbox" class="mt-3px" />
       图中是我本人，或已获得本人同意，可用于生成视频
     </label>
@@ -395,6 +492,8 @@ const audioOptions = computed<{ k: ReplicateAudio; l: string }[]>(() => [
       {{ rep.planError.value }}
       <button type="button" class="ml-6px border-0 bg-transparent text-violet-ink cursor-pointer hover:underline" @click="rep.createPlan()">重新生成方案</button>
     </p>
+
+    <AgentLink :rep="rep" />
 
     <!-- 吸底确认条（手机和桌面同一条）：合计 / 缺项 / 点数不足 + 主按钮 -->
     <div class="sticky bottom-0 z-5 -mx-4px flex flex-wrap items-center justify-end gap-x-12px gap-y-6px rounded-16px border border-solid border-soft-line bg-surface/95 px-14px py-10px shadow-pop backdrop-blur-8px max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:m-0 max-sm:rounded-b-0 max-sm:pb-[calc(10px+env(safe-area-inset-bottom))]">

@@ -135,6 +135,7 @@ import ConsentCard from './replicate/ConsentCard.vue'
 import CardChips from './replicate/CardChips.vue'
 import ReplicateCards from './replicate/ReplicateCards.vue'
 import { upload as ossUpload } from '@/api/oss-upload.ts'
+import { takeAgentHandoff } from '@/views/video-replicate/agentHandoff.ts'
 import { CARD_ANCHOR_ATTR, type ReplicateCardFrame } from '@/api/replicate-card.ts'
 import { clearScene, hasScene, isLoggedIn, loginVersion, requireLogin, saveScene, takeScene } from './industry/useLoginGate.ts'
 import SamplePanel from './SamplePanel.vue'
@@ -378,15 +379,15 @@ function confirmSkill() {
 
 // ---------------- 图片（StreamRequest.imageUrls） ----------------
 
-/** 原型上限 4 张（服务端字段收 9 个，另有账号单次上限，超了回 ERROR 帧） */
-const MAX_IMAGES = 4
+/** 原型上限 4 张（服务端字段收 9 个，另有账号单次上限，超了回 ERROR 帧）；复刻助手要放多张素材，放宽到 9 张 */
+const maxImages = computed(() => (selectedSkillId.value === REPLICATE_SKILL_ID ? 9 : 4))
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp'
 const IMAGE_FORMATS = '支持 JPEG / JPG / PNG / WEBP'
-const LIMIT_TEXT = `最多上传 ${MAX_IMAGES} 张`
+const limitText = computed(() => `最多上传 ${maxImages.value} 张`)
 
 const attachments = ref<string[]>([])
-const imageRoom = computed(() => Math.max(0, MAX_IMAGES - attachments.value.length))
+const imageRoom = computed(() => Math.max(0, maxImages.value - attachments.value.length))
 const { uploading, uploadFiles } = useStudioUploader()
 
 // ---------------- 视频附件（复刻技能：StreamRequest.attribute.video_urls，CONTRACT §E） ----------------
@@ -516,7 +517,7 @@ function addImages(urls: string[]) {
   const fresh = urls.filter((u) => /^https?:\/\//i.test(u) && !attachments.value.includes(u))
   if (!fresh.length) return
   if (imageRoom.value <= 0) {
-    message.warning(LIMIT_TEXT)
+    message.warning(limitText.value)
     return
   }
   attachments.value = [...attachments.value, ...fresh.slice(0, imageRoom.value)]
@@ -547,7 +548,7 @@ async function uploadLocal(files: File[]) {
   if (picked.length < files.length) message.warning(IMAGE_FORMATS)
   if (!picked.length) return
   let added = 0
-  await uploadFiles(picked, imageRoom.value, MAX_IMAGES, (url) => {
+  await uploadFiles(picked, imageRoom.value, maxImages.value, (url) => {
     const before = attachments.value.length
     addImages([url])
     if (attachments.value.length > before) added += 1
@@ -573,7 +574,7 @@ const { dragging } = useFileDropPaste(imageDialogEl, {
 
 function openAssetPicker() {
   if (imageRoom.value <= 0) {
-    message.warning(LIMIT_TEXT)
+    message.warning(limitText.value)
     return
   }
   assetPickerShow.value = true
@@ -2551,7 +2552,7 @@ function canQuote(url?: string): boolean {
     return false
   }
   if (imageRoom.value <= 0) {
-    message.warning(`参考图${LIMIT_TEXT}，先移除一张`)
+    message.warning(`参考图${limitText.value}，先移除一张`)
     return false
   }
   return true
@@ -2569,7 +2570,7 @@ function quoteImage(url: string) {
 async function quoteFile(file: File) {
   if (!canQuote()) return
   let added = false
-  await uploadFiles([file], imageRoom.value, MAX_IMAGES, (url) => {
+  await uploadFiles([file], imageRoom.value, maxImages.value, (url) => {
     addImages([url])
     added = true
   })
@@ -3358,10 +3359,40 @@ const composerAreaH = ref(246)
 let composerRo: ResizeObserver | null = null
 const streamPadBottom = computed(() => Math.max(composerAreaH.value - 30, 120) + (shareMode.value ? 56 : 0))
 
+/**
+ * 独立页「需求复杂？去对话里说」带来的原片与素材图（`?handoff=1` + sessionStorage，见 video-replicate/agentHandoff.ts）：
+ * 技能由 ?skill 深链选中，这里只补附件与草稿；原片地址已是本站地址，不再上传。参数用完即摘掉。
+ */
+async function applyReplicateHandoff() {
+  if (route.query.handoff == null) return
+  const rest = { ...route.query }
+  delete rest.handoff
+  void router.replace({ query: rest })
+  const h = takeAgentHandoff()
+  if (!h) return
+  await skillsReady
+  if (disposed) return
+  if (h.videoUrl && /^https?:\/\//i.test(h.videoUrl) && videoRoom.value > 0 && !videoAttachments.value.some((x) => x.url === h.videoUrl)) {
+    videoAttachments.value.push(
+      reactive<VideoAttachment>({ id: ++videoSeq, name: h.videoName || '原视频', preview: h.videoUrl, url: h.videoUrl, progress: 1 }),
+    )
+  }
+  if (h.images.length) {
+    // 交接先选好复刻技能（上限 9），超过上限的图明确告诉用户丢了几张，不静默吞掉
+    const room = imageRoom.value
+    const fresh = h.images.filter((u) => /^https?:\/\//i.test(u) && !attachments.value.includes(u))
+    addImages(fresh.slice(0, Math.max(room, 0)))
+    if (fresh.length > room) message.warning(`素材图超过上限（${maxImages.value} 张），有 ${fresh.length - Math.max(room, 0)} 张没带过来`)
+  }
+  if (h.skippedBrand) message.info(`有 ${h.skippedBrand} 张品牌素材请在对话里用「我的模特 / 我的商品」说名字调用`)
+  if (h.text && !draft.value.trim()) draft.value = h.text
+}
+
 onMounted(() => {
   skillsReady = loadSkills()
   void loadConversations(true)
   void applyPlazaTemplateQuery()
+  void applyReplicateHandoff()
   void applyJobDeepLink()
   void restorePlazaScene() // 换号登录整页重载后：还原登录前选的模板与已填入参（不自动发送）
   narrowMql = window.matchMedia(NARROW_QUERY)
@@ -4025,12 +4056,12 @@ onUnmounted(() => {
                         </div>
                         <div v-if="item.images?.length" :class="['flex gap-4px', item.text ? 'mt-6px' : '']">
                           <button
-                            v-for="(url, i) in item.images.slice(0, MAX_IMAGES)"
+                            v-for="(url, i) in item.images.slice(0, maxImages)"
                             :key="i"
                             type="button"
                             :aria-label="`查看图片 ${i + 1}`"
                             class="sx-squircle block h-50px w-38px flex-none overflow-hidden rounded-9px border border-solid border-white bg-surface3 p-0 cursor-zoom-in sx-focus"
-                            @click="openLightbox(item.images.slice(0, MAX_IMAGES), i)"
+                            @click="openLightbox(item.images.slice(0, maxImages), i)"
                           >
                             <img :src="url" alt="" loading="lazy" class="block h-full w-full object-cover" />
                           </button>
@@ -5176,7 +5207,7 @@ onUnmounted(() => {
                       ref="imagePillEl"
                       type="button"
                       aria-haspopup="dialog"
-                      :aria-label="`添加图片，已添加 ${attachments.length}/${MAX_IMAGES}`"
+                      :aria-label="`添加图片，已添加 ${attachments.length}/${maxImages}`"
                       :disabled="streaming"
                       :class="[BTN, '!px-11px']"
                       @click="openImageDialog"
@@ -5193,7 +5224,7 @@ onUnmounted(() => {
                       >
                         <path :d="ICON.image" />
                       </svg>
-                      图片 {{ attachments.length }}/{{ MAX_IMAGES }}
+                      图片 {{ attachments.length }}/{{ maxImages }}
                     </button>
                     <!-- 视频入口：任何技能都有（加了视频自动切到复刻助手；MP4 / MOV / WEBM，≤200MB，最多 2 条） -->
                     <button
@@ -5840,7 +5871,7 @@ onUnmounted(() => {
               :disabled="uploading"
               :aria-busy="uploading"
               :class="BTN_PRIMARY"
-              @click="imageRoom > 0 ? fileInputEl?.click() : message.warning(LIMIT_TEXT)"
+              @click="imageRoom > 0 ? fileInputEl?.click() : message.warning(limitText)"
             >
               选择本地图片
             </button>

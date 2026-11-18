@@ -121,16 +121,17 @@ const maxSec = computed(() => rep.limits.value?.maxDurationSec ?? 80)
     </header>
 
     <template v-if="tab === 'new'">
-      <ol class="m-0 flex list-none items-center gap-8px p-0 text-12px text-muted" aria-label="步骤">
+      <ol class="m-0 flex min-w-0 list-none items-center gap-8px p-0 text-12px text-muted max-[520px]:gap-4px" aria-label="步骤">
         <template v-for="(l, i) in STEPS" :key="l">
-          <li v-if="i" class="h-1px w-20px bg-line-strong" aria-hidden="true" />
+          <li v-if="i" class="h-1px w-20px flex-none bg-line-strong max-[520px]:w-8px" aria-hidden="true" />
           <li
-            :class="['flex items-center gap-6px', i === Math.min(current, 2) ? 'font-600 text-ink' : '']"
+            :class="['flex min-w-0 items-center gap-6px max-[520px]:gap-4px', i === Math.min(current, 2) ? 'font-600 text-ink' : '']"
+            :title="l"
             :aria-current="i === Math.min(current, 2) ? 'step' : undefined"
           >
             <span
               :class="[
-                'grid h-18px w-18px place-items-center rounded-full text-10px font-600',
+                'grid h-18px w-18px flex-none place-items-center rounded-full text-10px font-600',
                 i < Math.min(current, 2)
                   ? 'bg-success text-white'
                   : i === Math.min(current, 2)
@@ -140,7 +141,8 @@ const maxSec = computed(() => rep.limits.value?.maxDurationSec ?? 80)
             >
               {{ i < Math.min(current, 2) ? '✓' : i + 1 }}
             </span>
-            {{ l }}
+            <!-- 窄屏单行省略（悬停看全名）；桌面不受影响 -->
+            <span class="min-w-0 truncate whitespace-nowrap">{{ l }}</span>
           </li>
         </template>
       </ol>

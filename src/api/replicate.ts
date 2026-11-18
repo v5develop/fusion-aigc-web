@@ -186,6 +186,17 @@ export interface ReplicateDimEdit {
   note?: string
   /** 参考图序号（1 起），对应请求 refImages 的顺序；replace 必填 */
   refs?: number[]
+  /** 多人点名（CONTRACT §X），只对 model / garment：列出的人物按各自 refs / mode 处理，未列出的保持原样 */
+  subjects?: ReplicateSubjectEdit[]
+  /** 逐套换装（CONTRACT §O1），只对 garment：第 index 套换成 refs 指定的图，未列出的套保持原样 */
+  occurrences?: { index: number; refs: number[] }[]
+}
+
+export interface ReplicateSubjectEdit {
+  id: string
+  refs?: number[]
+  mode?: ReplicateDimMode
+  note?: string
 }
 
 /** 生成后由系统叠加的文字（店名 / 价格 / 标题）：≤4 处、每处 ≤30 字 */
@@ -985,4 +996,80 @@ export function replicateErrorText(err: unknown, opts: ReplicateErrorOpts = {}):
   }
   if (e.httpStatus && e.httpStatus >= 500) return '服务暂时忙，没有扣点数。请稍后重试'
   return e.message || opts.fallback || '出了点问题，我们在处理。没有多扣点数'
+}
+
+// ---------------- 素材归类与「想怎么改」（CONTRACT §AA，只读、免费、属主、限频） ----------------
+
+export type ReplicateRefKind = 'person' | 'product' | 'garment' | 'scene' | 'other'
+
+/** POST /refs:classify 的入参图：本站资产 rid 或地址 */
+export interface ReplicateClassifyImage {
+  rid?: string
+  url?: string
+}
+
+export interface ReplicateClassifyItem {
+  /** 与请求 images 同序，1 起（也是之后 wish / 方案 refImages 的图号） */
+  index: number
+  kind: ReplicateRefKind
+  /** 只在 analysisNo 有效、kind=person / garment、confidence ≥ 0.6 时给；给了时 label 是人物称呼 */
+  subjectId?: string
+  confidence: number
+  /** 短标签，如「穿白衣的女生」 */
+  label: string
+}
+
+export interface ReplicateClassifyResult {
+  items: ReplicateClassifyItem[]
+  /** true = 判断服务失败已降级：全部 other / confidence 0，不报错 */
+  degraded?: boolean
+}
+
+/** 一次最多 9 张；结果按 (图片, analysisNo) 缓存 */
+export async function replicateClassifyRefs(p: { images: ReplicateClassifyImage[]; analysisNo?: string }) {
+  if (isMock('replicate')) return (await mock()).classifyRefs(p)
+  return postQuiet<ReplicateClassifyResult>('/api/v1/replicate/refs:classify', p)
+}
+
+/** wish 里引用的图：index 是参考图序号（1 起，同 refImages 顺序） */
+export interface ReplicateWishRef {
+  index: number
+  kind: ReplicateRefKind
+  subjectId?: string
+}
+
+/** 改法草稿：只用现有 DimEdit / 台词改写 / 连贯度字段，refs 引用上面的图号 */
+export interface ReplicateWishDraft {
+  dims: Partial<Record<VideoCloneDimKey, ReplicateDimEdit>>
+  /** 逐句改台词（= annotations.voice.lines）；应用需要 audio=revoice + 选音色，独立页不支持，只提示 */
+  lines?: { index: number; text: string }[]
+  /** 叠加文字（= annotations.texts；店名 / 价格 / 标题用它） */
+  texts?: ReplicateTextOverlay[]
+  /** 有 lines 时为 revoice */
+  audio?: ReplicateAudio
+  continuity?: ReplicateContinuity
+}
+
+/** wish 的逐条说明（与 explain 同序）：kind/key 指向草稿里对应的那一项，用来撤销 */
+export interface ReplicateWishItem {
+  kind: 'dim' | 'line' | 'text' | 'continuity'
+  key: string
+  explain: string
+}
+
+export interface ReplicateWishResult {
+  draft: ReplicateWishDraft
+  /** 逐条给用户看的中文说明 */
+  explain: string[]
+  items?: ReplicateWishItem[]
+  /** true = 没生成（写手不可用 / 读不懂）：草稿为空，unsupported 有一句提示 */
+  degraded?: boolean
+  /** 做不了的项（已从草稿丢掉）：「这几条暂时做不了：…」 */
+  unsupported?: string[]
+}
+
+/** POST /analyses/{no}/wish：一句话变成改法草稿；过审核，不创建方案、不扣点 */
+export async function replicateWish(no: string, p: { text: string; refs: ReplicateWishRef[] }) {
+  if (isMock('replicate')) return (await mock()).wish(no, p)
+  return postQuiet<ReplicateWishResult>(`/api/v1/replicate/analyses/${enc(no)}/wish`, p)
 }

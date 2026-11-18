@@ -17,6 +17,22 @@ export const DIM_LABEL: Record<VideoCloneDimKey, string> = {
 }
 
 export type SlotKey = 'person' | 'product' | 'garment' | 'scene'
+/** 素材的类别：四类对应各自的「换成我的图」，other = 不参与替换 */
+export type AssetKind = SlotKey | 'other'
+
+export const KIND_LABEL: Record<AssetKind, string> = {
+  person: '人物',
+  product: '商品',
+  garment: '服装',
+  scene: '场景·门店',
+  other: '其他',
+}
+export const KIND_ORDER: AssetKind[] = ['person', 'product', 'garment', 'scene', 'other']
+
+/** 素材区最多放几张（引擎上限 9） */
+export const MAX_ASSETS = 9
+/** 「想怎么改」最长字数 */
+export const WISH_MAX = 300
 
 export const SLOTS: { key: SlotKey; label: string; hint: string }[] = [
   { key: 'person', label: '人物', hint: '放上技师或店员的正脸照' },

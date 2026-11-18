@@ -4,9 +4,11 @@
  * 上方「先看看示例」（EXPERIENCE §2.2 / §3.0a）：按当前行业取示例，点一条即时看示例原片与成片并排 + 看懂了什么，不花点数；
  * 「换成我的素材做同款」用示例出你自己的方案。从「我的方案」来但原片已不在时，顶部提示重新上传原片（方案设置保留）。
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AssetPickerModal from '@/views/studio/components/AssetPickerModal/index.vue'
-import { SLOTS, mm, type SlotKey } from './constants.ts'
+import AssetArea from './parts/AssetArea.vue'
+import AgentLink from './parts/AgentLink.vue'
+import { MAX_ASSETS, WISH_MAX, mm } from './constants.ts'
 import type { useReplicate } from './useReplicate.ts'
 
 const props = defineProps<{ rep: ReturnType<typeof useReplicate> }>()
@@ -15,7 +17,6 @@ const FOCUS = 'focus-visible:(outline outline-2 outline-violet outline-offset-2)
 
 const fileEl = ref<HTMLInputElement | null>(null)
 const dragging = ref(false)
-const slotInputs = ref<Partial<Record<SlotKey, HTMLInputElement>>>({})
 
 function onFile(e: Event) {
   const f = (e.target as HTMLInputElement).files?.[0]
@@ -27,28 +28,11 @@ function onDrop(e: DragEvent) {
   const f = e.dataTransfer?.files?.[0]
   if (f) void rep.pickVideo(f)
 }
-function onSlot(k: SlotKey, e: Event) {
-  const f = (e.target as HTMLInputElement).files?.[0]
-  if (f) void rep.pickSlotImage(k, f)
-  ;(e.target as HTMLInputElement).value = ''
-}
 /** 资产库选图 / 选视频：与上传同一套校验，地址直接用资产的 */
 const assetVideoOpen = ref(false)
-const assetImageOpen = ref(false)
-const assetSlot = ref<SlotKey | null>(null)
-function openSlotAsset(k: SlotKey) {
-  assetSlot.value = k
-  assetImageOpen.value = true
-}
 function onAssetVideo(urls: string[]) {
   const u = urls[0]
   if (u) void rep.pickSourceAsset(u, '资产库视频')
-}
-function onAssetSlot(urls: string[]) {
-  const u = urls[0]
-  const k = assetSlot.value
-  if (!u || !k) return
-  rep.pickSlotAsset(k, u, SLOTS.find((s) => s.key === k)?.label ?? '图片')
 }
 
 const maxSec = () => rep.limits.value?.maxDurationSec ?? 80
@@ -73,6 +57,17 @@ function openSample(id: number) {
   paused.value = false
   void rep.trySample(id)
 }
+/** 原片缩略图：上传中用本地预览，传完用本站地址；换了源就重置状态 */
+const thumbSrc = computed(() => {
+  const u = rep.source.preview || rep.source.url
+  return u ? (u.includes('#') ? u : `${u}#t=0.1`) : ''
+})
+const thumbOk = ref(false)
+const thumbFail = ref(false)
+watch(thumbSrc, () => {
+  thumbOk.value = false
+  thumbFail.value = false
+})
 const maxMb = () => 300 // Go 的 limits 没有大小上限，沿用体验文档口径
 </script>
 
@@ -206,7 +201,22 @@ const maxMb = () => 300 // Go 的 limits 没有大小上限，沿用体验文档
       </template>
 
       <div v-else class="flex items-center gap-12px rounded-14px bg-surface2 p-10px">
-        <span class="relative block h-72px w-48px flex-none overflow-hidden rounded-8px bg-surface3">
+        <!-- 缩略图：<video preload=metadata> + #t=0.1 直接显示首帧（不读 canvas，无需 CORS）；加载中 / 出错保持灰底 + 播放图标 -->
+        <span class="relative grid h-72px w-48px flex-none place-items-center overflow-hidden rounded-8px bg-surface3 text-placeholder">
+          <svg v-if="!thumbOk" class="h-18px w-18px" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>
+          <video
+            v-if="thumbSrc && !thumbFail"
+            :key="thumbSrc"
+            :src="thumbSrc"
+            preload="metadata"
+            muted
+            playsinline
+            tabindex="-1"
+            aria-hidden="true"
+            :class="['absolute inset-0 h-full w-full object-cover', thumbOk ? '' : 'opacity-0']"
+            @loadeddata="thumbOk = true"
+            @error="thumbFail = true"
+          />
         </span>
         <div class="min-w-0 flex-1">
           <b class="block truncate text-13px font-600 text-ink">{{ rep.source.name }}</b>
@@ -232,50 +242,28 @@ const maxMb = () => 300 // Go 的 limits 没有大小上限，沿用体验文档
     </section>
 
     <section class="vr-panel">
-      <h3 class="vr-h3">2. 放上你的人物或商品图</h3>
-      <p class="vr-sub">直接拖进来，我会自动判断哪张是商品、哪张是人物。都可以先不放，下一步再补</p>
-      <div class="grid grid-cols-4 gap-10px max-md:grid-cols-2">
-        <div v-for="s in SLOTS" :key="s.key" class="flex flex-col gap-6px">
-          <button
-            type="button"
-            :class="[
-              'sx-squircle relative grid aspect-[3/4] w-full place-items-center overflow-hidden rounded-14px border border-solid bg-surface2 text-placeholder cursor-pointer',
-              rep.slots[s.key] ? 'border-violet-line' : 'border-dashed border-control hover:border-violet-line',
-              FOCUS,
-            ]"
-            :aria-label="rep.slots[s.key] ? `${s.label}，点击更换` : `放入${s.label}图`"
-            @click="slotInputs[s.key]?.click()"
-          >
-            <img v-if="rep.slots[s.key]" :src="rep.slots[s.key]!.url" :alt="s.label" class="h-full w-full object-cover" />
-            <n-spin v-else-if="rep.slotBusy[s.key]" size="small" />
-            <svg v-else class="h-24px w-24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="3" />
-              <circle cx="9" cy="10" r="2" />
-              <path d="M21 16l-5-5-8 8" />
-            </svg>
-          </button>
-          <input :ref="(el) => el && (slotInputs[s.key] = el as HTMLInputElement)" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="onSlot(s.key, $event)" />
-          <b class="text-13px font-600 text-ink">{{ s.label }}</b>
-          <small class="text-11px leading-16px text-placeholder">{{ s.hint }}</small>
-          <button v-if="rep.slots[s.key]" type="button" class="sx-soft-btn self-start" @click="rep.clearSlot(s.key)">移除</button>
-          <button type="button" class="sx-soft-btn self-start" :disabled="rep.slotBusy[s.key]" @click="openSlotAsset(s.key)">从资产库添加</button>
-          <small v-if="rep.slotError[s.key]" class="text-11px text-danger" role="alert">{{ rep.slotError[s.key] }}</small>
-        </div>
+      <h3 class="vr-h3">2. 放上你的素材图</h3>
+      <p class="vr-sub">人物、商品、服装、门店照片都可以放，最多 {{ MAX_ASSETS }} 张，我会判断每张是什么。都可以先不放，下一步再补</p>
+      <AssetArea :rep="rep" />
+    </section>
+
+    <section class="vr-panel">
+      <h3 class="vr-h3">3. 想怎么改（可以不填）</h3>
+      <p class="vr-sub !mb-8px">一句话说就行，我会帮你变成改法，下一步能逐条看、逐条撤销</p>
+      <textarea
+        v-model="rep.wishText.value"
+        :maxlength="WISH_MAX"
+        rows="3"
+        aria-label="想怎么改"
+        placeholder="比如：台词里的价格改成 99；换成冬天的感觉；店名改成小王理发，电话 138xxxx"
+        class="vr-input !h-auto min-h-72px resize-y py-8px leading-20px"
+      />
+      <div class="mt-4px flex items-start gap-8px">
+        <p class="m-0 min-w-0 flex-1 text-11px leading-16px text-placeholder">视频里的文字不是 AI 画的，会在做好之后清晰地加上去，也可以随时再改。</p>
+        <span class="flex-none text-11px tabular-nums text-placeholder">{{ rep.wishText.value.length }} / {{ WISH_MAX }}</span>
       </div>
-      <div class="mt-12px grid grid-cols-2 gap-10px max-sm:grid-cols-1">
-        <label class="flex flex-col gap-4px text-12px text-muted">
-          店名文字（可以不填）
-          <input v-model="rep.text.shopName" maxlength="30" placeholder="店名" class="vr-input" />
-        </label>
-        <label class="flex flex-col gap-4px text-12px text-muted">
-          电话或地址（可以不填）
-          <input v-model="rep.text.phone" maxlength="30" placeholder="电话或地址" class="vr-input" />
-        </label>
-      </div>
-      <p class="m-0 mt-8px text-11px leading-16px text-placeholder">视频里的文字不是 AI 画的，会在做好之后清晰地加上去，也可以随时再改。</p>
     </section>
     <AssetPickerModal v-model:show="assetVideoOpen" :limit="1" media="video" @select="onAssetVideo" />
-    <AssetPickerModal v-model:show="assetImageOpen" :limit="1" media="image" @select="onAssetSlot" />
 
     <div class="flex flex-wrap items-center justify-end gap-12px">
       <span class="text-12px text-muted">分析免费，不扣点数；只分析一次，之后改方案不用再等</span>
@@ -283,5 +271,6 @@ const maxMb = () => 300 // Go 的 limits 没有大小上限，沿用体验文档
         开始分析
       </button>
     </div>
+    <AgentLink :rep="rep" />
   </div>
 </template>

@@ -19,6 +19,9 @@ import { ApiError } from './index.ts'
 import type { ReplicateExportList,
   ReplicateAnalysis,
   ReplicateAnalysisResult,
+  ReplicateClassifyResult,
+  ReplicateWishResult,
+  ReplicateRefKind,
   ReplicateGap,
   ReplicateJob,
   ReplicateJobList,
@@ -118,7 +121,15 @@ const RESULT: ReplicateAnalysisResult = {
     model: { present: true, desc: '一位穿制服的技师', risk: 'high' },
     product: { present: true, desc: '泡脚桶和套餐展示牌', risk: 'mid' },
     scene: { present: true, desc: '木质装修的包间，暖色灯光', risk: 'mid' },
-    garment: { present: true, desc: '深色中式制服', risk: 'mid' },
+    garment: {
+      present: true,
+      desc: '深色中式制服',
+      risk: 'mid',
+      occurrences: [
+        { t0: 0, t1: 14, desc: '深色中式制服', subject: 's1' },
+        { t0: 14, t1: 34, desc: '白色围裙', subject: 's1' },
+      ],
+    },
     line: { present: true, desc: '有人声讲解', risk: 'low' },
     camera: { present: true, desc: '缓慢推进的中景', risk: 'low' },
     motion: { present: false, desc: '', risk: 'low' },
@@ -128,7 +139,10 @@ const RESULT: ReplicateAnalysisResult = {
     style: { present: true, desc: '写实、暖调', risk: 'low' },
   },
   dimOrder: ['model', 'product', 'scene', 'garment', 'line', 'camera', 'light', 'style', 'motion', 'expression', 'accessory'],
-  subjects: [{ id: 's1', name: '技师', desc: '穿深色制服的技师' }],
+  subjects: [
+    { id: 's1', name: '左侧技师', desc: '穿深色制服的技师' },
+    { id: 's2', name: '右侧顾客', desc: '坐着泡脚的女顾客' },
+  ],
   sections: [
     { index: 1, t0: 0, t1: 12, desc: '门头和前台，暖光，镜头缓慢推进' },
     { index: 2, t0: 12, t1: 25, desc: '包间环境和技师，近景' },
@@ -518,7 +532,66 @@ function throwGaps(gaps: ReplicateGap[]): never {
 
 const notFound = (what: string) => new ApiError(`找不到这个${what}`, { code: 4001, reason: 'RESOURCE_NOT_FOUND', httpStatus: 404 })
 
+/** 素材归类 mock：地址里带类别词就按它，否则按序轮流（人物 → 服装 → 商品 → 场景） */
+const KIND_CYCLE: ReplicateRefKind[] = ['person', 'garment', 'product', 'scene']
+function mockKind(url: string, i: number): ReplicateRefKind {
+  const hit = /person|model|人物|模特/i.test(url)
+    ? 'person'
+    : /garment|cloth|服装/i.test(url)
+      ? 'garment'
+      : /product|商品/i.test(url)
+        ? 'product'
+        : /scene|store|场景|门店/i.test(url)
+          ? 'scene'
+          : /other|其他/i.test(url)
+            ? 'other'
+            : null
+  return hit ?? KIND_CYCLE[i % KIND_CYCLE.length]!
+}
+
 export const replicateMock = {
+  async classifyRefs(p: { images: { rid?: string; url?: string }[]; analysisNo?: string }) {
+    await wait(700)
+    const items = p.images.map((im, index) => {
+      const kind = mockKind(decodeURIComponent(im.url ?? im.rid ?? ''), index)
+      const person = kind === 'person' || kind === 'garment'
+      const n = index % 2
+      return {
+        index: index + 1,
+        kind,
+        ...(person && p.analysisNo ? { subjectId: n ? 's2' : 's1' } : {}),
+        confidence: 0.9,
+        label: person ? (n ? '右侧顾客' : '左侧技师') : kind === 'product' ? '商品' : kind === 'scene' ? '门店' : '图片',
+      }
+    })
+    return ok<ReplicateClassifyResult>({ items })
+  },
+  async wish(_no: string, p: { text: string; refs: { index: number }[] }) {
+    await wait(900)
+    const draft: ReplicateWishResult['draft'] = { dims: {} }
+    const explain: string[] = []
+    const items: NonNullable<ReplicateWishResult['items']> = []
+    const unsupported: string[] = []
+    const add = (kind: 'dim' | 'line' | 'text' | 'continuity', key: string, text: string) => {
+      explain.push(text)
+      items.push({ kind, key, explain: text })
+    }
+    if (/冬/.test(p.text)) {
+      draft.dims.scene = { mode: 'describe', note: '换成冬天的感觉，窗外有雪' }
+      add('dim', 'scene', '场景：换成冬天的感觉，窗外有雪')
+    }
+    if (/价格|99/.test(p.text)) {
+      draft.lines = [{ index: 2, text: '套餐价只要 99' }]
+      draft.audio = 'revoice'
+      add('line', '2', '第 2 句台词改成「套餐价只要 99」（需要换声音）')
+    }
+    if (/店名/.test(p.text)) {
+      draft.texts = [{ text: '小王理发', kind: 'shop_name' }]
+      add('text', '0', '加店名文字「小王理发」')
+    }
+    if (/电话/.test(p.text)) unsupported.push('电话文字（一次只能加一处店名）')
+    return ok<ReplicateWishResult>({ draft, explain, items, ...(unsupported.length ? { unsupported } : {}) })
+  },
   async limits() {
     await wait(80)
     return ok(LIMITS)
