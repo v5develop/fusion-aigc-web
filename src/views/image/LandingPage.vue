@@ -9,8 +9,8 @@
  * 每组是一条面板带（内边距 18/20、r14、1px 描边），组名在卡片上方（18 号、不带数量）；
  * 工具卡固定高 74，网格 auto-fill minmax(220px,1fr)、间距 10/12（各组卡宽一致）；<640 宽推荐区退成单列、首卡用小卡样式。
  * 原型按视口高度分四档收放卡高与间距，5186 终版已取消，现在只剩页面内边距还按高度分档。
- * 原型 banner 右侧是实拍图：有封面的条目用真图（public/images/tool-covers，名称对齐原型 toolCovers.ts），
- * 没有的（本地生活导航首页）沿用同色调渐变占位。
+ * 原型 banner 右侧是实拍图（public/images/tool-covers，名称对齐原型 toolCovers.ts），没有的（本地生活导航首页）沿用同色调渐变占位；
+ * 分组里的工具卡一律用图标方块（2026-11-18：实拍封面与图标方块混排显得杂，封面只留在 banner）。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
@@ -152,8 +152,6 @@ const heroSlot = (i: number) =>
     ? 'row-span-2 col-start-1 [@media(max-width:639px)]:row-span-1'
     : 'col-start-2 [@media(max-width:639px)]:col-start-1'
 
-/** 工具卡封面：卡高 × 16/9 的左封面（原型 .explore-card__cover），文本让位到封面右侧 */
-const hasCover = (name: string) => !!toolCover(name)
 </script>
 
 <template>
@@ -294,31 +292,13 @@ const hasCover = (name: string) => !!toolCover(name)
               :class="[
                 'h-74px',
                 focusRing,
-                hasCover(tool.name) ? '!px-0' : 'px-14px',
+                'px-14px',
                 tool.route
                   ? 'cursor-pointer hover:border-violet-line hover:bg-[linear-gradient(180deg,var(--xq-surface)_0%,var(--xq-violet-tint)_100%)] hover:shadow-[0_1px_2px_rgba(31,35,41,0.05)] active:shadow-[inset_0_1px_2px_rgba(31,35,41,0.1)]'
                   : 'cursor-not-allowed',
               ]"
             >
-              <!-- 封面卡（原型 .explore-card 带封面版）：左封面 16:9 满高、右缘 18px 白渐隐融进卡底，悬停 1.05 -->
               <span
-                v-if="hasCover(tool.name)"
-                class="relative self-stretch aspect-[16/9] shrink-0 overflow-hidden bg-surface2"
-                aria-hidden="true"
-              >
-                <img
-                  :src="toolCover(tool.name)"
-                  alt=""
-                  loading="lazy"
-                  class="block h-full w-full object-cover transition-transform duration-200 ease-out motion-reduce:transition-none group-hover:scale-[1.05]"
-                  :class="tool.route ? '' : 'opacity-60'"
-                />
-                <span
-                  class="absolute inset-y-0 right-0 w-18px bg-[linear-gradient(90deg,transparent,var(--xq-surface))] pointer-events-none"
-                />
-              </span>
-              <span
-                v-else
                 class="shrink-0 grid place-items-center w-40px h-40px box-border rounded-8px border border-solid border-line bg-[linear-gradient(135deg,var(--xq-violet-icon-a),var(--xq-violet-icon-b))] shadow-[inset_0_1px_0_#fff] text-violet-ink"
               >
                 <svg
@@ -335,14 +315,8 @@ const hasCover = (name: string) => !!toolCover(name)
                   :innerHTML="tool.icon"
                 />
               </span>
-              <span
-                class="min-w-0 flex-1 flex flex-col gap-2px"
-                :class="hasCover(tool.name) ? 'pl-10px pr-10px items-center text-center' : ''"
-              >
-                <span
-                  class="flex items-center min-w-0 max-w-full"
-                  :class="hasCover(tool.name) ? 'justify-center flex-wrap-reverse gap-x-6px gap-y-2px' : 'gap-6px'"
-                >
+              <span class="min-w-0 flex-1 flex flex-col gap-2px">
+                <span class="flex items-center min-w-0 max-w-full gap-6px">
                   <span
                     class="truncate max-w-full text-14px font-600 leading-20px transition-colors duration-110 motion-reduce:transition-none"
                     :class="tool.route ? 'text-ink group-hover:text-violet-ink' : 'text-muted'"
@@ -359,7 +333,7 @@ const hasCover = (name: string) => !!toolCover(name)
                 </span>
                 <span class="truncate max-w-full text-11px leading-17px text-muted">{{ tool.tagline }}</span>
               </span>
-              <!-- 原型 .explore-card__chev：13px 箭头，悬停 / 键盘聚焦时显出（110ms）；封面卡上箭头绝对定位到右缘 -->
+              <!-- 原型 .explore-card__chev：13px 箭头，悬停 / 键盘聚焦时显出（110ms） -->
               <svg
                 v-if="tool.route"
                 viewBox="0 0 24 24"
@@ -372,7 +346,6 @@ const hasCover = (name: string) => !!toolCover(name)
                 stroke-linejoin="round"
                 aria-hidden="true"
                 class="shrink-0 text-placeholder opacity-0 transition-opacity duration-110 group-hover:opacity-100 group-hover:text-violet-ink group-focus-visible:opacity-100 group-focus-visible:text-violet-ink motion-reduce:transition-none"
-                :class="hasCover(tool.name) ? 'absolute right-10px top-1/2 -translate-y-1/2' : ''"
               >
                 <path d="m9 6 6 6-6 6" />
               </svg>

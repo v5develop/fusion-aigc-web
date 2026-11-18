@@ -28,9 +28,11 @@ const ICONS = {
     <circle cx="12" cy="8" r="3.6"/>
     <path d="M4.8 20c.8-4 3.6-6.2 7.2-6.2s6.4 2.2 7.2 6.2"/>
     <path d="M17.6 3.6l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/>`,
+  // 数字人口播：人像 + 声波
   voiceover: `
-    <rect x="9" y="3.4" width="6" height="10.4" rx="3"/>
-    <path d="M5.8 11.2a6.2 6.2 0 0 0 12.4 0M12 17.4v3.2M8.8 20.6h6.4"/>`,
+    <circle cx="9" cy="8" r="3.2"/>
+    <path d="M3 20c.6-3.6 3-5.6 6-5.6s5.4 2 6 5.6"/>
+    <path d="M17 7.6a4 4 0 0 1 0 5.2M19.6 5.4a7.2 7.2 0 0 1 0 9.6"/>`,
   note: `
     <rect x="4" y="3.6" width="16" height="16.8" rx="2"/>
     <path d="M4 14.4l4.2-4.2 3.4 3.4 2.2-2.2L20 17.6"/>
@@ -54,6 +56,10 @@ const ICONS = {
     <rect x="3.4" y="5.2" width="17.2" height="13.6" rx="2"/>
     <path d="M3.4 9h17.2M7.6 5.2 6 9M12.4 5.2 10.8 9M17.2 5.2 15.6 9"/>
     <path d="M10.4 11.8v4.4l3.6-2.2z"/>`,
+  // 爆款视频复刻：火苗 + 虚线复刻件
+  hotRemake: `
+    <path d="M8.4 3c.6 3 4 4.6 4 8.6a4 4 0 0 1-8 0c0-1.6.7-2.7 1.6-3.6.2 1 .7 1.5 1.4 1.7 0-2.6.3-4.6 1-6.7z"/>
+    <path transform="translate(8 4.6)" stroke-dasharray="2 2.2" d="M8.4 3c.6 3 4 4.6 4 8.6a4 4 0 0 1-8 0c0-1.6.7-2.7 1.6-3.6.2 1 .7 1.5 1.4 1.7 0-2.6.3-4.6 1-6.7z"/>`,
   videoRemake: `
     <rect x="3.4" y="7.2" width="12" height="12" rx="2"/>
     <path d="M7.6 7.2V5.6a2 2 0 0 1 2-2h8.8a2 2 0 0 1 2 2v8.8a2 2 0 0 1-2 2h-3"/>
@@ -109,7 +115,7 @@ export const localLifeLanding: LandingPageData = {
       ['探店视频', '分镜探店大片', '/local-life/explore-shop', ICONS.exploreShop],
       ['带货短剧', '剧情带货成片', '/local-life/short-drama', ICONS.shortDrama],
       ['视频做同款', '换成你的人和商品', '/local-life/video-replicate', ICONS.videoRemake],
-      ['爆款视频复刻', '解析分镜同款', '/local-life/video-remake', ICONS.videoRemake],
+      ['爆款视频复刻', '解析分镜同款', '/local-life/video-remake', ICONS.hotRemake],
     ]),
   ],
 }

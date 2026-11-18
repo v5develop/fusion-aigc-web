@@ -98,6 +98,79 @@ const EXTRA_ICONS = {
     <path d="M3 10.4a4.5 4.5 0 0 0 9 0M7.5 15v4.6"/>
     <path d="M13.6 11.6h7l-.8 8h-5.4z"/>
     <path d="M15.6 11.6v-1a1.5 1.5 0 0 1 3 0v1"/>`,
+  // 兜底：圆角方块 + 星芒（找不到图标的条目用，不再借「单图复刻」）
+  generic: `
+    <rect x="3.4" y="3.4" width="17.2" height="17.2" rx="3.4"/>
+    <path d="M12 7.6c.3 2.7 1.7 4.1 4.4 4.4-2.7.3-4.1 1.7-4.4 4.4-.3-2.7-1.7-4.1-4.4-4.4 2.7-.3 4.1-1.7 4.4-4.4z"/>`,
+  // 模特替换：两个人 + 交换箭头（原型 qi-tool-icons.mjs「model-replace」）
+  modelReplace: `
+    <circle cx="5.8" cy="7.2" r="2.2"/>
+    <path d="M1.9 15.4c.3-2.6 1.7-4.1 3.9-4.1s3.6 1.5 3.9 4.1"/>
+    <circle cx="18.2" cy="7.2" r="2.2"/>
+    <path d="M14.3 15.4c.3-2.6 1.7-4.1 3.9-4.1s3.6 1.5 3.9 4.1"/>
+    <path d="M7.4 19.6h9.2M9.1 17.9 7.4 19.6l1.7 1.7M14.9 17.9l1.7 1.7-1.7 1.7"/>`,
+  // AI试衣：衣架 + 小星芒（与「服装去皱」的熨斗区分）
+  tryOn: `
+    <path d="M12 9.4V8a2.6 2.6 0 1 0-2.6-2.6"/>
+    <path d="M12 9.4 2.8 16a1.2 1.2 0 0 0 .7 2.2h17a1.2 1.2 0 0 0 .7-2.2z"/>
+    <path d="M18.4 3.2l.5 1.3 1.3.5-1.3.5-.5 1.3-.5-1.3-1.3-.5 1.3-.5z"/>`,
+  // 模特换脸：人脸 + 交换箭头
+  faceSwap: `
+    <circle cx="12" cy="8" r="4.6"/>
+    <path d="M10.2 7.4h.01M13.8 7.4h.01M10.2 9.6a2.6 2.6 0 0 0 3.6 0"/>
+    <path d="M7.4 19.6h9.2M9.1 17.9 7.4 19.6l1.7 1.7M14.9 17.9l1.7 1.7-1.7 1.7"/>`,
+  // 双人换衣：两件上衣 + 交换箭头
+  dualTryOn: `
+    <path d="M5.2 3.6 2.6 5l1 2 1.3-.5v5h4.2v-5l1.3.5 1-2-2.6-1.4a1.9 1.6 0 0 1-3.6 0z"/>
+    <path transform="translate(10.4 0)" d="M5.2 3.6 2.6 5l1 2 1.3-.5v5h4.2v-5l1.3.5 1-2-2.6-1.4a1.9 1.6 0 0 1-3.6 0z"/>
+    <path d="M7.4 19.6h9.2M9.1 17.9 7.4 19.6l1.7 1.7M14.9 17.9l1.7 1.7-1.7 1.7"/>`,
+  // AI试鞋：运动鞋侧面
+  shoe: `
+    <path d="M3 16.6V9.4l3.2 1.6 2.4-2.6 1.4 1.6c1.1 1.3 2.6 2 4.3 2.2l4 .5A2.7 2.7 0 0 1 21 15.4v1.2z"/>
+    <path d="M3 20h18M9.8 12l1.2 1.2M12.2 12.8l1.2 1.2"/>`,
+  // 商拍生图：相机（商拍场景出图）
+  studioShot: `
+    <path d="M4 8h3l1.6-2.4h6.8L17 8h3a1.6 1.6 0 0 1 1.6 1.6v8.6A1.6 1.6 0 0 1 20 19.8H4a1.6 1.6 0 0 1-1.6-1.6V9.6A1.6 1.6 0 0 1 4 8z"/>
+    <circle cx="12" cy="13.6" r="3.2"/>`,
+  // AI商品套图：2×2 图格，其一虚线（一套图）
+  productKit: `
+    <rect x="3.4" y="3.4" width="7.2" height="7.2" rx="1.8"/>
+    <rect x="13.4" y="3.4" width="7.2" height="7.2" rx="1.8"/>
+    <rect x="3.4" y="13.4" width="7.2" height="7.2" rx="1.8"/>
+    <rect x="13.4" y="13.4" width="7.2" height="7.2" rx="1.8" stroke-dasharray="2.2 2.2"/>`,
+  // AI详情页：竖长页（顶图 + 文字行）
+  detailPage: `
+    <rect x="5.8" y="2.8" width="12.4" height="18.4" rx="2"/>
+    <rect x="8.6" y="5.8" width="6.8" height="4.6" rx="1"/>
+    <path d="M8.6 13.6h6.8M8.6 16.8h4"/>`,
+  // 爆款图复刻：图片 + 右上火苗
+  hotImageClone: `
+    <rect x="3.4" y="9.4" width="11.2" height="11.2" rx="2"/>
+    <path d="M4 18l3-2.8 2.4 2.2 1.8-1.4 2.6 2"/>
+    <path d="M18 2.8c.4 2 2.6 3 2.6 5.4a2.6 2.6 0 0 1-5.2 0c0-1 .5-1.7 1.1-2.3.1.7.5 1 1 1.1 0-1.6.2-3 .5-4.2z"/>`,
+  // 手持商品：立方体商品 + 托起的手
+  inHand: `
+    <path d="M12 3.4 17.4 6v5.6L12 14.2 6.6 11.6V6zM6.6 6 12 8.6 17.4 6M12 8.6v5.6"/>
+    <path d="M3 16.8h3.6l3.2 1.6h4.4a1.5 1.5 0 0 1 0 3H9.2l-2.6-1H3"/>`,
+  // 视频高清：画框 + 向上箭头（画质提升）
+  videoHd: `
+    <rect x="3" y="4.6" width="18" height="14.8" rx="2.6"/>
+    <path d="M12 15.6V9M9.2 11.8 12 9l2.8 2.8"/>`,
+  // 视频翻译：对话气泡 + 字母 A + 转译箭头
+  videoTranslate: `
+    <path d="M5 3.8h10.4a1.8 1.8 0 0 1 1.8 1.8v6.2a1.8 1.8 0 0 1-1.8 1.8H9.8L6.4 16.8v-3.2H5a1.8 1.8 0 0 1-1.8-1.8V5.6A1.8 1.8 0 0 1 5 3.8z"/>
+    <path d="M6.8 10.8 10.2 5.8l3.4 5M8 9.2h4.4"/>
+    <path d="M13.6 19.8h6.8M18.2 17.6l2.2 2.2-2.2 2.2"/>`,
+  // 视频复刻：实线画框（带播放）→ 虚线画框（复刻出一份）
+  videoReplicate: `
+    <rect x="2.6" y="3.4" width="10" height="7.6" rx="2"/>
+    <path d="M6.6 5.4 9.2 7.2 6.6 9z"/>
+    <rect x="11.4" y="12.8" width="10" height="7.6" rx="2" stroke-dasharray="2.2 2.2"/>
+    <path d="M5.4 14.4v3.4A1.2 1.2 0 0 0 6.6 19H8.6M7 17.4 8.8 19 7 20.6"/>`,
+  // 爆款视频：播放键嵌在火苗里
+  hotVideo: `
+    <path d="M12 2.8c.7 3.4 5.2 5.2 5.2 10a5.2 5.2 0 0 1-10.4 0c0-2 .9-3.4 2-4.4.2 1.3.9 2 1.8 2.2 0-3 .5-5.6 1.4-7.8z"/>
+    <path d="M10.6 13.4 13.6 15.2 10.6 17z"/>`,
 }
 
 const toolIcon = (id: string) => byId.get(id)?.icon
@@ -109,36 +182,26 @@ const paths = (ds: string[]) => ds.map((d) => `<path d="${d}"/>`).join('')
  * 原型没有的功能借本项目已用的最近似图标（注册表工具图标，或商拍首页 studio/index.vue 的线性图标）。
  */
 export const SECTION_ENTRY_ICONS: Record<string, string | undefined> = {
-  // 原型没有：借「首屏主图」（手机首屏 + 主图）
-  '/e-commerce/product-detail': toolIcon('ai-first-screen-main-image'),
-  // 原型没有：借「商品精修」（商品瓶 + 星芒）
-  '/e-commerce/product-kit': toolIcon('ai-product-retouch'),
-  // 原型没有：借商拍首页「循环箭头」（studio/index.vue ICONS.repeat）
-  '/e-commerce/product-clone': paths([
-    'M17 2l3 3-3 3',
-    'M4 11V9a4 4 0 0 1 4-4h12',
-    'M7 22l-3-3 3-3',
-    'M20 13v2a4 4 0 0 1-4 4H4',
-  ]),
-  // 原型没有：借商拍首页「人像」（studio/index.vue ICONS.person）
-  '/e-commerce/product-in-hand': paths(['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M4 21c0-4 3.6-6 8-6s8 2 8 6']),
+  // 原型没有：自绘竖长页（不再借「首屏主图」，同页会撞图标）
+  '/e-commerce/product-detail': EXTRA_ICONS.detailPage,
+  // 原型没有：自绘 2×2 图格（不再借「商品精修」）
+  '/e-commerce/product-kit': EXTRA_ICONS.productKit,
+  // 原型没有：自绘图片 + 火苗（爆款图复刻）
+  '/e-commerce/product-clone': EXTRA_ICONS.hotImageClone,
+  // 原型没有：自绘商品 + 托起的手
+  '/e-commerce/product-in-hand': EXTRA_ICONS.inHand,
   '/e-commerce/video-clone': toolIcon('ai-video-clone'),
-  // 原型没有：借「视频生成」（播放键 + 大星芒）
-  '/e-commerce/video-hot': toolIcon('ai-video-generator'),
-  // 原型 qi-tool-icons.mjs「model-replace」（两个人 + 交换）；注册表里没有，原样抄过来
-  '/e-commerce/model-replace': `
-    <circle cx="5.8" cy="7.2" r="2.2"/>
-    <path d="M1.9 15.4c.3-2.6 1.7-4.1 3.9-4.1s3.6 1.5 3.9 4.1"/>
-    <circle cx="18.2" cy="7.2" r="2.2"/>
-    <path d="M14.3 15.4c.3-2.6 1.7-4.1 3.9-4.1s3.6 1.5 3.9 4.1"/>
-    <path d="M7.4 19.6h9.2M9.1 17.9 7.4 19.6l1.7 1.7M14.9 17.9l1.7 1.7-1.7 1.7"/>`,
+  // 原型没有：自绘火苗里的播放键（不再借「视频生成」，同页会撞图标）
+  '/e-commerce/video-hot': EXTRA_ICONS.hotVideo,
+  // 原型 qi-tool-icons.mjs「model-replace」（两个人 + 交换）；注册表里没有，见 EXTRA_ICONS.modelReplace
+  '/e-commerce/model-replace': EXTRA_ICONS.modelReplace,
   '/e-commerce/product-replace': toolIcon('product-replace'),
   // 原型没有：借「场景生成」（风景相框 + 小星芒）
   '/e-commerce/change-background': toolIcon('ai-background-generator'),
   // 原型没有：借商拍首页「上衣」（studio/index.vue ICONS.shirt）
   '/e-commerce/clothing-kit': paths(['M8 3l-5 3 2 4 2-1v12h10V9l2 1 2-4-5-3a4 4 0 0 1-8 0z']),
-  // 原型没有：借「商拍换装」（T 恤 + 交换箭头）
-  '/e-commerce/clothing-try': toolIcon('ai-digital-model'),
+  // 原型没有：自绘衣架（不再借「商拍换装」，同页会撞图标）
+  '/e-commerce/clothing-try': EXTRA_ICONS.tryOn,
   '/e-commerce/clothing-remove-wrinkle': toolIcon('cloth-wrinkle-removal'),
   // 原型没有：借商拍首页「图片」（studio/index.vue ICONS.images）
   '/e-commerce/merge-image': paths([
@@ -146,11 +209,12 @@ export const SECTION_ENTRY_ICONS: Record<string, string | undefined> = {
     'M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
     'M21 15l-5-5-9 9',
   ]),
-  // 原型没有：借商拍首页「姿态」全身剪影（studio/index.vue ICONS.pose）
-  '/e-commerce/try-shoe': paths(['M12 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M5 9l7 1 7-3', 'M12 10v5l-4 6', 'M12 15l4 6']),
+  // 原型没有：自绘运动鞋
+  '/e-commerce/try-shoe': EXTRA_ICONS.shoe,
   '/studio/ai-digital-model': toolIcon('ai-digital-model'),
   '/studio/ai-posture-fission': toolIcon('ai-posture-fission'),
-  '/studio/image-generate': toolIcon('image-generate'),
+  // 商拍生图：相机，与「图片生成」的星芒图框区分
+  '/studio/image-generate': EXTRA_ICONS.studioShot,
 }
 
 type Spec = [id: string, name: string, tagline: string, extra?: Partial<LandingTool>]
@@ -162,7 +226,7 @@ function tool([id, name, tagline, extra]: Spec): LandingTool {
     name: t?.name ?? name,
     tagline,
     route: STUDIO_ROUTES[id] ?? t?.route,
-    icon: t?.icon ?? EXTRA_ICONS.singleClone,
+    icon: t?.icon ?? EXTRA_ICONS.generic,
     ...extra,
   }
 }
@@ -177,13 +241,19 @@ const section = (label: string, specs: Spec[]): LandingSection => ({ label, tool
 
 /** 原 AI 电商 / AI 商拍的下级页：名称取路由 meta.title 同名（views/e-commerce/entries.ts 卡片标题），图标按路由取 */
 function routeTool(route: string, name: string, tagline: string): LandingTool {
-  return { id: route, name, tagline, route, icon: SECTION_ENTRY_ICONS[route] ?? EXTRA_ICONS.singleClone }
+  return { id: route, name, tagline, route, icon: SECTION_ENTRY_ICONS[route] ?? EXTRA_ICONS.generic }
 }
 
 /** 工作流模板（工作流一级入口已隐藏，模板页 /workflow?… 仍可深链）；工作流没有这个模板就整条丢掉，不留死卡 */
-function workflowTool(id: string, name: string, tagline: string, iconFrom: string): LandingTool[] {
+function workflowTool(
+  id: string,
+  name: string,
+  tagline: string,
+  iconFrom: string,
+  iconOverride?: string,
+): LandingTool[] {
   const route = workflowRouteOf(id)
-  return route ? [{ id, name, tagline, route, icon: toolIcon(iconFrom) ?? EXTRA_ICONS.singleClone }] : []
+  return route ? [{ id, name, tagline, route, icon: iconOverride ?? toolIcon(iconFrom) ?? EXTRA_ICONS.generic }] : []
 }
 
 export const pictureLanding: LandingPageData = {
@@ -228,9 +298,9 @@ export const pictureLanding: LandingPageData = {
         routeTool('/e-commerce/try-shoe', 'AI试鞋', '鞋子上脚'),
         routeTool('/e-commerce/change-background', '人像换背景', '保留人像换景'),
         // 工作流服装模板里商拍 / 电商没有的
-        ...workflowTool('fashion-model-replace', '模特替换', '换个模特', 'ai-digital-model'),
-        ...workflowTool('fashion-model-face-swap', '模特换脸', '保留穿搭换脸', 'ai-posture-fission'),
-        ...workflowTool('fashion-model-due-tryon', '双人换衣', '两人同穿', 'ai-digital-model'),
+        ...workflowTool('fashion-model-replace', '模特替换', '换个模特', 'ai-digital-model', EXTRA_ICONS.modelReplace),
+        ...workflowTool('fashion-model-face-swap', '模特换脸', '保留穿搭换脸', 'ai-posture-fission', EXTRA_ICONS.faceSwap),
+        ...workflowTool('fashion-model-due-tryon', '双人换衣', '两人同穿', 'ai-digital-model', EXTRA_ICONS.dualTryOn),
       ],
     },
     section('图片处理', [
@@ -328,10 +398,10 @@ export const videoLanding: LandingPageData = {
   ],
   sections: [
     section('视频处理', [
-      ['ai-video-enhance', '视频高清', '提升画质', { hot: true }],
-      ['ai-video-translate', '视频翻译', '配音翻译'],
+      ['ai-video-enhance', '视频高清', '提升画质', { hot: true, icon: EXTRA_ICONS.videoHd }],
+      ['ai-video-translate', '视频翻译', '配音翻译', { icon: EXTRA_ICONS.videoTranslate }],
       ['ai-video-generator', '视频生成', '文生视频'],
-      ['ai-video-clone', '视频复刻', '参照原片生成'],
+      ['ai-video-clone', '视频复刻', '参照原片生成', { icon: EXTRA_ICONS.videoReplicate }],
     ]),
     {
       label: '电商',
