@@ -60,6 +60,8 @@ const PATHS: Record<string, string> = {
   sparkles: 'M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6zM17.5 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z',
   replace: 'M4 5.5h16v13H4zM9 15l3-3 3 3M12 12v5',
   target: 'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  history: 'M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4.5 9M4.5 4.5V9H9M12 8v4.2l2.8 1.8',
+  info: 'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 11v5M12 8h.01',
 }
 
 const d = () => PATHS[props.name] ?? ''

@@ -3,7 +3,7 @@ import { modelLabelOf } from '@/utils/model-label'
 /**
  * 画布节点编辑器（对齐原型 CanvasView + canvas-v31 皮肤）：
  * 顶栏（返回 / 标题✎ / 保存状态 / 运行数 / 模板 · 保存 · 另存为 · 执行模型）
- * + 左侧「画布资产」栏 + Vue Flow 画布（左竖工具条 / 底横工具条）+ 生成卡右侧停靠控制台
+ * + 左侧「画布资产」栏 + Vue Flow 画布（左竖工具条 / 底横工具条）+ 右侧画布助手 / 生成历史侧栏
  * + 添加节点面板（工具条「+」/ 双击空白画布 / 端口「+」）+ 多选操作条 + 节点缩放 + 模块删除。
  * 接口契约见 fusion_aigc_go/docs/api/api-canvas.md；快照 {nodes, edges} 整段存取 + 乐观锁保存。
  */
@@ -39,7 +39,8 @@ import EditorVideoNode from './nodes/EditorVideoNode.vue'
 import EditorModelNode from './nodes/EditorModelNode.vue'
 import EditorToolNode from './nodes/EditorToolNode.vue'
 import EditorModuleNode from './nodes/EditorModuleNode.vue'
-import NodeParamsPanel from './NodeParamsPanel.vue'
+import CanvasHistoryPanel from './CanvasHistoryPanel.vue'
+import NodePromptDialog from './NodePromptDialog.vue'
 import NodeAddPanel from './NodeAddPanel.vue'
 import ImageActionPanel from './ImageActionPanel.vue'
 import { IMAGE_ACTIONS, activeImageAction, collectImageSources, openImageAction } from './image-actions.ts'
@@ -293,7 +294,52 @@ watch(agentOpen, (value) => {
   } catch {
     /* 存储不可用：本次生效 */
   }
+  if (value) historyOpen.value = false
 })
+
+/**
+ * 生成历史侧栏（2026-11-19 取代生成卡控制台）：开合方式同画布助手（顶栏按钮、在流内、按账号记住、默认收起），
+ * 两者共用右侧同一个位置、一次只开一个；打开后还能向右折叠成 48 宽缩略轨（同左侧画布资产栏）。
+ * 存 JSON {open, collapsed}，键前缀已登记在 auth-session 的 ACCOUNT_KEYED_PREFIXES。
+ */
+const HISTORY_DOCK_KEY_PREFIX = 'xq-canvas-history-dock:'
+function historyDockKey() {
+  const who = agentAccountId()
+  return who ? `${HISTORY_DOCK_KEY_PREFIX}${who}` : ''
+}
+function readHistoryDock(): { open: boolean; collapsed: boolean } {
+  try {
+    const key = historyDockKey()
+    const raw = key ? JSON.parse(localStorage.getItem(key) || '{}') : {}
+    return { open: raw?.open === true, collapsed: raw?.collapsed === true }
+  } catch {
+    return { open: false, collapsed: false }
+  }
+}
+const historyDock = readHistoryDock()
+// 两个都记成开着（旧数据）时让画布助手优先
+const historyOpen = ref(historyDock.open && !agentOpen.value)
+const historyCollapsed = ref(historyDock.collapsed)
+watch([historyOpen, historyCollapsed], ([open, collapsed]) => {
+  try {
+    const key = historyDockKey()
+    if (key) localStorage.setItem(key, JSON.stringify({ open, collapsed }))
+  } catch {
+    /* 存储不可用：本次生效 */
+  }
+  if (open) agentOpen.value = false
+})
+/** 顶栏按钮：关着 → 打开并展开；折叠着 → 展开；展开着 → 关闭 */
+function toggleHistory() {
+  if (!historyOpen.value) {
+    historyOpen.value = true
+    historyCollapsed.value = false
+  } else if (historyCollapsed.value) {
+    historyCollapsed.value = false
+  } else {
+    historyOpen.value = false
+  }
+}
 
 const NODE_KIND_LABEL: Record<string, string> = {
   text: '文字',
@@ -578,7 +624,6 @@ const NOT_BLANK_SELECTOR = [
   '.vue-flow__minimap',
   '.vue-flow__panel',
   '.vue-flow__controls',
-  '[data-canvas-console]',
   '[data-canvas-popover]',
   '[data-node-params]',
   '[role="toolbar"]',
@@ -751,8 +796,8 @@ function onKeydown(event: KeyboardEvent) {
   if (eventTarget?.closest?.('.n-modal, .n-dialog, [role="dialog"]')) return
   const target = event.target as HTMLElement | null
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
-  // 控制台 / 添加面板里的下拉、开关等控件聚焦时，按键归控件（避免 Backspace 误删节点）
-  if (target?.closest('[data-canvas-console], [data-canvas-popover], [data-node-params]')) return
+  // 侧栏 / 添加面板里的下拉、开关等控件聚焦时，按键归控件（避免 Backspace 误删节点）
+  if (target?.closest('[data-canvas-popover], [data-node-params]')) return
   if (event.key === 'Escape') {
     if (ctxMenu.value) {
       closeCtxMenu()
@@ -1403,7 +1448,7 @@ function openAddPanel() {
 function onStageDblClick(event: MouseEvent) {
   const target = event.target as HTMLElement | null
   if (!target?.closest('.vue-flow__pane')) return
-  if (target.closest('.vue-flow__node, .vue-flow__edge, [data-canvas-console], [data-canvas-popover]')) return
+  if (target.closest('.vue-flow__node, .vue-flow__edge, [data-canvas-popover]')) return
   if (loading.value || !store.ready.value) return
   selectedEdgeId.value = ''
   addPanel.value = {
@@ -1864,7 +1909,14 @@ function openNodeMenuAt(nodeId: string, anchor: DOMRect, trigger?: HTMLElement) 
   ctxMenu.value = { kind: 'node', nodeId, ...stagePoint(anchor.right - CTX_MENU_W, anchor.bottom + 4) }
   settleCtxMenu()
 }
-provide(NODE_MENU_HOST, { open: openNodeMenuAt })
+provide(NODE_MENU_HOST, {
+  open: openNodeMenuAt,
+  rename: (id: string) => {
+    const node = store.findNode(id)
+    if (node) openRename(node)
+  },
+  editPrompt: (id: string) => openPromptDialog(id),
+})
 
 /**
  * 收起菜单（Esc / 选了一项 / 再点「…」/ Tab 移出）：焦点还给打开它的「…」或原焦点。
@@ -2128,6 +2180,13 @@ const nodeMenuGroups = computed<INodeMenuItem[][]>(() => {
   ]
   if (node.type === 'model' && !node.data.inputOnly) {
     edit.push({
+      key: 'prompt',
+      label: '提示词与参考',
+      icon: 'text',
+      hint: (node.data.prompt ?? '').trim() ? '已填写节点提示词' : '节点提示词、参考图序号',
+      run: menuAction((n) => openPromptDialog(n.id)),
+    })
+    edit.push({
       key: 'models',
       label: '模型替换',
       icon: 'swap',
@@ -2226,6 +2285,15 @@ function spawnToolFrom(node: CanvasEditorNode, tool: CanvasToolKind) {
 // ---------- 图片类型（拖文件到空白画布用；大小上限与节点上传同一口径，见 useNodeUpload） ----------
 
 const IMAGE_ACCEPT = ['image/jpeg', 'image/png', 'image/webp']
+
+// ---------- 提示词与参考（原控制台里卡片上没有的部分：节点提示词、引用片、参考排序 / 断开 / 从画布选） ----------
+
+const promptDialogNodeId = ref('')
+const promptDialogShow = ref(false)
+function openPromptDialog(id: string) {
+  promptDialogNodeId.value = id
+  promptDialogShow.value = true
+}
 
 // ---------- 编辑名称（复用 TitleModal） ----------
 
@@ -2592,7 +2660,9 @@ function insertPrompt(text: string) {
     return
   }
   if (writable && node.type === 'model' && !node.data.inputOnly) {
-    const connected = edges.value.some((edge) => edge.target === node.id && normalizeHandle(edge.targetHandle) === 'prompt')
+    const connected = edges.value.some(
+      (edge) => edge.target === node.id && normalizeHandle(edge.targetHandle) === 'prompt',
+    )
     if (!connected) {
       const r = joinPrompt(String(node.data.prompt ?? ''), text)
       store.updateNodeData(node.id, { prompt: r.text })
@@ -2643,25 +2713,12 @@ function confirmRemoveModule(id: string) {
   })
 }
 
-/** 生成卡（不含参考素材、多选时不算）→ 控制台停靠右侧；其余节点（含工具）表单都在卡上，没有控制台 */
-const dockedNode = computed(() => {
-  const node = selectedNode.value
-  if (!node || node.type !== 'model' || node.data.inputOnly) return null
-  if (selectedFlowNodes.value.length > 1) return null
-  return node
-})
-// ---------------- 生成卡控制台右侧停靠（2026-11-12 原型） ----------------
-// 生成卡（图片 / 视频生成，不含参考素材）的控制台停靠在画布区右侧：宽 300（工作区容器 ≤ 1280 时 280），画布区随之变窄；
-// 其他节点（文字 / 图片 / 工具 / 视频素材）没有控制台：工具表单在工具卡上，其余在卡内编辑。
-// 窄工作区（容器宽 < 1100）：停靠栏改成叠在画布右缘上的浮层（带投影），画布不再缩——否则舞台会被压到 ~500 以下，
-// 连底部工具条都放不下。叠放时「被遮挡」的判定把停靠栏宽度扣掉，选中卡片照样会被平移到可见区。
-const DOCK_NARROW_BELOW = 1100
+// ---------------- 右侧浮层 / 侧栏的宽度基准 ----------------
+// 2026-11-19 起选中生成卡不再弹右侧控制台（参数、点数在卡上，提示词与参考在节点菜单，历史在「生成历史」侧栏）。
+// 提示词库（原型 .wf-prompt-drawer：宽 380、top 56 / right 12 / bottom 避开底部工具条、圆角 18 的浮动卡，叠在画布上不挤舞台）
+// 的宽度按画布工作区容器宽度取。
 const workRef = ref<HTMLElement | null>(null)
 const containerWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
-// 右侧一次只出一个：提示词库（原型 .wf-prompt-drawer：宽 380、top 56 / right 12 / bottom 避开底部工具条、圆角 18 的浮动卡，
-// 叠在画布上不挤舞台）打开时，生成卡控制台暂时让位（原型也是打开就隐藏控制台），关闭后控制台自动回来；
-// 提示词库不随选中节点切换而关。控制台仍是自己的 300 / 280 在流停靠栏。
-const consoleDocked = computed(() => !promptFlyoutOpen.value && !!dockedNode.value)
 const promptWidth = computed(() => (containerWidth.value <= 1280 ? 340 : 380))
 /** 提示词库下沿留白：按底部工具条 / 引导卡的真实顶沿量（≥12 间隙），量不到退回原型的 76 */
 const promptBottom = ref(76)
@@ -2685,8 +2742,6 @@ watch(
   },
   { flush: 'post' },
 )
-const dockWidth = computed(() => (containerWidth.value <= 1280 ? 280 : 300))
-const dockOverlay = computed(() => containerWidth.value < DOCK_NARROW_BELOW)
 // 宽度取画布工作区容器（资产栏 + 舞台 + 在流内的停靠栏），不用窗口宽：左导航、资产栏收展都会改变可用宽度
 let workObserver: ResizeObserver | null = null
 onMounted(() => {
@@ -2719,9 +2774,7 @@ onBeforeUnmount(() => {
 })
 
 /** 需要避让停靠栏的节点：提示词库打开时是当前选中节点（插入目标），否则是停靠的生成卡 */
-const revealTargetId = computed(() =>
-  promptFlyoutOpen.value ? (selectedNode.value?.id ?? '') : (dockedNode.value?.id ?? ''),
-)
+const revealTargetId = computed(() => (promptFlyoutOpen.value ? (selectedNode.value?.id ?? '') : ''))
 
 /** 平移视口让选中的生成卡完整落在「停靠栏之外、左工具条之右」的可见区；不改 zoom，已可见就不动 */
 function revealDockedNode(id: string) {
@@ -3022,6 +3075,15 @@ useFileDropPaste(stageRef, {
           >
             <EditorIcon name="sparkles" :size="16" /> 画布助手
           </button>
+          <button
+            type="button"
+            :class="[TOP_BTN, historyOpen && '!border-violet !text-violet-ink']"
+            :aria-pressed="historyOpen"
+            title="生成历史：本画布每次生成的结果"
+            @click="toggleHistory"
+          >
+            <EditorIcon name="history" :size="16" /> 生成历史
+          </button>
           <button type="button" :class="TOP_BTN" title="模板库：套用现成画布结构" @click="showTemplates = true">
             <EditorIcon name="card" :size="16" /> 模板
           </button>
@@ -3160,7 +3222,7 @@ useFileDropPaste(stageRef, {
 
             <!-- 小地图（原型 .wf-minimap：150×96、右下 16、r14、白 92%、蒙版藤紫 8%、节点圆角 3、可拖动 / 滚轮缩放） -->
             <MiniMap
-              v-if="!promptFlyoutOpen && !(consoleDocked && dockOverlay)"
+              v-if="!promptFlyoutOpen"
               position="bottom-right"
               :width="150"
               :height="96"
@@ -3298,9 +3360,9 @@ useFileDropPaste(stageRef, {
             data-safe-block="top"
             @click.stop
           >
-            <span class="px-5px text-ink-2 text-13px whitespace-nowrap" aria-live="polite"
-              >{{ barIsSingle ? '已选中节点' : `已选中 ${barNodes.length} 个节点` }}</span
-            >
+            <span class="px-5px text-ink-2 text-13px whitespace-nowrap" aria-live="polite">{{
+              barIsSingle ? '已选中节点' : `已选中 ${barNodes.length} 个节点`
+            }}</span>
             <span class="w-1px h-16px mx-2px bg-line" aria-hidden="true" />
             <button
               v-if="!barIsSingle || barCanRun"
@@ -3779,27 +3841,15 @@ useFileDropPaste(stageRef, {
           <CanvasSyncLayer :notice="remoteNotice" :highlight="remoteHighlight" :status="syncStatus" :gone="syncGone" />
         </div>
 
-        <!-- 生成卡控制台停靠栏：在流内时画布区变窄；容器 < 1100 叠在右缘上（带投影），不压缩画布 -->
-        <aside
-          v-if="consoleDocked"
-          class="min-h-0 bg-overlay"
-          :data-safe-block="dockOverlay ? 'right' : undefined"
-          :class="
-            dockOverlay
-              ? 'absolute right-0 top-0 bottom-76px z-15 shadow-[-12px_0_28px_rgba(58,38,72,0.16)]'
-              : 'relative shrink-0'
-          "
-          :style="{ width: `${dockWidth}px`, right: dockOverlay && agentOpen ? '360px' : undefined }"
-          aria-label="生成卡控制台"
-        >
-          <NodeParamsPanel v-if="dockedNode" :key="dockedNode.id" :node="dockedNode" docked @locate="locateNode" />
-        </aside>
-
         <!-- 提示词库浮动抽屉（原型几何）：同时登记为右侧安全区块，适应 / 聚焦 / 避让都绕开它 -->
         <aside
           v-if="promptFlyoutOpen"
           class="absolute right-12px top-56px z-20 overflow-hidden rounded-18px border border-solid border-line bg-overlay shadow-pop max-w-[calc(100%-24px)]"
-          :style="{ width: `${promptWidth}px`, bottom: `${promptBottom}px`, right: agentOpen ? '372px' : undefined }"
+          :style="{
+            width: `${promptWidth}px`,
+            bottom: `${promptBottom}px`,
+            right: agentOpen ? '372px' : historyOpen ? `${historyCollapsed ? 60 : 372}px` : undefined,
+          }"
           data-safe-block="right"
           aria-label="提示词库"
         >
@@ -3820,7 +3870,28 @@ useFileDropPaste(stageRef, {
           data-canvas-popover
           aria-label="画布助手"
         >
-          <CanvasAgentPanel :canvas-id="canvasId" :selected="agentRefs" @close="agentOpen = false" @locate="locateNode" />
+          <CanvasAgentPanel
+            :canvas-id="canvasId"
+            :selected="agentRefs"
+            @close="agentOpen = false"
+            @locate="locateNode"
+          />
+        </aside>
+
+        <!-- 生成历史侧栏：与画布助手同一位置（一次只开一个）；展开 360 / 向右折叠 48，宽度过渡 -->
+        <aside
+          v-if="historyOpen"
+          class="relative shrink-0 min-h-0 border-l border-l-solid border-line transition-[width] duration-200 motion-reduce:transition-none"
+          :class="historyCollapsed ? 'w-48px' : 'w-360px'"
+          data-canvas-popover
+          aria-label="生成历史"
+        >
+          <CanvasHistoryPanel
+            v-model:collapsed="historyCollapsed"
+            :canvas-id="canvasId"
+            @close="historyOpen = false"
+            @locate="locateNode"
+          />
         </aside>
       </div>
 
@@ -3829,6 +3900,8 @@ useFileDropPaste(stageRef, {
         @resolve="(choices) => store.resolveMerge(choices)"
         @discard="store.discardLocalChanges()"
       />
+
+      <NodePromptDialog v-model:show="promptDialogShow" :node-id="promptDialogNodeId" @locate="locateNode" />
 
       <TitleModal
         v-model:show="showSaveAs"

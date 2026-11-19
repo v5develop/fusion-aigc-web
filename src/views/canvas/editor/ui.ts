@@ -122,6 +122,10 @@ export const SELECTION_BTN = `inline-flex items-center h-28px gap-4px px-8px bor
 export interface INodeMenuHost {
   /** trigger：「…」按钮本身，菜单关闭时把焦点还给它 */
   open: (nodeId: string, anchor: DOMRect, trigger?: HTMLElement) => void
+  /** 改名（卡片标题双击）；宿主没提供时卡片标题不响应双击 */
+  rename?: (nodeId: string) => void
+  /** 打开「提示词与参考」对话框（生成卡） */
+  editPrompt?: (nodeId: string) => void
 }
 export const NODE_MENU_HOST: InjectionKey<INodeMenuHost> = Symbol('canvas-node-menu-host')
 

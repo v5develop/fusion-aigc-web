@@ -6,7 +6,7 @@
  * （0 起编号 +1；graph.buildReferences 带 candidate_index，服务端按上游最近一次成功 run 的第 N 张取图）。
  * 结果图是按钮：点开灯箱看全部候选（灯箱里可下载）；候选缩略图悬停出 主 / 大 / ↓ / ×。
  */
-import { computed, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
 import { modelLabelOf } from '@/utils/model-label'
 import { Handle, Position } from '@vue-flow/core'
 import EditorIcon from '../EditorIcon.vue'
@@ -23,6 +23,7 @@ import {
   NODE_CARD_SELECTED,
   NODE_HEAD,
   NODE_HEAD_H,
+  NODE_MENU_HOST,
   NODE_NOTICE,
   NODE_RUN_BTN,
   NODE_TITLE,
@@ -40,6 +41,7 @@ import { ColorFixPill } from '@/components/ColorFix'
 import { openColorFix } from '../color-fix-action.ts'
 import LibraryStatusHint from '../LibraryStatusHint.vue'
 import { editorMessage } from '../useCanvasEditor.ts'
+import { useNodeEstimate } from '../useNodeEstimate.ts'
 
 const props = defineProps<{
   id: string
@@ -235,7 +237,7 @@ const lightboxItems = computed(() => {
   }
   return props.data.image ? [{ url: props.data.image, type: 'image' as const, name }] : []
 })
-/** 结果图盖满卡面：点它放大的同时也要选中卡片（click.stop 会吞掉画布的 node-click），控制台才会跟着出来 */
+/** 结果图盖满卡面：点它放大的同时也要选中卡片（click.stop 会吞掉画布的 node-click） */
 function selectThenZoom() {
   store.selectNode(props.id)
   openLightbox()
@@ -254,6 +256,50 @@ function downloadName(index: number) {
 
 function onRemoveCandidate(index: number) {
   void store.removeCandidate(props.id, index)
+}
+
+// ---- 点数底栏（原控制台「预计消耗」搬上卡）：估价共用 useNodeEstimate（缓存 + 并发上限，多卡不起请求风暴） ----
+const { estimate, loading: estimateLoading } = useNodeEstimate(
+  () => props.id,
+  () => props.data,
+)
+/** 本次运行提交时冻结的点数（只有本会话提交、网关计价的 run 才知道；0 = 不知道） */
+const runCharge = computed(() => (isRunning.value ? store.runChargeOf(props.id) : 0))
+const actualSettle = computed(() => estimate.value.kind === 'actual')
+/** 底栏文案：lead = 数字前的词、points = 数字（空 = 无数字）、tag = 右侧短说明、tip = ⓘ 悬停的完整说明 */
+const pointsBar = computed(() => {
+  if (runCharge.value > 0) {
+    return {
+      lead: '已预扣',
+      points: runCharge.value,
+      tag: actualSettle.value ? '按量结算' : '运行中',
+      tip: actualSettle.value
+        ? '提交时按上限冻结；完成后按实际用量结算，多退少补，失败或取消全额退回'
+        : '提交时已冻结；失败或取消全额退回，部分成功只计成功张数',
+    }
+  }
+  const { kind, points } = estimate.value
+  if (kind === 'actual') {
+    return { lead: '预计最多', points, tag: '按量结算', tip: '按实际用量结算，通常更少；多退少补' }
+  }
+  if (kind === 'fixed') {
+    return {
+      lead: '预计',
+      points,
+      tag: '按张计费',
+      tip: '固定价：按生成张数计费，部分成功只计成功张数，失败或取消退回',
+    }
+  }
+  if (kind === 'static') {
+    return { lead: '约', points, tag: '估算', tip: '按模型价目估算，以实际扣点为准' }
+  }
+  return { lead: '暂无报价', points: 0, tag: '', tip: '当前模型 / 参数暂时拿不到报价，以实际扣点为准' }
+})
+
+// ---- 标题双击改名（原控制台标题输入框）：交给画布页的「编辑名称」弹窗 ----
+const menuHost = inject(NODE_MENU_HOST, null)
+function onTitleDblClick() {
+  if (menuHost?.rename) menuHost.rename(props.id)
 }
 
 /** 现签地址过期（加载失败 / 403）：换一次签名（store 内限流，不会循环） */
@@ -282,7 +328,9 @@ function onColorFix(e: MouseEvent) {
     <header ref="headRef" :class="NODE_HEAD">
       <span class="shrink-0 w-8px h-8px rounded-full" :class="isVideo ? 'bg-danger' : 'bg-success'" />
       <div class="flex flex-1 min-w-0 flex-col leading-[1.15]">
-        <span :class="NODE_TITLE">{{ data.title || '生成节点' }}</span>
+        <span :class="NODE_TITLE" :title="menuHost?.rename ? '双击改名' : undefined" @dblclick.stop="onTitleDblClick">{{
+          data.title || '生成节点'
+        }}</span>
         <small
           v-if="modelLine"
           class="block overflow-hidden text-muted text-11px font-500 leading-14px text-ellipsis whitespace-nowrap"
@@ -370,8 +418,42 @@ function onColorFix(e: MouseEvent) {
       </div>
 
       <!-- 参数行（参数上卡：控制台不再重复这一块，卡上就是唯一入口） -->
+      <!-- 参数行 + 点数底栏：一起量高度（默认卡高不因底栏变高，媒体区让出这一截） -->
       <div v-if="!data.inputOnly" ref="paramsRef" class="shrink-0 mt-8px">
         <ModelParamFields :node-id="id" :data="data" />
+        <!-- 点数底栏：固定高度（加载占位同高，卡片不抖）；左边点数，右边短说明 + ⓘ 完整说明 -->
+        <div
+          class="flex h-20px items-center gap-6px mt-8px pt-8px border-0 border-t border-solid border-line-soft box-content text-muted text-11px leading-20px"
+          data-node-points
+        >
+          <span
+            v-if="estimateLoading && runCharge <= 0"
+            class="block w-96px h-10px rounded-3px bg-surface3 animate-pulse motion-reduce:animate-none"
+            aria-label="正在估算点数"
+          />
+          <span v-else class="flex min-w-0 items-baseline gap-3px whitespace-nowrap" role="status">
+            <span>{{ pointsBar.lead }}</span>
+            <template v-if="pointsBar.points">
+              <b class="text-violet-ink text-13px font-600 tabular-nums">{{ pointsBar.points }}</b>
+              <span>点</span>
+            </template>
+          </span>
+          <span v-if="pointsBar.tag" class="ml-auto shrink-0 whitespace-nowrap">{{ pointsBar.tag }}</span>
+          <n-tooltip placement="top" :style="{ maxWidth: '240px' }">
+            <template #trigger>
+              <button
+                type="button"
+                class="relative grid shrink-0 w-14px h-14px p-0 place-items-center border-none bg-transparent text-muted cursor-help hover:text-violet-ink after:content-empty after:absolute after:-inset-7px nodrag"
+                :class="[FOCUS_RING, !pointsBar.tag && 'ml-auto']"
+                aria-label="点数说明"
+                @click.stop
+              >
+                <EditorIcon name="info" :size="14" />
+              </button>
+            </template>
+            {{ pointsBar.tip }}
+          </n-tooltip>
+        </div>
       </div>
 
       <div v-if="isRunning" :class="NODE_NOTICE" class="border border-solid border-line-soft bg-surface2 text-muted">

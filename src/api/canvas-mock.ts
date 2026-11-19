@@ -225,7 +225,7 @@ export async function mockCatalog(): Promise<ApiResponse<ICanvasCatalog>> {
     maxReferenceVideos: 0,
     ratios: ['1:1', '3:4', '4:3', '16:9', '9:16'],
     sizes: ['1K', '2K'],
-    qualities: ['low', 'medium', 'high'],
+    qualities: ['high', 'medium', 'low', 'xhigh', 'max'],
     durations: [],
     sound: false,
     countMax: 4,
@@ -239,7 +239,7 @@ export async function mockCatalog(): Promise<ApiResponse<ICanvasCatalog>> {
   return ok({ imageModels: [model], video_models: [], tools: [] })
 }
 
-/** 估价 mock：高 > 中 > 低，按尺寸 / 张数 / 参考图线性放大；文案走 actual_cost 分支 */
+/** 估价 mock：极致 > 超高 > 高 > 中 > 低，按尺寸 / 张数 / 参考图线性放大；文案走 actual_cost 分支 */
 export async function mockEstimate(req: {
   size?: string
   count?: number
@@ -247,7 +247,7 @@ export async function mockEstimate(req: {
   ref_images?: number
 }): Promise<ApiResponse<import('./canvas-home.ts').ICanvasEstimateResp>> {
   await wait(80)
-  const q = { low: 1, medium: 2, high: 4 }[req.quality ?? 'high'] ?? 2
+  const q = { low: 1, medium: 2, high: 4, xhigh: 8, max: 16 }[req.quality ?? 'high'] ?? 2
   const sizeK = req.size === '2K' ? 1.6 : 1
   const points = Math.ceil((4 * q * sizeK + (req.ref_images ?? 0) * 1.5) * Math.max(1, req.count ?? 1))
   return ok({

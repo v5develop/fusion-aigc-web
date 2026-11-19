@@ -1535,7 +1535,7 @@ function catalogOf(node: CanvasEditorNode): ICanvasCatalogModel | undefined {
   return list?.find((item) => item.modelId === data.modelId) ?? list?.find((item) => item.model === data.model)
 }
 
-const QUALITY_MAP: Record<string, string> = { 低: 'low', 中: 'medium', 高: 'high' }
+const QUALITY_MAP: Record<string, string> = { 低: 'low', 中: 'medium', 高: 'high', 超高: 'xhigh', 极致: 'max' }
 
 function toolParamsOf(node: CanvasEditorNode): { params?: Record<string, unknown>; error?: string } {
   const data = node.data
@@ -1631,12 +1631,14 @@ function buildRunRequest(node: CanvasEditorNode): { req?: ICanvasRunReq; error?:
   const isVideo = data.kind === 'video'
   const model = data.model ?? ''
   const modelId = data.modelId || catalogOf(node)?.modelId || ''
-  if (!model || !modelId) return { error: '请先在参数面板选择模型' }
+  if (!model || !modelId) return { error: '请先在卡片上选择模型' }
   const refs = buildReferences(nodes.value, edges.value, node.id)
   // body.prompt 只放节点自带的提示词；连线文字走 references，服务端把两者拼成「连线文本 + 换行 + 节点提示词」
   if (!hasPromptText(node, refs) && !(isVideo && hasVideoDriver(refs))) {
     return {
-      error: isVideo ? '请连接文字节点 / 填写提示词，或连接首帧图' : '提示词为空：请连接文字节点或在参数面板填写提示词',
+      error: isVideo
+        ? '请连接文字节点、在节点菜单「提示词与参考」里填写提示词，或连接首帧图'
+        : '提示词为空：请连接文字节点，或在节点菜单「提示词与参考」里填写',
     }
   }
   const req: ICanvasRunReq = {

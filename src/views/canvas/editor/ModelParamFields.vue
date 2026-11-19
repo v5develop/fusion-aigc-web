@@ -37,9 +37,18 @@ const sizeOptions = computed(() =>
     value,
   })),
 )
+/** 画质档：xhigh / max 是 GPT Image 2.5 / 2.6 在 high 之上的档（后端目录追加在末尾），按档位从高到低展示 */
+const QUALITY_LABELS: Record<string, string> = { low: '低', medium: '中', high: '高', xhigh: '超高', max: '极致' }
+const QUALITY_RANK = ['max', 'xhigh', 'high', 'medium', 'low']
+const qualityRank = (value: string) => {
+  const i = QUALITY_RANK.indexOf(value)
+  return i < 0 ? QUALITY_RANK.length : i
+}
 const qualityOptions = computed(() => {
   const list = currentModel.value?.qualities?.length ? currentModel.value.qualities : ['low', 'medium', 'high']
-  return list.map((value) => ({ label: { low: '低', medium: '中', high: '高' }[value] ?? value, value }))
+  return [...list]
+    .sort((a, b) => qualityRank(a) - qualityRank(b))
+    .map((value) => ({ label: QUALITY_LABELS[value] ?? value, value }))
 })
 const durationOptions = computed(() =>
   (currentModel.value?.durations ?? ['4s', '6s', '8s']).map((value) => ({ label: value, value })),
@@ -128,24 +137,38 @@ const LABEL = 'block mb-2px text-muted text-11px leading-16px'
         @update:value="(value: string) => patch({ quality: value })"
       />
     </div>
-    <!-- 数量：图片排在质量之后（同一行），视频排第二行；上限为 1 时没有可选项，直接写「固定 1 张」 -->
+    <!--
+      数量：图片排在质量之后（同一行），视频排第二行。上限为 1 时也画成与下拉同高、同描边圆角的只读框（禁用态），
+      不再是一行纯文字——否则四格框体高度 / 基线对不齐。标签统一只写「数量」，上限放进悬停提示，免得标签被截断。
+    -->
     <div v-if="capabilities.count" class="min-w-0">
-      <span :class="LABEL" class="truncate" :title="countMax > 1 ? `最多 ${countMax} 张` : undefined"
-        >数量{{ countMax > 1 ? `（≤${countMax}）` : '' }}</span
-      >
-      <div v-if="countMax <= 1" class="flex h-28px items-center whitespace-nowrap text-ink-2 text-12px">固定 1 张</div>
-      <n-input-number
-        v-else
-        :value="shownCount"
-        class="w-full"
-        size="small"
-        :min="1"
-        :max="countMax"
-        :precision="0"
-        :disabled="disabled"
-        :input-props="{ 'aria-label': '数量' }"
-        @update:value="(value: number | null) => patch({ count: value ?? 1 })"
-      />
+      <span :class="LABEL">数量</span>
+      <n-tooltip placement="top">
+        <template #trigger>
+          <div class="min-w-0">
+            <n-input
+              v-if="countMax <= 1"
+              value="1 张"
+              size="small"
+              disabled
+              :input-props="{ 'aria-label': '数量：固定 1 张' }"
+            />
+            <n-input-number
+              v-else
+              :value="shownCount"
+              class="w-full"
+              size="small"
+              :min="1"
+              :max="countMax"
+              :precision="0"
+              :disabled="disabled"
+              :input-props="{ 'aria-label': '数量' }"
+              @update:value="(value: number | null) => patch({ count: value ?? 1 })"
+            />
+          </div>
+        </template>
+        {{ countMax <= 1 ? '该模型每次固定生成 1 张' : `每次最多生成 ${countMax} 张` }}
+      </n-tooltip>
     </div>
     <div v-if="isVideo && capabilities.sound" class="min-w-0">
       <span :class="LABEL">声音</span>
