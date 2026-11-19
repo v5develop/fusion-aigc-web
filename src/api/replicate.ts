@@ -20,7 +20,7 @@
  */
 import { del, getQuiet, patch, postQuiet, put, toApiError } from './index.ts'
 import { isMock } from './mock-switch.ts'
-import { createSafeUuid } from '@/utils/utils.ts'
+import { idemDone as idemDoneShared, idemHeaders } from '@/utils/idempotency.ts'
 import type { VideoCloneDimKey } from './video-clone.ts'
 
 export type { VideoCloneDimKey } from './video-clone.ts'
@@ -678,21 +678,9 @@ export interface ReplicateReuseRequest {
 
 // ---------------- 幂等键 ----------------
 
-const idemKeys = new Map<string, string>()
-
-/**
- * 同一动作（scope）重试复用同一个 Idempotency-Key，成功后丢弃（下一次同类动作换新键）。
- * scope 要包含能区分「这次动作」的全部输入（路径 + 关键参数），否则不同请求会撞同一个键。
- */
-function idemKey(scope: string): { 'Idempotency-Key': string } {
-  let k = idemKeys.get(scope)
-  if (!k) {
-    k = createSafeUuid() // 36 位，≤64
-    idemKeys.set(scope, k)
-  }
-  return { 'Idempotency-Key': k }
-}
-const idemDone = (scope: string) => void idemKeys.delete(scope)
+// 幂等键实现见 @/utils/idempotency（sessionStorage 持久化 + TTL，刷新页面也复用同一键）
+const idemKey = (scope: string) => idemHeaders(scope)
+const idemDone = (scope: string) => idemDoneShared(scope)
 
 async function write<T>(scope: string, fn: (headers: { 'Idempotency-Key': string }) => Promise<T>): Promise<T> {
   const r = await fn(idemKey(scope))
@@ -967,9 +955,8 @@ export function replicateNotReady(err: unknown): boolean {
  */
 export function replicateErrorText(err: unknown, opts: ReplicateErrorOpts = {}): string {
   const e = toApiError(err)
-  const net = opts.write
-    ? '没提交成功，没有扣点数。可以直接再点一次，不会重复扣点'
-    : '网络异常只影响页面显示，生成仍在进行'
+  // 网络中断 / 超时：请求可能已到达服务端，结果未知——不能承诺「没扣点」，让用户去任务中心确认
+  const net = opts.write ? '网络中断，结果未知，请到任务中心确认，避免重复提交' : '网络异常只影响页面显示，生成仍在进行'
   if (!e)
     return opts.fallback ?? (opts.write ? '没成功，没有多扣点数，可以再点一次' : '出了点问题，我们在处理。没有多扣点数')
   if (e.isNetwork) return net

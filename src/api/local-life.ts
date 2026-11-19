@@ -8,12 +8,20 @@
  */
 import { post, put, get, del } from './index.ts'
 import type * as types from './local-life-types.ts'
-import { createSafeUuid } from '@/utils/utils'
+import { AUTO_IDEM, idemDone, resolveIdem } from '@/utils/idempotency'
 
 const PREFIX = '/api/v1/local-life'
 
 /** 提交生成类接口的幂等头。每次点「生成」新取一个，重试时沿用调用方缓存的那份 */
-export const llIdempotencyHeaders = () => ({ 'Idempotency-Key': createSafeUuid() })
+export const llIdempotencyHeaders = () => ({ 'Idempotency-Key': AUTO_IDEM })
+
+/** 提交：占位头换成按「路径 + 载荷」稳定的键（刷新 / 重试复用），成功后丢弃 */
+async function llPost<T>(url: string, data: unknown, headers: any) {
+  const h = resolveIdem(url, data, headers)
+  const r = await post<T>(url, data, h, 60000)
+  idemDone(url, data)
+  return r
+}
 
 // ---------------- 使用约定 ----------------
 
@@ -60,11 +68,11 @@ export function llCopywritingAiWrite(data: types.ILAiWriteReq) {
 
 /** AI帮写或爆款仿写：提交生成（异步，轮询详情） */
 export function llCopywritingGenerate(data: types.ILCopywritingGenerateReq, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILCopywriting>(`${PREFIX}/copywriting/generate`, data, headers, 60000)
+  return llPost<types.ILCopywriting>(`${PREFIX}/copywriting/generate`, data, headers)
 }
 
 export function llCopywritingRegenerate(id: number, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILCopywriting>(`${PREFIX}/copywriting/${id}/regenerate`, {}, headers, 60000)
+  return llPost<types.ILCopywriting>(`${PREFIX}/copywriting/${id}/regenerate`, {}, headers)
 }
 
 /** 自主撰写：直接保存 */
@@ -106,7 +114,7 @@ export function llDhOptions() {
 
 /** AI 定制形象：提交生成（出 4 张 9:16 图，轮询 llPortraitDetail） */
 export function llCreatePortrait(data: types.ILCreatePortraitReq, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILPortrait>(`${PREFIX}/digital-humans/portraits`, data, headers, 60000)
+  return llPost<types.ILPortrait>(`${PREFIX}/digital-humans/portraits`, data, headers)
 }
 
 export function llPortraitDetail(id: number) {
@@ -114,7 +122,7 @@ export function llPortraitDetail(id: number) {
 }
 
 export function llRegeneratePortrait(id: number, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILPortrait>(`${PREFIX}/digital-humans/portraits/${id}/regenerate`, {}, headers, 60000)
+  return llPost<types.ILPortrait>(`${PREFIX}/digital-humans/portraits/${id}/regenerate`, {}, headers)
 }
 
 export function llVoiceCategories() {
@@ -126,7 +134,7 @@ export function llVoices(category?: string) {
 }
 
 export function llCreateDigitalHuman(data: types.ILCreateDigitalHumanReq, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILDigitalHuman>(`${PREFIX}/digital-humans`, data, headers, 60000)
+  return llPost<types.ILDigitalHuman>(`${PREFIX}/digital-humans`, data, headers)
 }
 
 export function llDigitalHumanList(params: { status?: number; page?: number; pageSize?: number } = {}) {
@@ -149,7 +157,7 @@ export function llNoteOptions() {
 }
 
 export function llNotePlan(data: types.ILPlanNoteReq, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILNote>(`${PREFIX}/notes/plan`, data, headers, 60000)
+  return llPost<types.ILNote>(`${PREFIX}/notes/plan`, data, headers)
 }
 
 /** 笔记详情（构思中 / 生成中都轮询这个） */
@@ -159,11 +167,10 @@ export function llNoteDetail(id: number) {
 
 /** 重新构思（可换套图数量） */
 export function llNoteReplan(id: number, imageCount?: number, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILNote>(
+  return llPost<types.ILNote>(
     `${PREFIX}/notes/${id}/replan`,
     imageCount != null ? { imageCount: imageCount } : {},
     headers,
-    60000,
   )
 }
 
@@ -173,7 +180,7 @@ export function llNoteGenerate(
   data: { title?: string; content?: string; tags?: string[]; imageCount?: number },
   headers: any = llIdempotencyHeaders(),
 ) {
-  return post<types.ILNote>(`${PREFIX}/notes/${id}/generate`, data, headers, 60000)
+  return llPost<types.ILNote>(`${PREFIX}/notes/${id}/generate`, data, headers)
 }
 
 export function llNoteList(params: { status?: number; page?: number; pageSize?: number } = {}) {
@@ -207,7 +214,7 @@ export function llCreationTemplates(kind: types.ILCreationKind, posterType?: str
 }
 
 export function llCreationSubmit(data: types.ILCreateCreationReq, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILCreation>(`${PREFIX}/creations`, data, headers, 60000)
+  return llPost<types.ILCreation>(`${PREFIX}/creations`, data, headers)
 }
 
 export function llCreationList(
@@ -246,7 +253,7 @@ export function llVideoOptions(kind: types.ILVideoKind) {
 }
 
 export function llVideoCreate(data: types.ILCreateVideoReq, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILVideoCreation>(`${PREFIX}/video-creations`, data, headers, 60000)
+  return llPost<types.ILVideoCreation>(`${PREFIX}/video-creations`, data, headers)
 }
 
 /** 详情（构思中、生成中都轮询这个） */
@@ -255,7 +262,7 @@ export function llVideoDetail(id: number) {
 }
 
 export function llVideoReplan(id: number, headers: any = llIdempotencyHeaders()) {
-  return post<types.ILVideoCreation>(`${PREFIX}/video-creations/${id}/replan`, {}, headers, 60000)
+  return llPost<types.ILVideoCreation>(`${PREFIX}/video-creations/${id}/replan`, {}, headers)
 }
 
 /** 确认剧本开始出片；复刻可带改过的 prompt/model/size */
@@ -264,7 +271,7 @@ export function llVideoGenerate(
   data: types.ILGenerateVideoReq = {},
   headers: any = llIdempotencyHeaders(),
 ) {
-  return post<types.ILVideoCreation>(`${PREFIX}/video-creations/${id}/generate`, data, headers, 60000)
+  return llPost<types.ILVideoCreation>(`${PREFIX}/video-creations/${id}/generate`, data, headers)
 }
 
 export function llVideoList(

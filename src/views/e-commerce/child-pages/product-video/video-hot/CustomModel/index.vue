@@ -83,6 +83,7 @@ const faceAuthDialog = reactive({
 
 // 轮询达人生成
 const { start } = usePolling((taskId) => pollingSingleTask(taskId!), 3000, {
+  stopOnError: true, // 出错即停：onError 里会复位按钮并清掉任务 id
   onError() {
     btnLoading.value = false
     localStorage.removeItem('modelTaskId')
@@ -177,6 +178,7 @@ watch(modelPollingType, resetData, { immediate: true })
 
 // 轮询人脸验证结果
 const { start: startFaceValidate } = usePolling((taskId) => faceRecognitionStatusQuery(taskId!), 3000, {
+  stopOnError: true, // 保持原行为：出错即停
   autoStop(res) {
     const { data } = res
     // 0待处理  1处理中  2已完成  3失败

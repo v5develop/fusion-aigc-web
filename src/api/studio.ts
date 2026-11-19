@@ -11,6 +11,7 @@
 import { post, patch, authorizedFetch, get, getQuiet, del } from './index.ts'
 import type * as types from './studio-types.ts'
 import { llIdempotencyHeaders } from './local-life.ts'
+import { idemDone, resolveIdem } from '@/utils/idempotency'
 
 const PREFIX = '/api/v1/studio'
 /** 提交是重操作（整批冻结点数、图片校验），放宽超时 */
@@ -18,16 +19,24 @@ const SUBMIT_TIMEOUT = 60000
 
 type IdemHeaders = Record<string, string>
 
+/** 提交：占位头换成按「路径 + 载荷」稳定的键（刷新 / 重试复用），成功后丢弃 */
+async function submitIdem<T>(url: string, data: unknown, headers: IdemHeaders) {
+  const h = resolveIdem(url, data, headers)
+  const r = await post<T>(url, data, h, SUBMIT_TIMEOUT)
+  idemDone(url, data)
+  return r
+}
+
 // ---------------- 提交 ----------------
 
 /** 商拍换装整批提交（模特数 × 每位张数，服务端拆任务） */
 export function studioSubmitTryon(data: types.StudioTryonSubmitReq, headers: IdemHeaders = llIdempotencyHeaders()) {
-  return post<types.StudioSubmitResp>(`${PREFIX}/tryon/submit`, data, headers, SUBMIT_TIMEOUT)
+  return submitIdem<types.StudioSubmitResp>(`${PREFIX}/tryon/submit`, data, headers)
 }
 
 /** 姿态复刻整批提交（人物 1 张 + 姿势 1–9 张） */
 export function studioSubmitPose(data: types.StudioPoseSubmitReq, headers: IdemHeaders = llIdempotencyHeaders()) {
-  return post<types.StudioSubmitResp>(`${PREFIX}/pose/submit`, data, headers, SUBMIT_TIMEOUT)
+  return submitIdem<types.StudioSubmitResp>(`${PREFIX}/pose/submit`, data, headers)
 }
 
 /**
@@ -54,7 +63,7 @@ export function studioSubmitImageGen(
   data: types.StudioImageGenSubmitReq,
   headers: IdemHeaders = llIdempotencyHeaders(),
 ) {
-  return post<types.StudioSubmitResp>(`${PREFIX}/image-generate/submit`, data, headers, SUBMIT_TIMEOUT)
+  return submitIdem<types.StudioSubmitResp>(`${PREFIX}/image-generate/submit`, data, headers)
 }
 
 // ---------------- 提交前报价（只读，不冻结，不要 Idempotency-Key） ----------------

@@ -12,7 +12,7 @@ export function usePolling<T = any>(
     immediate?: boolean // 是否立即执行（默认 true）
     autoStop?: (result: T) => boolean // 自动停止条件函数
     onError?: (error: unknown) => void // 错误回调
-    stopOnError?: boolean // 出错时是否停止轮询（默认 true；false 则错误后继续下一轮）
+    stopOnError?: boolean // 出错时是否停止轮询（默认 false：瞬时网络 / 5xx 抖动下一轮自动恢复；需要出错即停的显式传 true）
     /** 每次 start 后头几轮的间隔（默认 POLL_RAMP：1.5s、2s），之后回到 interval；传 [] 关掉 */
     ramp?: readonly number[]
     /** 页面隐藏时的间隔（默认 max(interval × 3, 10s)）；切回前台立即补一轮 */
@@ -23,7 +23,7 @@ export function usePolling<T = any>(
     immediate = true,
     autoStop,
     onError,
-    stopOnError = true,
+    stopOnError = false,
     ramp = POLL_RAMP,
     hiddenInterval = Math.max(interval * 3, POLL_HIDDEN_MIN),
   } = options

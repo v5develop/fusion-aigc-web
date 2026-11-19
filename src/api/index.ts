@@ -324,13 +324,41 @@ service.interceptors.response.use(
     if (response?.status === 401 && config) {
       return handleTokenExpired(config, 401)
     }
+    // 403 = 已登录但无权访问该资源（后端：未登录/失效一律 401，403 只表示权限不足），不能登出，只提示。
+    // 会话失效只认 401（上面刷新链）与 isTokenInvalid 里的业务失效码
     if (response?.status === 403) {
-      logoutToLogin()
+      if (!isSilentRequest(config)) message.error('没有权限')
+    } else if (!axios.isCancel(error) && (!response || response.status >= 500) && !isSilentRequest(config)) {
+      // 5xx / 网络中断：统一提示并带编号，便于报障；调用方自己提示的请求用 silent / SILENT_ERROR_URLS 关掉
+      toastBusy(requestIdOf(error))
     }
     // 刻意 reject 原 AxiosError（老调用方认它的 code/response/isAxiosError），结构化信息用 toApiError 取
     return Promise.reject(error)
   },
 )
+
+/** 请求声明静默（silent 标志或命中 SILENT_ERROR_URLS）：不弹全局 toast，调用方自己就地展示 */
+function isSilentRequest(config?: AxiosRequestConfig): boolean {
+  if (!config) return false
+  return !!(config as { silent?: boolean }).silent || SILENT_ERROR_URLS.some((u) => config.url?.includes(u))
+}
+
+/** 响应体 requestId 优先，其次 X-Request-Id 头 */
+function requestIdOf(error: AxiosError<ApiResponse>): string | undefined {
+  const bodyId = (error.response?.data as { requestId?: unknown } | undefined)?.requestId
+  if (typeof bodyId === 'string' && bodyId) return bodyId
+  const h = error.response?.headers?.['x-request-id']
+  return typeof h === 'string' && h ? h : undefined
+}
+
+// 同一时刻多个请求一起 5xx 只弹一条
+let lastBusyToastAt = 0
+function toastBusy(requestId?: string) {
+  const now = Date.now()
+  if (now - lastBusyToastAt < 3000) return
+  lastBusyToastAt = now
+  message.error(`服务繁忙，请稍后重试${requestId ? `（编号 ${requestId}）` : ''}`)
+}
 
 let loggingOut = false
 function logoutToLogin() {
@@ -367,12 +395,21 @@ function logoutToLogin() {
 
   // 容器内没有注册 /login 路由：清 token 后整页重载，让路由守卫重新向桥要 unionToken 静默登录。
   // 若 unionToken 也已失效会再次走到这里，用 sessionStorage 时间戳挡住 30s 内的重复 reload 防死循环
-  const lastReloadAt = Number(sessionStorage.getItem('fusion_logout_reload_at') || 0)
+  let lastReloadAt = 0
+  try {
+    lastReloadAt = Number(sessionStorage.getItem('fusion_logout_reload_at') || 0)
+  } catch {
+    // sessionStorage 不可用（隐私模式等）：当作没有记录
+  }
   if (Date.now() - lastReloadAt < 30_000) {
     loggingOut = false
     return
   }
-  sessionStorage.setItem('fusion_logout_reload_at', String(Date.now()))
+  try {
+    sessionStorage.setItem('fusion_logout_reload_at', String(Date.now()))
+  } catch {
+    // 写不进去就算了，最多多重载一次
+  }
   // 留出 toast 展示时间
   setTimeout(() => window.location.reload(), 500)
 }

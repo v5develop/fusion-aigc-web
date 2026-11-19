@@ -9,7 +9,7 @@
  */
 import { ApiError, authorizedFetch, get, post } from './index.ts'
 import type { ApiResponse } from './types'
-import { createSafeUuid } from '@/utils/utils'
+import { withIdem } from '@/utils/idempotency'
 
 /** 异步工具的提交凭据（CoreToolWorkflowSubmissionAdapter.Submission，NON_NULL：tools 路由只有 taskId 或 taskIds） */
 export interface ToolSubmission {
@@ -143,16 +143,15 @@ export interface VoiceItem {
 /** 提交是重操作（取图探测、冻结点数）；抠图服务端最多等 50 秒 */
 const SUBMIT_TIMEOUT = 60000
 
-const idempotency = () => ({ 'Idempotency-Key': createSafeUuid() })
-
 /** 异步工具提交：POST 到 schema.javaRoute */
 export function submitTool(route: string, body: Record<string, unknown>) {
-  return post<ToolSubmission>(route, body, idempotency(), SUBMIT_TIMEOUT)
+  return withIdem(`tool:${route}`, body, (h) => post<ToolSubmission>(route, body, h, SUBMIT_TIMEOUT))
 }
 
 /** 同步抠图：成功 data={url}；等不及时 code=3010（由拦截器提示，结果进抠图历史） */
 export function submitCutout(imageUrl: string) {
-  return post<CutoutResult>('/api/v1/tools/cutout', { imageUrl }, idempotency(), SUBMIT_TIMEOUT)
+  const body = { imageUrl }
+  return withIdem('tool:cutout', body, (h) => post<CutoutResult>('/api/v1/tools/cutout', body, h, SUBMIT_TIMEOUT))
 }
 
 /** 某个工具的历史（只返回本人的记录；toolTitle 是工具路径最后一段） */
@@ -205,7 +204,8 @@ export function bizPoints() {
 
 /** 文字识别（同步，单独计费）：文字替换的「识别文字」 */
 export function toolOcr(imageUrl: string) {
-  return post<OcrResult>('/api/v1/tools/ocr', { imageUrl }, idempotency(), SUBMIT_TIMEOUT)
+  const body = { imageUrl }
+  return withIdem('tool:ocr', body, (h) => post<OcrResult>('/api/v1/tools/ocr', body, h, SUBMIT_TIMEOUT))
 }
 
 /** model-configs 的一档：points 是该档单价（图片按张；视频按秒） */

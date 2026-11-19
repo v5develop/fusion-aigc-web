@@ -8,7 +8,7 @@
  * <p>提交即计费；每次提交带一个新的 Idempotency-Key，避免重试重复扣费。
  */
 import { get, post } from './index.ts'
-import { createSafeUuid } from '@/utils/utils'
+import { withIdem } from '@/utils/idempotency'
 import { deleteWithBody, type SubmittedToolRequest } from './tools.ts'
 
 /** 工作流提交凭据（CoreToolWorkflowSubmissionAdapter.Submission：workflows 路由只回 workflowHistoryIds） */
@@ -83,7 +83,7 @@ const SUBMIT_TIMEOUT = 60000
 
 /** 提交：POST 到 schema.javaEndpoint（/api/v1/workflows/fashion | visual） */
 export function submitWorkflow(endpoint: string, body: Record<string, unknown>) {
-  return post<WorkflowSubmission>(endpoint, body, { 'Idempotency-Key': createSafeUuid() }, SUBMIT_TIMEOUT)
+  return withIdem(`workflow:${endpoint}`, body, (h) => post<WorkflowSubmission>(endpoint, body, h, SUBMIT_TIMEOUT))
 }
 
 /** 某分类（fashion / video / visual …）下已启用的模板；返回数组，不是分页信封 */

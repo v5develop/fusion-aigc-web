@@ -1,7 +1,7 @@
 import { post, get, ssePost } from './index.ts'
 import type { SsePostHandlers } from './index.ts'
 import * as types from './types'
-import { createSafeUuid } from '@/utils/utils'
+import { AUTO_IDEM, idemDone, resolveIdem } from '@/utils/idempotency'
 import { ratioLabel } from '@/utils/ratio'
 
 /**
@@ -41,8 +41,12 @@ export function getUserInfo() {
   return get('/api/v1/auth/user-info', {})
 }
 
-export function ecommerceSubmit(data: any, headers: any = { 'Idempotency-Key': createSafeUuid() }) {
-  return post('/api/v1/creation/ecommerce/submit', injectSize(data), headers, 60000)
+export async function ecommerceSubmit(data: any, headers: any = { 'Idempotency-Key': AUTO_IDEM }) {
+  const body = injectSize(data)
+  const h = resolveIdem('ecommerce-submit', body, headers)
+  const r = await post('/api/v1/creation/ecommerce/submit', body, h, 60000)
+  idemDone('ecommerce-submit', body) // 成功才丢键；失败 / 网络中断保留，重试沿用
+  return r
 }
 
 export function pollingTask(sessionId: string) {
@@ -100,9 +104,13 @@ export function publicTemplate(params: types.IPublicTemplate) {
   })
 }
 
-export function creationSubmit(data: types.ICreationSubmit, headers: any = { 'Idempotency-Key': createSafeUuid() }) {
+export async function creationSubmit(data: types.ICreationSubmit, headers: any = { 'Idempotency-Key': AUTO_IDEM }) {
+  const body = injectSize(data)
+  const h = resolveIdem('creation-submit', body, headers)
   // 图生图等任务后端需先处理输入图，提交耗时可能超过全局 10s 超时，单独放宽
-  return post('/api/v1/creation/submit', injectSize(data), headers, 60000)
+  const r = await post('/api/v1/creation/submit', body, h, 60000)
+  idemDone('creation-submit', body) // 成功才丢键；失败 / 网络中断保留，重试沿用
+  return r
 }
 
 /**
