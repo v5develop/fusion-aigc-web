@@ -5,13 +5,13 @@ import { modelLabelOf } from '@/utils/model-label'
  * 头部：类型 + 标题 + 执行钮；主体按节点类型 / catalog 能力出表单；底部：说明 + 「完成」。
  * 字段、校验、提交与运行 / 轮询行为与原右侧参数面板一致：节点参数直接写回节点 data（快照私有字段，camelCase 原样保存）。
  */
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import EditorIcon from './EditorIcon.vue'
 import RunErrorNotice from './RunErrorNotice.vue'
 import LibraryStatusHint from './LibraryStatusHint.vue'
 import { compareRefOrder, normalizeHandle } from './graph.ts'
-import { editorMessage, useCanvasEditor } from './useCanvasEditor.ts'
-import { canvasUploadMedia } from '@/api/canvas-home.ts'
+import { editorMessage, rememberSettleMode, useCanvasEditor } from './useCanvasEditor.ts'
+import { canvasEstimate, canvasUploadMedia, type ICanvasEstimateResp } from '@/api/canvas-home.ts'
 import type { CanvasEditorNode, CanvasNodeData } from './types.ts'
 import { FOCUS_RING, NODE_NOTICE, NODE_RUN_BTN, POP_SURFACE } from './ui.ts'
 import { DROP_PASTE_HINT, useFileDropPaste } from '@/composables/useFileDropPaste'
@@ -85,7 +85,7 @@ const priceHint = computed(() => {
   return hit ? `约 ${hit.points} 点/张` : ''
 })
 /** 预计消耗（原型 .wf-console__estimate）：单价 × 张数（视频单价已按所选时长，1 条） */
-const estimatePoints = computed(() => {
+const staticEstimatePoints = computed(() => {
   const size = modelNode.value?.size
   const duration = modelNode.value?.duration
   const hit = currentModel.value?.prices?.find(
@@ -158,6 +158,99 @@ const references = computed(() => {
         return { id: edge.id, sourceId: source.id, name: data.title || source.id, label, badge, thumb, group, sortable }
       })
   )
+})
+
+// ---- 远端估价（Go /canvas/estimate，与冻结同一公式）----
+// 图片模型：模型 / 尺寸 / 张数 / 画质 / 参考图数 / 提示词长度变化后防抖 400ms 请求；失败退回静态表并标「约」。
+// 视频仍用静态表。参数没变不重复请求（按请求体签名去重），新一轮变化会中止在途请求。
+const remoteEstimate = ref<ICanvasEstimateResp | null>(null)
+const estimateFailed = ref(false)
+let estimateTimer: ReturnType<typeof setTimeout> | undefined
+let estimateAbort: AbortController | undefined
+let estimateSig = ''
+
+/** 提示词长度：优先取连到 prompt 口的上游文本，其次节点自己的提示词（promptSource 在下方声明，运行时才取值） */
+function promptLength(): number {
+  const upstream = promptSource.value?.data as { text?: string } | undefined
+  const text = upstream?.text ?? modelNode.value?.prompt ?? ''
+  return [...text].length
+}
+
+const estimateReq = computed(() => {
+  const node = modelNode.value
+  const model = currentModel.value
+  if (!node || isVideoModel.value || !model) return null
+  const countCap = Math.max(1, model.countMax ?? 4)
+  return {
+    model_id: model.modelId || undefined,
+    model: model.model || undefined,
+    size: node.size || undefined,
+    count: Math.min(countCap, Math.max(1, Math.round(Number(node.count) || 1))),
+    // 模型没有画质能力时不传，避免估价按一个无效画质算
+    quality: model.capabilities.quality ? node.quality || undefined : undefined,
+    ref_images: references.value.filter((item) => item.group !== 'video').length,
+    prompt_chars: promptLength(),
+  }
+})
+
+function fetchEstimate() {
+  const req = estimateReq.value
+  if (!req) return
+  const sig = JSON.stringify(req)
+  if (sig === estimateSig) return
+  estimateSig = sig
+  estimateAbort?.abort()
+  const abort = new AbortController()
+  estimateAbort = abort
+  void canvasEstimate(req, abort.signal)
+    .then((res) => {
+      if (abort.signal.aborted) return
+      const data = res.data
+      if (data?.available && Number(data.points) > 0) {
+        remoteEstimate.value = data
+        estimateFailed.value = false
+        rememberSettleMode(req.model_id ?? req.model ?? '', data.settle_mode)
+      } else {
+        remoteEstimate.value = null
+        estimateFailed.value = true
+      }
+    })
+    .catch(() => {
+      if (abort.signal.aborted) return
+      remoteEstimate.value = null
+      estimateFailed.value = true
+    })
+}
+
+watch(
+  estimateReq,
+  (req) => {
+    clearTimeout(estimateTimer)
+    if (!req) {
+      estimateAbort?.abort()
+      estimateSig = ''
+      remoteEstimate.value = null
+      return
+    }
+    estimateTimer = setTimeout(fetchEstimate, 400)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => {
+  clearTimeout(estimateTimer)
+  estimateAbort?.abort()
+})
+
+/** 预计消耗文案：远端 > 静态兜底（约 X 点）；估价失败 / 不可用都不影响运行 */
+const estimateText = computed(() => {
+  const remote = remoteEstimate.value
+  if (remote && !estimateFailed.value) {
+    return remote.settle_mode === 'actual_cost'
+      ? `预计最多 ${remote.points} 点 · 按实际用量结算，通常更少`
+      : `${remote.points} 点`
+  }
+  if (staticEstimatePoints.value !== null) return `约 ${staticEstimatePoints.value} 点`
+  return ''
 })
 
 // ---- 参考排序（拖动缩略图，同口内重排 → 写回连线 data.order）----
@@ -329,7 +422,7 @@ function cancel() {
 const footHint = computed(() => {
   if (modelNode.value) {
     const refs = `参考图上限 ${modelNode.value.maxImageRefs ?? 5} 张 · 参考视频 ${currentModel.value?.maxReferenceVideos ?? 0} 个`
-    return priceHint.value && estimatePoints.value === null ? `${refs} · ${priceHint.value}` : refs
+    return priceHint.value && estimateText.value === '' ? `${refs} · ${priceHint.value}` : refs
   }
   if (props.node.type === 'module') return '分组框仅作视觉分组，不参与连线'
   return ''
@@ -582,10 +675,9 @@ const footHint = computed(() => {
 
         <!-- 比例 / 分辨率 / 数量 / 时长 / 声音已上卡（ModelParamFields），控制台不再重复，卡上是唯一入口 -->
         <!-- 预计消耗（单独一行）：服务端以实际扣点为准 -->
-        <div v-if="estimatePoints !== null" class="flex items-baseline gap-6px mt-8px text-muted text-11px">
+        <div v-if="estimateText" class="flex items-baseline gap-6px mt-8px text-muted text-11px" data-estimate>
           <span>预计消耗</span>
-          <b class="text-ink text-13px font-600 tabular-nums">{{ estimatePoints }}</b>
-          <span>点 · 按当前{{ isVideoModel ? '时长' : '张数' }}估算</span>
+          <b class="text-ink text-12px font-600 tabular-nums">{{ estimateText }}</b>
         </div>
       </template>
 

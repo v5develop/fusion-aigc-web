@@ -455,8 +455,21 @@ export function post<T = any>(
 }
 
 /** 静默 POST：业务失败不弹全局 toast（调用方自己就地展示错误） */
-export function postQuiet<T = any>(url: string, data: any, headers?: any): Promise<ApiResponse<T>> {
-  return service.request({ method: 'post', url, data, headers, silent: true } as AxiosRequestConfig)
+export function postQuiet<T = any>(
+  url: string,
+  data: any,
+  headers?: any,
+  /** 可选：中途放弃（如防抖估价被新一轮取代） */
+  signal?: AbortSignal,
+): Promise<ApiResponse<T>> {
+  return service.request({
+    method: 'post',
+    url,
+    data,
+    headers,
+    silent: true,
+    ...(signal ? { signal } : {}),
+  } as AxiosRequestConfig)
 }
 
 export function get<T = any>(url: string, params?: any, headers?: any): Promise<ApiResponse<T>> {

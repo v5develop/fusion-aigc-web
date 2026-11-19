@@ -4,7 +4,7 @@
  * <p>类型与字段对齐 fusion_aigc_go gateway.api 的 canvas 段；前端字段一律 camelCase（Java 原生 camelCase；Go 网关请求体 / query / 响应均兼容 camelCase），
  * 契约见 fusion_aigc_go/docs/api/api-canvas.md。
  */
-import { post, put, toApiError, get, del } from './index.ts'
+import { post, postQuiet, put, toApiError, get, del } from './index.ts'
 import { isCanvasMock } from './canvas-mock-switch.ts'
 
 const PREFIX = '/api/v1/canvas'
@@ -290,6 +290,39 @@ export interface ICanvasCatalog {
 export async function canvasCatalog() {
   if (isCanvasMock()) return (await import('./canvas-mock.ts')).mockCatalog()
   return get<ICanvasCatalog>(`${PREFIX}/catalog`)
+}
+
+/** 估价请求（Go POST /api/v1/canvas/estimate，与冻结同一 Quote；模型三选一） */
+export interface ICanvasEstimateReq {
+  model?: string
+  model_id?: string
+  model_group?: string
+  size?: string
+  count?: number
+  quality?: string
+  ref_images?: number
+  prompt_chars?: number
+  ref_image_sizes?: { w: number; h: number }[]
+}
+
+export interface ICanvasEstimateResp {
+  available: boolean
+  reason?: string
+  /** 预计（上限）点数 */
+  points: number
+  cap_points?: number
+  /** actual_cost = 按实际用量结算（点数为上限）；fixed = 固定价 */
+  settle_mode: 'actual_cost' | 'fixed'
+  currency?: string
+  billing_mode?: string
+  breakdown?: Record<string, unknown>
+  note?: string
+}
+
+/** 画布生图估价（静默：失败由调用方退回静态表；可中止） */
+export async function canvasEstimate(data: ICanvasEstimateReq, signal?: AbortSignal) {
+  if (isCanvasMock()) return (await import('./canvas-mock.ts')).mockEstimate(data)
+  return postQuiet<ICanvasEstimateResp>(`${PREFIX}/estimate`, data, undefined, signal)
 }
 
 /** 执行单个节点；幂等键 = run_id，必须与 body.runId 一致 */

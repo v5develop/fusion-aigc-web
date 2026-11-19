@@ -121,12 +121,13 @@ const LABEL = 'block mb-2px text-muted text-11px leading-16px'
       />
     </div>
     <div v-if="capabilities.quality" class="min-w-0">
-      <span :class="LABEL">质量</span>
+      <span :class="LABEL" title="画质越高越清晰，点数越多">质量</span>
       <n-select
         :value="data.quality"
         size="small"
         :disabled="disabled"
         :options="qualityOptions"
+        title="画质越高越清晰，点数越多"
         :consistent-menu-width="false"
         @update:value="(value: string) => patch({ quality: value })"
       />

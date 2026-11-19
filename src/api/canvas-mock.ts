@@ -239,6 +239,27 @@ export async function mockCatalog(): Promise<ApiResponse<ICanvasCatalog>> {
   return ok({ imageModels: [model], video_models: [], tools: [] })
 }
 
+/** 估价 mock：高 > 中 > 低，按尺寸 / 张数 / 参考图线性放大；文案走 actual_cost 分支 */
+export async function mockEstimate(req: {
+  size?: string
+  count?: number
+  quality?: string
+  ref_images?: number
+}): Promise<ApiResponse<import('./canvas-home.ts').ICanvasEstimateResp>> {
+  await wait(80)
+  const q = { low: 1, medium: 2, high: 4 }[req.quality ?? 'high'] ?? 2
+  const sizeK = req.size === '2K' ? 1.6 : 1
+  const points = Math.ceil((4 * q * sizeK + (req.ref_images ?? 0) * 1.5) * Math.max(1, req.count ?? 1))
+  return ok({
+    available: true,
+    points,
+    cap_points: points,
+    settle_mode: 'actual_cost',
+    currency: 'points',
+    billing_mode: 'ACTUAL_COST',
+  })
+}
+
 // ---------------- 事件流 ----------------
 
 export function mockEventStream(id: string, handlers: ICanvasEventStreamHandlers): Promise<void> {
@@ -254,7 +275,8 @@ export function mockEventStream(id: string, handlers: ICanvasEventStreamHandlers
       set.delete(push)
       enders.delete(end)
       clearInterval(timer)
-      if (kind === 'gone') handlers.onGone?.(code, code === 'SESSION_EXPIRED' ? '登录已失效，请重新登录' : '画布已删除或不再属于你')
+      if (kind === 'gone')
+        handlers.onGone?.(code, code === 'SESSION_EXPIRED' ? '登录已失效，请重新登录' : '画布已删除或不再属于你')
       else handlers.onBye?.(code, code === 'RECONNECT' ? 'reconnect' : '实时连接暂不可用，稍后自动重连')
       _resolve()
     }

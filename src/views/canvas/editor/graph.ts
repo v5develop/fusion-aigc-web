@@ -503,7 +503,8 @@ export function makeModelNode(kind: 'image' | 'video', position?: { x: number; y
       capabilities: kind === 'video' ? { duration: true, sound: true } : { count: true },
       ratio: kind === 'video' ? '16:9' : '1:1',
       size: kind === 'video' ? '720p' : '1K',
-      quality: 'medium',
+      // 默认高画质；模型不支持画质时由 applyModelToNode 的能力开关决定是否生效
+      quality: 'high',
       duration: kind === 'video' ? '4s' : undefined,
       sound: kind === 'video' ? true : undefined,
       count: 1,
@@ -551,9 +552,9 @@ export function applyModelToNode(
     // 换模型：数量不能超过新模型上限（例如 Nano Banana 2.1 只能 1 张）
     data.count = Math.min(Math.max(1, Math.round(Number(data.count) || 1)), Math.max(1, model.countMax || 1))
   }
-  // 质量：当前值新模型不支持就回到它的第一档（模型没声明质量能力时不动）
+  // 画质：当前值新模型支持就保留，否则优先 high，再退到第一档（模型没声明质量能力时不动）
   if (model.capabilities.quality && model.qualities?.length && !model.qualities.includes(data.quality ?? '')) {
-    data.quality = model.qualities[0]
+    data.quality = model.qualities.includes('high') ? 'high' : model.qualities[0]
   }
   data.subtitle = `${model.label || modelLabelOf(model.model)} · ${isVideo ? (data.duration ?? '4s') : (data.size ?? '1K')}`
 }

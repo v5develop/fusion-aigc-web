@@ -127,6 +127,11 @@ const submittingNodes = new Set<string>()
 const cancelRequested = new Set<string>()
 /** 本会话里提交时真的冻结了点数的 run（request_id → 预扣点数）：失败 / 取消时只对这些提示「将退回」 */
 const chargedRuns = new Map<string, number>()
+/** 估价接口返回的结算口径（模型 -> actual_cost / fixed），提交后提示「多退少补」用 */
+const settleModes = new Map<string, string>()
+export function rememberSettleMode(model: string, mode: string): void {
+  if (model) settleModes.set(model, mode)
+}
 /** 批量执行中的节点：单节点的预扣 / 退回提示收进批量进度条，不逐条弹 */
 const quietNodes = new Set<string>()
 
@@ -1732,7 +1737,11 @@ async function runNode(nodeId: string, reuse?: ICanvasRunReq, opts?: { quiet?: b
       const credits = Number(res.data.credits) || 0
       if (credits > 0) {
         chargedRuns.set(requestId, credits)
-        if (!quietNodes.has(nodeId)) message.info(`已预扣 ${credits} 点`)
+        if (!quietNodes.has(nodeId)) {
+          const actual =
+            settleModes.get(req.modelId ?? '') === 'actual_cost' || settleModes.get(req.model ?? '') === 'actual_cost'
+          message.info(actual ? `已预扣 ${credits} 点，按实际用量结算，多退少补` : `已预扣 ${credits} 点`)
+        }
       }
       startPolling(current)
     } catch (err) {
