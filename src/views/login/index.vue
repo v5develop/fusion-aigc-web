@@ -30,6 +30,7 @@ const CAPABILITIES = [
 ]
 import { sendSms, smsLogin, reportDevice, getAuthToken } from '@/api/union'
 import { adoptSession } from '@/utils/auth-session'
+import { useUserInfoStore } from '@/stores/user-info.ts'
 
 const router = useRouter()
 
@@ -110,6 +111,9 @@ async function handleLogin() {
         window.location.reload()
         return
       }
+      // 用户信息 store 可能在登录前就建好了（那时没有 token，取数直接跳过），不重载页面就不会再取：
+      // 这里主动刷新一次，左下角头像 / 账号 / 点数登录后立即出现（智能体页登录弹窗同此处理）
+      void useUserInfoStore().updateUserInfo()
       router.replace(redirect)
     } else {
       errorMessage.value = fusionRes.msg || '登录失败'
