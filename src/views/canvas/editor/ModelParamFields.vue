@@ -53,13 +53,26 @@ function patch(values: Record<string, unknown>) {
   store.updateNodeData(props.nodeId, values)
 }
 
+/**
+ * 列数：图片的比例 / 分辨率 / 质量 / 数量排在同一行（有几项排几列，最多 4），不让「质量」单独掉到第二行像错位；
+ * 视频项多（时长 / 声音），保持 3 列两行。
+ */
+const columns = computed(() => {
+  if (isVideo.value) return 3
+  const cells = 2 + (capabilities.value.quality ? 1 : 0) + (capabilities.value.count ? 1 : 0)
+  return Math.min(4, cells)
+})
+const GRID_COLS: Record<number, string> = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' }
+const SPAN_ALL: Record<number, string> = { 2: 'col-span-2', 3: 'col-span-3', 4: 'col-span-4' }
+
 /** 小标签：11px muted（与控制台同款，读屏也靠它命名） */
 const LABEL = 'block mb-2px text-muted text-11px leading-16px'
 </script>
 
 <template>
   <div
-    class="grid grid-cols-3 gap-x-6px gap-y-6px nodrag nopan nowheel"
+    class="grid gap-x-6px gap-y-6px nodrag nopan nowheel"
+    :class="GRID_COLS[columns]"
     role="group"
     aria-label="生成参数"
     data-node-params
@@ -67,7 +80,7 @@ const LABEL = 'block mb-2px text-muted text-11px leading-16px'
     @dblclick.stop
   >
     <!-- 模型行：整行宽，排在比例 / 分辨率之上（选择逻辑与控制台共用 store.changeModel） -->
-    <div class="col-span-3 min-w-0">
+    <div class="min-w-0" :class="SPAN_ALL[columns]">
       <ModelPickerRow :node-id="nodeId" :data="data" :disabled="disabled" />
     </div>
     <div class="min-w-0">
@@ -103,10 +116,24 @@ const LABEL = 'block mb-2px text-muted text-11px leading-16px'
         @update:value="(value: string) => patch({ duration: value })"
       />
     </div>
-    <!-- 数量：图片排第三格，视频排第二行；上限为 1 时没有可选项，直接写「固定 1 张」 -->
+    <div v-if="capabilities.quality" class="min-w-0">
+      <span :class="LABEL" title="画质越高越清晰，点数越多">质量</span>
+      <n-select
+        :value="data.quality"
+        size="small"
+        :disabled="disabled"
+        :options="qualityOptions"
+        title="画质越高越清晰，点数越多"
+        :consistent-menu-width="false"
+        @update:value="(value: string) => patch({ quality: value })"
+      />
+    </div>
+    <!-- 数量：图片排在质量之后（同一行），视频排第二行；上限为 1 时没有可选项，直接写「固定 1 张」 -->
     <div v-if="capabilities.count" class="min-w-0">
-      <span :class="LABEL">数量{{ countMax > 1 ? `（≤${countMax}）` : '' }}</span>
-      <div v-if="countMax <= 1" class="flex h-28px items-center text-ink-2 text-12px">固定 1 张</div>
+      <span :class="LABEL" class="truncate" :title="countMax > 1 ? `最多 ${countMax} 张` : undefined"
+        >数量{{ countMax > 1 ? `（≤${countMax}）` : '' }}</span
+      >
+      <div v-if="countMax <= 1" class="flex h-28px items-center whitespace-nowrap text-ink-2 text-12px">固定 1 张</div>
       <n-input-number
         v-else
         :value="shownCount"
@@ -118,18 +145,6 @@ const LABEL = 'block mb-2px text-muted text-11px leading-16px'
         :disabled="disabled"
         :input-props="{ 'aria-label': '数量' }"
         @update:value="(value: number | null) => patch({ count: value ?? 1 })"
-      />
-    </div>
-    <div v-if="capabilities.quality" class="min-w-0">
-      <span :class="LABEL" title="画质越高越清晰，点数越多">质量</span>
-      <n-select
-        :value="data.quality"
-        size="small"
-        :disabled="disabled"
-        :options="qualityOptions"
-        title="画质越高越清晰，点数越多"
-        :consistent-menu-width="false"
-        @update:value="(value: string) => patch({ quality: value })"
       />
     </div>
     <div v-if="isVideo && capabilities.sound" class="min-w-0">
