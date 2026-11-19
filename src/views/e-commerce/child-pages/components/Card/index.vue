@@ -3,6 +3,7 @@ import { computed, inject, ref, watch, type Ref } from 'vue'
 import { downloadImage } from '@/utils/download'
 import { withWatermark } from '@/utils/oss'
 import { isTimeout, isVideoUrl } from '@/utils/utils'
+import SaveJpgButton from '@/components/SaveJpgButton/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
 import { ColorFixItem, ColorFixPill } from '@/components/ColorFix'
@@ -141,6 +142,16 @@ const colorFixOn = computed(() => mediaType.value === 'image' && !!data.resultUr
           <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" />
         </svg>
       </IconButton>
+
+      <!-- 另存为 JPG：排在单图下载钮左边（只对图片，原图地址） -->
+      <SaveJpgButton
+        v-if="mediaType === 'image' && data.resultUrl && data.status === 2 && !data.blocked"
+        :url="data.resultUrl"
+        :name="name || undefined"
+        variant="overlay"
+        reveal
+        class="!absolute right-46px bottom-6px"
+      />
 
       <!-- 校色入口：左上毛玻璃胶囊，悬停出现、触屏 / 键盘聚焦常显；校色过的常显「已校色」。点开 = 结果列上方的校色舞台 -->
       <ColorFixPill

@@ -11,11 +11,14 @@
  * - 下载原件用 <a download>，跨域时浏览器会忽略 download 直接导航，所以统一 target=_blank 兜底成新标签页打开。
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { canSaveAsJpg, saveImageAsJpg } from '@/utils/download.ts'
 
 export interface LightboxItem {
   url: string
   type?: 'image' | 'video'
   name?: string
+  /** 原图地址（不带水印）；「另存为 JPG」优先用它，缺省回退 url */
+  original?: string
 }
 
 const props = defineProps<{
@@ -58,6 +61,19 @@ const imgStyle = computed(() => ({
   ...(props.pannable && !isVideo.value && scale.value > 1 ? { cursor: panning.value ? 'grabbing' : 'grab' } : {}),
 }))
 const downloadName = computed(() => item.value?.name || item.value?.url.split('?')[0]?.split('/').pop() || 'download')
+
+/** 另存为 JPG：只对静态图片；取原图（original），不用展示用的水印副本 */
+const jpgUrl = computed(() => (isVideo.value ? '' : item.value?.original || item.value?.url || ''))
+const savingJpg = ref(false)
+async function saveJpg() {
+  if (savingJpg.value || !jpgUrl.value) return
+  savingJpg.value = true
+  try {
+    await saveImageAsJpg(jpgUrl.value, downloadName.value)
+  } finally {
+    savingJpg.value = false
+  }
+}
 
 function close() {
   emit('update:show', false)
@@ -302,6 +318,20 @@ const ICONS = {
         >
           <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="ICONS.download" /></svg>
         </a>
+        <button
+          v-if="canSaveAsJpg(jpgUrl)"
+          type="button"
+          class="mlb-tool"
+          aria-label="另存为 JPG"
+          title="另存为 JPG"
+          :disabled="savingJpg"
+          @click="saveJpg"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5" />
+            <text x="12" y="17" text-anchor="middle" font-size="6.5" font-weight="700" fill="currentColor" stroke="none" font-family="system-ui, sans-serif">JPG</text>
+          </svg>
+        </button>
         <button ref="closeBtn" type="button" class="mlb-tool" aria-label="关闭" title="关闭（Esc）" @click="close">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="ICONS.close" /></svg>
         </button>

@@ -18,7 +18,7 @@ import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
-import { downloadImage, downloadImagesAsZip, getDownloadableUrls, zipNameOf } from '@/utils/download'
+import { canSaveAsJpg, saveImageAsJpg, downloadImage, downloadImagesAsZip, getDownloadableUrls, zipNameOf } from '@/utils/download'
 import { ossResize, withWatermark } from '@/utils/oss'
 import { mediaAspectRatio } from '@/utils/ratio'
 import { isTimeout, displayContents } from '@/utils/utils'
@@ -235,6 +235,17 @@ const onDownloadSingle = async (url: string) => {
 }
 
 // 整组下载中的任务 id 集合（打包需先抓全部图片，耗时较长，防重复点击）
+const onSaveJpg = async (url: string) => {
+  const key = 'jpg:' + url
+  if (!url || downloadingSet.has(key)) return
+  downloadingSet.add(key)
+  try {
+    await saveImageAsJpg(url)
+  } finally {
+    downloadingSet.delete(key)
+  }
+}
+
 const downloadingAllSet = reactive(new Set<string>())
 const onDownloadAll = async (item: any) => {
   const key = item?.taskId
@@ -365,6 +376,29 @@ const generateAgainSingle = async (item: any, key: string) => {
                     >
                       <span v-if="downloadingSet.has(jtem.resultUrl)" class="single-action-spinner"></span>
                       <img v-else :src="downloadSingleIcon" width="24" height="24" alt="下载" />
+                    </button>
+                    <button
+                      v-if="jtem.status === 2 && canSaveAsJpg(jtem.resultUrl)"
+                      class="single-action-btn"
+                      title="另存为 JPG"
+                      :disabled="downloadingSet.has('jpg:' + jtem.resultUrl)"
+                      @click.stop="onSaveJpg(jtem.resultUrl)"
+                    >
+                      <span v-if="downloadingSet.has('jpg:' + jtem.resultUrl)" class="single-action-spinner"></span>
+                      <svg
+                        v-else
+                        class="single-action-jpg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-label="另存为 JPG"
+                      >
+                        <rect x="2.5" y="4.5" width="19" height="15" rx="3" />
+                        <text x="12" y="15.2" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor" stroke="none" font-family="system-ui, sans-serif">JPG</text>
+                      </svg>
                     </button>
                     <template v-if="!utils.isFromAigcChat(item)">
                       <span class="single-action-divider"></span>

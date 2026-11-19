@@ -8,6 +8,7 @@
 import { computed, ref } from 'vue'
 import { NCheckbox } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
+import SaveJpgButton from '@/components/SaveJpgButton/index.vue'
 import type { IAssetLibAsset } from '@/api/asset-library.ts'
 import { downloadName } from '../ui.ts'
 import { ossResize, thumbFallback } from '@/utils/oss'
@@ -189,6 +190,16 @@ function onCard() {
           <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />
         </svg>
       </IconButton>
+
+      <!-- 另存为 JPG：图片素材才有，排在下载钮左边 -->
+      <SaveJpgButton
+        v-if="downloadHref && !selecting && !isVideoAsset"
+        :url="downloadHref"
+        :name="asset.title"
+        variant="overlay"
+        reveal
+        class="absolute right-40px bottom-4px"
+      />
 
       <IconButton
         v-if="downloadHref && !selecting"

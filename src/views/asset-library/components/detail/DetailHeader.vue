@@ -6,6 +6,7 @@
  */
 import { NDropdown, NInput } from 'naive-ui'
 import IconButton from '@/components/IconButton/index.vue'
+import SaveJpgButton from '@/components/SaveJpgButton/index.vue'
 import { downloadName } from '../../ui.ts'
 import { useAssetDetail } from './context.ts'
 
@@ -132,6 +133,12 @@ function onPlainDownload() {
           <span class="truncate">{{ d.openingCanvas.value ? '正在创建…' : '用于画布' }}</span>
         </button>
       </template>
+      <SaveJpgButton
+        v-if="d.downloadHref.value && d.asset.value?.media !== 'video'"
+        :url="d.downloadHref.value"
+        :name="d.asset.value?.title"
+        size="lg"
+      />
       <NDropdown v-if="d.moreMenu.value.length" trigger="click" placement="bottom-end" :options="d.moreMenu.value" @select="d.onMoreMenu">
         <IconButton label="更多操作" size="lg">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

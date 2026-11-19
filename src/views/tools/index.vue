@@ -29,6 +29,7 @@ import {
 import { useUserInfoStore } from '@/stores/user-info'
 import { corsAttr, markCorsBlocked } from '@/utils/colorfix.ts'
 import IconButton from '@/components/IconButton/index.vue'
+import SaveJpgButton from '@/components/SaveJpgButton/index.vue'
 import DirectoryPanel from '@/components/DirectoryPanel/index.vue'
 import { useDirCollapsedPref } from '@/utils/dirCollapsedPrefs'
 import type { DirectoryGroup } from '@/components/DirectoryPanel/types'
@@ -3607,6 +3608,11 @@ const plateBtnCls =
                         </IconButton>
                       </template>
                       <template #secondary>
+                        <SaveJpgButton
+                          v-if="outputsOf(item).images[0]"
+                          :url="outputsOf(item).images[0]"
+                          size="sm"
+                        />
                         <IconButton label="删除" size="sm" variant="danger" @click="confirmDelete(item)">
                           <svg
                             viewBox="0 0 24 24"

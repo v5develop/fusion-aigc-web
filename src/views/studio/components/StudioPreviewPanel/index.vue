@@ -58,6 +58,7 @@ import {
 } from '@/components/ColorFix/index.ts'
 import type { StudioBatchDetail, StudioTask } from '@/api/studio-types.ts'
 import IconButton from '@/components/IconButton/index.vue'
+import SaveJpgButton from '@/components/SaveJpgButton/index.vue'
 import LibraryRetryButton from '@/components/LibraryRetryButton/index.vue'
 import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import type { LightboxItem } from '@/components/MediaLightbox/index.vue'
@@ -930,6 +931,8 @@ const emptyCls =
                 <path d="M6 5h12M8.5 2.5h7" />
               </svg>
             </IconButton>
+            <!-- 另存为 JPG：校色态下载的是烘好的 PNG，另存为 JPG 取原图，这里只在非校色态出现，避免语义混淆 -->
+            <SaveJpgButton v-if="!cfOn && selectedSuccess?.resultUrl" :url="selectedSuccess.resultUrl" :name="fileTitle" />
             <IconButton :label="cfOn ? '下载（校色后）' : '下载'" @click="download">
               <svg
                 viewBox="0 0 24 24"

@@ -10,6 +10,8 @@
  * 无这些限制，是唯一能在所有环境「只选一次位置」的方案。
  */
 import JSZip from 'jszip'
+import { createDiscreteApi } from 'naive-ui'
+import { discreteConfigProviderProps } from '@/theme/naive'
 
 /**
  * 取一组任务里可下载的 URL（仅生成成功 status===2 且有 resultUrl 的）。
@@ -148,5 +150,177 @@ export async function downloadImagesAsZip(urls: string[], zipName = zipNameByNow
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
   } catch {
     await downloadImagesSequentially(list, zipName)
+  }
+}
+
+
+// ---------------- 另存为 JPG ----------------
+
+/** 不是静态位图的扩展名（视频 / 动图 / 矢量）：不提供「另存为 JPG」 */
+const NON_JPG_CONVERTIBLE = /\.(mp4|mov|webm|m4v|gif|svg)$/i
+
+/** 这个地址能否提供「另存为 JPG」：只认静态图片，视频 / 动图 / SVG 不出入口 */
+export function canSaveAsJpg(url?: string | null): boolean {
+  if (!url) return false
+  try {
+    return !NON_JPG_CONVERTIBLE.test(new URL(url, 'http://x').pathname)
+  } catch {
+    return false
+  }
+}
+
+/** 文件名去掉已有扩展名并补 .jpg；空名 / 只有扩展名时给默认名 */
+export function jpgFileName(filename: string | undefined, fallbackBase = `AI素材_${Date.now()}`): string {
+  const base = (filename ?? '').trim().replace(/\.[A-Za-z0-9]{1,5}$/, '').trim()
+  return `${base || fallbackBase}.jpg`
+}
+
+/** 解码后画布像素上限：各浏览器单画布约 1.6 亿像素（Safari 更低），取保守值，超出则等比缩小（绝不放大） */
+const MAX_CANVAS_PIXELS = 100_000_000
+const MAX_CANVAS_SIDE = 16384
+
+/** 解码为位图：优先 createImageBitmap，失败（格式 / 环境不支持）退回 <img> + objectURL */
+async function decodeImage(blob: Blob): Promise<{ source: CanvasImageSource; width: number; height: number; release: () => void }> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bmp = await createImageBitmap(blob)
+      return { source: bmp, width: bmp.width, height: bmp.height, release: () => bmp.close() }
+    } catch {
+      // 落到 Image 兜底
+    }
+  }
+  const objectUrl = URL.createObjectURL(blob)
+  try {
+    const img = new Image()
+    img.src = objectUrl
+    await img.decode()
+    return { source: img, width: img.naturalWidth, height: img.naturalHeight, release: () => URL.revokeObjectURL(objectUrl) }
+  } catch (err) {
+    URL.revokeObjectURL(objectUrl)
+    throw err
+  }
+}
+
+/**
+ * 把图片 Blob 转成 JPEG Blob。已是 JPEG 原样返回（不重新压缩，避免二次画质损失）。
+ * 透明区域先铺 background（默认白）再绘制，否则 JPEG 无 alpha 会变黑。
+ * 过大的图等比缩小到画布上限内；解码 / 画布失败抛错，由调用方提示。
+ */
+export async function convertBlobToJpg(blob: Blob, opts: { quality?: number; background?: string } = {}): Promise<Blob> {
+  if (blob.type === 'image/jpeg') return blob
+  const { quality = 0.92, background = '#ffffff' } = opts
+  const dec = await decodeImage(blob)
+  try {
+    let { width, height } = dec
+    if (!width || !height) throw new Error('empty image')
+    const k = Math.min(1, MAX_CANVAS_SIDE / Math.max(width, height), Math.sqrt(MAX_CANVAS_PIXELS / (width * height)))
+    if (k < 1) {
+      width = Math.max(1, Math.floor(width * k))
+      height = Math.max(1, Math.floor(height * k))
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('no 2d context')
+    ctx.fillStyle = background
+    ctx.fillRect(0, 0, width, height)
+    ctx.drawImage(dec.source, 0, 0, width, height)
+    const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+    if (!out) throw new Error('toBlob failed')
+    return out
+  } finally {
+    dec.release()
+  }
+}
+
+/** 提示用的 message：懒创建一次复用（每次调用都 createDiscreteApi 会反复挂载新的提示容器） */
+let discreteMessage: ReturnType<typeof createDiscreteApi>['message'] | null = null
+function toast() {
+  discreteMessage ??= createDiscreteApi(['message'], { configProviderProps: discreteConfigProviderProps }).message
+  return discreteMessage
+}
+
+type SaveHandle = { createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }>; remove?: () => Promise<void> }
+
+/**
+ * 原生「另存为」：必须在点击后的用户激活窗口内（约 5 秒）调起，所以在抓图 / 转换之前先拿文件句柄。
+ * 返回 null = 浏览器不支持或调起失败（退回普通下载）；'cancel' = 用户取消。
+ */
+async function pickSaveHandle(name: string): Promise<SaveHandle | null | 'cancel'> {
+  const picker = (window as any).showSaveFilePicker as undefined | ((o: any) => Promise<SaveHandle>)
+  if (!picker) return null
+  try {
+    return await picker({
+      suggestedName: name,
+      types: [{ description: 'JPEG 图片', accept: { 'image/jpeg': ['.jpg', '.jpeg'] } }],
+    })
+  } catch (err: any) {
+    if (err?.name === 'AbortError') return 'cancel'
+    return null // 非安全上下文 / 被策略拒绝等：退回普通下载，别让用户拿不到图
+  }
+}
+
+/** 写入失败或转换失败时删掉刚建的空文件（remove 是较新的 API，没有就算了） */
+async function discardHandle(handle: SaveHandle | null): Promise<void> {
+  try {
+    await handle?.remove?.()
+  } catch {
+    // 删不掉就留着空文件，提示里已说明失败
+  }
+}
+
+function anchorSave(blob: Blob, name: string) {
+  const objectUrl = URL.createObjectURL(blob)
+  triggerAnchorDownload(objectUrl, name)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
+}
+
+/**
+ * 另存为 JPG：先调起原生「另存为」拿到保存位置（保住用户激活）→ 抓【原图】→ 转 JPEG（透明变白底）→ 写入；
+ * 浏览器不支持另存为时走普通下载。与 downloadImage 同一条规则：只取原图，绝不拼 x-oss-process 水印变体。
+ * 抓取失败（多为 OSS 未开 CORS）：提示并按原图新开标签页，用户可右键另存；
+ * 解码 / 画布失败（图过大、格式不支持）：明确报错，不静默；两种失败都删掉刚建的空文件。
+ */
+export async function saveImageAsJpg(
+  url: string,
+  filename?: string,
+  opts: { quality?: number; background?: string } = {},
+): Promise<void> {
+  if (!url) return
+  const name = jpgFileName(filename)
+  const picked = await pickSaveHandle(name)
+  if (picked === 'cancel') return
+  const handle = picked
+  let blob: Blob
+  try {
+    const res = await fetch(url, { mode: 'cors' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    blob = await res.blob()
+  } catch {
+    await discardHandle(handle)
+    toast().warning('这张图暂时不能转换，已按原图打开，可右键另存')
+    triggerAnchorDownload(url, filename, true)
+    return
+  }
+  let jpg: Blob
+  try {
+    jpg = await convertBlobToJpg(blob, opts)
+  } catch {
+    await discardHandle(handle)
+    toast().error('这张图转换 JPG 失败（可能尺寸过大或格式不支持），请改用「下载」保存原图')
+    return
+  }
+  if (!handle) {
+    anchorSave(jpg, name)
+    return
+  }
+  try {
+    const w = await handle.createWritable()
+    await w.write(jpg)
+    await w.close()
+  } catch {
+    await discardHandle(handle)
+    anchorSave(jpg, name) // 写入被拒（权限 / 磁盘）：退回普通下载
   }
 }

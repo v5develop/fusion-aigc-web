@@ -19,6 +19,7 @@ import { NDrawer, NDrawerContent, useMessage } from 'naive-ui'
 import { getQuiet, toApiError } from '@/api/index.ts'
 import type { ITaskCenterItem, ITaskCenterParams, ITaskCenterTask } from '@/api/task-center.ts'
 import IconButton from '@/components/IconButton/index.vue'
+import SaveJpgButton from '@/components/SaveJpgButton/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import MediaLightbox, { type LightboxItem } from '@/components/MediaLightbox/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
@@ -341,6 +342,7 @@ const lightboxItems = computed<LightboxItem[]>(() =>
   results.value.map((r, i) => ({
     url: r.display,
     type: r.video ? 'video' : 'image',
+    original: r.original,
     name: `${view.value?.typeName || '作品'}_${i + 1}`,
   })),
 )
@@ -660,6 +662,7 @@ function goLibrary() {
                       <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
                     </svg>
                   </IconButton>
+                  <SaveJpgButton v-if="!r.video" :url="r.original" :name="`${view?.typeName || '作品'}_${i + 1}`" size="sm" variant="quiet" :disabled="!!downloading" />
                   <IconButton
                     size="sm"
                     variant="quiet"
