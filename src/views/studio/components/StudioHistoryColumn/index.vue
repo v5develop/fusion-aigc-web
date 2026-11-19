@@ -17,7 +17,8 @@ import MediaLightbox from '@/components/MediaLightbox/index.vue'
 import CreationHistoryHeader from '@/components/Creation/CreationHistoryHeader.vue'
 import { studioCancelBatch, studioDeleteBatch } from '@/api/studio.ts'
 import type { StudioBatchDetail } from '@/api/studio-types.ts'
-import { downloadImagesAsZip } from '@/utils/download.ts'
+import { canSaveAsJpg, downloadImagesAsZip } from '@/utils/download.ts'
+import { saveImagesAsJpg } from '@/utils/batchDownload.ts'
 import type { useStudioHistory } from '../../hooks.ts'
 import { parseStudioPayload } from '../../payload.ts'
 import { KIND_LABEL, batchChip, batchProgress, formatTime, isBatchTerminal, isTransientResult } from '../../constants.ts'
@@ -79,6 +80,22 @@ async function download(d: StudioBatchDetail) {
     await downloadImagesAsZip(urls, `${KIND_LABEL[d.batch.kind] ?? '商拍'}_${t || d.batch.id}`)
   } finally {
     downloading.value = null
+  }
+}
+
+/** 全部另存为 JPG：与「下载」同一份结果、同一个包名（后缀 _JPG）；多张才出，单张用详情里的单图入口 */
+const savingJpg = ref<number | null>(null)
+const jpgCount = (d: StudioBatchDetail) => resultsOf(d).filter((u) => canSaveAsJpg(u)).length
+async function saveAllJpg(d: StudioBatchDetail) {
+  const urls = resultsOf(d)
+  if (!urls.length || savingJpg.value !== null) return
+  savingJpg.value = d.batch.id
+  try {
+    const t = formatTime(d.batch.createdAt).replace(/[\s:]/g, '-')
+    const base = `${KIND_LABEL[d.batch.kind] ?? '商拍'}_${t || d.batch.id}`
+    await saveImagesAsJpg(urls.map((src) => ({ src, name: base })), { zipName: base })
+  } finally {
+    savingJpg.value = null
   }
 }
 
@@ -443,6 +460,20 @@ function prevPage() {
                       aria-hidden="true"
                     >
                       <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" />
+                    </svg>
+                  </IconButton>
+                  <IconButton
+                    v-if="jpgCount(d) > 1"
+                    label="全部另存为 JPG"
+                    size="sm"
+                    :loading="savingJpg === d.batch.id"
+                    :disabled="savingJpg !== null"
+                    @click="saveAllJpg(d)"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+                      <path d="M14 3v5h5" />
+                      <text x="12" y="17" text-anchor="middle" font-size="6.5" font-weight="700" fill="currentColor" stroke="none" font-family="system-ui, sans-serif">JPG</text>
                     </svg>
                   </IconButton>
                 </template>

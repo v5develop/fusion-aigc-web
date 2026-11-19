@@ -18,6 +18,7 @@ import * as utils from './utils.ts'
 import SourceImageStack from '@/components/SourceImageStack/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import GenerateLoading from '@/components/GenerateLoading/index.vue'
+import { saveImagesAsJpg } from '@/utils/batchDownload'
 import { canSaveAsJpg, saveImageAsJpg, downloadImage, downloadImagesAsZip, getDownloadableUrls, zipNameOf } from '@/utils/download'
 import { ossResize, withWatermark } from '@/utils/oss'
 import { mediaAspectRatio } from '@/utils/ratio'
@@ -258,6 +259,24 @@ const onDownloadAll = async (item: any) => {
   }
 }
 
+// 整组「全部另存为 JPG」：同一份下载清单，包名同「全部下载」（后缀 _JPG）
+const savingAllJpgSet = reactive(new Set<string>())
+const hasJpgImages = (item: any) => getDownloadableUrls(item).some((u) => canSaveAsJpg(u))
+const onSaveAllJpg = async (item: any) => {
+  const key = item?.taskId
+  if (!key || savingAllJpgSet.has(key)) return
+  savingAllJpgSet.add(key)
+  try {
+    const name = zipNameOf(item)
+    await saveImagesAsJpg(
+      getDownloadableUrls(item).map((src) => ({ src, name })),
+      { zipName: name },
+    )
+  } finally {
+    savingAllJpgSet.delete(key)
+  }
+}
+
 // 单资源卡片：重新生成中的资源 key 集合（用于按钮 loading 动效）
 const regeneratingSet = reactive(new Set<string>())
 // 单张重新生成：沿用原任务入参（提示词/图片/比例/模型），仅生成 1 张
@@ -435,6 +454,14 @@ const generateAgainSingle = async (item: any, key: string) => {
                 >
                   <img :src="downloadAllIcon" class="action-btn__icon" width="16" height="16" alt="全部下载" />
                   <span>全部下载</span>
+                </button>
+                <button
+                  v-if="utils.showDownloadBtn(item) && hasJpgImages(item) && getDownloadableUrls(item).length > 1"
+                  class="action-btn"
+                  :disabled="savingAllJpgSet.has(item.taskId)"
+                  @click="onSaveAllJpg(item)"
+                >
+                  <span>{{ savingAllJpgSet.has(item.taskId) ? '转换中' : '全部另存为 JPG' }}</span>
                 </button>
               </div>
             </div>

@@ -2,7 +2,8 @@
 import { inject, reactive, type Ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import Card from '../Card/index.vue'
-import { downloadImagesAsZip, zipNameOf } from '@/utils/download'
+import { canSaveAsJpg, downloadImagesAsZip, zipNameOf } from '@/utils/download'
+import { saveImagesAsJpg } from '@/utils/batchDownload'
 import { mediaAspectRatio } from '@/utils/ratio'
 import downloadIcon from '@/assets/icons/download-single.svg'
 import { CHECK_PATH } from '../../constants.ts'
@@ -51,6 +52,24 @@ const downloadGroup = async (group: any) => {
     downloadingKeys.delete(key)
   }
 }
+
+// 组级「全部另存为 JPG」：同组同包名（后缀 _JPG），视频 / 动图自动跳过
+const jpgKeys = reactive(new Set<string>())
+const groupHasJpg = (group: any) => group.assets.filter((a: any) => canSaveAsJpg(a.resultUrl)).length > 0
+const saveGroupJpg = async (group: any) => {
+  const key = group.sourceTaskId
+  if (jpgKeys.has(key)) return
+  const name = zipNameOf(group)
+  jpgKeys.add(key)
+  try {
+    await saveImagesAsJpg(
+      group.assets.filter((a: any) => a.resultUrl).map((a: any) => ({ src: a.resultUrl, name })),
+      { zipName: name },
+    )
+  } finally {
+    jpgKeys.delete(key)
+  }
+}
 </script>
 
 <template>
@@ -80,6 +99,14 @@ const downloadGroup = async (group: any) => {
           <span>{{ item.taskTime }}</span>
         </div>
 
+        <button
+          v-if="manageMode && groupHasJpg(item)"
+          class="group-download-btn group-download-btn--ghost"
+          :disabled="jpgKeys.has(item.sourceTaskId)"
+          @click="saveGroupJpg(item)"
+        >
+          <span>{{ jpgKeys.has(item.sourceTaskId) ? '转换中' : '全部另存为 JPG' }}</span>
+        </button>
         <button
           v-if="manageMode"
           class="group-download-btn"
@@ -185,6 +212,14 @@ const downloadGroup = async (group: any) => {
         &:disabled {
           opacity: 0.6;
           cursor: default;
+        }
+        // 次要钮「全部另存为 JPG」：描边款，靠右紧贴主按钮（左侧 margin:auto 吃掉剩余空间）
+        &--ghost {
+          margin-left: auto;
+          margin-right: 8px;
+          background: transparent;
+          border: 1px solid #ccbaff;
+          color: #7c5cff;
         }
       }
     }

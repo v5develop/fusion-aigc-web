@@ -23,7 +23,8 @@ import SaveJpgButton from '@/components/SaveJpgButton/index.vue'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import MediaLightbox, { type LightboxItem } from '@/components/MediaLightbox/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
-import { downloadImage, downloadImagesAsZip } from '@/utils/download'
+import { canSaveAsJpg, downloadImage, downloadImagesAsZip } from '@/utils/download'
+import { saveImagesAsJpg } from '@/utils/batchDownload'
 import { cardThumb, isVideoUrl, ossResize, thumbFallback } from '@/utils/oss'
 import { useTaskEta } from '@/utils/task-eta'
 import { onTaskEvent, onTaskResync, taskStreamLive, type TaskStreamEvent } from '@/utils/taskWatcher'
@@ -373,6 +374,22 @@ async function downloadAll() {
   }
 }
 
+/** 全部另存为 JPG：只转静态图（视频 / 动图跳过） */
+const jpgCount = computed(() => downloadable.value.filter((r) => !r.video && canSaveAsJpg(r.original)).length)
+async function saveAllJpg() {
+  if (downloading.value) return
+  downloading.value = '__jpg'
+  try {
+    const name = view.value?.typeName || '作品'
+    await saveImagesAsJpg(
+      downloadable.value.filter((r) => !r.video).map((r) => ({ src: r.original, name })),
+      { zipName: name },
+    )
+  } finally {
+    downloading.value = ''
+  }
+}
+
 function toCanvasRefs(list: ResultMedia[]): ICanvasAssetRef[] {
   const title = view.value?.typeName || null
   return list.map((r) =>
@@ -585,6 +602,15 @@ function goLibrary() {
                   @click="downloadAll"
                 >
                   {{ downloading === '__all' ? '打包中…' : '全部下载' }}
+                </button>
+                <button
+                  v-if="jpgCount > 1"
+                  type="button"
+                  class="sx-btn-ghost !min-h-32px !px-10px !text-13px"
+                  :disabled="!!downloading"
+                  @click="saveAllJpg"
+                >
+                  {{ downloading === '__jpg' ? '转换中…' : '全部另存为 JPG' }}
                 </button>
                 <button
                   v-if="downloadable.length > 1"

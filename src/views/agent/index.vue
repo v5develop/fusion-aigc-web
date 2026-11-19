@@ -111,6 +111,7 @@ import {
 import { loadRegion } from '@/components/ColorFix/mask-store.ts'
 import { colorFixFailureText } from '@/utils/colorfix.ts'
 import { downloadImage, downloadImagesAsZip } from '@/utils/download.ts'
+import { saveImagesAsJpg } from '@/utils/batchDownload.ts'
 import { getPointsBalance } from '@/api/points.ts'
 import { BILLING_BLOCK_CODES, emitBillingBlock } from '@/utils/billing-guide'
 import {
@@ -2511,6 +2512,15 @@ async function downloadPicked() {
   await downloadImagesAsZip(urls)
 }
 
+/** 多选态下把所选图片逐张转 JPG（选文件夹或打包 ZIP，视频 / 动图自动跳过） */
+async function savePickedJpg() {
+  const urls = [...multiPicks.value]
+  if (!urls.length) return
+  multiCard.value = ''
+  multiPicks.value = []
+  await saveImagesAsJpg(urls.map((src) => ({ src, name: 'AI素材' })))
+}
+
 // 预览模板：多选态下有勾选就用勾选的图，否则用该卡全部结果图；标题取本轮用户提示词
 const tplShow = ref(false)
 const tplImages = ref<string[]>([])
@@ -4856,6 +4866,9 @@ onUnmounted(() => {
                               @click="downloadPicked"
                             >
                               下载所选 {{ multiPicks.length }}
+                            </button>
+                            <button type="button" :disabled="!multiPicks.length" :class="BTN" @click="savePickedJpg">
+                              所选另存为 JPG
                             </button>
                           </template>
                           <button v-else-if="card.urls.length > 1" type="button" :class="BTN" @click="toggleMulti(card.key)">

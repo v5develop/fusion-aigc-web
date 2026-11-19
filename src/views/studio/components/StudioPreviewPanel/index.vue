@@ -608,6 +608,8 @@ const downloadAllItems = computed<BatchDownloadItem[]>(() =>
       name: fileTitle.value,
       bake: cfOn.value && selectedSuccess.value?.taskId === t.taskId ? (fileBase: string) => bakeSelected(fileBase) : undefined,
       isCurrent: () => selectedSuccess.value?.taskId === t.taskId,
+      // 另存为 JPG 用同一个烘图函数取 Blob（不触发下载）
+      bakeBlob: cfOn.value && selectedSuccess.value?.taskId === t.taskId ? () => cf.bakeToBlob() : undefined,
     })),
 )
 

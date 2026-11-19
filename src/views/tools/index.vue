@@ -2267,6 +2267,8 @@ const downloadAllItems = computed<BatchDownloadItem[]>(() =>
     // 预览名自带「 · 序号」，批量下载会统一追加序号，这里还原成不带序号的基础名
     name: (p.name || 'result').replace(/\s·\s\d+$/, ''),
     isCurrent: () => selectedIndex.value === i,
+    bakeBlob:
+      i === selectedIndex.value && p.type === 'image' && canColorCompare.value ? () => cf.bakeToBlob() : undefined,
     bake:
       i === selectedIndex.value && p.type === 'image' && canColorCompare.value
         ? async (fileBase: string) => {

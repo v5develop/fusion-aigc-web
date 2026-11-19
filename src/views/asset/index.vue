@@ -3,7 +3,8 @@ import { ref, provide, watch, reactive, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import { assetAll, assetBatchDelete, assetCategories, assetAspectRatios } from '@/api/methods.ts'
 import type * as types from '@/api/types'
-import { downloadImagesAsZip, zipNameByNow } from '@/utils/download'
+import { canSaveAsJpg, downloadImagesAsZip, zipNameByNow } from '@/utils/download'
+import { saveImagesAsJpg } from '@/utils/batchDownload'
 import RecordList from './components/RecordList/index.vue'
 
 const message = useMessage()
@@ -85,6 +86,24 @@ const batchDownload = async () => {
     await downloadImagesAsZip(urls, zipNameByNow())
   } finally {
     batchDownloading.value = false
+  }
+}
+
+// 批量「全部另存为 JPG」：选中里有静态图才出；跨分组按下载时刻命名
+const batchJpgBusy = ref(false)
+const selectedJpgCount = computed(() => getSelectedAssets().filter((a: any) => canSaveAsJpg(a.resultUrl)).length)
+const batchSaveJpg = async () => {
+  const name = zipNameByNow()
+  const items = getSelectedAssets()
+    .filter((a: any) => a.resultUrl)
+    .map((a: any) => ({ src: a.resultUrl as string, name }))
+  if (!items.length) return message.warning('请先选择素材')
+  if (batchJpgBusy.value) return
+  batchJpgBusy.value = true
+  try {
+    await saveImagesAsJpg(items, { zipName: name })
+  } finally {
+    batchJpgBusy.value = false
   }
 }
 
@@ -203,6 +222,9 @@ watch(formData, () => {
           <template v-else>
             <button class="manage-btn" :disabled="batchDownloading" @click="batchDownload">
               {{ batchDownloading ? '下载中' : '批量下载' }}
+            </button>
+            <button v-if="selectedJpgCount" class="manage-btn" :disabled="batchJpgBusy" @click="batchSaveJpg">
+              {{ batchJpgBusy ? '转换中' : '另存为 JPG' }}
             </button>
             <button class="manage-btn" @click="batchDelete">删除</button>
             <button class="manage-btn" @click="exitManage">收起</button>

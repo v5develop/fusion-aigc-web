@@ -2,7 +2,8 @@
 import { computed, inject, ref, unref, useId, watch, type Ref } from 'vue'
 import Card from '../../../child-pages/components/Card/index.vue'
 import { EC_SELECTED_TASK_KEY, selectedGroupOf } from '../../../child-pages/components/HistoryColumn/selection'
-import { getDownloadableUrls, downloadImagesAsZip, zipNameOf } from '@/utils/download'
+import { canSaveAsJpg, getDownloadableUrls, downloadImagesAsZip, zipNameOf } from '@/utils/download'
+import { saveImagesAsJpg } from '@/utils/batchDownload'
 import { mediaAspectRatio } from '@/utils/ratio'
 import { useMessage } from 'naive-ui'
 import JSZip from 'jszip'
@@ -141,6 +142,34 @@ const onGroupDownload = async (item: any) => {
   }
 }
 
+// 整组「全部另存为 JPG」：校色过的图用与整组下载同一套烘图取 Blob（不触发下载），其余转原图
+const jpgBusyIds = ref<Set<string>>(new Set())
+const hasJpgImages = (item: any) => getDownloadableUrls(item).filter((u) => canSaveAsJpg(u)).length > 1
+const onGroupSaveJpg = async (item: any) => {
+  if (jpgBusyIds.value.has(item.taskId) || downloadingIds.value.has(item.taskId)) return
+  jpgBusyIds.value.add(item.taskId)
+  try {
+    const name = zipNameOf(item)
+    await saveImagesAsJpg(
+      downloadableOf(item).map(({ url, key }) => ({
+        src: url,
+        name,
+        bakeBlob: hasFix(url, key)
+          ? async () => {
+              const entry = colorFixHost.entries.get(url)
+              const blob = entry ? (entry.cf.active.value ? await entry.cf.bakeToBlob() : null) : await bakeStoredColorFix(key, url)
+              if (!blob) throw new Error('bake empty')
+              return blob
+            }
+          : undefined,
+      })),
+      { zipName: name },
+    )
+  } finally {
+    jpgBusyIds.value.delete(item.taskId)
+  }
+}
+
 // 切换单个分组全部选中
 const toggleGroupAll = (group: any) => {
   const { allChecked, allImgUrls } = getGroupSelectState(group)
@@ -209,6 +238,16 @@ const getGroupSelectState = (group: any) => {
           <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" />
         </svg>
         <span>{{ downloadingIds.has(current.taskId) ? '下载中' : '下载' }}</span>
+      </button>
+      <button
+        v-if="hasJpgImages(current)"
+        type="button"
+        class="sx-btn !h-32px !px-12px !text-13px flex-none"
+        :disabled="jpgBusyIds.has(current.taskId) || downloadingIds.has(current.taskId)"
+        :aria-busy="jpgBusyIds.has(current.taskId) || undefined"
+        @click="onGroupSaveJpg(current)"
+      >
+        <span>{{ jpgBusyIds.has(current.taskId) ? '转换中' : '全部另存为 JPG' }}</span>
       </button>
     </div>
 

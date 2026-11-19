@@ -236,7 +236,7 @@ export async function convertBlobToJpg(blob: Blob, opts: { quality?: number; bac
 
 /** 提示用的 message：懒创建一次复用（每次调用都 createDiscreteApi 会反复挂载新的提示容器） */
 let discreteMessage: ReturnType<typeof createDiscreteApi>['message'] | null = null
-function toast() {
+export function toast() {
   discreteMessage ??= createDiscreteApi(['message'], { configProviderProps: discreteConfigProviderProps }).message
   return discreteMessage
 }
@@ -270,7 +270,7 @@ async function discardHandle(handle: SaveHandle | null): Promise<void> {
   }
 }
 
-function anchorSave(blob: Blob, name: string) {
+export function anchorSave(blob: Blob, name: string) {
   const objectUrl = URL.createObjectURL(blob)
   triggerAnchorDownload(objectUrl, name)
   setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
