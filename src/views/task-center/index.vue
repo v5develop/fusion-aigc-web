@@ -28,7 +28,7 @@ import { llTheme } from '@/views/local-life/theme.ts'
 import MediaFallback from '@/components/MediaFallback/index.vue'
 import IconButton from '@/components/IconButton/index.vue'
 import TaskDetailDrawer from './TaskDetailDrawer.vue'
-import { CHIP_CLS, DELETABLE, DOT_CLS, IN_FLIGHT } from './status'
+import { CHIP_CLS, DELETABLE, DOT_CLS, IN_FLIGHT, slowHintOf } from './status'
 import PageEmpty from '@/components/PageEmpty/index.vue'
 import PageLoadError from '@/components/PageLoadError/index.vue'
 import { cardThumb, thumbFallback } from '@/utils/oss'
@@ -193,13 +193,24 @@ const hasInFlight = computed(() => items.value.some((i) => IN_FLIGHT.has(i.statu
 let timer: ReturnType<typeof setTimeout> | null = null
 /** 卸载后在途那一轮回来不再续排（否则离开页面后还会一直轮询） */
 let unmounted = false
+/**
+ * 推送在线时的低频补拉：「生成较慢」标识（slow / slowHint）来自生成执行记录，不改任务行、不触发推送，
+ * 只能靠列表接口带回来。在途任务每分钟静默补一次，其余仍由 task 事件驱动。
+ */
+const LIVE_REFRESH_MS = 60_000
+let liveTicks = 0
 function schedule() {
   if (timer) clearTimeout(timer)
   if (unmounted) return
   timer = setTimeout(async () => {
-    // 推送在线时由 task 事件驱动更新，不再定时拉
-    if (hasInFlight.value && !taskStreamLive.value && document.visibilityState === 'visible' && !loading.value)
+    const visible = document.visibilityState === 'visible'
+    liveTicks = taskStreamLive.value ? liveTicks + 1 : 0
+    const liveDue = liveTicks * POLL_MS >= LIVE_REFRESH_MS
+    // 推送在线时由 task 事件驱动更新，只做低频补拉
+    if (hasInFlight.value && (!taskStreamLive.value || liveDue) && visible && !loading.value) {
+      liveTicks = 0
       await load(true)
+    }
     schedule()
   }, POLL_MS)
 }
@@ -246,6 +257,8 @@ async function refetchRow(taskId: string) {
       coverUrl: d.coverUrl || null,
       coverThumbnailUrl: d.coverThumbnailUrl || null,
       blocked: d.blocked,
+      slow: d.slow ?? null,
+      slowHint: d.slowHint ?? null,
     })
   } catch {
     // 已删除 / 网络抖动：交给随后的整页刷新
@@ -924,6 +937,8 @@ const drawerRefillBusy = computed(() => {
                       <span class="sr-only" aria-live="polite" aria-atomic="true">{{ etaOf(item)?.srText }}</span>
                     </span>
                   </span>
+                  <!-- 生成较慢：状态标签不变，只多一行浅色提示（文案以后端 slowHint 为准） -->
+                  <span v-if="slowHintOf(item)" class="text-12px leading-18px text-muted">{{ slowHintOf(item) }}</span>
                   <span
                     v-if="item.failReason"
                     class="text-12px leading-18px text-alert-danger line-clamp-2"

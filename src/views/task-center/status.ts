@@ -25,3 +25,12 @@ export const DOT_CLS: Record<string, string> = {
   failed: 'bg-danger',
   cancelled: 'bg-placeholder',
 }
+
+/** 「生成较慢」提示的缺省文案（后端 slowHint 缺失时用） */
+export const SLOW_HINT_FALLBACK = '生成较慢，可以离开页面，完成后自动保存到素材库'
+
+/** 在途且后端标了生成较慢时的提示文案；其余返回空串（状态标签不变，只多一行浅色提示） */
+export function slowHintOf(t: { statusBucket: string; slow?: boolean | null; slowHint?: string | null }): string {
+  if (!IN_FLIGHT.has(t.statusBucket) || t.slow !== true) return ''
+  return t.slowHint?.trim() || SLOW_HINT_FALLBACK
+}

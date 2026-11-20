@@ -41,6 +41,7 @@ import {
   formReady,
   overLimit,
   genTaskPending,
+  genSlowHint,
   initialAnswer,
   isNestedQuestion,
   isTextQuestion,
@@ -2452,6 +2453,8 @@ interface IResultCard {
   retryable: IAgentGenTask[]
   /** 提示条文字 */
   stripText: string
+  /** 仍在生成且后端标了「生成较慢」时的一行浅色提示；空串 = 不显示 */
+  slowHint: string
 }
 
 function failStripText(done: number, failed: number, refunded: number, refundPending: boolean): string {
@@ -2483,6 +2486,7 @@ function resultCards(item: ChatItem): IResultCard[] {
         refundPending,
         retryable: failedTasks.filter((k) => k.retryable === true),
         stripText: failStripText(urls.length, failed, refunded, refundPending),
+        slowHint: genSlowHint(t.tasks),
       },
     ]
   })
@@ -4808,6 +4812,10 @@ onUnmounted(() => {
                             </template>
                           </div>
                         </div>
+                        <!-- 生成较慢：格子仍是「生成中」，只多一行浅色提示（文案以后端 slowHint 为准） -->
+                        <p v-if="card.slowHint" class="m-0 mt-10px text-12px leading-18px text-muted">
+                          {{ card.slowHint }}
+                        </p>
                         <!-- 失败提示条：退回点数（历史回读才有 refundedPoints / billingStatus）+ 可重试的失败格「重试这 n 张」 -->
                         <div
                           v-if="!card.pending && card.failed"

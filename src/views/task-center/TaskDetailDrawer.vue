@@ -30,7 +30,7 @@ import { useTaskEta } from '@/utils/task-eta'
 import { onTaskEvent, onTaskResync, taskStreamLive, type TaskStreamEvent } from '@/utils/taskWatcher'
 import { useAssetsInCanvas, type ICanvasAssetRef } from '@/views/asset-library/useInCanvas'
 import { summarizeInput } from './input-summary'
-import { CHIP_CLS, DOT_CLS, IN_FLIGHT } from './status'
+import { CHIP_CLS, DOT_CLS, IN_FLIGHT, slowHintOf } from './status'
 
 /** 打开的任务号；空串 = 关闭 */
 const taskId = defineModel<string>('taskId', { default: '' })
@@ -57,6 +57,8 @@ const message = useMessage()
 const { opening: canvasOpening, openAssetsInCanvas } = useAssetsInCanvas()
 
 const POLL_MS = 8000
+/** 推送在线时的低频补拉间隔（只为带回 slow / slowHint） */
+const LIVE_REFRESH_MS = 60_000
 const REFETCH_DEBOUNCE_MS = 600
 const FOCUS = 'sx-focus'
 
@@ -192,10 +194,14 @@ watch(
   ([o, f, live]) => {
     if (pollTimer) clearInterval(pollTimer)
     pollTimer = null
-    if (o && f && !live)
-      pollTimer = setInterval(() => {
-        if (document.visibilityState === 'visible') void fetchDetail(true)
-      }, POLL_MS)
+    // 推送在线时只做低频补拉：「生成较慢」标识来自生成执行记录，不触发推送
+    if (o && f)
+      pollTimer = setInterval(
+        () => {
+          if (document.visibilityState === 'visible') void fetchDetail(true)
+        },
+        live ? LIVE_REFRESH_MS : POLL_MS,
+      )
   },
   { immediate: true },
 )
@@ -241,8 +247,13 @@ const view = computed<ITaskCenterItem | null>(() => {
     blocked: d.blocked,
     collected: d.collected ?? row?.collected ?? null,
     canRefill: d.canRefill ?? row?.canRefill ?? (p ? p.refillable : null),
+    slow: d.slow ?? row?.slow ?? null,
+    slowHint: d.slowHint ?? row?.slowHint ?? null,
   }
 })
+
+/** 生成较慢的提示（在途且后端标了 slow）；空串 = 不显示 */
+const slowHint = computed(() => (view.value ? slowHintOf(view.value) : ''))
 
 /** 头部元信息：尺寸 / 耗时 / 完成时间（缺失即不显示） */
 function formatDuration(sec: number): string {
@@ -555,7 +566,9 @@ function goLibrary() {
               >
               <span class="sr-only" aria-live="polite" aria-atomic="true">{{ eta.srText }}</span>
             </p>
+            <p v-if="slowHint" class="m-0 text-12px leading-18px text-muted">{{ slowHint }}</p>
           </section>
+          <p v-else-if="slowHint" class="m-0 text-12px leading-18px text-muted">{{ slowHint }}</p>
 
           <!-- 失败原因 -->
           <section
@@ -815,6 +828,7 @@ function goLibrary() {
                   <p v-if="c.failReason" class="m-0 text-12px leading-18px text-danger break-words">
                     {{ c.failReason }}
                   </p>
+                  <p v-if="slowHintOf(c)" class="m-0 text-12px leading-18px text-muted">{{ slowHintOf(c) }}</p>
                 </div>
               </li>
             </ul>

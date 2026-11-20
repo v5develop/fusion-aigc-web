@@ -500,6 +500,10 @@ export interface IAgentGenTask {
   fasterModelAvailable?: boolean
   /** 本格是重试出来的：原任务号（taskId 为重试任务号） */
   retryOf?: string
+  /** 生成较慢（只在消息历史里有）：仍排队 / 生成中，但已超过常规时长、仍在跟踪模型供应商；status 不变 */
+  slow?: boolean
+  /** 生成较慢时的提示文案 */
+  slowHint?: string
 }
 
 export interface IAgentToolResult {
@@ -544,6 +548,8 @@ function genTasks(result: unknown): IAgentGenTask[] {
           retryable: typeof x.retryable === 'boolean' ? x.retryable : undefined,
           fasterModelAvailable: x.fasterModelAvailable === true ? true : undefined,
           retryOf: s(x.retryOf),
+          slow: x.slow === true ? true : undefined,
+          slowHint: s(x.slowHint),
         }
         for (const [k, v] of Object.entries(opt)) if (v !== undefined) (t as unknown as Record<string, unknown>)[k] = v
         return t
@@ -557,6 +563,15 @@ function genTasks(result: unknown): IAgentGenTask[] {
 /** 任务还没到终态（排队 / 生成中） */
 export function genTaskPending(t: IAgentGenTask): boolean {
   return t.status === 'queued' || t.status === 'processing'
+}
+
+/** 「生成较慢」提示的缺省文案（后端 slowHint 缺失时用） */
+export const GEN_SLOW_HINT_FALLBACK = '生成较慢，可以离开页面，完成后自动保存到素材库'
+
+/** 一组任务里仍在途且标了生成较慢时的提示文案；没有则空串 */
+export function genSlowHint(tasks: IAgentGenTask[]): string {
+  const t = tasks.find((k) => genTaskPending(k) && k.slow === true)
+  return t ? t.slowHint?.trim() || GEN_SLOW_HINT_FALLBACK : ''
 }
 
 /** 表单选项：image_spec 是「分辨率 → 比例」两级，children 非空即需再选一级 */

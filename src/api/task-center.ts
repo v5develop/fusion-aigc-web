@@ -84,6 +84,10 @@ export interface ITaskCenterItem {
   collected?: boolean | null
   /** 能否「做同款 / 参数回填」（来自工具 / 工作流页的任务） */
   canRefill?: boolean | null
+  /** 生成较慢（只增字段，旧后端不下发）：仍在途，但已超过常规时长、仍在跟踪模型供应商；状态不变 */
+  slow?: boolean | null
+  /** 生成较慢时的提示文案；不慢时为空 */
+  slowHint?: string | null
 }
 
 /** GET /tasks/{taskId}/params：原始提交参数（已脱敏），供做同款 / 参数回填 */
@@ -163,6 +167,10 @@ export interface ITaskCenterChild {
   /** 仅失败子任务下发 */
   failReason?: string | null
   coverThumbnailUrl?: string | null
+  /** 生成较慢（只增字段，旧后端不下发）：仍在途，但已超过常规时长、仍在跟踪模型供应商；状态不变 */
+  slow?: boolean | null
+  /** 生成较慢时的提示文案；不慢时为空 */
+  slowHint?: string | null
 }
 
 /**
@@ -206,6 +214,10 @@ export interface ITaskCenterTask {
   collected?: boolean | null
   canRefill?: boolean | null
   children?: ITaskCenterChild[] | null
+  /** 生成较慢（只增字段，旧后端不下发）：仍在途，但已超过常规时长、仍在跟踪模型供应商；状态不变 */
+  slow?: boolean | null
+  /** 生成较慢时的提示文案；不慢时为空 */
+  slowHint?: string | null
 }
 
 /** 单条任务详情：结果图「校色后存为资产版本」靠它定位素材库资产 */
