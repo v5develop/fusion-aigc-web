@@ -529,6 +529,7 @@ const FIELD_LABELS: Record<string, string> = {
   'data.ratio': '比例',
   'data.size': '分辨率',
   'data.quality': '质量',
+  'data.outputFormat': '格式',
   'data.duration': '时长',
   'data.sound': '声音',
   'data.count': '张数',

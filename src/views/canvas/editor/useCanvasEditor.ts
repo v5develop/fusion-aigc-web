@@ -58,6 +58,7 @@ import {
   validateConnection,
 } from './graph.ts'
 import { remapClipboard, type ICanvasClipboard } from './clipboard.ts'
+import { rememberRunThumbs, takeCandidateThumbs } from './thumbs.ts'
 import {
   findFreeBlockShift,
   findFreeSpot,
@@ -436,6 +437,8 @@ function normalizeNodeData(node: CanvasEditorNode): void {
   const libraryStatus = normalizeLibraryStatus(raw.libraryStatus ?? raw.library_status)
   stripLibraryStatus(raw)
   if (libraryStatus) data.libraryStatus = libraryStatus
+  // 回填的候选缩略图（现签）登记到 thumbs.ts 后摘掉，不进节点 data
+  takeCandidateThumbs(raw)
   if (data.kind === 'tool') {
     if (data.tool === 'crop' && !data.crop) {
       data.crop = { shape: 'rect', x: 0.1, y: 0.1, w: 0.6, h: 0.6 }
@@ -1661,6 +1664,8 @@ function buildRunRequest(node: CanvasEditorNode): { req?: ICanvasRunReq; error?:
   }
   const quality = QUALITY_MAP[data.quality ?? ''] ?? data.quality
   if (quality) req.quality = quality
+  // 生成格式：旧快照没有该字段按 jpeg（与服务端缺省一致）
+  if (!isVideo) req.outputFormat = data.outputFormat || 'jpeg'
   if (isVideo) {
     req.duration = data.duration ?? '4s'
     req.sound = data.sound ?? true
@@ -1950,6 +1955,7 @@ function writeProduct(nodeId: string, run: ICanvasRunResult, before: { hidden: S
   const node = findNode(nodeId)
   if (!node) return
   const data = node.data
+  rememberRunThumbs(run.candidates) // 先登记缩略图，再换候选地址（卡片渲染时就能取到）
   const urls = (run.candidates ?? []).map((item) => item.url)
   const selected = Math.min(Math.max(run.selectedIndex ?? 0, 0), Math.max(urls.length - 1, 0))
   data.candidates = urls

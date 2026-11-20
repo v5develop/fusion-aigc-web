@@ -54,6 +54,11 @@ export interface ICanvasCandidate {
   url: string
   width: number
   height: number
+  /**
+   * 缩略图（只增 2026-11-20）：私有引用图片的缩放 + webp 现签地址（处理参数在签名内，前端不能自己拼）；
+   * 缺省 = 用 url。只用于卡片 / 历史展示，预览、下载、设为输出一律用 url。
+   */
+  thumbUrl?: string
 }
 
 /** 一次节点执行记录（状态机：submitting/queued/running → succeeded/failed/cancelled） */
@@ -213,6 +218,8 @@ export interface ICanvasRunReq {
   size?: string
   /** low / medium / high（快照里存中文，提交时转换） */
   quality?: string
+  /** 生图输出格式 jpeg / png / webp（缺省 jpeg；视频 / 工具不传） */
+  outputFormat?: string
   /** 视频 4s / 6s / 8s */
   duration?: string
   sound?: boolean

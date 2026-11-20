@@ -12,6 +12,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { modelLabelOf } from '@/utils/model-label'
 import { downloadImage } from '@/utils/download.ts'
+import { cardThumb, thumbFallback } from '@/utils/oss'
 import { canvasRuns, type ICanvasRunResult } from '@/api/canvas-home.ts'
 import EditorIcon from './EditorIcon.vue'
 import NodeLightbox from './nodes/NodeLightbox.vue'
@@ -231,7 +232,15 @@ function download(row: IRow, index: number) {
 }
 
 /** 缩略轨：每条记录一个 32px 缩略（第一张候选），没有产物显示状态图标 */
-const railThumb = (row: IRow) => row.run.candidates?.[row.selectedIndex]?.url || row.run.candidates?.[0]?.url || ''
+const railItem = (row: IRow) =>
+  (row.run.candidates?.[row.selectedIndex]?.url ? row.run.candidates[row.selectedIndex] : row.run.candidates?.[0]) ??
+  null
+/**
+ * 列表缩略图：优先后端缩略图（thumbUrl，私有桶签名地址的缩放 + webp），否则公有 OSS 前端拼缩放，其余原图。
+ * 只用于展示；预览 / 下载 / 设为输出一律用原地址，加载失败经 thumbFallback 退回原图。
+ */
+const thumbSrc = (item: { url: string; thumbUrl?: string } | null | undefined, size: number) =>
+  item?.url ? cardThumb(item.url, item.thumbUrl, size, size) : ''
 
 /** 多张结果一排最多 4 格；超出时第 4 格盖「+N」，N = 被盖住的第 4 张 + 之后没露出来的张数 */
 const GRID_MAX = 4
@@ -334,7 +343,15 @@ const ICON_BTN =
         :aria-label="`${row.title}，${row.status.label}，${row.time}，在画布中定位`"
         @click="locate(row)"
       >
-        <img v-if="railThumb(row)" :src="railThumb(row)" alt="" class="w-full h-full object-cover" />
+        <img
+          v-if="railItem(row)?.url"
+          :src="thumbSrc(railItem(row), 32)"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          class="w-full h-full object-cover"
+          @error="(e) => thumbFallback(e, railItem(row)?.url)"
+        />
         <span
           v-else-if="IN_FLIGHT.has(row.run.status)"
           class="w-12px h-12px border-[1.5px] border-solid border-violet-line border-t-violet rounded-full animate-spin animate-duration-800"
@@ -370,7 +387,15 @@ const ICON_BTN =
           :aria-label="row.isVideo ? `播放${row.title}的视频` : `预览${row.title}的结果`"
           @click="preview(row, row.visible[0]!.index)"
         >
-          <img :src="row.visible[0]!.item.url" alt="" draggable="false" :class="THUMB_IMG" />
+          <img
+            :src="thumbSrc(row.visible[0]!.item, 72)"
+            alt=""
+            draggable="false"
+            loading="lazy"
+            decoding="async"
+            :class="THUMB_IMG"
+            @error="(e) => thumbFallback(e, row.visible[0]!.item.url)"
+          />
           <span
             v-if="row.isVideo"
             class="absolute left-50% top-50% grid w-22px h-22px place-items-center rounded-full bg-black/55 text-white -translate-x-50% -translate-y-50% pointer-events-none"
@@ -477,7 +502,15 @@ const ICON_BTN =
               "
               @click="preview(row, cell.index)"
             >
-              <img :src="cell.item.url" alt="" draggable="false" :class="THUMB_IMG" />
+              <img
+                :src="thumbSrc(cell.item, 80)"
+                alt=""
+                draggable="false"
+                loading="lazy"
+                decoding="async"
+                :class="THUMB_IMG"
+                @error="(e) => thumbFallback(e, cell.item.url)"
+              />
               <span
                 v-if="row.selectable && row.selectedIndex === cell.index"
                 class="absolute left-2px top-2px px-3px rounded-3px bg-violet text-white text-9px font-500 leading-13px pointer-events-none"

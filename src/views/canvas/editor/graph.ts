@@ -505,6 +505,8 @@ export function makeModelNode(kind: 'image' | 'video', position?: { x: number; y
       size: kind === 'video' ? '720p' : '1K',
       // 默认高画质；模型不支持画质时由 applyModelToNode 的能力开关决定是否生效
       quality: 'high',
+      // 生成格式默认 JPG（只对图片生成节点生效；旧快照没有该字段时同样按 jpeg）
+      outputFormat: kind === 'video' ? undefined : 'jpeg',
       duration: kind === 'video' ? '4s' : undefined,
       sound: kind === 'video' ? true : undefined,
       count: 1,

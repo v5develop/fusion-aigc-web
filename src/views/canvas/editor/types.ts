@@ -65,6 +65,11 @@ export interface CanvasNodeData {
   size?: string
   /** 低 / 中 / 高（提交时转英文） */
   quality?: string
+  /**
+   * 生图输出格式 jpeg / png / webp（仅图片生成节点）。add-only：旧快照没有该字段，按 jpeg 显示与提交。
+   * 格式不影响价格，不进估价请求。
+   */
+  outputFormat?: string
   duration?: string
   sound?: boolean
   count?: number

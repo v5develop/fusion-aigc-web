@@ -11,6 +11,8 @@ import EditorIcon from './EditorIcon.vue'
 import { useCanvasEditor } from './useCanvasEditor.ts'
 import type { CanvasEditorNode } from './types.ts'
 import { FOCUS_RING } from './ui.ts'
+import { canvasThumb } from './thumbs.ts'
+import { thumbFallback } from '@/utils/oss'
 
 const emit = defineEmits<{ locate: [id: string]; addFromLibrary: [] }>()
 
@@ -83,8 +85,13 @@ function typeLabel(node: CanvasEditorNode) {
   return '图片'
 }
 
+/** 节点原图（定位 / 失败回退用） */
 function thumbOf(node: CanvasEditorNode) {
   return node.data.image || node.data.resultImage || ''
+}
+/** 竖条 / 列表只要 32~40px 的小图：有登记的缩略图就用，没有回退原图（公有 OSS 前端拼缩放） */
+function thumbSrc(node: CanvasEditorNode) {
+  return canvasThumb(thumbOf(node), 40, 40)
 }
 </script>
 
@@ -143,7 +150,15 @@ function thumbOf(node: CanvasEditorNode) {
         :aria-current="selectedNodeId === node.id ? 'true' : undefined"
         @click="emit('locate', node.id)"
       >
-        <img v-if="thumbOf(node)" :src="thumbOf(node)" alt="" class="w-full h-full object-cover" />
+        <img
+          v-if="thumbOf(node)"
+          :src="thumbSrc(node)"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          class="w-full h-full object-cover"
+          @error="(e) => thumbFallback(e, thumbOf(node))"
+        />
         <span v-else-if="isVideoNode(node)" class="grid place-items-center gap-1px">
           <EditorIcon name="video" :size="16" />
           <em class="not-italic text-10px font-500 leading-[1.1]">视频</em>
@@ -196,7 +211,15 @@ function thumbOf(node: CanvasEditorNode) {
           <span
             class="grid shrink-0 w-32px h-32px place-items-center overflow-hidden border border-solid border-line rounded-4px bg-surface3 text-muted"
           >
-            <img v-if="thumbOf(node)" :src="thumbOf(node)" alt="" class="w-full h-full object-cover" />
+            <img
+              v-if="thumbOf(node)"
+              :src="thumbSrc(node)"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              class="w-full h-full object-cover"
+              @error="(e) => thumbFallback(e, thumbOf(node))"
+            />
             <span v-else-if="isVideoNode(node)" class="grid place-items-center gap-1px">
               <EditorIcon name="video" :size="16" />
               <em class="not-italic text-10px font-500 leading-[1.1]">视频</em>

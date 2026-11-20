@@ -42,6 +42,8 @@ import { openColorFix } from '../color-fix-action.ts'
 import LibraryStatusHint from '../LibraryStatusHint.vue'
 import { editorMessage } from '../useCanvasEditor.ts'
 import { useNodeEstimate } from '../useNodeEstimate.ts'
+import { canvasThumb } from '../thumbs.ts'
+import { thumbFallback } from '@/utils/oss'
 
 const props = defineProps<{
   id: string
@@ -63,8 +65,33 @@ const isRunning = computed(() => props.data.status === 'running' || props.data.s
 const cancelLocked = computed(() => isRunning.value && store.isCancelLocked(props.id))
 const width = computed(() => props.data.width ?? (isVideo.value ? 338 : 318))
 const candidates = computed(() => props.data.candidates ?? [])
-/** 提示词口位置：图片模型 30%、视频模型 20%（原型 CanvasModelNode） */
-const promptTop = computed(() => (isVideo.value ? '20%' : '30%'))
+/**
+ * 端口纵向位置：按卡片顶端的固定像素锚定（头部 44 + 内边距 8 = 结果区顶端 52px），不再按卡片高度百分比——
+ * 卡片随参数行数 / 结果图比例变高变矮时百分比口会漂到参数标签、模型框或结果图上。所有口都落在结果区高度内
+ * （结果区最矮 120px → 52~172px），视频模型 5 个输入口的最后一个略超出也只压在卡片边框上，不压正文。
+ * 连线锚点由 Vue Flow 量 Handle 的实际位置得出，跟着口走；已有连线按 handle id 关联，不会错位。
+ */
+const PORT_STEP = 28
+/** 输出序号：卡片右外侧、端口右边 10px（端口半径 5 + 间隙） */
+const OUT_INDEX = '-right-10px translate-x-full'
+/** 主输出序号与「+」快捷添加同位置：悬停 / 选中时淡出让位 */
+const OUT_INDEX_YIELD = 'transition-opacity duration-120 group-hover:opacity-0 [.is-selected_&]:opacity-0'
+const portTops = computed(() => {
+  const first = isVideo.value ? 72 : 76
+  const at = (i: number) => `${first + i * PORT_STEP}px`
+  return {
+    prompt: at(0),
+    image1: at(1),
+    image2: at(2),
+    /** 图片模型：参考图紧跟提示词；视频模型：首帧 / 尾帧之后 */
+    image: isVideo.value ? at(3) : at(1),
+    video: at(4),
+    /** 主输出口与提示词口同高，逐张候选口依次排在下面 */
+    out: at(0),
+    candidate: (i: number) => at(i + 1),
+  }
+})
+const promptTop = computed(() => portTops.value.prompt)
 const selectedIdx = computed(() => props.data.selectedCandidate ?? 0)
 
 /** 头部副标题：模型名（与标题相同时不重复，同原型） */
@@ -206,7 +233,7 @@ const perCandidatePorts = computed(() => !isVideo.value && !props.data.inputOnly
 
 /**
  * candidate-N 输出口：可见候选 > 1 时每张一个；已经从某个口连出去的线即使候选变少也保留口位，
- * 免得 Vue Flow 找不到 Handle 把线丢掉。排在主输出口（50%）下方 58%–90%。
+ * 免得 Vue Flow 找不到 Handle 把线丢掉。排在主输出口下方，按固定间距（见 portTops）。
  */
 const candidateHandles = computed(() => {
   if (!perCandidatePorts.value) return []
@@ -221,7 +248,7 @@ const candidateHandles = computed(() => {
   return sorted.map((index, i) => ({
     index,
     id: `candidate-${index + 1}`,
-    top: sorted.length > 1 ? `${58 + (i / (sorted.length - 1)) * 32}%` : '74%',
+    top: portTops.value.candidate(i),
   }))
 })
 
@@ -397,13 +424,16 @@ function onColorFix(e: MouseEvent) {
           :aria-label="`放大查看 ${data.title || '生成结果'}`"
           @click.stop="selectThenZoom()"
         >
+          <!-- 卡片只展示缩略图（缩放 + webp）；放大 / 下载 / 校色 / 传给下游仍用 data.image 原图，缩略图失败退回原图 -->
           <img
-            :src="data.image"
+            :src="canvasThumb(data.image, width - 20)"
             :alt="data.title"
             draggable="false"
+            loading="lazy"
+            decoding="async"
             class="block w-full h-full object-contain"
             @load="onMediaLoad"
-            @error="onMediaError"
+            @error="(e) => thumbFallback(e, data.image) || onMediaError()"
           />
           <!-- 悬停提示条（原型 .wf-model-node__hint）：深色细条 11px；键盘聚焦与触屏常显 -->
           <span
@@ -517,11 +547,13 @@ function onColorFix(e: MouseEvent) {
             @click.stop="onSelectCandidate(item.index)"
           >
             <img
-              :src="item.url"
+              :src="canvasThumb(item.url, 64, 64)"
               :alt="`候选 ${item.index + 1}`"
               draggable="false"
+              loading="lazy"
+              decoding="async"
               class="block w-full h-full object-cover"
-              @error="onMediaError"
+              @error="(e) => thumbFallback(e, item.url) || onMediaError()"
             />
           </button>
           <div
@@ -585,46 +617,46 @@ function onColorFix(e: MouseEvent) {
     />
 
     <template v-if="isVideo">
-      <span :class="portLabelClass('image')" :style="{ top: '42%' }">首帧</span>
+      <span :class="portLabelClass('image')" :style="{ top: portTops.image1 }">首帧</span>
       <Handle
         id="image1"
         type="target"
         :position="Position.Left"
         :class="portCls('image', 'image1')"
-        :style="{ top: '42%' }"
+        :style="{ top: portTops.image1 }"
         aria-label="首帧输入"
       />
-      <span :class="portLabelClass('image')" :style="{ top: '60%' }">尾帧</span>
+      <span :class="portLabelClass('image')" :style="{ top: portTops.image2 }">尾帧</span>
       <Handle
         id="image2"
         type="target"
         :position="Position.Left"
         :class="portCls('image', 'image2')"
-        :style="{ top: '60%' }"
+        :style="{ top: portTops.image2 }"
         aria-label="尾帧输入"
       />
       <!-- 参考图 / 参考视频口（契约 4.2 元素替换模板、6.1 规则表）：缺了这两个口，模板里的连线渲染不出来 -->
-      <span :class="portLabelClass('image')" :style="{ top: '75%' }">参考图</span>
+      <span :class="portLabelClass('image')" :style="{ top: portTops.image }">参考图</span>
       <Handle
         id="image"
         type="target"
         :position="Position.Left"
         :class="portCls('image', 'image')"
-        :style="{ top: '75%' }"
+        :style="{ top: portTops.image }"
         aria-label="参考图输入"
       />
-      <span :class="portLabelClass('video')" :style="{ top: '89%' }">参考视频</span>
+      <span :class="portLabelClass('video')" :style="{ top: portTops.video }">参考视频</span>
       <Handle
         id="video"
         type="target"
         :position="Position.Left"
         :class="portCls('video', 'video')"
-        :style="{ top: '89%' }"
+        :style="{ top: portTops.video }"
         aria-label="参考视频输入"
       />
     </template>
     <template v-else>
-      <span :class="portLabelClass('image')" :style="{ top: '66%' }"
+      <span :class="portLabelClass('image')" :style="{ top: portTops.image }"
         >参考图 · {{ imageRefCount }}{{ data.maxImageRefs ? `/${data.maxImageRefs}` : '' }}</span
       >
       <Handle
@@ -632,10 +664,10 @@ function onColorFix(e: MouseEvent) {
         type="target"
         :position="Position.Left"
         :class="portCls('image', 'image')"
-        :style="{ top: '66%' }"
+        :style="{ top: portTops.image }"
         aria-label="参考图输入"
       />
-      <span :class="PORT_COUNT" class="left-12px" :style="{ top: '66%' }" aria-hidden="true">{{ imageRefCount }}</span>
+      <!-- 原来卡片内侧还有一个「已接张数」小圆，会压住参数 / 模型框 / 结果图；张数已在外侧标签「参考图 · n/上限」里，去掉 -->
     </template>
 
     <!-- 参考视频素材节点（inputOnly）在模板里以 sourceHandle=video 连出 -->
@@ -644,12 +676,13 @@ function onColorFix(e: MouseEvent) {
       type="source"
       :position="Position.Right"
       :class="portClass(data.inputOnly || isVideo ? 'video' : 'out')"
+      :style="{ top: portTops.out }"
     />
+    <!-- 输出序号放在卡片右外侧（不压结果图）；悬停 / 选中时同位置出「+」快捷添加，序号让位 -->
     <span
       v-if="!data.inputOnly"
-      :class="[PORT_COUNT, isVideo ? PORT_COUNT_VIDEO : '']"
-      class="right-10px"
-      :style="{ top: '50%' }"
+      :class="[PORT_COUNT, OUT_INDEX, OUT_INDEX_YIELD, isVideo ? PORT_COUNT_VIDEO : '']"
+      :style="{ top: portTops.out }"
       aria-hidden="true"
       >{{ candidateHandles.length ? '主' : '1' }}</span
     >
@@ -664,11 +697,10 @@ function onColorFix(e: MouseEvent) {
         :title="`候选 ${port.index + 1} 单独输出`"
         :aria-label="`候选 ${port.index + 1} 输出`"
       />
-      <span :class="PORT_COUNT" class="right-10px" :style="{ top: port.top }" aria-hidden="true">{{
-        port.index + 1
-      }}</span>
+      <span :class="[PORT_COUNT, OUT_INDEX]" :style="{ top: port.top }" aria-hidden="true">{{ port.index + 1 }}</span>
     </template>
     <NodeQuickAdd
+      :top="portTops.out"
       :kinds="data.inputOnly ? ['video-model'] : ['image-model', 'video-model', 'tool']"
       @open="emit('quickAdd', $event)"
     />

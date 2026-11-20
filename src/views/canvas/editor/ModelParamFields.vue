@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 生成卡参数行（2026-11-12 原型「参数上卡」；比例 / 尺寸 / 数量，视频另有时长 / 声音，模型声明了质量能力才出质量）。
+ * 生成卡参数行（2026-11-12 原型「参数上卡」；比例 / 尺寸 / 数量，视频另有时长 / 声音，模型声明了质量能力才出质量；
+ * 图片另有生成格式 JPG / PNG / WEBP，默认 JPG——目录没有格式能力位，所有图片模型都显示，不支持的网关适配器自行忽略）。
  * 选项与上限只取自后端目录里当前模型的配置（ratios / sizes / durations / qualities / countMax / capabilities），
  * 不搬原型里写死的常量——例如 Nano Banana 2.1 数量上限 1，就只能选 1。
  * 参数写回节点 data（store.updateNodeData，撤销栈照常合并）；节点排队 / 运行中整行禁用，防止跑着改参。
@@ -50,6 +51,13 @@ const qualityOptions = computed(() => {
     .sort((a, b) => qualityRank(a) - qualityRank(b))
     .map((value) => ({ label: QUALITY_LABELS[value] ?? value, value }))
 })
+/** 生成格式：值是网关 output_format（jpeg / png / webp），显示大写扩展名；旧快照没有该字段按 jpeg */
+const FORMAT_OPTIONS = [
+  { label: 'JPG', value: 'jpeg' },
+  { label: 'PNG', value: 'png' },
+  { label: 'WEBP', value: 'webp' },
+]
+const FORMAT_TIP = 'JPG 体积小；PNG 无损（适合透明底）；WEBP 体积更小。不影响点数'
 const durationOptions = computed(() =>
   (currentModel.value?.durations ?? ['4s', '6s', '8s']).map((value) => ({ label: value, value })),
 )
@@ -63,13 +71,14 @@ function patch(values: Record<string, unknown>) {
 }
 
 /**
- * 列数：图片的比例 / 分辨率 / 质量 / 数量排在同一行（有几项排几列，最多 4），不让「质量」单独掉到第二行像错位；
+ * 列数：图片的比例 / 分辨率 / 质量 / 格式 / 数量有几项排几列，不超过 4 项时同一行，不让某一项单独掉到第二行像错位；
+ * 5 项（带质量能力的模型）一行放不下（数量步进框会被挤坏），改 3 列两行，与视频同款。
  * 视频项多（时长 / 声音），保持 3 列两行。
  */
 const columns = computed(() => {
   if (isVideo.value) return 3
-  const cells = 2 + (capabilities.value.quality ? 1 : 0) + (capabilities.value.count ? 1 : 0)
-  return Math.min(4, cells)
+  const cells = 3 + (capabilities.value.quality ? 1 : 0) + (capabilities.value.count ? 1 : 0)
+  return cells > 4 ? 3 : cells
 })
 const GRID_COLS: Record<number, string> = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' }
 const SPAN_ALL: Record<number, string> = { 2: 'col-span-2', 3: 'col-span-3', 4: 'col-span-4' }
@@ -137,8 +146,20 @@ const LABEL = 'block mb-2px text-muted text-11px leading-16px'
         @update:value="(value: string) => patch({ quality: value })"
       />
     </div>
+    <div v-if="!isVideo" class="min-w-0">
+      <span :class="LABEL" :title="FORMAT_TIP">格式</span>
+      <n-select
+        :value="data.outputFormat || 'jpeg'"
+        size="small"
+        :disabled="disabled"
+        :options="FORMAT_OPTIONS"
+        :title="FORMAT_TIP"
+        :consistent-menu-width="false"
+        @update:value="(value: string) => patch({ outputFormat: value })"
+      />
+    </div>
     <!--
-      数量：图片排在质量之后（同一行），视频排第二行。上限为 1 时也画成与下拉同高、同描边圆角的只读框（禁用态），
+      数量：图片排在质量 / 格式之后（同一行），视频排第二行。上限为 1 时也画成与下拉同高、同描边圆角的只读框（禁用态），
       不再是一行纯文字——否则四格框体高度 / 基线对不齐。标签统一只写「数量」，上限放进悬停提示，免得标签被截断。
     -->
     <div v-if="capabilities.count" class="min-w-0">

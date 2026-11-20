@@ -35,6 +35,8 @@ import { openColorFix } from '../color-fix-action.ts'
 import LibraryStatusHint from '../LibraryStatusHint.vue'
 import ToolParamFields from '../ToolParamFields.vue'
 import TryonSlots from './TryonSlots.vue'
+import { canvasThumb } from '../thumbs.ts'
+import { thumbFallback } from '@/utils/oss'
 
 const props = defineProps<{
   id: string
@@ -401,13 +403,16 @@ const fixedHeight = computed(() => Boolean(props.data.heightFixed && props.data.
           class="canvas-media relative grid w-full place-items-center overflow-hidden min-h-110px border border-solid border-line rounded-6px bg-[#f4f6fa] [[data-theme=dark]_&]:bg-surface2"
           :class="fixedHeight ? 'flex-1' : ''"
         >
+          <!-- 只展示缩略图；校色 / 下载 / 传给下游仍用原图，缩略图失败退回原图 -->
           <img
-            :src="resultImage"
+            :src="canvasThumb(resultImage, 320)"
             :alt="data.title"
             draggable="false"
+            loading="lazy"
+            decoding="async"
             class="block w-full object-contain"
             :class="fixedHeight ? 'h-full' : 'max-h-240px'"
-            @error="store.refreshNodeMedia(id)"
+            @error="(e) => thumbFallback(e, resultImage) || store.refreshNodeMedia(id)"
           />
           <ColorFixPill
             v-if="data.tool !== 'i2p'"
