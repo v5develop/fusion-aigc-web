@@ -63,6 +63,8 @@ const isVideo = computed(() => props.data.kind === 'video')
 const isRunning = computed(() => props.data.status === 'running' || props.data.status === 'queued')
 /** 取消已被拒（已发给模型）：执行钮变为不可点的「生成中」，等结果 */
 const cancelLocked = computed(() => isRunning.value && store.isCancelLocked(props.id))
+/** 已请求取消、等派发器确认（cancel_state=requested）：同样不可点，文案「取消中…」 */
+const cancelPending = computed(() => cancelLocked.value && store.cancelLockOf(props.id) === 'requested')
 const width = computed(() => props.data.width ?? (isVideo.value ? 338 : 318))
 const candidates = computed(() => props.data.candidates ?? [])
 /**
@@ -372,13 +374,23 @@ function onColorFix(e: MouseEvent) {
           type="button"
           :class="NODE_RUN_BTN"
           :disabled="cancelLocked"
-          :title="cancelLocked ? '生成中：已发给模型，无法取消' : isRunning ? '取消执行' : '执行此节点'"
+          :title="
+            cancelPending
+              ? '取消中…'
+              : cancelLocked
+                ? '生成中：已发给模型，无法取消'
+                : isRunning
+                  ? '取消执行'
+                  : '执行此节点'
+          "
           :aria-label="
-            cancelLocked
-              ? `${data.title} 生成中，无法取消`
-              : isRunning
-                ? `取消执行 ${data.title}`
-                : `执行 ${data.title}`
+            cancelPending
+              ? `${data.title} 取消中`
+              : cancelLocked
+                ? `${data.title} 生成中，无法取消`
+                : isRunning
+                  ? `取消执行 ${data.title}`
+                  : `执行 ${data.title}`
           "
           @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
         >

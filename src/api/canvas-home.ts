@@ -92,6 +92,9 @@ export interface ICanvasRunResult {
    * failed = 转存永久失败，仍可看可下载（同样是现签地址），素材库里没有这条。
    */
   libraryStatus?: CanvasLibraryStatusRaw
+  /** 取消进度（只增 2026-11-20）：见 {@link CanvasCancelStateRaw}；旧后端不带 */
+  cancelState?: CanvasCancelStateRaw
+  cancel_state?: CanvasCancelStateRaw
 }
 
 /** 接口原样的 library_status：'' / 缺省 = 已在素材库；其余值见 ICanvasRunResult.libraryStatus */
@@ -245,6 +248,24 @@ export interface ICanvasRunSubmitResp {
 export interface ICanvasCancelResp {
   requestId: string
   status: string
+  /** 取消进度（只增 2026-11-20）：见 {@link CanvasCancelStateRaw}；旧后端不带 */
+  cancelState?: CanvasCancelStateRaw
+  cancel_state?: CanvasCancelStateRaw
+}
+
+/**
+ * 取消进度（接口原样，只增 2026-11-20）：requested = 已请求取消、等派发器确认；
+ * refused = 取消被拒（已发给供应商，继续按运行中跟踪）；'' = 无。缺省（旧后端）= 不知道，前端行为不变。
+ */
+export type CanvasCancelStateRaw = '' | 'requested' | 'refused' | (string & {})
+
+/** 读取取消进度（camelCase / snake_case 都认）；字段缺失返回 undefined，与 '' 区分 */
+export function cancelStateOf(
+  raw: { cancelState?: CanvasCancelStateRaw; cancel_state?: CanvasCancelStateRaw } | undefined | null,
+): CanvasCancelStateRaw | undefined {
+  if (!raw) return undefined
+  const value = raw.cancelState ?? raw.cancel_state
+  return typeof value === 'string' ? value : undefined
 }
 
 /** 模型能力（对应原型 data.capabilities，决定参数面板显示哪些控件） */

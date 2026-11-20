@@ -519,6 +519,20 @@ export function patch<T = any>(url: string, data: any, headers?: any): Promise<A
 }
 
 /**
+ * 刷新访问令牌（与请求拦截器同一单航班），成功返回 true；失败返回 false，**不**跳登录页。
+ * 给长连接用：建连时的令牌在连接期间过期（其它请求早已换了新令牌），服务端会要求重新鉴权——
+ * 先刷新再重连，只有刷新失败（refreshToken 失效 / 在别处登录被踢）才算真的登录失效。
+ */
+export async function refreshAccessToken(): Promise<boolean> {
+  try {
+    await doRefresh()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * 带 fusion token 的裸 fetch（给 axios 收不了的流式接口用，如智能体 SSE）。
  *
  * <p>与 axios 实例同一个 baseURL 与 Bearer 注入；正在刷新时先等刷新结束。

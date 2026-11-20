@@ -54,6 +54,8 @@ const TEXT_BTN = `inline-flex shrink-0 items-center gap-4px h-28px px-10px borde
 const isRunning = computed(() => props.data.status === 'running' || props.data.status === 'queued')
 /** 取消已被拒（已发给模型）：执行钮变为不可点的「生成中…」，等结果 */
 const cancelLocked = computed(() => isRunning.value && store.isCancelLocked(props.id))
+/** 已请求取消、等派发器确认（cancel_state=requested）：同样不可点，文案「取消中…」 */
+const cancelPending = computed(() => cancelLocked.value && store.cancelLockOf(props.id) === 'requested')
 const isI2p = computed(() => props.data.tool === 'i2p')
 const isTryon = computed(() => props.data.tool === 'tryon')
 /** catalog 里 ready=false 的工具：灰显并禁止执行（目录未加载时不拦） */
@@ -472,20 +474,24 @@ const fixedHeight = computed(() => Boolean(props.data.heightFixed && props.data.
         ]"
         :disabled="((notReady || noModels) && !isRunning) || cancelLocked"
         :title="
-          cancelLocked
-            ? '已发给模型，无法取消，完成后按实际用量结算'
-            : notReady && !isRunning
-              ? '该功能暂未开放'
-              : noModels && !isRunning
-                ? '先连一张模特图'
-                : undefined
+          cancelPending
+            ? '已请求取消，等待确认'
+            : cancelLocked
+              ? '已发给模型，无法取消，完成后按实际用量结算'
+              : notReady && !isRunning
+                ? '该功能暂未开放'
+                : noModels && !isRunning
+                  ? '先连一张模特图'
+                  : undefined
         "
         :aria-label="
-          cancelLocked
-            ? `${data.title} 生成中，无法取消`
-            : isRunning
-              ? `取消执行 ${data.title}`
-              : `${runLabel}：${data.title}`
+          cancelPending
+            ? `${data.title} 取消中`
+            : cancelLocked
+              ? `${data.title} 生成中，无法取消`
+              : isRunning
+                ? `取消执行 ${data.title}`
+                : `${runLabel}：${data.title}`
         "
         @pointerdown.stop="store.selectNode(id)"
         @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
@@ -496,7 +502,7 @@ const fixedHeight = computed(() => Boolean(props.data.heightFixed && props.data.
           aria-hidden="true"
         />
         <EditorIcon v-else :name="isRunning ? 'stop' : 'play'" :size="13" />
-        {{ cancelLocked ? '生成中…' : isRunning ? '取消' : runLabel }}
+        {{ cancelPending ? '取消中…' : cancelLocked ? '生成中…' : isRunning ? '取消' : runLabel }}
       </button>
     </div>
 

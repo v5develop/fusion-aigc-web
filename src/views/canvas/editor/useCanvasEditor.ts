@@ -13,6 +13,7 @@ import {
   canvasGet,
   canvasNodeRun,
   canvasRunCancel,
+  cancelStateOf,
   canvasRunGet,
   canvasRunLibraryRetry,
   canvasRuns,
@@ -26,7 +27,7 @@ import {
   type ICanvasRunResult,
 } from '@/api/canvas-home.ts'
 import { toApiError } from '@/api/index.ts'
-import { canvasGetAtRevision, type ICanvasChangeEvent } from '@/api/canvas-sync.ts'
+import { canvasGetAtRevision, type ICanvasChangeEvent, type ICanvasRunEventResult } from '@/api/canvas-sync.ts'
 import type { ICanvasDetail } from '@/api/canvas-home.ts'
 import {
   changedNodeIdsBetween,
@@ -127,10 +128,53 @@ const submittingNodes = new Set<string>()
 /** 提交在途时用户点了停止：拿到 request_id 后立即取消 */
 const cancelRequested = new Set<string>()
 /**
- * 取消被拒「已发给模型」（CANCEL_VENDOR_SENT）的 run（request_id）：节点上不再给取消钮，继续轮询等结果。
+ * 取消锁定的 run（request_id → 状态）：节点上不再给可点的取消钮，继续轮询等结果。
+ * - requested：已请求取消、等派发器确认（显示「取消中…」）；轮询回到无取消状态的运行中时解除
+ * - refused：取消被拒——已发给模型（CANCEL_VENDOR_SENT / 轮询 cancel_state=refused），按运行中跟踪到终态
  * 按 request_id 记在内存而不写进节点 data——data 会进快照 / 脏检测；重新运行换了 request_id 自然失效，到终态时删掉。
  */
-const cancelLockedRuns = reactive(new Set<string>())
+type CancelLock = 'requested' | 'refused'
+const cancelLockedRuns = reactive(new Map<string, CancelLock>())
+const REFUSED_HINT = '已开始生成，无法取消，完成后按实际用量结算'
+
+/**
+ * 按服务端下发的 cancel_state 更新锁定（取消回包 / 轮询结果共用）。字段缺失（旧后端）什么都不动。
+ *
+ * <p>refused 的提示只给本会话里本窗口点过取消的 run（userCanceledRuns）：另一个窗口点的取消、取消中刷新后再看到 refused
+ * 都只静默锁定取消钮。每条 run 只弹一次（已是 refused 直接返回）。
+ *
+ * <p>requested 只被「取消请求发出之后」的结果解除（opts.fresh=false 的晚到结果——点取消前发出的轮询、更旧的推送——不解除），
+ * 否则取消钮会闪回。
+ */
+function applyCancelState(
+  requestId: string,
+  state: string | undefined,
+  opts: { fromUser?: boolean; hint?: string; fresh?: boolean } = {},
+): void {
+  if (!requestId || state === undefined) return
+  const prev = cancelLockedRuns.get(requestId)
+  if (state === 'refused') {
+    if (prev === 'refused') return
+    cancelLockedRuns.set(requestId, 'refused')
+    if (opts.fromUser || userCanceledRuns.has(requestId)) message.info(opts.hint || REFUSED_HINT)
+  } else if (state === 'requested') {
+    if (prev !== 'refused') cancelLockedRuns.set(requestId, 'requested')
+  } else if (prev === 'requested' && opts.fresh !== false) {
+    // 回到无取消状态（派发器没接住取消，任务照常运行）：恢复取消钮；refused 不解除——已发给模型，再点也取消不了
+    cancelLockedRuns.delete(requestId)
+  }
+}
+/** 本会话里本窗口发起过取消的 run（request_id）：只有它们的「取消被拒」才弹提示 */
+const userCanceledRuns = new Set<string>()
+/** 本窗口发出取消请求的时刻（request_id → Date.now()）：之前发出的查询结果不能解除「取消中」 */
+const cancelSentAt = new Map<string, number>()
+/** 推送里看到 requested 时的事件版本（request_id → version）：只有更新的事件才能解除「取消中」 */
+const requestedVersions = new Map<string, number>()
+/** 查询结果（issuedAt 时发出）是否晚于本窗口的取消请求 */
+function freshSince(requestId: string, issuedAt: number): boolean {
+  const sent = cancelSentAt.get(requestId)
+  return sent === undefined || issuedAt > sent
+}
 /** 本会话里提交时真的冻结了点数的 run（request_id → 预扣点数）：失败 / 取消时只对这些提示「将退回」 */
 const chargedRuns = new Map<string, number>()
 /** 估价接口返回的结算口径（模型 -> actual_cost / fixed），提交后提示「多退少补」用 */
@@ -528,6 +572,10 @@ async function init(id: string): Promise<boolean> {
   submittingNodes.clear()
   cancelRequested.clear()
   cancelLockedRuns.clear()
+  userCanceledRuns.clear()
+  cancelSentAt.clear()
+  requestedVersions.clear()
+  runEventVersions.clear()
   chargedRuns.clear()
   quietNodes.clear()
   selectedNodeId.value = ''
@@ -1514,12 +1562,29 @@ interface IPoller {
   startedAt: number
   timeoutMs: number
   errors: number
+  /** 一次查询在途（kickPoll 不打断在途请求） */
+  inflight: boolean
+  /** 在途期间被 kickPoll 过：回来后立即再查一次（在途那次可能早于取消请求等变化） */
+  rekick: boolean
+  tick: () => void
 }
 
 const POLL_INTERVAL = 1200
 /** 页面隐藏时放慢 run 轮询（切回前台的下一轮即恢复 1.2s；超时按墙钟算，不受影响） */
 const POLL_HIDDEN_INTERVAL = 5000
-const pollDelay = () => (document.visibilityState === 'hidden' ? POLL_HIDDEN_INTERVAL : POLL_INTERVAL)
+/**
+ * 服务端推送优先（2026-11-20）：画布 SSE 连着、且本会话已收到过带结果的 run 事件（证明后端会推 run 结果，旧后端只推状态提示）时，
+ * run 状态由事件直接写回，轮询放宽为兜底；SSE 断开 / 未连 / 旧后端回到 1.2 秒。
+ */
+const POLL_PUSH_FALLBACK = 10_000
+/** 画布 SSE 是否连着（useCanvasSync 的 status=live） */
+let runPushLive = false
+/** 后端会推 run 结果（收到过带 run 的事件）：后端版本在会话内不变，断线重连不清零 */
+let runPushProven = false
+const pollDelay = () => {
+  if (document.visibilityState === 'hidden') return POLL_HIDDEN_INTERVAL
+  return runPushLive && runPushProven ? POLL_PUSH_FALLBACK : POLL_INTERVAL
+}
 const pollers = new Map<string, IPoller>()
 
 const runningCount = computed(
@@ -1831,14 +1896,6 @@ async function adoptActiveRun(nodeId: string, fallbackMsg: string): Promise<void
 function startPolling(node: CanvasEditorNode): void {
   const requestId = node.data.requestId
   if (!requestId || pollers.has(requestId)) return
-  const entry: IPoller = {
-    timer: null,
-    nodeId: node.id,
-    startedAt: Date.now(),
-    timeoutMs: timeoutMsFor(node),
-    errors: 0,
-  }
-  pollers.set(requestId, entry)
   const tick = (): void => {
     const current = pollers.get(requestId)
     if (!current) return
@@ -1847,17 +1904,25 @@ function startPolling(node: CanvasEditorNode): void {
       message.warning('生成超时，任务可能仍在运行，可稍后刷新画布查看结果')
       return
     }
+    current.inflight = true
+    const issuedAt = Date.now()
     canvasRunGet(requestId)
       .then((res) => {
         const live = pollers.get(requestId)
         if (!live) return
+        live.inflight = false
         live.errors = 0
-        if (applyRunResult(live.nodeId, res.data)) stopPolling(requestId)
-        else live.timer = setTimeout(tick, pollDelay())
+        if (applyRunResult(live.nodeId, res.data, { fresh: freshSince(requestId, issuedAt) })) {
+          stopPolling(requestId)
+          return
+        }
+        live.timer = setTimeout(tick, live.rekick ? 0 : pollDelay())
+        live.rekick = false
       })
       .catch(() => {
         const live = pollers.get(requestId)
         if (!live) return
+        live.inflight = false
         live.errors += 1
         if (live.errors > 2) {
           // 轮询请求失败 ≠ 任务失败：不取消，停在这里让用户稍后刷新确认
@@ -1868,13 +1933,187 @@ function startPolling(node: CanvasEditorNode): void {
         live.timer = setTimeout(tick, 800)
       })
   }
+  const entry: IPoller = {
+    timer: null,
+    nodeId: node.id,
+    startedAt: Date.now(),
+    timeoutMs: timeoutMsFor(node),
+    errors: 0,
+    inflight: false,
+    rekick: false,
+    tick,
+  }
+  pollers.set(requestId, entry)
+  // 第一轮仍按 1.2 秒：受理事件可能早于提交回包（那时还不知道 request_id，事件被忽略）
   entry.timer = setTimeout(tick, POLL_INTERVAL)
+}
+
+/** 把某条 run 的下一次查询提前到 delay 毫秒后（在途请求不打断，它回来后按新的间隔续） */
+function kickPoll(requestId: string, delay = 0): void {
+  const entry = pollers.get(requestId)
+  if (!entry) return
+  if (entry.inflight) {
+    if (delay === 0) entry.rekick = true
+    return
+  }
+  if (entry.timer) clearTimeout(entry.timer)
+  entry.timer = setTimeout(entry.tick, delay)
 }
 
 function stopPolling(requestId: string): void {
   const entry = pollers.get(requestId)
   if (entry?.timer) clearTimeout(entry.timer)
   pollers.delete(requestId)
+  progressHints.delete(requestId)
+}
+
+// ---------------- run 事件（服务端推送优先，轮询兜底） ----------------
+
+/** 运行中进度的本地外推参数（request_id → 最近一次事件给的基准）：事件只在状态变化时发，两次事件之间本地推进度条 */
+interface IProgressHint {
+  base: number
+  elapsedMs: number
+  expectedMs: number
+  receivedAt: number
+}
+const progressHints = new Map<string, IProgressHint>()
+let progressTimer: ReturnType<typeof setInterval> | null = null
+
+function tickProgress(): void {
+  for (const [requestId, hint] of [...progressHints]) {
+    const entry = pollers.get(requestId)
+    const node = entry ? findNode(entry.nodeId) : undefined
+    if (!node || node.data.requestId !== requestId || node.data.status !== 'running') {
+      progressHints.delete(requestId)
+      continue
+    }
+    const elapsed = hint.elapsedMs + (Date.now() - hint.receivedAt)
+    const p = Math.round(Math.min(Math.max(5 + (elapsed / hint.expectedMs) * 90, Math.max(5, hint.base)), 95))
+    if (p > (node.data.progress ?? 0)) node.data.progress = p
+  }
+  if (!progressHints.size && progressTimer) {
+    clearInterval(progressTimer)
+    progressTimer = null
+  }
+}
+
+function rememberProgressHint(run: ICanvasRunEventResult): void {
+  const expectedMs = Number(run.expectedMs) || 0
+  if (run.status !== 'running' || expectedMs <= 0) {
+    progressHints.delete(run.requestId)
+    return
+  }
+  progressHints.set(run.requestId, {
+    base: Number(run.progress) || 0,
+    elapsedMs: Math.max(Number(run.elapsedMs) || 0, 0),
+    expectedMs,
+    receivedAt: Date.now(),
+  })
+  if (!progressTimer) progressTimer = setInterval(tickProgress, 1000)
+}
+
+/** 状态序：同一毫秒内的两条事件按它再比（queued < submitting < running < 终态） */
+function runStatusRank(status: string): number {
+  if (TERMINAL_RUN_STATUS.has(status)) return 3
+  if (status === 'running') return 2
+  return status === 'submitting' ? 1 : 0
+}
+
+/** 每条 run 已应用的最大事件版本（request_id → [version, 状态序]） */
+const runEventVersions = new Map<string, [number, number]>()
+
+/**
+ * 事件版本闸：发布端并发时旧状态可能后到。带 version 的事件比已应用的 (version, 状态序) 小就丢弃，否则记下并放行；
+ * 不带 version（旧后端）一律放行，走原有逻辑。
+ */
+function acceptRunVersion(run: ICanvasRunEventResult): boolean {
+  const version = Number(run.version)
+  if (!Number.isFinite(version) || version <= 0) return true
+  const rank = runStatusRank(run.status)
+  const seen = runEventVersions.get(run.requestId)
+  if (seen && (version < seen[0] || (version === seen[0] && rank < seen[1]))) return false
+  runEventVersions.set(run.requestId, [version, rank])
+  return true
+}
+
+/** 推送结果能否解除「取消中」：本窗口没点过取消，或比看到 requested 时的版本更新 */
+function eventFreshForCancel(run: ICanvasRunEventResult): boolean {
+  if (run.cancelState === 'requested' || run.cancel_state === 'requested') {
+    const version = Number(run.version)
+    if (Number.isFinite(version) && version > 0) requestedVersions.set(run.requestId, version)
+    return true
+  }
+  if (!cancelSentAt.has(run.requestId) && !requestedVersions.has(run.requestId)) return true
+  const version = Number(run.version)
+  const requestedAt = requestedVersions.get(run.requestId)
+  // 没有版本可比（旧后端 / 只从取消回包得知 requested）：不解除，交给取消之后发出的轮询
+  return Number.isFinite(version) && requestedAt !== undefined && version > requestedAt
+}
+
+/** request_id 是自增数字串：a 是否比 b 新 */
+function newerRequestId(a: string, b: string): boolean {
+  return a.length !== b.length ? a.length > b.length : a > b
+}
+
+/**
+ * 画布 SSE 的 run 事件（source=run）。
+ * - 带结果：直接写回节点（与轮询同一个 applyRunResult），到终态即停轮询；本会话据此认定后端会推结果，轮询放宽为兜底。
+ * - 不带结果（旧后端 / 发布端重读失败）：立即查一次 GET。
+ * - 幂等：节点已按这条 run 到终态（轮询或更早的事件已处理，提示已弹过）时，只静默刷新产物（选中候选 / 转存完成换地址），
+ *   不再走终态分支；迟到的非终态事件（运行中晚于终态到达）丢弃，也不会把「运行中」盖回「排队中」。
+ * - 节点空闲时收到别的窗口 / 画布助手触发的新 run：接上跟踪。
+ */
+function handleRunEvent(event: ICanvasChangeEvent): void {
+  if (!ready.value || !canvasId) return
+  if (event.canvasId && event.canvasId !== canvasId) return
+  const run = event.run
+  const requestId = run?.requestId || event.requestId || ''
+  const nodeId = run?.nodeId || event.changedNodeIds?.[0] || ''
+  if (!requestId || !nodeId) return
+  if (run && runPushLive) runPushProven = true
+  if (run && !acceptRunVersion(run)) return
+  const node = findNode(nodeId)
+  if (!node) return
+  const status = run?.status || event.runStatus || ''
+  if (node.data.requestId !== requestId) {
+    // 不是本节点正在跟踪的 run：只接「节点空闲时新起的、未结束的」那条（提交在途时 request_id 还没回来，交给提交流程）
+    const current = node.data.requestId
+    if (!status || TERMINAL_RUN_STATUS.has(status) || submittingNodes.has(nodeId)) return
+    if (current && (pollers.has(current) || !newerRequestId(requestId, current))) return
+    if (current) cancelLockedRuns.delete(current)
+    node.data.requestId = requestId
+    node.data.errorMessage = undefined
+    node.data.errorCode = undefined
+    node.data.retryable = undefined
+    if (run) applyRunResult(nodeId, run)
+    else node.data.status = status === 'running' ? 'running' : 'queued'
+    if (run) rememberProgressHint(run)
+    startPolling(node)
+    return
+  }
+  const settled = (node.data.status === 'done' || node.data.status === 'error') && !pollers.has(requestId)
+  if (!run) {
+    // 旧后端：事件只是提示，立即查一次（终态已处理过的不必再查）
+    if (!settled) kickPoll(requestId)
+    return
+  }
+  if (settled) {
+    // 已到终态：重复的终态事件不再提示；成功 run 的后续变化（换选中、转存完成换长期地址 / 转存失败）静默写回产物
+    if (run.status === 'succeeded' && node.data.status === 'done') writeProduct(nodeId, run, productStateOf(nodeId))
+    return
+  }
+  if (!TERMINAL_RUN_STATUS.has(run.status) && run.status !== 'running' && node.data.status === 'running') return
+  if (!applyRunResult(nodeId, run, { fresh: eventFreshForCancel(run) })) {
+    rememberProgressHint(run)
+    if (!pollers.has(requestId)) startPolling(node)
+  }
+}
+
+/** 画布 SSE 连上 / 断开（useCanvasSync 调）：断开时在跟踪的 run 立即回到 1.2 秒轮询；重新连上先补查一次断线期间的变化 */
+function setRunPushLive(live: boolean): void {
+  if (live === runPushLive) return
+  runPushLive = live
+  for (const requestId of pollers.keys()) kickPoll(requestId, live ? 0 : POLL_INTERVAL)
 }
 
 function stopAllPollers(): void {
@@ -1891,7 +2130,7 @@ function resumePollers(): void {
 }
 
 /** run 终态写回节点；返回是否终态 */
-function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): boolean {
+function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined, opts: { fresh?: boolean } = {}): boolean {
   const node = findNode(nodeId)
   if (!node) return true
   if (!run?.status) return false
@@ -1934,6 +2173,8 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
   // submitting / queued / running / 未知状态都按未结束处理
   data.status = run.status === 'running' ? 'running' : 'queued'
   data.progress = run.progress ?? data.progress
+  // 取消进度（只增字段，旧后端缺省时不动）：requested →「取消中…」；refused → 提示一次并锁定取消钮
+  applyCancelState(data.requestId ?? '', cancelStateOf(run), { fresh: opts.fresh })
   return false
 }
 
@@ -2273,15 +2514,18 @@ async function cancelRun(nodeId: string): Promise<void> {
     node.data.status = 'idle'
     return
   }
+  userCanceledRuns.add(requestId)
+  cancelSentAt.set(requestId, Date.now())
   try {
-    await canvasRunCancel(requestId)
+    const res = await canvasRunCancel(requestId)
+    // 新后端：requested = 等派发器确认（节点显示「取消中…」，下面接着轮询）；refused = 已发给模型取消不了
+    applyCancelState(requestId, cancelStateOf(res.data), { fromUser: true })
   } catch (err) {
     // canvasRunCancel 是静默请求（全局拦截器不弹 toast），提示全在这里出，不会叠两条
     const api = toApiError(err)
     if (api?.reason === 'CANCEL_VENDOR_SENT') {
       // 已发给模型：不能取消，任务照常完成、按实际用量结算；收起取消钮，继续轮询等结果
-      cancelLockedRuns.add(requestId)
-      message.info(api.message || '已开始生成，无法取消，完成后按实际用量结算')
+      applyCancelState(requestId, 'refused', { fromUser: true, hint: api.message })
     } else if (!api || api.isNetwork || api.code === 6001 || (api.httpStatus ?? 0) >= 500) {
       message.warning('暂时无法取消，请稍后重试')
     } else if (api.code === 4002) {
@@ -2293,7 +2537,11 @@ async function cancelRun(nodeId: string): Promise<void> {
       message.warning(api.httpStatus === 403 ? '没有权限取消该任务' : '取消失败，请稍后重试')
     }
   }
-  if (pollers.has(requestId)) return // 轮询继续，下一拍拿终态
+  if (pollers.has(requestId)) {
+    // 轮询继续：下一次查询提前到现在（推送在线时兜底间隔是 10 秒，refused / 终态不能等那么久）
+    kickPoll(requestId)
+    return
+  }
   try {
     const res = await canvasRunGet(requestId)
     const current = findNode(nodeId)
@@ -2307,10 +2555,14 @@ async function cancelRun(nodeId: string): Promise<void> {
   }
 }
 
-/** 该节点当前这次 run 取消已被拒（已发给模型）：节点上收起取消钮 */
-function isCancelLocked(nodeId: string): boolean {
+/** 该节点当前这次 run 的取消锁定：requested =「取消中…」，refused = 已发给模型取消不了；没有锁定为 undefined */
+function cancelLockOf(nodeId: string): CancelLock | undefined {
   const requestId = findNode(nodeId)?.data.requestId
-  return requestId ? cancelLockedRuns.has(requestId) : false
+  return requestId ? cancelLockedRuns.get(requestId) : undefined
+}
+/** 该节点当前取消钮不可点（取消中 / 取消被拒） */
+function isCancelLocked(nodeId: string): boolean {
+  return cancelLockOf(nodeId) !== undefined
 }
 
 /**
@@ -2516,6 +2768,10 @@ export function useCanvasEditor() {
     flushSave,
     // 实时同步
     handleRemoteEvent,
+    /** 画布 SSE 的 run 事件：写回节点运行态（推送优先，轮询兜底） */
+    handleRunEvent,
+    /** 画布 SSE 连接状态：连着时 run 轮询放宽为兜底 */
+    setRunPushLive,
     /** 轮询 / 重连后补查：服务端 revision 与本地不同就当作一次远端变更 */
     checkRemoteRevision: (rev: string) => {
       if (rev && rev !== revision.value && !ownRevisions.includes(rev)) requestSync({ revision: rev })
@@ -2531,6 +2787,7 @@ export function useCanvasEditor() {
     retryNode,
     cancelRun,
     isCancelLocked,
+    cancelLockOf,
     selectCandidate,
   }
 }

@@ -8,7 +8,9 @@
  *   `event: run`（source=run，无 id，revision 不变，只刷新节点运行态，不需要合并）；`: ping` 注释心跳；
  *   `retry: <ms>` 字段（重连间隔）；结束帧 `event: gone`（不要重连：code=CANVAS_GONE | SESSION_EXPIRED）
  *   与 `event: bye`（可重连：code=RECONNECT | CONN_SLOT_UNAVAILABLE）。
- *   事件载荷 camelCase：{canvasId, revision, source, actor, changedNodeIds[≤200], truncated?, at, requestId?, runStatus?, resync?}。
+ *   事件载荷 camelCase：{canvasId, revision, source, actor, changedNodeIds[≤200], truncated?, at, requestId?, runStatus?, run?, resync?}。
+ *   `run`（只增 2026-11-20，仅 source=run）：与 GET /runs/{id} 同形的执行结果（camelCase，URL 同为现签地址），另带
+ *   elapsedMs / expectedMs（运行中，本地外推进度用）；发布端重读失败时缺省，旧后端没有——收到无 run 的 run 事件就 GET 一次。
  *   续传：重连带 `Last-Event-ID`（或 `?since=`）；与当前 revision 不同则先补发一条 resync。
  *   hello.mode=poll（网关无会话 Redis）后服务端立即结束，客户端改轮询 revision。
  *   超出每用户连接上限回 JSON 信封 4002 · CANVAS_EVENTS_TOO_MANY；画布不存在 / 不属于你回 4001（不开流）。
@@ -17,7 +19,7 @@
  *   超出保留范围 4001 · reason=CANVAS_REVISION_NOT_RETAINED（调用方退化为无 base 合并）。
  */
 import { ApiError, authorizedFetch, getQuiet } from './index.ts'
-import type { ICanvasDetail } from './canvas-home.ts'
+import type { ICanvasDetail, ICanvasRunResult } from './canvas-home.ts'
 import { isCanvasMock } from './canvas-mock-switch.ts'
 
 const PREFIX = '/api/v1/canvas'
@@ -41,6 +43,32 @@ export interface ICanvasChangeEvent {
   /** source=run：生成请求号与状态（revision 不变） */
   requestId?: string
   runStatus?: string
+  /** source=run：本次变化后的执行结果（只增 2026-11-20；旧后端 / 发布端重读失败时缺省） */
+  run?: ICanvasRunEventResult
+}
+
+/** run 事件里的执行结果：GET /runs/{id} 同形，外加运行中本地外推进度的两项 */
+export interface ICanvasRunEventResult extends ICanvasRunResult {
+  /** 发布时已运行的毫秒数（仅运行中） */
+  elapsedMs?: number
+  /** 预计总时长毫秒（仅运行中）：progress ≈ clamp(5 + elapsed / expected × 90, max(5, progress), 95) */
+  expectedMs?: number
+  /**
+   * 事件版本（只增 2026-11-20）：发布前重读到的 run 行 updated_at（unix 毫秒）。同一 run 按 (version, 状态序) 只认更新的，
+   * 并发发布时后到的旧状态丢弃；缺省（旧后端）不比较
+   */
+  version?: number
+}
+
+/** run 事件里的结果：要有 requestId / nodeId / status 才认，否则当作没有（退回 GET） */
+function normalizeRunPayload(raw: unknown): ICanvasRunEventResult | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const requestId = str(r.requestId ?? r.request_id)
+  const nodeId = str(r.nodeId ?? r.node_id)
+  const status = str(r.status)
+  if (!requestId || !nodeId || !status) return undefined
+  return { ...(r as unknown as ICanvasRunEventResult), requestId, nodeId, status }
 }
 
 export interface ICanvasRevision {
@@ -81,6 +109,7 @@ export function normalizeChangeEvent(raw: unknown, fallbackRevision = ''): ICanv
   const ids = r.changedNodeIds ?? r.changed_node_ids
   const at = Number(r.at ?? r.updatedAt ?? r.updated_at ?? 0)
   const truncated = r.truncated === true
+  const run = r.source === 'run' ? normalizeRunPayload(r.run) : undefined
   return {
     canvasId: str(r.canvasId ?? r.canvas_id),
     revision,
@@ -93,6 +122,7 @@ export function normalizeChangeEvent(raw: unknown, fallbackRevision = ''): ICanv
     ...(truncated ? { truncated: true } : {}),
     ...(r.requestId != null ? { requestId: str(r.requestId) } : {}),
     ...(r.runStatus != null ? { runStatus: str(r.runStatus) } : {}),
+    ...(run ? { run } : {}),
   }
 }
 
