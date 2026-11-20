@@ -35,5 +35,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', guard, true))
 </script>
 
 <template>
-  <MediaLightbox v-if="props.items.length" v-model:show="show" v-model:index="index" :items="props.items" />
+  <MediaLightbox v-if="props.items.length" v-model:show="show" v-model:index="index" :items="props.items">
+    <template v-if="$slots.actions" #actions="slotProps">
+      <slot name="actions" v-bind="slotProps" />
+    </template>
+  </MediaLightbox>
 </template>

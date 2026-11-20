@@ -306,6 +306,8 @@ const ICONS = {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="ICONS.reset" /></svg>
           </button>
         </template>
+        <!-- 调用方附加的操作（如画布生成历史的「设为输出」），index 为当前项下标 -->
+        <slot name="actions" :index="at" :item="item" />
         <a
           v-if="item"
           class="mlb-tool"
