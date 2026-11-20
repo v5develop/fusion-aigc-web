@@ -50,6 +50,8 @@ const store = useCanvasEditor()
 const TEXT_BTN = `inline-flex shrink-0 items-center gap-4px h-28px px-10px border border-solid border-control rounded-4px bg-white text-ink-2 text-12px cursor-pointer hover:border-violet-line hover:bg-violet-soft hover:text-violet-ink nodrag ${FOCUS_RING}`
 
 const isRunning = computed(() => props.data.status === 'running' || props.data.status === 'queued')
+/** 取消已被拒（已发给模型）：执行钮变为不可点的「生成中…」，等结果 */
+const cancelLocked = computed(() => isRunning.value && store.isCancelLocked(props.id))
 const isI2p = computed(() => props.data.tool === 'i2p')
 const isTryon = computed(() => props.data.tool === 'tryon')
 /** catalog 里 ready=false 的工具：灰显并禁止执行（目录未加载时不拦） */
@@ -463,14 +465,33 @@ const fixedHeight = computed(() => Boolean(props.data.heightFixed && props.data.
             ? 'border-control bg-white text-ink-2 hover:border-control-hover hover:text-ink'
             : 'border-transparent bg-violet-solid text-white hover:opacity-90',
         ]"
-        :disabled="(notReady || noModels) && !isRunning"
-        :title="notReady && !isRunning ? '该功能暂未开放' : noModels && !isRunning ? '先连一张模特图' : undefined"
-        :aria-label="isRunning ? `取消执行 ${data.title}` : `${runLabel}：${data.title}`"
+        :disabled="((notReady || noModels) && !isRunning) || cancelLocked"
+        :title="
+          cancelLocked
+            ? '已发给模型，无法取消，完成后按实际用量结算'
+            : notReady && !isRunning
+              ? '该功能暂未开放'
+              : noModels && !isRunning
+                ? '先连一张模特图'
+                : undefined
+        "
+        :aria-label="
+          cancelLocked
+            ? `${data.title} 生成中，无法取消`
+            : isRunning
+              ? `取消执行 ${data.title}`
+              : `${runLabel}：${data.title}`
+        "
         @pointerdown.stop="store.selectNode(id)"
         @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
       >
-        <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
-        {{ isRunning ? '取消' : runLabel }}
+        <span
+          v-if="cancelLocked"
+          class="w-12px h-12px border-[1.5px] border-solid border-current border-t-transparent rounded-full animate-spin animate-duration-800"
+          aria-hidden="true"
+        />
+        <EditorIcon v-else :name="isRunning ? 'stop' : 'play'" :size="13" />
+        {{ cancelLocked ? '生成中…' : isRunning ? '取消' : runLabel }}
       </button>
     </div>
 

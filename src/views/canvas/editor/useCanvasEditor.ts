@@ -5,7 +5,7 @@
  * 节点增删连线 / 单节点执行（幂等提交 + 1.2s 轮询 + 取消）/ 候选选择。快照节点 data 内部 camelCase 原样收发（契约 1.4），
  * 接口外层字段同为 camelCase（Go 网关兼容），封装在 src/api/canvas-home.ts。
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { createDiscreteApi } from 'naive-ui'
 import { discreteConfigProviderProps } from '@/theme/naive'
 import { catalogModelLabels, normalizeModelTier } from '@/utils/model-label'
@@ -125,6 +125,11 @@ const pendingUnknownRuns = new Map<string, ICanvasRunReq>()
 const submittingNodes = new Set<string>()
 /** 提交在途时用户点了停止：拿到 request_id 后立即取消 */
 const cancelRequested = new Set<string>()
+/**
+ * 取消被拒「已发给模型」（CANCEL_VENDOR_SENT）的 run（request_id）：节点上不再给取消钮，继续轮询等结果。
+ * 按 request_id 记在内存而不写进节点 data——data 会进快照 / 脏检测；重新运行换了 request_id 自然失效，到终态时删掉。
+ */
+const cancelLockedRuns = reactive(new Set<string>())
 /** 本会话里提交时真的冻结了点数的 run（request_id → 预扣点数）：失败 / 取消时只对这些提示「将退回」 */
 const chargedRuns = new Map<string, number>()
 /** 估价接口返回的结算口径（模型 -> actual_cost / fixed），提交后提示「多退少补」用 */
@@ -519,6 +524,7 @@ async function init(id: string): Promise<boolean> {
   pendingUnknownRuns.clear()
   submittingNodes.clear()
   cancelRequested.clear()
+  cancelLockedRuns.clear()
   chargedRuns.clear()
   quietNodes.clear()
   selectedNodeId.value = ''
@@ -1716,6 +1722,7 @@ async function runNode(nodeId: string, reuse?: ICanvasRunReq, opts?: { quiet?: b
     if (!live) return false
     live.data.runId = req.runId
     // 清掉上一次 run 的 request_id：提交在途时点停止不能去取消上一次（已结束）的 run
+    if (live.data.requestId) cancelLockedRuns.delete(live.data.requestId)
     live.data.requestId = undefined
     live.data.status = 'queued'
     live.data.errorMessage = undefined
@@ -1897,6 +1904,7 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
     data.errorCode = undefined
     data.retryable = undefined
     stopPolling(run.requestId)
+    cancelLockedRuns.delete(data.requestId ?? '')
     return true
   }
   if (run.status === 'failed' || run.status === 'cancelled') {
@@ -1905,6 +1913,7 @@ function applyRunResult(nodeId: string, run: ICanvasRunResult | undefined): bool
     data.errorCode = run.errorCode || undefined
     data.retryable = run.status === 'failed' && run.retryable === true
     stopPolling(run.requestId)
+    cancelLockedRuns.delete(data.requestId ?? '')
     // 计费（2026-11-06 二轮）：失败 / 取消由服务端退回预扣点数。只有本会话提交时确实预扣过（credits>0）才提示退回；
     // Java 工具（credits=0）、刷新后恢复轮询的旧 run 不知道有没有扣，不说「退回」
     const charged = chargedRuns.get(run.requestId || data.requestId || '') ?? 0
@@ -2260,8 +2269,23 @@ async function cancelRun(nodeId: string): Promise<void> {
   }
   try {
     await canvasRunCancel(requestId)
-  } catch {
-    // 已是终态（4002）等：下面按服务端状态刷新
+  } catch (err) {
+    // canvasRunCancel 是静默请求（全局拦截器不弹 toast），提示全在这里出，不会叠两条
+    const api = toApiError(err)
+    if (api?.reason === 'CANCEL_VENDOR_SENT') {
+      // 已发给模型：不能取消，任务照常完成、按实际用量结算；收起取消钮，继续轮询等结果
+      cancelLockedRuns.add(requestId)
+      message.info(api.message || '已开始生成，无法取消，完成后按实际用量结算')
+    } else if (!api || api.isNetwork || api.code === 6001 || (api.httpStatus ?? 0) >= 500) {
+      message.warning('暂时无法取消，请稍后重试')
+    } else if (api.code === 4002) {
+      // 已是终态：不提示，下面按服务端状态刷新（终态会走 applyRunResult 的「已取消 / 失败」提示）
+    } else if (api.code !== -1) {
+      message.warning(api.message || '取消失败，请稍后重试')
+    } else {
+      // HTTP 4xx 且没有业务体（403 等）：axios 原文不给用户看
+      message.warning(api.httpStatus === 403 ? '没有权限取消该任务' : '取消失败，请稍后重试')
+    }
   }
   if (pollers.has(requestId)) return // 轮询继续，下一拍拿终态
   try {
@@ -2275,6 +2299,12 @@ async function cancelRun(nodeId: string): Promise<void> {
     current.data.status = 'error'
     current.data.errorMessage = '已请求取消，请稍后刷新画布确认结果'
   }
+}
+
+/** 该节点当前这次 run 取消已被拒（已发给模型）：节点上收起取消钮 */
+function isCancelLocked(nodeId: string): boolean {
+  const requestId = findNode(nodeId)?.data.requestId
+  return requestId ? cancelLockedRuns.has(requestId) : false
 }
 
 /**
@@ -2494,6 +2524,7 @@ export function useCanvasEditor() {
     endQuiet,
     retryNode,
     cancelRun,
+    isCancelLocked,
     selectCandidate,
   }
 }

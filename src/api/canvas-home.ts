@@ -337,9 +337,12 @@ export function canvasRunGet(requestId: string) {
   return get<ICanvasRunResult>(`${PREFIX}/runs/${requestId}`)
 }
 
-/** 取消执行（gateway 退点 / studio 取消批次 / Java 工具调 Java 取消；无请求体） */
+/**
+ * 取消执行（gateway 退点 / studio 取消批次 / Java 工具调 Java 取消；无请求体）。
+ * 静默：CANCEL_VENDOR_SENT / 6001 / 网络 / 5xx 等由 useCanvasEditor.cancelRun 自己提示，不叠全局 toast。
+ */
 export function canvasRunCancel(requestId: string) {
-  return post<ICanvasCancelResp>(`${PREFIX}/runs/${requestId}/cancel`, {})
+  return postQuiet<ICanvasCancelResp>(`${PREFIX}/runs/${requestId}/cancel`, {})
 }
 
 /**

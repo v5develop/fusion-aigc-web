@@ -59,6 +59,8 @@ const CAND_ACTION =
 
 const isVideo = computed(() => props.data.kind === 'video')
 const isRunning = computed(() => props.data.status === 'running' || props.data.status === 'queued')
+/** 取消已被拒（已发给模型）：执行钮变为不可点的「生成中」，等结果 */
+const cancelLocked = computed(() => isRunning.value && store.isCancelLocked(props.id))
 const width = computed(() => props.data.width ?? (isVideo.value ? 338 : 318))
 const candidates = computed(() => props.data.candidates ?? [])
 /** 提示词口位置：图片模型 30%、视频模型 20%（原型 CanvasModelNode） */
@@ -342,11 +344,23 @@ function onColorFix(e: MouseEvent) {
         <button
           type="button"
           :class="NODE_RUN_BTN"
-          :title="isRunning ? '取消执行' : '执行此节点'"
-          :aria-label="isRunning ? `取消执行 ${data.title}` : `执行 ${data.title}`"
+          :disabled="cancelLocked"
+          :title="cancelLocked ? '生成中：已发给模型，无法取消' : isRunning ? '取消执行' : '执行此节点'"
+          :aria-label="
+            cancelLocked
+              ? `${data.title} 生成中，无法取消`
+              : isRunning
+                ? `取消执行 ${data.title}`
+                : `执行 ${data.title}`
+          "
           @click.stop="isRunning ? store.cancelRun(id) : store.runNode(id)"
         >
-          <EditorIcon :name="isRunning ? 'stop' : 'play'" :size="13" />
+          <span
+            v-if="cancelLocked"
+            class="w-11px h-11px border-[1.5px] border-solid border-current border-t-transparent rounded-full animate-spin animate-duration-800"
+            aria-hidden="true"
+          />
+          <EditorIcon v-else :name="isRunning ? 'stop' : 'play'" :size="13" />
         </button>
         <NodeMenu
           :title="data.title || '生成节点'"
